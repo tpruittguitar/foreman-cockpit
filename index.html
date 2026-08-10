@@ -154,7 +154,7 @@ function parse(t){
   lines(X.WATCH).forEach(function(l){r.watch.push(l);});
   return r;
 }
-function daysTo(dstr){const d=new Date(dstr+"T12:00:00");const now=new Date(2026,7,9,12);return Math.round((d-now)/864e5);}
+function daysTo(dstr){const d=new Date(dstr+"T12:00:00");const now=new Date();now.setHours(12,0,0,0);return Math.round((d-now)/864e5);}
 
 let RAW="",FILTER="all",showPaste=false,status="loading",TASKS=[];
 
