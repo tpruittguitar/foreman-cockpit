@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Foreman Cockpit</title>
+<style>
+  :root{
+    --bg:#08080A; --bg2:#0D0E11; --panel:#131418; --panel2:#191B20;
+    --line:#242730; --line2:#343945; --hair:#1C1E24;
+    --text:#EAECEF; --dim:#99A0AB; --faint:#5C626E;
+    --edge:#7FB0FF; --edge2:#A9CBFF;
+    --ok:#8FB8A0; --warn:#C9A96A; --nok:#D08A83; --info:#8AA6C9;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:
+      radial-gradient(1200px 600px at 50% -200px, rgba(127,176,255,.06), transparent 70%),
+      var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+    padding:12px;-webkit-font-smoothing:antialiased;font-size:14px;min-height:100vh}
+  .row{display:flex;justify-content:space-between;align-items:center}
+  .grid{display:grid;gap:9px}
+  button{cursor:pointer;font-family:inherit}
+  .btn{background:linear-gradient(180deg,var(--panel2),var(--panel));color:var(--text);
+    border:1px solid var(--line2);border-radius:6px;padding:7px 13px;font-size:12px;
+    font-weight:600;letter-spacing:.3px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+    transition:transform .12s ease, box-shadow .2s ease}
+  .btn:active{transform:translateY(1px)}
+  .btn.on{background:linear-gradient(180deg,#20242c,#171a20);border-color:var(--edge);
+    box-shadow:inset 0 1px 0 rgba(169,203,255,.25), 0 0 14px rgba(127,176,255,.28)}
+  .mono{font-family:var(--mono)}
+  /* header with scan-line */
+  .head{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:8px;
+    padding:11px 13px;margin-bottom:12px;
+    background:linear-gradient(180deg,#15171d,#0f1116);
+    box-shadow:0 6px 22px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06)}
+  .head::after{content:"";position:absolute;top:0;left:-40%;width:40%;height:100%;
+    background:linear-gradient(90deg,transparent,rgba(127,176,255,.14),transparent);
+    animation:scan 4.2s linear infinite}
+  @keyframes scan{0%{left:-45%}100%{left:105%}}
+  .panel{position:relative;border:1px solid var(--line);border-radius:8px;overflow:hidden;
+    background:linear-gradient(180deg,var(--panel),#0F1014);
+    box-shadow:0 8px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04);
+    animation:rise .4s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .ph{display:flex;justify-content:space-between;align-items:center;
+    padding:8px 12px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(127,176,255,.05),transparent)}
+  .pt{font-size:10.5px;font-weight:700;letter-spacing:1.6px;color:var(--dim)}
+  .pb{padding:11px}
+  .chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:5px;
+    font-size:10.5px;font-weight:600;white-space:nowrap;letter-spacing:.4px;
+    border:1px solid var(--line2);background:var(--bg2);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+  .tag{font-size:10px;padding:2px 7px;border-radius:4px;font-family:var(--mono);
+    color:var(--dim);background:var(--bg2);border:1px solid var(--line)}
+  .item{background:linear-gradient(180deg,var(--bg2),#0B0C0F);border:1px solid var(--line);
+    border-radius:6px;padding:9px 11px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
+    transition:transform .12s ease, box-shadow .2s ease, border-color .2s ease}
+  .item:active{transform:translateY(1px)}
+  .item.urgent{border-color:rgba(208,138,131,.5);
+    box-shadow:0 0 18px rgba(208,138,131,.22), inset 0 1px 0 rgba(255,255,255,.04);
+    animation:pulse 2.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 14px rgba(208,138,131,.18),inset 0 1px 0 rgba(255,255,255,.04)}
+    50%{box-shadow:0 0 24px rgba(208,138,131,.34),inset 0 1px 0 rgba(255,255,255,.04)}}
+  .item.hot{border-color:rgba(127,176,255,.32);box-shadow:0 0 14px rgba(127,176,255,.14),inset 0 1px 0 rgba(255,255,255,.04)}
+  .filt{font-size:10px;padding:3px 9px;border-radius:5px;border:1px solid var(--line2);
+    background:transparent;color:var(--faint);font-weight:600;letter-spacing:.3px;transition:all .15s}
+  .filt.on{border-color:var(--edge);color:var(--edge2);box-shadow:0 0 10px rgba(127,176,255,.25)}
+  .hair{height:1px;background:linear-gradient(90deg,transparent,var(--hair),transparent);margin:9px 0}
+  textarea{width:100%;height:110px;background:var(--bg2);color:var(--text);
+    border:1px solid var(--line2);border-radius:6px;padding:10px;font-size:12px;
+    font-family:var(--mono);resize:vertical}
+  a{color:var(--info);text-decoration:none}
+  .lbl{font-size:9.5px;letter-spacing:.5px;color:var(--faint);text-transform:uppercase}
+  .spin{display:inline-block;animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .cnum{text-shadow:0 0 12px currentColor}
+  @media (prefers-reduced-motion: reduce){
+    .head::after,.item.urgent{animation:none}.panel{animation:none}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const FEED_ID="16d2Ugupvf-kG0izs_3enct7X5PZSs3NoBZdFCwnP4OA";
+const FEED_URL="/api/feed";
+
+const ST={
+  done:{i:"\u2713",c:"var(--ok)",l:"DONE"}, live:{i:"\u25CF",c:"var(--ok)",l:"LIVE"},
+  open:{i:"\u25CB",c:"var(--warn)",l:"OPEN"}, pending:{i:"\u25D0",c:"var(--warn)",l:"PENDING"},
+  held:{i:"\u23F8",c:"var(--info)",l:"HELD"}, urgent:{i:"\u25B2",c:"var(--nok)",l:"URGENT"},
+  blocked:{i:"\u2715",c:"var(--nok)",l:"BLOCKED"},
+  interview:{i:"\u25C6",c:"var(--ok)",l:"INTERVIEW"}, recruiter:{i:"\u25C8",c:"var(--info)",l:"RECRUITER"},
+  applied:{i:"\u25CB",c:"var(--warn)",l:"APPLIED"}, closed:{i:"\u2715",c:"var(--faint)",l:"CLOSED"}
+};
+function chip(tok,text){const s=ST[tok]||ST.open;
+  return '<span class="chip" style="color:'+s.c+'"><span aria-hidden style="font-size:9px">'+s.i+'</span>'+(text||s.l)+'</span>';}
+
+function feedSections(t){const o={};const re=/\[([A-Z]+)\]\s*\n([\s\S]*?)(?=\n\[[A-Z]+\]|$)/g;let m;
+  while((m=re.exec(t))!==null)o[m[1]]=m[2].trim();return o;}
+function lines(s){return (s||"").split("\n").map(function(x){return x.trim();}).filter(function(x){return x&&!/^\u2014$/.test(x);});}
+function cols(l){return l.split("|").map(function(x){return x.trim();});}
+
+function parse(t){
+  const X=feedSections(t);
+  const meta=t.match(/Feed updated:\s*([^\n\u00B7]+)(?:\u00B7\s*source board\s*(v\d+))?/);
+  const r={updated:meta?meta[1].trim():"",board:meta&&meta[2]?meta[2]:"",
+    nodes:[],schedule:[],calendar:[],positions:[],ideas:[],grading:"",tasks:[],watch:[]};
+  lines(X.NODES).forEach(function(l){const c=cols(l);
+    const role=c.find(function(x){return x.indexOf("\u00B7")>=0;})||"";
+    const gap=c.find(function(x){return /^UNPROVEN/i.test(x);})||"";
+    const caps=c.slice(2).filter(function(x){return x&&!/^UNPROVEN|^PENDING/.test(x)&&x!==role;});
+    r.nodes.push({name:c[0],health:/PENDING/i.test(c[1])?"pending":"live",caps:caps,gap:gap,role:role});});
+  lines(X.SCHEDULE).forEach(function(l){const c=cols(l);r.schedule.push({who:c[0],when:c[1]||""});});
+  lines(X.CALENDAR).forEach(function(l){const c=cols(l);r.calendar.push({date:c[0],time:c[1],what:c[2]});});
+  lines(X.POSITIONS).forEach(function(l){const c=cols(l);
+    r.positions.push({co:c[0],role:c[1],stage:(c[2]||"").toLowerCase(),heat:c[3]||"",note:c[4]||"",date:c[5]||""});});
+  lines(X.IDEAS).forEach(function(l){const c=cols(l);r.ideas.push({node:c[0],title:c[1],body:c[2]||"",grade:c[3]||""});});
+  r.grading=(X.GRADING||"").trim();
+  lines(X.TASKS).forEach(function(l){const c=cols(l);
+    r.tasks.push({id:c[0],name:c[1],owner:c[2]||"",state:(c[3]||"open").toLowerCase(),note:c[4]||"",fore:c[5]||""});});
+  lines(X.WATCH).forEach(function(l){r.watch.push(l);});
+  return r;
+}
+function daysTo(dstr){const d=new Date(dstr+"T12:00:00");const now=new Date(2026,7,9,12);
+  return Math.round((d-now)/864e5);}
+
+let RAW="",FILTER="all",showPaste=false,status="loading";
+
+async function loadFeed(){status="loading";render();
+  try{const res=await fetch(FEED_URL,{cache:"no-store"});if(!res.ok)throw 0;
+    const txt=await res.text();if(!/COCKPIT FEED|\[NODES\]|\[TASKS\]/.test(txt))throw 0;
+    RAW=txt;status="ok";}catch(e){status="err";}render();}
+
+function render(){
+  const d=RAW?parse(RAW):{nodes:[],schedule:[],calendar:[],positions:[],ideas:[],grading:"",tasks:[],watch:[],updated:"",board:""};
+  const counts={done:0,open:0,held:0,urgent:0,blocked:0};
+  d.tasks.forEach(function(t){counts[t.state]=(counts[t.state]||0)+1;});
+  const active=d.tasks.filter(function(t){return t.state!=="done";});
+  const shown=FILTER==="all"?active:FILTER==="done"?d.tasks.filter(function(t){return t.state==="done";}):active.filter(function(t){return t.state===FILTER;});
+  const openPos=d.positions.filter(function(p){return p.stage!=="closed";});
+  const closedPos=d.positions.filter(function(p){return p.stage==="closed";});
+
+  let banner="";
+  if(status==="loading")banner='<div class="item" style="margin-bottom:12px;color:var(--dim)"><span class="spin">\u27F3</span> pulling feed\u2026</div>';
+  if(status==="err")banner='<div class="item" style="margin-bottom:12px;border-color:var(--nok);color:var(--nok)">\u2715 feed unreachable \u2014 confirm COCKPIT_FEED_v2 is still public, then tap refresh.</div>';
+
+  const app=document.getElementById("app");
+  let html='';
+  html+='<div class="head"><div class="row"><div>'
+    +'<div style="font-size:16px;font-weight:800;letter-spacing:1.5px">FOREMAN COCKPIT</div>'
+    +'<div class="mono" style="font-size:10.5px;color:var(--faint);margin-top:2px">'+(d.board||"\u2014")+' \u00B7 '+(d.updated||"no feed")+(status==="ok"?' \u00B7 <span style="color:var(--ok);text-shadow:0 0 8px var(--ok)">live</span>':'')+'</div></div>'
+    +'<div style="display:flex;gap:6px"><button class="btn on" onclick="loadFeed()">\u21BB refresh</button>'
+    +'<button class="btn" onclick="togglePaste()">'+(showPaste?"close":"paste")+'</button></div></div></div>';
+  html+=banner;
+  if(showPaste)html+='<div style="margin-bottom:12px"><textarea id="pb" placeholder="paste feed text\u2026"></textarea><div style="margin-top:8px"><button class="btn on" onclick="applyPaste()">parse</button></div></div>';
+
+  if(d.calendar.length){html+='<div class="panel" style="margin-bottom:10px"><div class="ph"><span class="pt">UPCOMING</span></div><div class="pb"><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">';
+    d.calendar.forEach(function(e){const dd=daysTo(e.date);const u=dd<=1;const cls=u?'item urgent':(dd<=2?'item hot':'item');
+      html+='<div class="'+cls+'"><div class="row"><span class="lbl">'+e.date+'</span><span class="mono cnum" style="font-size:16px;font-weight:800;color:'+(u?'var(--nok)':'var(--warn)')+'">'+(dd<=0?'TODAY':dd+'d')+'</span></div><div style="font-size:12px;font-weight:600;margin-top:4px">'+e.what+'</div><div class="mono" style="font-size:10px;color:var(--dim);margin-top:2px">'+(e.time||'')+'</div></div>';});
+    html+='</div></div></div>';}
+
+  if(d.nodes.length){html+='<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:10px">';
+    d.nodes.forEach(function(n){html+='<div class="panel"><div class="pb"><div class="row" style="margin-bottom:5px"><span style="font-size:12px;font-weight:700">'+n.name+'</span>'+chip(n.health)+'</div><div style="font-size:10px;color:var(--faint);margin-bottom:7px">'+n.role+'</div><div style="display:flex;flex-wrap:wrap;gap:4px">'+n.caps.map(function(c){return '<span class="tag">'+c+'</span>';}).join("")+'</div>'+(n.gap?'<div style="margin-top:7px;font-size:10px;color:var(--warn)">\u25D0 '+n.gap.replace(/^UNPROVEN:?\s*/i,'unproven: ')+'</div>':'')+'</div></div>';});
+    html+='</div>';}
+
+  html+='<div class="grid" style="grid-template-columns:1fr">';
+
+  html+='<div class="panel"><div class="ph"><span class="pt">OPEN POSITIONS</span><span style="font-size:10px;color:var(--faint)">'+openPos.length+' active \u00B7 '+closedPos.length+' closed</span></div><div class="pb"><div style="display:flex;flex-direction:column;gap:6px">';
+  openPos.forEach(function(p){const hc=p.heat==='HOT'?'var(--nok)':p.heat==='ACTION'?'var(--warn)':'var(--faint)';const cls=p.heat==='HOT'?'item hot':'item';
+    html+='<div class="'+cls+'"><div class="row" style="align-items:flex-start;gap:8px"><div style="min-width:0"><div style="font-size:12.5px;font-weight:700">'+p.co+'</div><div style="font-size:11px;color:var(--dim)">'+p.role+'</div>'+(p.note?'<div style="font-size:10.5px;color:var(--faint);margin-top:3px;line-height:1.4">'+p.note+'</div>':'')+'</div><div style="text-align:right;white-space:nowrap">'+chip(p.stage)+((p.heat&&p.heat!=='\u2014')?'<div class="lbl" style="margin-top:4px;color:'+hc+'">'+p.heat+'</div>':'')+'</div></div></div>';});
+  if(closedPos.length){html+='<div class="hair"></div><div class="lbl" style="margin-bottom:4px">closed / rejected</div>';
+    closedPos.forEach(function(p){html+='<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);padding:2px 0"><span>'+p.co+' \u2014 '+p.role+'</span><span class="mono">'+p.date+'</span></div>';});}
+  html+='</div></div></div>';
+
+  html+='<div class="panel"><div class="ph"><span class="pt">TASK BOARD</span><div style="display:flex;gap:4px;flex-wrap:wrap">';
+  ["all","urgent","held","open","done"].forEach(function(f){html+='<button class="filt '+(FILTER===f?'on':'')+'" onclick="setFilter(\''+f+'\')">'+f+((f!=="all"&&f!=="done")?" "+(counts[f]||0):"")+'</button>';});
+  html+='</div></div><div class="pb"><div style="display:flex;flex-direction:column;gap:6px">';
+  if(shown.length)shown.forEach(function(t){const sc=ST[t.state]?ST[t.state].c:'var(--line2)';const cls=t.state==='urgent'?'item urgent':'item';
+    html+='<div class="'+cls+'" style="border-left:2px solid '+sc+'"><div class="row" style="align-items:flex-start;gap:8px"><div style="min-width:0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="mono" style="font-size:10.5px;color:var(--text);font-weight:700">'+t.id+'</span><span style="font-size:12px;font-weight:600">'+t.name+'</span></div>'+(t.owner?'<div style="font-size:9.5px;color:var(--faint);margin-top:2px">'+t.owner+'</div>':'')+(t.note?'<div style="font-size:10.5px;color:var(--dim);margin-top:3px;line-height:1.4">'+t.note+'</div>':'')+(t.fore?'<div style="margin-top:4px;font-size:10px;color:var(--info)">\u2691 '+t.fore+'</div>':'')+'</div>'+chip(t.state)+'</div></div>';});
+  else html+='<div style="color:var(--faint);font-size:12px;padding:6px 0">none in view</div>';
+  html+='</div></div></div>';
+
+  html+='<div class="panel"><div class="ph"><span class="pt">IDEAS &amp; GRADING</span></div><div class="pb"><div style="display:flex;flex-direction:column;gap:6px">';
+  const subs=d.ideas.filter(function(i){return i.title&&i.title!=="\u2014";});
+  if(subs.length)subs.forEach(function(i){html+='<div class="item"><div class="row"><span style="font-size:11px;font-weight:700">'+i.node+'</span><span class="tag">'+(i.grade||"ungraded")+'</span></div><div style="font-size:12px;font-weight:600;margin-top:3px">'+i.title+'</div>'+(i.body?'<div style="font-size:10.5px;color:var(--faint);margin-top:3px;line-height:1.4">'+i.body+'</div>':'')+'</div>';});
+  else html+='<div style="color:var(--faint);font-size:12px">awaiting idea submissions</div>';
+  d.ideas.filter(function(i){return !i.title||i.title==="\u2014";}).forEach(function(i){html+='<div style="font-size:10.5px;color:var(--faint)">'+i.node+' \u2014 awaiting submission</div>';});
+  html+='<div class="hair"></div><div class="lbl" style="margin-bottom:3px">grading</div><div style="font-size:10.5px;color:var(--dim);line-height:1.4">'+(d.grading||"awaiting peer grades")+'</div></div></div></div>';
+
+  if(d.schedule.length){html+='<div class="panel"><div class="ph"><span class="pt">SCHEDULED \u00B7 PER NODE</span></div><div class="pb"><div style="display:flex;flex-direction:column;gap:5px">';
+    d.schedule.forEach(function(s){html+='<div style="display:flex;gap:8px;font-size:11px"><span class="mono" style="color:var(--dim);min-width:130px">'+s.who+'</span><span style="color:var(--faint)">'+s.when+'</span></div>';});
+    html+='</div></div></div>';}
+
+  if(d.watch.length){html+='<div class="panel"><div class="ph"><span class="pt">WATCH</span><span style="font-size:10px;color:var(--faint)">'+d.watch.length+'</span></div><div class="pb"><div style="display:flex;flex-direction:column;gap:5px">';
+    d.watch.forEach(function(w){const c=/GATE|CRITICAL|BLOCKER/i.test(w);html+='<div style="display:flex;gap:7px;font-size:10.5px;color:'+(c?'var(--warn)':'var(--dim)')+';line-height:1.4"><span aria-hidden style="color:'+(c?'var(--nok)':'var(--faint)')+'">'+(c?"\u25B2":"\u00B7")+'</span><span>'+w+'</span></div>';});
+    html+='</div></div></div>';}
+
+  html+='</div><div style="margin-top:14px;text-align:center;font-size:9.5px;color:var(--faint);line-height:1.6">six-domain feed \u00B7 fetches on open &amp; refresh \u00B7 status by glyph + label (greyscale-safe)<br><a href="https://docs.google.com/document/d/'+FEED_ID+'/edit" target="_blank">open feed doc</a></div>';
+
+  app.innerHTML=html;
+}
+function togglePaste(){showPaste=!showPaste;render();}
+function applyPaste(){const v=document.getElementById("pb").value;if(v.trim()){RAW=v;status="ok";showPaste=false;render();}}
+function setFilter(f){FILTER=f;render();}
+loadFeed();
+</script>
+</body>
+</html>
