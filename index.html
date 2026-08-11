@@ -138,6 +138,12 @@ function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replac
 function feedSections(t){const o={};const re=/\[([A-Z]+)\]\s*\n([\s\S]*?)(?=\n\[[A-Z]+\]|$)/g;let m;while((m=re.exec(t))!==null)o[m[1]]=m[2].trim();return o;}
 function lines(s){return (s||"").split("\n").map(function(x){return x.trim();}).filter(function(x){return x&&!/^\u2014$/.test(x);});}
 function cols(l){return l.split("|").map(function(x){return x.trim();});}
+function easternStamp(s){
+  const m=(s||"").match(/^(\d{4})-(\d{2})-(\d{2})\s+~?(\d{2}):(\d{2})\s+UTC$/i);
+  if(!m)return s||"";
+  const d=new Date(Date.UTC(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]),Number(m[5])));
+  return new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZoneName:'short'}).format(d);
+}
 
 function parse(t){
   const X=feedSections(t);
@@ -147,7 +153,7 @@ function parse(t){
   lines(X.SCHEDULE).forEach(function(l){const c=cols(l);r.schedule.push({who:c[0],when:c[1]||""});});
   lines(X.CALENDAR).forEach(function(l){const c=cols(l);r.calendar.push({date:c[0],time:c[1],what:c[2]});});
   lines(X.POSITIONS).forEach(function(l){const c=cols(l);r.positions.push({co:c[0],role:c[1],stage:(c[2]||"").toLowerCase(),heat:c[3]||"",note:c[4]||"",date:c[5]||"",url:c[6]||""});});
-  lines(X.TARGETS).forEach(function(l){const c=cols(l);r.targets.push({rank:c[0],co:c[1],role:c[2],fit:c[3]||"",why:c[4]||"",url:c[5]||""});});
+  lines(X.TARGETS).forEach(function(l){const c=cols(l);r.targets.push({rank:c[0],co:c[1],role:c[2],fit:c[3]||"",salary:c[4]||"",why:c.slice(5,c.length-1).join(" | "),url:c[c.length-1]||""});});
   lines(X.IDEAS).forEach(function(l){const c=cols(l);r.ideas.push({node:c[0],title:c[1],body:c[2]||"",grade:c[3]||""});});
   r.grading=(X.GRADING||"").trim();
   lines(X.TASKS).forEach(function(l){const c=cols(l);r.tasks.push({id:c[0],name:c[1],owner:c[2]||"",state:(c[3]||"open").toLowerCase(),note:c[4]||"",fore:c[5]||""});});
@@ -210,7 +216,7 @@ function render(){
   if(status==="err")banner='<div class="panel" style="border-color:var(--nok)"><div class="pb" style="color:var(--nok)">\u2715 feed unreachable \u2014 confirm COCKPIT_FEED_v2 is public, then refresh.</div></div>';
 
   let html='';
-  html+='<div class="head"><div class="row"><div><div style="font-size:15px;font-weight:800;letter-spacing:1.2px">FOREMAN COCKPIT</div><div class="mono" style="font-size:10px;color:var(--faint);margin-top:2px">'+(d.board||"\u2014")+' \u00B7 '+(d.updated||"no feed")+statusTxt+'</div></div><div style="display:flex;gap:6px"><button class="btn on" onclick="loadFeed()">\u21BB refresh</button><button class="btn" onclick="togglePaste()">'+(showPaste?"close":"paste")+'</button></div></div></div>';
+  html+='<div class="head"><div class="row"><div><div style="font-size:15px;font-weight:800;letter-spacing:1.2px">FOREMAN COCKPIT</div><div class="mono" style="font-size:10px;color:var(--faint);margin-top:2px">'+(d.board||"\u2014")+' \u00B7 '+(easternStamp(d.updated)||"no feed")+statusTxt+'</div></div><div style="display:flex;gap:6px"><button class="btn on" onclick="loadFeed()">\u21BB refresh</button><button class="btn" onclick="togglePaste()">'+(showPaste?"close":"paste")+'</button></div></div></div>';
   html+=banner;
   if(showPaste)html+='<div class="panel"><div class="pb"><textarea id="pb" placeholder="paste feed text\u2026"></textarea><div style="margin-top:7px"><button class="btn on" onclick="applyPaste()">parse</button></div></div></div>';
 
@@ -224,8 +230,8 @@ function render(){
 
   // TARGETS — highest-ranked NOT-yet-applied, clickable to JD
   if(d.targets.length){html+='<div class="panel"><div class="ph"><span class="pt">TOP TARGETS \u00B7 NOT APPLIED</span><span style="font-size:9px;color:var(--faint)">click row \u2192 JD</span></div><div class="pb flush"><div class="tw"><table>';
-    html+='<thead><tr><th>#</th><th>Company</th><th>Role</th><th>Fit</th><th>Why</th><th>JD</th></tr></thead><tbody>';
-    d.targets.forEach(function(p){const has=/^https?:\/\//.test(p.url);html+='<tr class="'+(has?'clk':'')+'" '+(has?'onclick="openRow(\''+esc(p.url)+'\')"':'')+'><td class="rank">'+esc(p.rank)+'</td><td class="co">'+esc(p.co)+'</td><td>'+esc(p.role)+'</td><td class="mono" style="color:var(--edge2);font-weight:700">'+esc(p.fit)+'</td><td class="note">'+esc(p.why)+'</td><td>'+(has?'<span class="lk">open \u2197</span>':'<span class="nolk">no verified link</span>')+'</td></tr>';});
+    html+='<thead><tr><th>#</th><th>Company</th><th>Role</th><th>Fit</th><th>Salary</th><th>Why</th><th>JD</th></tr></thead><tbody>';
+    d.targets.forEach(function(p){const has=/^https?:\/\//.test(p.url);html+='<tr class="'+(has?'clk':'')+'" '+(has?'onclick="openRow(\''+esc(p.url)+'\')"':'')+'><td class="rank">'+esc(p.rank)+'</td><td class="co">'+esc(p.co)+'</td><td>'+esc(p.role)+'</td><td class="mono" style="color:var(--edge2);font-weight:700">'+esc(p.fit)+'</td><td class="note">'+esc(p.salary)+'</td><td class="note">'+esc(p.why)+'</td><td>'+(has?'<a class="lk" href="'+esc(p.url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()">view JD</a>':'<span class="nolk">no verified link</span>')+'</td></tr>';});
     html+='</tbody></table></div></div></div>';}
 
   // OPEN POSITIONS — clickable to JD where url present
