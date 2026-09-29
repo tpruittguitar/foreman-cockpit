@@ -1,57 +1,61 @@
-# PIPELINE EXPLORER — DESIGN BRIEF v0.2
+# PIPELINE EXPLORER — DESIGN BRIEF v0.3
 
-**Date:** 2026-09-29 (v0.1 earlier the same day; v0.2 after Grok review)
+**Date:** 2026-09-29 (v0.1 morning; v0.2 after Grok review; v0.3 after ChatGPT review and two governance files not previously read)
 **Author:** Claude (Foreman node), from Tim's spec in this session
-**Status:** PROPOSAL FOR REVIEW. No code written. No Drive files changed. Nothing in this brief is authorized until Tim rules on the open decisions in §9. **Merging this PR files the proposal; it does not authorize a build.**
+**Status:** PROPOSAL FOR REVIEW. No code written. No Drive files changed. **v1 is read-only.** Nothing is authorized until Tim rules on §9. Merging this PR files the proposal; it does not authorize a build.
 **Reviewers:** Tim (final authority), ChatGPT / Forge, Grok / Scout
 **Repo:** tpruittguitar/foreman-cockpit (`docs/PIPELINE_EXPLORER_DESIGN_BRIEF.md`)
 
-**What changed in v0.2:** §1 rewritten against the live master (`V2_CURRENT_POPULATION_MASTER.txt`, a Google Doc, 526 rows, new bucket vocabulary). Parser contract made explicit (§3.1). IS_NEW now comes from `DATE_ADDED`, not local storage (§4.2). APPLY NOW predicate written as a sentence for Tim to accept or replace (§4.3). Quick rulings mapped to current state semantics with confirm and undo (§4.4). Ledger gated on a named regenerator (§5). Governance editor and floors-as-data moved out of v1 (§6.3, §6.5). Line estimate corrected (§8). §9 split into architecture vs. paint, with reviewer recommendations recorded. Broken §5.5 citation fixed. Grok review disagreements listed in §12.
+**What changed in v0.3.** (1) Master identity is a **fixed Drive ID by Tim's ruling** (`MASTER_TABLE_CUTOVER_IMPLEMENTATION_2026-09-29_REV2`), not "newest file matching a pattern". v0.2 had that wrong; Grok's review endorsed the same wrong rule; ChatGPT's "resolve per the governing directive, not filename age" was right. (2) The write channel is rebuilt on **FORGE_AMENDMENT_58** (STATE_CHANGE_REQUEST to an Authorized State Writer, with receipt), replacing the v0.2 ledger-plus-merge-rule entirely. (3) v1 is read-only: no notes, no rulings, no ledger. (4) Backend adapter and a schema-version line proposed (§3.3, §3.4). (5) APPLY NOW predicate reduced to canonical state only, every term labeled with its source (§4.3). (6) Open NEEDS-TIM items #90 and #92 from the cutover doc are cited where they bind this design.
 
 ---
 
 ## 0. One-paragraph summary
 
-A single-file web app, hosted next to the existing Foreman Cockpit, that opens the canonical master job table from Drive as a dense, spreadsheet-style grid: every column, per-column dropdown filters and sorting, APPLY NOW and new discoveries at the top. Later steps add a Tim-only notes and rulings channel and read-only reports. The visual style is minimal, black, dense, Anduril / Shield AI in spirit. One codebase for desktop and phone (landscape). The app is a **derived view and, later, a Tim-write channel**; it never becomes a second state store. That constraint comes from `TIM_DIRECTIVE_MASTER_JOB_TABLE_SINGLE_SOURCE_2026-09-29` and drives every choice below.
+A single-file web app, hosted next to the existing Foreman Cockpit, that opens the canonical master job table from Drive as a dense, spreadsheet-style grid: every column, per-column dropdown filters and sorting, APPLY NOW and new rows at the top, row detail, integrity checks. Later, a channel for Tim's notes and status rulings that emits STATE_CHANGE_REQUEST records for the pipeline's Authorized State Writer. The visual style is minimal, black, dense. One codebase for desktop and phone (landscape). The app is a **derived view** of one fixed master and, later, a **request generator**; it never mutates canonical state and never becomes a second store.
 
 ---
 
-## 1. What exists today (facts, verified 2026-09-29 ~22:50 UTC)
+## 1. What exists today (facts, verified 2026-09-29 ~23:10 UTC)
 
 | Item | Fact | Source |
 |---|---|---|
-| Cockpit app | Single `index.html` on Netlify. Reads one public Google Doc as text through `netlify/functions/feed.js`, parses `[SECTION]` blocks of pipe-delimited rows. Read-only; paste fallback. Mobile CSS present. It is an ops board (nodes, calendar, tasks, a few positions), not a master viewer. | repo |
-| Cockpit feed | `COCKPIT_FEED_v2` Doc ID `16d2Ugupvf-kG0izs_3enct7X5PZSs3NoBZdFCwnP4OA`, last modified 2026-08-11. **Stale by seven weeks.** | Drive metadata |
-| Canonical master (live) | `V2_CURRENT_POPULATION_MASTER.txt`, **a Google Doc despite the .txt suffix**, ID `19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`, parent `AI_Coordination`, created 2026-09-29 16:54Z, modified 20:41Z. Header line names itself `V2_CURRENT_POPULATION_2026-09-29_R6 (reconciled ...)` and says "where task instructions say master, they mean THIS file". | Drive metadata; file export |
-| Master regime | Stable-named Doc updated **in place** ("safe in-place updates" per its BUCKET_AUTHORITY note), plus dated snapshot Docs the same day (`_R3` … `_R6`, 04:52–05:00Z) and the 09-27 plain-text file. **Which node performs the in-place updates is not stated in the file.** | file header; Drive listing |
-| Master format | Header block (notes, MISSION RULES, COUNTS, COLUMNS line), then rows grouped under `=== BUCKET (n) ===` headings. Row = `INV \| PRIMARY_ID \| COMPANY \| TITLE \| BUCKET \| DISPOSITION/RULE_OUTCOME \| TAGS \| REQ \| LOCATION \| SCOUT_ACTION`. SCOUT_ACTION holds a semicolon-delimited `KEY=value` payload. 496 rows have 10 cells, 30 have 11 (a pipe inside a value). | file export, all 526 data rows counted |
-| Bucket authority | Header rule `BUCKET_AUTHORITY_2026-09-29`: the row BUCKET cell is authoritative; section headings "may lag during safe in-place updates and must not override the row BUCKET". Verified: 99 of 526 rows sit under a heading that does not match their BUCKET cell (e.g. Meta #398 under READY_TO_PURSUE but BUCKET=APPLIED; Cubic #202 under MANUAL_RESEARCH but BUCKET=DECLINED_BY_TIM). Heading counts also lag (`APPLIED (30)` vs COUNTS APPLIED=37). | file export, computed |
-| Bucket vocabulary (current) | READY_TO_PURSUE 23, DECLINED_BY_TIM 281, MANUAL_RESEARCH 8, BLOCKED 3, TIM_DECISION_REQUIRED 0, APPLIED 37, REJECTED_BY_EMPLOYER 8, DUPLICATE 49, CLOSED_DEAD 117. Total 526. **COVERAGE and REJECTED are deprecated** (header note `DECLINED_BY_TIM_STATE_SEMANTICS_2026-09-29`). | COUNTS line; per-row BUCKET tally matches COUNTS exactly |
-| Payload keys present on every row | `DATE_ADDED` (526; values are ISO dates or `PRE-EXISTING / EXACT DATE NOT ESTABLISHED` on 197 rows), `NOTIFICATION_SOURCE` (526; LinkedIn 250, Scout/ATS 101, Indeed 79, Glassdoor 49, Ladders 18, ZipRecruiter 9, email 13, other 1). | file export, counted |
-| Other payload keys | `DECLINE_REASON_CODE` / `DECLINE_REASON_TEXT` / `REOPEN_TRIGGER` (281 each; codes: LEGACY_REASON_NEEDS_NORMALIZATION 195, PAY_BELOW_FLOOR 52, GEOGRAPHY_GATE_FAIL 11, FIT_TOO_WEAK 10, DOMAIN_MISMATCH 7, and five rarer), `FLEX` 133, `SALARY_BASE_EST` 93, `DEGREE_REQ` 91, `SALARY_BASIS` 81, `SALARY_CONF` 76, `ANTI_RESURRECTION` 42, `BLOCKER` 27, `APP_STATUS_CHECK` 25, `TIM_DISPOSITION` 16, `RESOLUTION_NOTE` 14, `VERIFY_LATER` 13, `APP_STATUS_EVIDENCE` 12, `APP_DATE` 8, plus the SALARY_* audit family. | file export, counted |
-| Export encoding | The Doc's `text/plain` export contains **no** backslash escapes. The Drive connector's "natural language" rendering of the same Doc contains 553 `\_` sequences. Any consumer must use the raw text export (Apps Script `getBody().getText()` or `export?format=txt`), never a markdown-style rendering. | both retrieved and diffed |
-| Cutover map | `MASTER_TABLE_CUTOVER_MAP_2026-09-29` still names the 09-27 plain-text file as the master and lists DISCOVERED_AT, BLOCKER, APPLIED_AT among missing fields. The live master now carries `DATE_ADDED`, `BLOCKER`, `APP_DATE`. **The cutover map is behind the live file.** (Foreman artifact; flagged, not edited here.) | both files |
-| Authority model | One job = one canonical row = one current state. APPLY NOW, NEEDS ACTION, PIPELINE, CLOSED are derived views. Protected: APPLICATION_STATUS, LIVENESS, CANONICAL_ID/REQ_ID binding, terminal suppression, duplicate identity. Tim explicit ruling may override any state. | Directive §1, §6; Cutover Map §7 |
-| Governance files | Versioned by creating a new file, never editing in place: `TIM_APPROVED_SEARCH_RULES_v1..v4` (v4 = `1dZjUsh_waXWzdEaTDMasTgcXjEhlQbyd`), `FORGE_AMENDMENT_*`, `GROK_SCOUT_OPERATING_RULES_v*`, `SCOUT_FORCE_PACK_*`. Load newest by createdTime (rules §7). | rules v4 §7; Drive listing |
-| Salary / geo floors | Prose and one markdown table in rules v4: §1A gated bands (Band 1 CA/OR/WA + NE nine, base midpoint ≥ $400k; Band 2 MI + Chicago metro/NW IN + WI + MN, ≥ $300k; both AND FLEX=Yes AND FIT>75), §1 driving-mile rings from Cleveland TN ($180k / $190k / $200k), FL flat $210k. Scoring penalties in `FOREMAN_NOTICE_JOB_PIPELINE_SCORING_2026-08-26`. | rules v4; notice |
+| Cockpit app | Single `index.html` on Netlify. Reads one public Google Doc as text through `netlify/functions/feed.js`. Read-only; paste fallback. Ops board, not a master viewer. | repo |
+| Cockpit feed | Doc `16d2Ugupvf-kG0izs_3enct7X5PZSs3NoBZdFCwnP4OA`, last modified 2026-08-11. Stale seven weeks. | Drive metadata |
+| **Canonical master: fixed ID** | `V2_CURRENT_POPULATION_MASTER.txt`, **Google Doc**, ID `19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`, parent `AI_Coordination`. Tim's ruling of 2026-09-29: "ONE FIXED CANONICAL MASTER FILE, ONE FIXED DRIVE ID, UPDATED IN PLACE." "No resolve-which-file-is-newest step." Pattern-based resolution is **RETIRED — DO NOT FOLLOW.** | Cutover REV2 §1 |
+| Master seed and drift | Seeded 16:54Z as a byte-identical copy of `_R6` (515 rows). Modified in place through 20:41Z; now 526 rows with a header naming itself `_R6 (reconciled ...)`. The file deliberately carries **no provenance wrapper**; provenance lives in the cutover document. | Cutover REV2 §1; file export |
+| Who edits in place | Amendment 58 defines an **Authorized State Writer** by capability (mutate Drive state directly, preserve identity, separate applicant and posting state, recalc counts, read back, emit receipt, fail closed). "Current capable writers may include Forge or Grok." Claude/Foreman is **control plane only**: it may issue a STATE_CHANGE_REQUEST, must not create replacement masters. Cutover REV2 §8 item 2 records that the Foreman session's Drive tools cannot update content in place. | Amendment 58 §1–2; REV2 §8 |
+| Write protocol | Read modifiedTime before write; recompute; re-read modifiedTime immediately before commit and stop on mismatch; commit to the same fileId; read back; log. Receipt fields include BEFORE/AFTER state, READBACK_VERIFIED, COMPLETION_STATUS ∈ {COMPLETE, FAILED, STATE_CHANGE_NEEDS_RESOLUTION}. COMPLETE is prohibited unless READBACK_VERIFIED=YES. | REV2 §1; Amendment 58 §8–9 |
+| Evidence precedence for Tim's own application status | 1. Direct Tim statement. 2. Verified employer communication. 3. Canonical application ledger. 4. Verified prior pipeline state. 5. Posting-state inference. | Amendment 58 §6 |
+| Master format | Header block (notes, MISSION RULES, `COUNTS:` line, `COLUMNS:` line), then rows under `=== BUCKET (n) ===` headings. Row = `INV \| PRIMARY_ID \| COMPANY \| TITLE \| BUCKET \| DISPOSITION/RULE_OUTCOME \| TAGS \| REQ \| LOCATION \| SCOUT_ACTION`; SCOUT_ACTION carries a `; KEY=value` payload. 496 rows have 10 cells, 30 have 11. | file export, all rows counted |
+| Bucket authority | Row BUCKET is authoritative; headings "may lag during safe in-place updates". 99 of 526 rows sit under a heading that differs from their BUCKET. Heading counts lag (`APPLIED (30)` vs COUNTS 37). | file header; computed |
+| Bucket vocabulary | READY_TO_PURSUE 23, DECLINED_BY_TIM 281, MANUAL_RESEARCH 8, BLOCKED 3, TIM_DECISION_REQUIRED 0, APPLIED 37, REJECTED_BY_EMPLOYER 8, DUPLICATE 49, CLOSED_DEAD 117. COVERAGE and REJECTED deprecated. Per-row tally matches COUNTS exactly. | COUNTS line; computed |
+| Payload keys on every row | `DATE_ADDED` (ISO date, or `PRE-EXISTING / EXACT DATE NOT ESTABLISHED` on 197 rows), `NOTIFICATION_SOURCE`. | computed |
+| Other payload keys | `DECLINE_REASON_CODE` / `_TEXT` / `REOPEN_TRIGGER` (281 each; codes: LEGACY_REASON_NEEDS_NORMALIZATION 195, PAY_BELOW_FLOOR 52, GEOGRAPHY_GATE_FAIL 11, FIT_TOO_WEAK 10, DOMAIN_MISMATCH 7, others ≤2), `FLEX` 133, `SALARY_BASE_EST` 93, `DEGREE_REQ` 91, `ANTI_RESURRECTION` 42, `BLOCKER` 27, `APP_STATUS_CHECK` 25, `TIM_DISPOSITION` 16, `VERIFY_LATER` 13, `APP_STATUS_EVIDENCE` 12, `APP_DATE` 8, plus the SALARY_* audit family. | computed |
+| Export encoding | Doc `text/plain` export has no backslash escapes. The Drive connector's markdown-style rendering has 553 `\_`. Consumers must use the raw export. | both retrieved |
+| Open NEEDS-TIM items that bind this design | **#90** floor-schema P0; **#92** APPLY NOW seat divergence; #94 degree-wall citation. Sheet migration deferred (REV2 §8 item 4). | REV2 §8 item 3–4 |
+| Governance files | Versioned by new file, never in-place: `TIM_APPROVED_SEARCH_RULES_v1..v4`, `FORGE_AMENDMENT_55, 57, 58`, `GROK_SCOUT_OPERATING_RULES_v*`, `SCOUT_FORCE_PACK_*`. Load newest by createdTime. Amendment 58 has an open STATE_CHANGE_REQUEST (SCR-2026-09-27-001) asking a capable writer to fold it into the loader chain. | rules v4 §7; Drive listing; SCR file |
+| Floors | Prose plus one table in rules v4 §1A/§1 (bands $400k / $300k midpoint with FLEX=Yes and FIT>75; rings $180k / $190k / $200k; FL $210k). | rules v4 |
 
-**Inference:** the master is a machine-maintained text document with a stable name and frequent in-place edits by an unnamed node. Anything the app writes into it directly will be overwritten. Anything the app reads must trust row cells, not headings.
+**Inference.** The pipeline already has a written write architecture (Amendment 58) and a fixed master identity (REV2). An Explorer that invents its own resolution rule or its own write path contradicts both. The right design consumes the fixed ID and emits requests in the form the pipeline already defines.
 
 ---
 
 ## 2. Goals and non-goals
 
-**Goals**
-1. Tim can see the whole master at a glance, filter and sort any real or payload column, and find APPLY NOW and new rows without scrolling.
-2. (Step 3, gated) Tim can attach a note or a status ruling to a row from phone or desktop, and it lands in the master with provenance.
-3. Nothing the app does creates a competing state store or violates the protected-state model.
+**Goals (v1, read-only)**
+1. Tim sees the whole master, filters and sorts any real or payload column, and finds APPLY NOW and new rows without scrolling.
+2. Integrity faults are visible: parsed counts vs COUNTS, heading vs BUCKET, unparsed rows, expired estimates.
+3. Nothing the app does mutates canonical state or creates a competing store.
+
+**Goal (v2, gated)**
+4. Tim records a note or status ruling from phone or desktop; it becomes a STATE_CHANGE_REQUEST executed by an Authorized State Writer, with a receipt the app can show.
 
 **Non-goals**
-- No discovery, research, ranking, or emailing. Those stay with Forge, Scout, Foreman.
-- No charts. Tables and counts only.
-- No accounts. Single user.
-- No rewrite of the existing cockpit. See §9 Q3 for its fate.
-- **Not in v1:** governance editor, floors-as-data, config-as-governing-file, walk-away evaluator. Kept in this document as later phases so the column model anticipates them.
+- No discovery, research, ranking, emailing.
+- No charts.
+- No governance editing from the browser. No floors authority outside the rules file. No Drive-hosted UI config. No Sheet migration.
+- No rewrite of the existing cockpit (its fate is §9 Q3).
 
 ---
 
@@ -59,185 +63,178 @@ A single-file web app, hosted next to the existing Foreman Cockpit, that opens t
 
 ### 3.1 Read
 
-**Resolution rule.** Query `AI_Coordination` for files whose title starts with `V2_CURRENT_POPULATION`, any MIME type (Google Doc or plain text). If a title contains `_MASTER`, take the most recently modified such file. Otherwise take the most recently modified match. Never pin an ID. Show the chosen file's title, ID and modifiedTime in the status line so a wrong pick is visible.
+**Master source.** One constant, `MASTER_FILE_ID = 19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`, set from the governing cutover document, overridable only by a future explicit Tim ruling. No search, no pattern, no newest-wins. The status line shows the file's title, ID and modifiedTime on every load. If the title is not `V2_CURRENT_POPULATION_MASTER.txt` the status line shows a warning; the app still renders.
 
-**Fetch.** Raw text: Doc export as `text/plain`, or file download for plain text. Never the connector's markdown rendering.
+**Fetch.** Raw text: Doc export as `text/plain`. Never the connector's markdown rendering. Offline: paste or file drop of the same export.
 
 **Parser contract.**
-1. Split into header block and body at the first `====` rule line. Parse `COUNTS:` and `COLUMNS:` from the header.
-2. A data row is a line matching `^\d+ \| `. Section headings (`=== X (n) ===`) are recorded as `SECTION` for reporting only.
-3. Split each data row into **the first nine cells on ` | `; everything after the ninth separator is the payload**, pipes included. This handles the 30 eleven-cell rows without guessing.
-4. Payload: split on `; ` into `KEY=value` pairs; a segment without `=` is appended to the previous value. The leading free text before the first `KEY=` is `SCOUT_ACTION`. Unknown keys become virtual columns too, and are always visible in the row drawer.
-5. **Row BUCKET is authoritative.** SECTION is shown as a separate column and never used for counts, sorting, or presets.
-6. Rows the parser cannot split into nine cells are kept, shown with a parse-error flag, and listed in the data-quality report. **No row is ever hidden by the parser.**
-7. Computed columns (render time only, never written): COMP_MID (from posted range or estimate), FLOOR_RESULT (band/ring/FL test per rules §1A/§1), DAYS_SINCE_SALARY_ASOF, DAYS_SINCE_FLEX_ASOF, IS_NEW (§4.2), SECTION_MISMATCH (SECTION ≠ BUCKET).
-8. Checksum: per-bucket counts from row cells compared to the COUNTS line; any mismatch is shown in the status line in red. Heading counts are ignored.
+1. Split header from body at the first `====` rule line. Parse `COUNTS:` and `COLUMNS:` from the header. If a `SCHEMA:` line exists (§3.4), parse it; if absent, assume schema 1 and say so in the status line.
+2. A data row is a line matching `^\d+ \| `. `=== X (n) ===` headings are recorded as `SECTION` for reporting only.
+3. Split each data row into **the first nine cells on ` | `; everything after the ninth separator is the payload**, pipes included.
+4. Payload: split on `; ` into `KEY=value`; a segment without `=` is appended to the previous value. Leading free text before the first `KEY=` is `SCOUT_ACTION`. Unknown keys become virtual columns and are always shown in the row drawer. Nothing is discarded.
+5. **Row BUCKET is authoritative.** SECTION is a separate column and is never used for counts, sorting, or presets.
+6. A row that cannot be split into nine cells is kept, flagged `PARSE_ERROR`, and listed in Data Quality. **No row is ever hidden.**
+7. Computed columns (render only): COMP_MID, FLOOR_RESULT (per rules §1A/§1), DAYS_SINCE_SALARY_ASOF, DAYS_SINCE_FLEX_ASOF, IS_NEW (§4.2), SECTION_MISMATCH.
+8. Checksum: per-bucket counts from row cells vs the COUNTS line. Mismatch is a visible integrity fault in the status line. Heading counts are ignored.
 
-**Also read (step 2+):** newest `TIM_APPROVED_SEARCH_RULES_v*` for the floors table (read-only), and the `TIM_WRITES_LEDGER` (step 3).
+**Also read.** Newest `TIM_APPROVED_SEARCH_RULES_v*` for the floors table (read-only). In v2, STATE_CHANGE_RECEIPT records (§5).
 
-**Fixture.** A copy of the current master export is committed to the repo as a test fixture so the parser can be regression-tested offline. (Contains application history; confirm Tim is comfortable with it in a public repo, else keep it out and test against paste only. See §9 Q4.)
+**Fixture.** A scrubbed 20-row fixture in the repo for parser tests. The real export is not committed (§9 Q4).
 
-### 3.2 Write (Tim only, step 3, gated)
-See §5.
+### 3.2 Write
+None in v1. v2 is §5.
 
-### 3.3 Structured master later
-If Foreman's cutover moves the master to a Sheet or CSV, the parser gains a second backend and the UI does not change. Not proposed here.
+### 3.3 Backend adapter
+The UI talks to one interface: `source.getMaster() → {text, title, id, modifiedTime}` and `source.getFile(id) → {text, ...}`. Adapters: `PasteSource` (v1), `AppsScriptSource` (step 2), and later `SheetCsvSource` if the master ever becomes structured. Parsers are keyed by schema version. Changing the master's storage changes an adapter, not the application.
+
+### 3.4 Schema-version line (proposal to Tim and the Authorized State Writer; not something the app can add)
+The master's header already carries `COUNTS:` and `COLUMNS:` lines that every parser skips or reads by prefix. One more line of the same shape would let consumers know what they are reading:
+
+```
+SCHEMA: MASTER_SCHEMA_VERSION=1 | MASTER_FORMAT_VERSION=1 | MASTER_GENERATED_AT=<ISO> | MASTER_GENERATOR=<writer> | MASTER_PREDECESSOR_ID=<file id or none>
+```
+
+Cutover REV2 chose not to decorate the row-bearing file with a provenance wrapper so that existing parsers would not choke. A single prefixed header line is consistent with the existing `COUNTS:` / `COLUMNS:` convention and carries that same low risk, but it is still a change to the master and therefore a STATE_CHANGE_REQUEST for a capable writer, not an app feature. The app tolerates its absence.
 
 ---
 
 ## 4. Main view: the grid
 
 ### 4.1 Layout
-Full-width table, sticky header, frozen COMPANY and BUCKET columns, horizontal scroll. Row height ~22 px, 11 px text, monospace for IDs, dates, money. 35–40 rows visible on a laptop. Column set comes from a config (§6.4), desktop set and phone set. Status line always visible: file title, ID, modifiedTime, row count, checksum result.
+Full-width table, sticky header, frozen COMPANY and BUCKET, horizontal scroll. ~22 px rows, 11 px text, monospace for IDs, dates, money. Column set from local config (§6.4), desktop and phone sets. Status line always visible: title, ID, modifiedTime, row count, checksum result, schema version.
 
 ### 4.2 Default ordering
-1. BUCKET order (editable in config): READY_TO_PURSUE, TIM_DECISION_REQUIRED, BLOCKED, MANUAL_RESEARCH, APPLIED, REJECTED_BY_EMPLOYER, DECLINED_BY_TIM, DUPLICATE, CLOSED_DEAD.
-2. Within bucket: `DATE_ADDED` descending. Rows whose DATE_ADDED is `PRE-EXISTING ...` sort last. IS_NEW = DATE_ADDED within the last N days (default 3, adjustable). No local-storage tracking.
+1. BUCKET order (local config): READY_TO_PURSUE, TIM_DECISION_REQUIRED, BLOCKED, MANUAL_RESEARCH, APPLIED, REJECTED_BY_EMPLOYER, DECLINED_BY_TIM, DUPLICATE, CLOSED_DEAD.
+2. Within bucket: `DATE_ADDED` descending; `PRE-EXISTING` rows last. IS_NEW = DATE_ADDED within the last N days (default 3). No local-storage newness.
 3. Then `SALARY_ASOF` / `FLEX_ASOF` descending.
-Clicking any header overrides; "reset" returns to priority order.
+Any header click overrides; "reset" restores priority order.
 
-### 4.3 Per-column filters and presets
-- Enum columns (BUCKET, DISPOSITION, FLEX, SALARY_CONF, SALARY_BASIS, NOTIFICATION_SOURCE, DECLINE_REASON_CODE, FLOOR_RESULT, SECTION): checkbox list of observed values with counts.
-- Text columns: contains / not-contains. Money and date columns: min/max.
-- Active filters as removable chips. Filter, sort and column set live in the URL hash so a view can be bookmarked or pasted to a node.
-- **Presets are saved filter sets.** Their predicates are written here so they can be reviewed:
-  - **APPLY NOW (proposed predicate, Tim to accept or replace):** `BUCKET = READY_TO_PURSUE AND FLOOR_RESULT = PASS AND FLEX ≠ NO AND FLEX ≠ STRICT_NO AND no BLOCKER key AND no ANTI_RESURRECTION key`. Liveness is not a column yet, so it cannot be in the predicate until it is.
-  - **NEW:** IS_NEW = true, any bucket except DUPLICATE and CLOSED_DEAD.
-  - **NEEDS ACTION:** BUCKET in (TIM_DECISION_REQUIRED, BLOCKED, MANUAL_RESEARCH) OR VERIFY_LATER present.
-  - **PIPELINE:** BUCKET = APPLIED.
-  - **DECLINED:** BUCKET = DECLINED_BY_TIM, grouped by DECLINE_REASON_CODE.
-  - **CLOSED:** BUCKET in (REJECTED_BY_EMPLOYER, DUPLICATE, CLOSED_DEAD).
+### 4.3 Filters and presets
+Enum columns get checkbox lists with counts; text columns contains / not-contains; money and dates min/max. Active filters are chips; filter, sort and column set live in the URL hash.
 
-### 4.4 Row detail drawer
-Tap or click a row: right-side drawer on desktop, full-screen sheet on phone. Shows every real and payload field, SECTION vs BUCKET if they differ, and verified links only (same `^https?://` test the cockpit uses).
+Presets are saved filter sets. **The Explorer does not recreate job policy.** Each term below is canonical state already written into the master by the nodes that own that policy, with its source labeled. If the ranking node later writes an explicit `APPLY_NOW=YES/NO` (or equivalent) into the row, the preset switches to that field and this predicate is retired.
 
-**Notes and quick rulings (step 3 only).** Each ruling is one ledger event and maps to current semantics:
+- **APPLY NOW (proposed; Tim to accept or replace; note open item #92 "APPLY NOW seat divergence"):**
+  `BUCKET = READY_TO_PURSUE` (disposition owned by Foreman/Scout under current rules)
+  `AND no BLOCKER key` (unresolved decision-changing blocker, written by resolver)
+  `AND no ANTI_RESURRECTION key` (terminal suppression, Amendment 58 §14)
+  `AND BUCKET ≠ APPLIED` (redundant with the first term; stated for the reader).
+  Not included: liveness (no canonical column yet), first-party URL (per Tim's 2026-09-26 change as reported by ChatGPT; not independently verified this session), FLOOR_RESULT and FLEX (both are already inputs to the READY_TO_PURSUE disposition; re-applying them here would let the app second-guess Tim-advanced degree-wall rows such as those tagged `DEGREE_WALL_TIM_ADVANCE`). FLOOR_RESULT is shown as a column so the reader can see it.
+- **NEW:** IS_NEW, any bucket except DUPLICATE and CLOSED_DEAD.
+- **NEEDS ACTION:** BUCKET in (TIM_DECISION_REQUIRED, BLOCKED, MANUAL_RESEARCH) OR `VERIFY_LATER` present.
+- **PIPELINE:** BUCKET = APPLIED.
+- **DECLINED:** BUCKET = DECLINED_BY_TIM, grouped by DECLINE_REASON_CODE.
+- **CLOSED:** BUCKET in (REJECTED_BY_EMPLOYER, DUPLICATE, CLOSED_DEAD).
 
-| Button | Ledger FIELD → VALUE | Required extra fields |
-|---|---|---|
-| Applied | BUCKET → APPLIED; DISPOSITION → RESOLVED/APPLIED_CONFIRMED | APP_DATE (default today), APP_STATUS_EVIDENCE (free text) |
-| Rejected by employer | BUCKET → REJECTED_BY_EMPLOYER | evidence text |
-| Decline | BUCKET → DECLINED_BY_TIM; DISPOSITION → RESOLVED/DECLINED_BY_TIM | DECLINE_REASON_CODE (pick from observed codes), DECLINE_REASON_TEXT, REOPEN_TRIGGER (default "Tim explicitly overrides.") |
-| Close dead | BUCKET → CLOSED_DEAD; DISPOSITION → RESOLVED/TIM_DISPOSITION | TIM_DISPOSITION text |
-| Needs my decision | BUCKET → TIM_DECISION_REQUIRED | note |
-| Note only | TIM_NOTES append | note |
-
-Every ruling shows a confirm step with the exact fields it will write, and a 30-second undo that deletes the ledger row before any node can read it. "Kill req" and "Snooze" from v0.1 are removed: no first-class field exists for them.
+### 4.4 Row detail drawer (v1: read-only)
+Right-side drawer on desktop, full-screen on phone. Every real and payload field, SECTION vs BUCKET if they differ, verified links only. In v2 the drawer gains the request form in §5.
 
 ---
 
-## 5. Write path and multi-AI safety (step 3, gated)
+## 5. Write channel (v2, gated) — built on Amendment 58
 
-### 5.1 The problem
-The master is edited in place by a node that the file does not name, and rebuilt as dated snapshots. A column Tim edits directly is lost on the next rebuild unless the rebuilding node carries it forward. The master also contains Gmail message IDs and application history, so it must stay private; the cockpit's public-link fetch is not acceptable for it.
+### 5.1 Principle
+Amendment 58 already answers "who materializes canonical state": an Authorized State Writer, defined by capability, executing STATE_CHANGE_REQUESTs and emitting STATE_CHANGE_RECEIPTs. Tim's direct statement is the highest-precedence evidence for his own application status (§6). So the Explorer's job is to let Tim make that statement in the pipeline's own request format. **There is no ledger, no merge rule for nodes, and no app-side mutation.** v0.2's ledger design is withdrawn.
 
-### 5.2 Precondition (hard gate)
-**No ledger, no rulings, no notes are built until (a) Tim names exactly one node as the master regenerator/updater and (b) the merge rule below is in the newest `TIM_APPROVED_SEARCH_RULES` or an amendment.** "Any node that regenerates" is not enforceable. Without a single named writer, a ledger becomes a third store that nodes treat as optional.
+### 5.2 Gate
+No write channel is built until Tim confirms (a) which Authorized State Writer executes app-originated requests and through what surface, and (b) that a browser-originated request with Tim as REQUESTED_BY is acceptable evidence under Amendment 58 §6 item 1. Cutover REV2 §8 item 2 already flags that the writer surface is unresolved.
 
 ### 5.3 Mechanism (once gated)
-1. **Apps Script web app**, executed as Tim, files stay private. Endpoints in v1: `getMaster`, `getFile(pattern)`. Endpoints added in step 3: `appendLedger(event)`, `deleteLedgerEvent(id)` (for undo, within 30 s only). **No `saveVersionedFile` endpoint** (see §6.5). Shared secret stored in the browser after Tim enters it once. Alternative: Netlify function + service account.
-2. **`TIM_WRITES_LEDGER`** (Sheet or text, append-only): `EVENT_ID | TS_UTC | PRIMARY_ID | COMPANY | FIELD | VALUE | NOTE | SOURCE=PIPELINE_EXPLORER | APPLIED_TO_MASTER`.
-3. **Immediate overlay:** unapplied events are overlaid on the grid at load, so Tim sees his ruling before any node runs.
-4. **Merge rule (proposed governance text):** "The named master updater MUST read `TIM_WRITES_LEDGER` at the start of every update, apply each event with blank APPLIED_TO_MASTER to the matching PRIMARY_ID, write TIM_NOTES text verbatim into the row payload as `TIM_NOTES=`, apply status rulings as Tim explicit rulings with `STATE_SOURCE=TIM_LEDGER:<EVENT_ID>`, and mark the event applied. An update that drops an existing TIM_NOTES value is a defect."
-5. **Reconciliation report (§6.2):** every applied event whose value is missing from the current master is listed. It makes a clobber visible; it cannot prevent one.
+1. **Request form in the drawer.** Applicant-state transitions limited to those Amendment 58 §3 lists (NOT_APPLIED→APPLIED, APPLIED→INTERVIEW_SCHEDULED, →INTERVIEW_COMPLETED, →REJECTED, →WITHDRAWN, →OFFER), posting-state changes (LIVE, CLOSED, REMOVED, REPOSTED), Tim disposition (DECLINED_BY_TIM with DECLINE_REASON_CODE, DECLINE_REASON_TEXT, REOPEN_TRIGGER; TIM_DECISION_REQUIRED), and a free-text note targeting a non-protected `TIM_NOTES` payload key. Applicant state and posting state are separate fields, never collapsed.
+2. **Record shape.** Exactly the Amendment 58 §7 minimum fields: REQUEST_ID (UUID, idempotency key), TIMESTAMP, REQUESTED_BY=Tim via Pipeline Explorer, TARGET_SYSTEM, TARGET_CANONICAL_ID (PRIMARY_ID), COMPANY, TITLE, REQ_ID, CURRENT_* and REQUIRED_* application and posting state (CURRENT_* taken from the row as displayed, so the writer can detect a stale view), SOURCE_OF_CHANGE (Tim direct statement plus any note), TARGET_CANONICAL_ARTIFACT (the fixed master ID), AUTHORIZED_WRITER (per gate), VERIFICATION_REQUIREMENTS (Amendment 58 §8–9).
+3. **Transport.** Requests are appended to an `SCR_QUEUE` file in AI_Coordination through an Apps Script endpoint executed as Tim (or a Netlify function with a service account). The app never writes the master.
+4. **Confirm and undo.** Confirm step shows the exact record. Undo within 30 s deletes the queued request before any writer reads it.
+5. **Receipts.** The app reads STATE_CHANGE_RECEIPT records and shows, per request: pending, COMPLETE, FAILED, or STATE_CHANGE_NEEDS_RESOLUTION. Pending requests are overlaid on the grid as "requested", visually distinct from canonical state, never merged into it.
+6. **Foreman verification duty** (Amendment 58 §13) is unchanged: at the next sweep Foreman checks propagation of open requests. The app's receipt view makes that check faster; it does not replace it.
 
 ### 5.4 What the app never does
-Never rewrites the master. Never writes on behalf of a node. Never changes BUCKET or DISPOSITION itself; it records Tim's ruling and the named updater applies it. Never creates a row; a missing opportunity becomes a ledger note "Tim reports X, please upsert" for Scout. Never reads the 455-row Applicant Status Ledger as live state.
+Never mutates the master. Never writes on behalf of a node. Never changes BUCKET or DISPOSITION itself. Never creates a row; a missing opportunity is a request to Scout, not an insert. Never reads the 455-row Applicant Status Ledger as live state.
 
 ---
 
 ## 6. Tabs
 
-### 6.1 PIPELINE — the grid (§4). Step 1.
-
-### 6.2 REPORTS — step 2. Plain tables over the parsed master.
-Counts per bucket vs COUNTS line; section-vs-bucket mismatches (99 today); aging by SALARY_ASOF / FLEX_ASOF with SALARY_EXPIRES flags; floor check per active row with first-failing gate in rules §1A order; data quality (parse errors, 11-cell rows, unknown keys, rows with no REQ and no URL, duplicate PRIMARY_IDs); DECLINED_BY_TIM by reason code, with the 195 `LEGACY_REASON_NEEDS_NORMALIZATION` rows called out; ledger reconciliation (§5.3 item 5, step 3).
-
-### 6.3 SALARY FLOORS — step 2, **read-only in v1.**
-Renders bands, rings, FL override and scoring penalties parsed from the newest rules file. No editing. Floors-as-data (`COMP_FLOORS_*`) is deferred until a node is required to load such a file; two floor sources with optional readers is worse than prose.
-
-### 6.4 COLUMNS — step 1, local.
-Column visibility, order, width, desktop vs phone set, enum display order. Stored in the URL hash and browser storage. Promotion to a Drive governing file is deferred until a node must share the enum vocabulary.
-
-### 6.5 GOVERNANCE — **not in v1.**
-A browser page with a shared secret that can mint the next `TIM_APPROVED_SEARCH_RULES_vN` is a governing-file publisher behind weak auth. Deferred until there is real authentication. In v1 the tab only lists governance files by prefix, newest first, with createdTime, and opens them read-only.
-
-### 6.6 WALK-AWAY EVALUATOR — placeholder.
-Inputs it will need, so columns exist now: LOCATION resolved to band / ring miles, COMP_LOW/HIGH/MID and confidence, FLEX, FIT, level, OEM package adders (rules §3). Not built.
+- **6.1 PIPELINE** — the grid (§4). Step 1.
+- **6.2 REPORTS** — step 2, plain tables: counts vs COUNTS; SECTION vs BUCKET mismatches; aging by SALARY_ASOF / FLEX_ASOF and SALARY_EXPIRES; floor check per active row with first-failing gate in rules §1A order; Data Quality (parse errors, 11-cell rows, unknown keys, no REQ and no URL, duplicate PRIMARY_IDs); DECLINED_BY_TIM by reason code with the 195 `LEGACY_REASON_NEEDS_NORMALIZATION` rows called out; open requests and receipts (v2).
+- **6.3 SALARY FLOORS** — step 2, read-only render of bands, rings, FL override and scoring penalties parsed from the newest rules file. **No floors file.** If floors are ever extracted to data (open item #90), the migration is atomic: rules prose → structured authority, never prose plus an optional file.
+- **6.4 COLUMNS** — step 1, local only: visibility, order, width, desktop vs phone set, bucket order. URL hash and browser storage. Presentation settings do not enter the governance stack.
+- **6.5 GOVERNANCE** — read-only list of governance files by prefix, newest first, with createdTime, opening each read-only. No editing from the browser.
+- **6.6 WALK-AWAY EVALUATOR** — placeholder; inputs named so columns exist (LOCATION → band/ring, COMP_LOW/HIGH/MID + confidence, FLEX, FIT, level, OEM adders). Not built.
 
 ---
 
 ## 7. Visual design
-Pure black base, near-white text, two greys, 1 px hairlines, no gradients or animation. System sans for labels, monospace for data, uppercase micro-labels with 1.5 px tracking. One accent (§9 P1) for active tab, primary button, focused row, header rule. Status colors: green (READY_TO_PURSUE, APPLIED), red (REJECTED_BY_EMPLOYER, CLOSED_DEAD, BLOCKED), grey (DECLINED_BY_TIM, DUPLICATE, MANUAL_RESEARCH), accent for TIM_DECISION_REQUIRED. Corner brackets on the active panel, faint grid texture in the header band, monospace status line. 11 px body, 22 px rows; phone portrait 12 px with the phone column set.
+Pure black base, near-white text, two greys, 1 px hairlines, no gradients or animation. System sans for labels, monospace for data, uppercase micro-labels with wide tracking. One accent (§9 P1) for active tab, primary button, focused row, header rule. Status colors: green (READY_TO_PURSUE, APPLIED), red (REJECTED_BY_EMPLOYER, CLOSED_DEAD, BLOCKED), grey (DECLINED_BY_TIM, DUPLICATE, MANUAL_RESEARCH), accent for TIM_DECISION_REQUIRED and for "requested" overlays in v2. Corner brackets on the active panel, faint grid texture in the header band, monospace status line. 11 px body, 22 px rows; phone portrait 12 px with the phone column set.
 
 ---
 
 ## 8. Platform and delivery
 
 - One HTML file, no framework, no build step, second page in this repo (`pipeline.html`) on the existing Netlify site. Cockpit untouched.
-- **Size estimate, corrected:** step 1 (parser, grid, filters, sort, presets, drawer read-only, paste/drop, checksum) ≈ 1,200–1,600 lines. Steps 2–3 add roughly the same again. v0.1's 1,500–2,000 for everything was wrong.
-- Offline fallback: paste or file drop of the master export.
-- Mobile: same page; breakpoints switch the column set; filters become bottom sheets; drawer goes full-screen. Landscape phone fits about eight dense columns. Portrait: narrow table, COMPANY + BUCKET frozen.
-
-**Build order (ship gates):**
+- Size: step 1 ≈ 1,200–1,600 lines. Step 2 adds ~300. Step 3 (v2) adds roughly step 1 again.
+- Mobile: same page; breakpoints switch column set; filters become bottom sheets; drawer full-screen. Landscape phone fits ~8 dense columns; portrait shows the phone set with COMPANY + BUCKET frozen.
 
 | Step | Ships | Does not ship |
 |---|---|---|
-| 1 | Parser + grid + filters + sort + presets + drawer (read) + paste/drop + checksum + fixture | Any backend, any write |
-| 2 | Apps Script `getMaster` / `getFile`, secret gate, status line, Reports, Salary Floors (read-only) | `appendLedger`, any governance write |
-| 3 | Ledger, notes, rulings with confirm/undo, reconciliation — **only after §5.2 gate** | Governance editor, floors-as-data, config-as-governing-file |
-| Later | Walk-away evaluator, governance editing behind real auth, structured master backend | |
+| 1 | Parser + grid + filters + sort + presets + drawer (read) + paste/drop + checksum + scrubbed fixture + local column config | Any backend, any write |
+| 2 | Apps Script `getFile(MASTER_FILE_ID)` and `getFile(rules)`, secret gate, status line, Reports, Salary Floors (read-only), Governance (read-only) | Any write |
+| 3 (v2) | STATE_CHANGE_REQUEST form, SCR_QUEUE transport, receipts view — **only after §5.2 gate** | Governance editing, floors file, Drive UI config, walk-away |
 
-Step 1 alone replaces the stale cockpit feed as the way to see the master, and can be validated against the committed fixture with no Drive access.
+Step 1 replaces the stale cockpit feed as the way to see the master and is testable against the fixture with no Drive access.
 
 ---
 
 ## 9. Open decisions for Tim
 
-**Architecture (block step 2 or 3):**
+**Architecture**
 
-| # | Question | Reviewer recommendation (Grok, 09-29) | Claude position |
+| # | Question | Reviewer position | Claude position |
 |---|---|---|---|
-| A1 | Write mechanism: Apps Script + shared secret vs Netlify function + service account | Apps Script, execute-as-Tim | Agree |
-| A2 | Name exactly one node as master updater, and adopt the §5.3 merge rule | Yes, but only after naming the regenerator | Agree; this is the §5.2 gate |
-| A3 | Floors as a machine-readable file | No for v1; read-only tab | Agree |
-| A4 | Column config as a Drive governing file | Local/hash first | Agree |
-| A5 | APPLY NOW predicate | Write it in one sentence before any preset is built | Proposed in §4.3; needs Tim's accept/replace |
-| A6 | Sheet/CSV migration timing | Not now; viewer first | Agree |
-| Q3 | Does the cockpit page (calendar/tasks/nodes) stay as a separate page, or is it retired once the explorer ships? | — | Keep both until the explorer has run for a week; then decide |
-| Q4 | May a copy of the master export be committed to this public repo as a parser fixture (it contains Gmail IDs and application history)? | — | Recommend **no**; use a scrubbed 20-row fixture instead |
+| A1 | Read backend for step 2: Apps Script executed as Tim with shared secret, vs Netlify function + service account | Grok: Apps Script. ChatGPT: defer, step 1 needs neither | Defer to step 2; recommend Apps Script then |
+| A2 | Which Authorized State Writer executes app-originated STATE_CHANGE_REQUESTs, via what surface (the §5.2 gate). Cutover REV2 §8 item 2 says this is unresolved even for the pipeline's own writes | Both: one named materializer, never "every node" | Agree. Amendment 58 already says this; the gap is naming the surface |
+| A3 | Is a browser-originated request with REQUESTED_BY=Tim acceptable as "direct Tim statement" under Amendment 58 §6? | — | Recommend yes, with the shared secret as the identity control |
+| A4 | Floors as data | Both: no | Agree; tied to open item #90 |
+| A5 | UI config as a Drive governing file | Both: no, local first | Agree |
+| A6 | APPLY NOW predicate (§4.3), and whether the ranking node should write an explicit canonical APPLY_NOW field so the app stops deriving it | ChatGPT: prefer a canonical field | Agree; tied to open item #92 |
+| A7 | Sheet/CSV migration | Both: not now | Agree; REV2 §8 item 4 already defers it |
+| A8 | Add a `SCHEMA:` header line to the master (§3.4) via STATE_CHANGE_REQUEST to a capable writer | ChatGPT proposed it | Recommend yes, as one prefixed line, given REV2's no-wrapper preference |
+| Q3 | Cockpit page (calendar/tasks/nodes): keep as a separate page, or retire after the Explorer ships | — | Keep both a week, then decide |
+| Q4 | May a copy of the master export be committed to this public repo as a fixture? | — | No; scrubbed 20-row fixture |
 
-**Paint (do not block anything):**
+**Paint**
 
-| # | Question | Reviewer recommendation | Claude position |
+| # | Question | Reviewer position | Claude position |
 |---|---|---|---|
-| P1 | Accent color | Cyan (matches cockpit edge) | Either; gold ties to Torque, cyan ties to cockpit |
-| P2 | Portrait phone | Narrow table, COMPANY + BUCKET frozen | Agree |
+| P1 | Accent color | Grok: cyan | Either |
+| P2 | Portrait phone | Both: narrow table, no cards | Agree |
 
 ---
 
 ## 10. Risks and weak assumptions
-- **Unnamed updater.** Multiple snapshots in one day and in-place edits by an unspecified node. Until A2 is settled, no write path is safe. Step 1 has no exposure to this.
-- **Parser fragility.** Hand-shaped text with pipes inside values, headings that lag, and 197 rows with no real DATE_ADDED. The parser must never drop rows; the data-quality report must surface what it could not read.
-- **Cutover map drift.** The Foreman cutover map describes a file that is no longer the master. Any node following it literally loads the wrong file.
-- **Public site + shared secret** is acceptable for read and for an append-only ledger. It is not acceptable for governance writes; hence §6.5.
-- **Fixture privacy.** See Q4.
-- **What I read:** the full text export of the live master was decoded and counted programmatically (row count, cell distribution, bucket tally, key frequencies, section mismatches). I did not read every row's prose.
+- **Writer surface unresolved.** Even the pipeline's own in-place writes are flagged as a tool gap (REV2 §8 item 2). Until A2 is settled, v2 cannot be built. Step 1 has no exposure.
+- **Parser fragility.** Pipes inside values, headings that lag, 197 rows without a real DATE_ADDED. The parser never drops rows; Data Quality surfaces what it could not read.
+- **Fixed ID is a single point.** If a future ruling moves the master, the constant must change. The status-line title check makes a silent move visible.
+- **Public site + shared secret** is acceptable for read. Any write surface needs the A2/A3 rulings first.
+- **The 09-26 first-party URL rule change** is cited from ChatGPT's review and was not independently read this session.
+- **What I read:** the full text export of the fixed master was decoded and counted programmatically. I did not read every row's prose. Amendment 58 and Cutover REV2 were read in full; Cutover Revision 1 was not.
 
 ---
 
 ## 11. Change record
-- 2026-09-29 v0.1 — Created by Claude. Sources: repo `index.html`, `netlify/functions/feed.js`; Drive: directive, cutover map, Forge Amendment 55, scoring notice, rules v4, `V2_CURRENT_POPULATION_2026-09-27.txt` (header + sampled rows). No Drive files modified, no code.
-- 2026-09-29 v0.2 — Revised by Claude after Grok's review (relayed by Tim). Verified against `V2_CURRENT_POPULATION_MASTER.txt` (ID `19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`, modified 20:41Z) by full text export: 526 rows, bucket vocabulary, payload keys, 99 section/bucket mismatches, export encoding. Sections 1, 3.1, 4.2–4.4, 5, 6.3–6.5, 8, 9, 10 rewritten. No Drive files modified, no code.
+- 2026-09-29 v0.1 — Created by Claude. Sources: repo; directive; cutover map; Amendment 55; scoring notice; rules v4; `V2_CURRENT_POPULATION_2026-09-27.txt` (header + samples). No Drive writes, no code.
+- 2026-09-29 v0.2 — Revised after Grok review. Verified against `V2_CURRENT_POPULATION_MASTER.txt` by full export (526 rows, vocabulary, keys, 99 mismatches, encoding). No Drive writes, no code.
+- 2026-09-29 v0.3 — Revised after ChatGPT review. Read `FORGE_AMENDMENT_58_CANONICAL_STATE_WRITE_ARCHITECTURE_2026-09-27` (`1Vz-ifWCspz1RPf_QyWZ9XYND2GrZsAwx`), `MASTER_TABLE_CUTOVER_IMPLEMENTATION_2026-09-29_REV2.txt` (`1t83d2awD2gA_JstH8eCHsfs5YLtxKDLW`), and `STATE_CHANGE_REQUEST_SCR-2026-09-27-001`. Master resolution corrected to fixed ID. Write channel rebuilt on Amendment 58; ledger withdrawn. v1 scoped read-only. §3.3, §3.4 added. §4.3 predicate reduced and labeled. No Drive writes, no code.
 
 ---
 
 ## 12. Response to Grok's review (2026-09-29)
+Accepted and applied in v0.2: stale §1; bucket vocabulary; DATE_ADDED for newness; row BUCKET over section; nine-cells-plus-payload; never hide rows; §5.5 citation; line estimate; governance editor out; floors-as-data deferred; config local; APPLY NOW written out; rulings mapped; Kill/Snooze removed; ship gates.
+Corrected: `\_` escapes exist only in the connector's markdown rendering; raw export is clean.
+**Superseded in v0.3:** Grok's parser rule "resolve newest file matching `V2_CURRENT_POPULATION*` by modifiedTime, including Google Docs" is the mechanism Tim's 2026-09-29 ruling retired. v0.2 adopted it; v0.3 replaces it with the fixed ID. "Sloppy regeneration" is also softened by REV2: the R-snapshots were one seeding run, and the MASTER file was a deliberate byte-verified copy.
 
-Accepted and applied: stale §1 facts; bucket vocabulary; DATE_ADDED instead of local storage; row BUCKET over section; nine-cells-plus-payload parser rule; never hide unparsed rows; §5.5 citation; line estimate; governance editor out of v1; floors-as-data deferred; config local first; single named regenerator as a gate; APPLY NOW predicate written out; rulings mapped to current semantics with confirm and undo; Kill/Snooze removed; ship-gate table.
-
-Verified with a correction: the `\_` escape issue exists only in the Drive connector's markdown-style rendering (553 occurrences). The Doc's raw `text/plain` export has none. The brief now requires the raw export, which resolves it without a parser workaround.
-
-Nuance: "R2–R6 plus MASTER in one day, regeneration sloppy." The R3–R6 snapshots were written in an eight-minute window at 04:52–05:00Z, consistent with one run producing revisions; the MASTER Doc was then created at 16:54Z and edited in place through 20:41Z, and its header declares the in-place regime. That is more orderly than "sloppy", but the reviewer's underlying point stands: the file does not say who edits it, so A2 must be settled before any write path.
-
-Not adopted: the accent-color recommendation is recorded as a reviewer preference in §9 P1, not a decision. Reviewer list unchanged; who reviews UI is Tim's call.
+## 13. Response to ChatGPT's review (2026-09-29, written against v0.1)
+Already present in v0.2 before the review arrived: items 1, 3, 4, 5, 6 (as a gate), 7, 8, 9, 10, and the §5.5 fix.
+Accepted and applied in v0.3: master source resolved per governing directive, not filename age (this was the decisive correction); v1 strictly read-only with no ledger at all; "one component materializes canonical state" restated as Amendment 58's Authorized State Writer; atomic floors migration wording; backend adapter (§3.3); schema-version line (§3.4); request record fields with REQUEST_ID idempotency, CURRENT/REQUIRED state, SOURCE, and actor (§5.3); liveness and first-party URL excluded from APPLY NOW; separate architecture and paint.
+Adjusted: ChatGPT's APPLY NOW predicate says "current governing geography / compensation rules permit pursuit". v0.3 does not re-evaluate those rules in the app because READY_TO_PURSUE already encodes them and re-applying them would override Tim-advanced degree-wall rows; the row's FLOOR_RESULT is shown, not enforced.
+Verified: Amendment 58 exists and is binding as ChatGPT said; it changed §5 more than any other input.
+Not verified: the 2026-09-26 first-party URL rule change; cited with attribution in §4.3 and §10.
