@@ -67,15 +67,15 @@ for r in picked: groups.setdefault(sec_of[r], []).append(scrub(r))
 # add one deliberately malformed row and one unknown-key row
 groups.setdefault('MANUAL_RESEARCH', []).append('999 | V2X-MALFORMED | Company-99 | Broken Row Missing Cells')
 groups['MANUAL_RESEARCH'].append('998 | V2X-UNKNOWNKEY | Company-98 | Director of Something | MANUAL_RESEARCH | RESOLVED/MANUAL_RESEARCH | - | GH-1234567 | Nowhere, TN | RESEARCH_OK; DATE_ADDED=2026-09-29; NOTIFICATION_SOURCE=LinkedIn; MYSTERY_KEY=some value; FLEX=SOFT')
-counts={}
+counts={}; unacc=0
 for sec,rows in groups.items():
     for r in rows:
         p=r.split(' | ')
-        b=p[4] if len(p)>4 else '(blank)'
-        counts[b]=counts.get(b,0)+1
+        if len(p)<10: unacc+=1; continue
+        counts[p[4]]=counts.get(p[4],0)+1
 total=sum(counts.values())
 order=['READY_TO_PURSUE','DECLINED_BY_TIM','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED','APPLIED','REJECTED_BY_EMPLOYER','DUPLICATE','CLOSED_DEAD']
-out.append('COUNTS: TOTAL=%d '%total + ' '.join('%s=%d'%(k,counts.get(k,0)) for k in order) + ' UNACCOUNTED=0')
+out.append('COUNTS: TOTAL=%d '%total + ' '.join('%s=%d'%(k,counts.get(k,0)) for k in order) + ' UNACCOUNTED=%d'%unacc)
 out.append('COLUMNS: INV | PRIMARY_ID | COMPANY | TITLE | BUCKET | DISPOSITION/RULE_OUTCOME | TAGS | REQ | LOCATION | SCOUT_ACTION')
 out.append('='*64)
 for sec in order:

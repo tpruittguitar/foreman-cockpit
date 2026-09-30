@@ -52,6 +52,7 @@ td.b-READY_TO_PURSUE{color:var(--white)}td.b-APPLIED{color:var(--white)}td.b-DEC
 #autobar{flex:none;border-top:1px solid var(--line);background:var(--panel);padding:4px 10px;font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;gap:14px;align-items:center;overflow:hidden;cursor:pointer;white-space:nowrap}
 #autobar b{color:var(--white);font-weight:600}#autobar .t{color:var(--ng)}#autobar .soon{color:var(--nm)}
 .tip{color:var(--faint);font-size:9.5px}
+.pill{display:inline-block;padding:1px 6px;border:1px solid var(--line2);border-radius:2px;font-family:var(--mono);font-size:9.5px}.pill.ok{border-color:var(--ng);color:var(--ng)}.pill.bad{border-color:var(--nm);color:var(--nm)}
 textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
 @media (max-width:760px){body{font-size:10.5px}header{padding:3px 6px;gap:6px}.brand{font-size:10px;letter-spacing:2px}.brand small{display:none}nav button,#refresh{padding:2px 6px;font-size:9px}th,td{padding:2px 5px;height:20px;max-width:200px}#readout{font-size:9px;order:5;flex-basis:100%}#drawer{width:100%}.kv{grid-template-columns:110px 1fr}#autobar{font-size:9px;gap:10px;padding:3px 6px}.bar{padding:3px 6px;gap:4px}.chip{padding:1px 5px;font-size:9.5px}#predicate{display:none}#search{width:120px!important}#markseen{padding:2px 6px;font-size:9px}}
 @media (max-height:520px){header{padding:3px 6px;gap:6px}.brand{font-size:10px}.brand small{display:none}nav button,#refresh{padding:2px 6px;font-size:9px}#readout{font-size:9px}#predicate{display:none}.bar{padding:3px 6px;gap:4px}.chip{padding:1px 5px;font-size:9.5px}#autobar{padding:2px 6px;font-size:9px}th,td{height:20px;padding:2px 5px}}
@@ -60,12 +61,13 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
 <body>
 <div id="app">
 <header>
-  <div class="brand">PIPELINE EXPLORER<small id="brandsub">canonical master · read-only viewer</small></div>
+  <div class="brand">PIPELINE EXPLORER<small id="brandsub">canonical master · viewer + Tim rulings</small></div>
   <div id="readout">no data</div>
   <nav>
     <button data-tab="pipeline" class="on">Pipeline</button><button data-tab="reports">Reports</button><button data-tab="automations">Automations</button><button data-tab="columns">Columns</button>
   </nav>
   <button id="refresh" class="neon">Refresh</button>
+  <button id="settings" title="Writer setup">⚙</button>
 </header>
 <div class="bar" id="presets"></div>
 <div class="bar" id="filters" style="display:none"></div>
@@ -74,6 +76,7 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
   <div class="view" id="view-reports"></div>
   <div class="view" id="view-automations"></div>
   <div class="view" id="view-columns"></div>
+  <div class="view" id="view-settings"></div>
   <aside id="drawer"><div class="dh"><div style="flex:1"><h2 id="d-title"></h2><div class="sub" id="d-sub"></div></div><button id="d-close">✕</button></div><div class="db" id="d-body"></div></aside>
 </main>
 <div id="autobar" title="Automation timers · click to expand"></div>
@@ -94,21 +97,26 @@ var DESK_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DISPOSITION','L
 var PHONE_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DATE_ADDED','SALARY_BASE_EST','LOCATION'];
 var DATE_KEYS={DATE_ADDED:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
-var S={master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,tab:'pipeline',newDays:1,search:''};
+var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,tab:'pipeline',newDays:1,search:''};
 S.cols=S.cols||{desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};
 
 /* ---------- data source adapters (read-only; manual refresh only; no polling) ---------- */
+function hasWriter(){return !!(S.cfg.url&&S.cfg.key)}
+function gsGet(action,extra){var u=S.cfg.url+(S.cfg.url.indexOf('?')<0?'?':'&')+'action='+encodeURIComponent(action)+'&key='+encodeURIComponent(S.cfg.key)+(extra||'');return fetch(u,{redirect:'follow',cache:'no-store'}).then(function(r){return r.json()})}
+function gsPost(body){body.key=S.cfg.key;return fetch(S.cfg.url,{method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}).then(function(r){return r.json()})}
 var Source={
+  script:function(){return gsGet('master').then(function(j){if(j.ok){j.id=j.id+' via writer script'}return j})},
   netlify:function(){return fetch('/api/master',{cache:'no-store'}).then(function(r){return r.json()})},
   url:function(u){return fetch(u,{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text()}).then(function(t){return{ok:true,id:'(url) '+u,fetchedAt:new Date().toISOString(),bytes:t.length,text:t}})}
 };
 function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
   readout('<b>fetching…</b>');
-  var p=src?Source.url(src):Source.netlify();
+  var p=src?Source.url(src):(hasWriter()?Source.script():Source.netlify());
+  if(hasWriter()&&!src)syncStateDown();
   p.then(function(res){
     if(!res.ok){readout('<span class="bad">FETCH FAILED</span> '+esc(res.hint||res.error||('status '+res.status)));var c=LS.get('cache',null);if(c){apply(c.text,c.meta,true)}return}
-    var meta={id:res.id,fetchedAt:res.fetchedAt,bytes:res.bytes};LS.set('cache',{text:res.text,meta:meta});apply(res.text,meta,false);
+    var meta={id:res.id,fetchedAt:res.fetchedAt,bytes:res.bytes,modifiedTime:res.modifiedTime||''};LS.set('cache',{text:res.text,meta:meta});apply(res.text,meta,false);
   }).catch(function(e){readout('<span class="bad">FETCH ERROR</span> '+esc(e.message));var c=LS.get('cache',null);if(c)apply(c.text,c.meta,true)});
 }
 function apply(text,meta,fromCache){
@@ -127,13 +135,13 @@ function decorate(r){
 }
 function isNew(r){if(S.seen[r.id])return false;if(r.dateAdded){var age=(Date.now()-r.dateAdded.getTime())/864e5;if(age<=S.newDays)return true}return !S.seen[r.id]}
 function ruling(r){return S.rulings[r.id]||null}
-function rulingState(r){var ru=ruling(r);if(!ru)return null;var changed=ru.snap&&(ru.snap.BUCKET!==r.BUCKET||ru.snap.DISPOSITION!==r.DISPOSITION);if(!changed)return{s:'PENDING',ru:ru};
+function rulingState(r){var ru=ruling(r);if(!ru)return null;if(ru.receipt&&ru.receipt.COMPLETION_STATUS==='COMPLETE')return{s:'CANONICAL',ru:ru};if(ru.error)return{s:'WRITE FAILED',ru:ru};var changed=ru.snap&&(ru.snap.BUCKET!==r.BUCKET||ru.snap.DISPOSITION!==r.DISPOSITION);if(!changed)return{s:'PENDING',ru:ru};
   var applied=(ru.kind==='DECLINE'&&r.BUCKET==='DECLINED_BY_TIM')||(ru.kind==='APPLIED'&&r.BUCKET==='APPLIED')||(ru.kind==='APPLY_NOW'&&ru.value==='YES'&&r.BUCKET==='READY_TO_PURSUE')||(ru.kind==='NOTE');
-  return{s:applied?'APPLIED':'MASTER CHANGED',ru:ru}}
+  return{s:applied?'CANONICAL':'MASTER CHANGED',ru:ru}}
 function val(r,c){
   switch(c){
     case 'NEW':return isNew(r)?'NEW':'';
-    case 'TIM_RULING':var st=rulingState(r);return st?(st.ru.kind+(st.ru.value?':'+st.ru.value:'')+(st.s==='PENDING'?' (pending)':st.s==='APPLIED'?' (canonical)':' (master changed)')):'';
+    case 'TIM_RULING':var st=rulingState(r);return st?(st.ru.kind+(st.ru.value?':'+st.ru.value:'')+' ('+st.s.toLowerCase()+')'):'';
     case 'SECTION':return r.section||'';
     case 'MISMATCH':return r.mismatch?'YES':'';
     case 'COMP_MID':return r.compMid!=null?String(r.compMid):'';
@@ -143,6 +151,13 @@ function val(r,c){
   if(FIXED.indexOf(c)>=0)return r[c]||'';
   return r.payload[c]!==undefined?r.payload[c]:'';
 }
+/* ---------- cross-device state via the writer script (seen + rulings) ---------- */
+var syncTimer=null;
+function syncStateDown(){gsGet('state').then(function(j){if(!j.ok||!j.state)return;var st=j.state;var changed=false;
+  Object.keys(st.seen||{}).forEach(function(k){if(!S.seen[k]){S.seen[k]=st.seen[k];changed=true}});
+  Object.keys(st.rulings||{}).forEach(function(k){var a=S.rulings[k],b=st.rulings[k];if(!a||(b.ts||'')>(a.ts||'')){S.rulings[k]=b;changed=true}});
+  if(changed){LS.set('seen',S.seen);LS.set('rulings',S.rulings);if(S.master)render()}}).catch(function(){})}
+function syncStateUp(){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){gsPost({action:'state',state:{seen:S.seen,rulings:S.rulings,updatedAt:new Date().toISOString()}}).catch(function(){})},1500)}
 /* ---------- column model ---------- */
 var COLS=[],COLTYPE={};
 function buildColumnModel(){
@@ -174,7 +189,7 @@ function renderPresets(){
   $('presets').innerHTML=h;
   $('presets').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){S.preset=el.getAttribute('data-p');pushHash();render()}});
   $('search').oninput=function(){S.search=this.value;render()};
-  $('markseen').onclick=function(){filteredRows().forEach(function(r){S.seen[r.id]=Date.now()});LS.set('seen',S.seen);render()};
+  $('markseen').onclick=function(){filteredRows().forEach(function(r){S.seen[r.id]=Date.now()});LS.set('seen',S.seen);syncStateUp();render()};
 }
 /* ---------- filtering / sorting ---------- */
 function cmp(a,b){if(a===b)return 0;if(a===''||a==null)return 1;if(b===''||b==null)return -1;var na=parseFloat(a),nb=parseFloat(b);if(!isNaN(na)&&!isNaN(nb)&&/^[\d.\-]+$/.test(a)&&/^[\d.\-]+$/.test(b))return na-nb;return a<b?-1:1}
@@ -202,7 +217,7 @@ function readout(h){$('readout').innerHTML=h}
 function renderReadout(){
   var m=S.master;if(!m)return;var ck=m.checksum.ok?'<span class="good">COUNTS OK</span>':'<span class="bad">COUNTS MISMATCH '+esc(m.checksum.diffs.map(function(d){return d.bucket+' '+d.declared+'≠'+d.parsed}).join(', '))+'</span>';
   var t=m.title.split('(')[0].trim().slice(0,48);
-  readout('<b>'+esc(t)+'</b> · '+m.rows.length+' rows · '+ck+' · '+(m.parseErrors.length?'<span class="bad">'+m.parseErrors.length+' parse err</span>':'0 parse err')+' · '+m.sectionMismatches.length+' heading≠bucket · fetched '+esc((S.meta.fetchedAt||'').replace('T',' ').slice(0,16))+'Z'+(S.meta.fromCache?' <span class="bad">(CACHED)</span>':'')+' · schema '+esc(m.schema.MASTER_SCHEMA_VERSION||'?')+' · id '+esc(String(S.meta.id||MASTER_FILE_ID).slice(0,12))+'…');
+  readout('<b>'+esc(t)+'</b> · '+m.rows.length+' rows · '+ck+' · '+(m.parseErrors.length?'<span class="bad">'+m.parseErrors.length+' parse err</span>':'0 parse err')+' · '+m.sectionMismatches.length+' heading≠bucket · fetched '+esc((S.meta.fetchedAt||'').replace('T',' ').slice(0,16))+'Z'+(S.meta.fromCache?' <span class="bad">(CACHED)</span>':'')+' · schema '+esc(m.schema.MASTER_SCHEMA_VERSION||'?')+(hasWriter()?' · <span class="good">WRITER ON</span>':' · <span class="bad">WRITER OFF</span>')+(S.meta.modifiedTime?' · master modified '+esc(S.meta.modifiedTime.replace('T',' ').slice(0,16))+'Z':''));
 }
 function render(){
   if(!S.master)return;renderReadout();
@@ -219,7 +234,7 @@ function render(){
     var cls=(S.seen[r.id]?'seen ':'')+(S.focus===r.id?'focus':'');
     tb+='<tr data-id="'+esc(r.id)+'" class="'+cls+'">'+cols.map(function(c,i){var v=val(r,c),extra='';
       if(c==='NEW')v=isNew(r)?'<span class="g new">◆</span>':'';
-      else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.s==='PENDING'?'pend':'rule')+'">'+(st.s==='PENDING'?'◇':'◈')+'</span>'+esc(v):''}
+      else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.s==='CANONICAL'?'rule':'pend')+'">'+(st.s==='CANONICAL'?'◈':'◇')+'</span>'+esc(v):''}
       else if(c==='COMPANY')v=(r.parseError?'<span class="g err" title="'+esc(r.parseError)+'">!</span>':'')+esc(v);
       else if(c==='BUCKET'){extra=' b-'+esc(r.BUCKET);v=esc(v)+(r.mismatch?' <span class="faint" title="heading says '+esc(r.section)+'">§</span>':'')}
       else if(c==='COMP_MID'&&r.compMid!=null)v='$'+Math.round(r.compMid/1000)+'k';
@@ -258,24 +273,31 @@ function openPop(c,anchor){
 function closePop(){$('pop').style.display='none'}
 document.addEventListener('click',function(e){if($('pop').style.display==='block'&&!$('pop').contains(e.target)&&!(e.target.closest&&e.target.closest('th')))closePop()});
 /* ---------- row drawer + Tim rulings ---------- */
-function openRow(id){var r=S.rows.filter(function(x){return x.id===id})[0];if(!r)return;S.focus=id;if(!S.seen[id]){S.seen[id]=Date.now();LS.set('seen',S.seen)}
+function openRow(id){var r=S.rows.filter(function(x){return x.id===id})[0];if(!r)return;S.focus=id;if(!S.seen[id]){S.seen[id]=Date.now();LS.set('seen',S.seen);syncStateUp()}
   $('d-title').textContent=r.COMPANY+' — '+r.TITLE;$('d-sub').innerHTML='<span class="mono">'+esc(r.PRIMARY_ID)+' · INV '+esc(r.INV)+'</span> · '+esc(r.BUCKET)+' · '+esc(r.DISPOSITION)+(r.mismatch?' · <span style="color:var(--nm)">heading says '+esc(r.section)+'</span>':'');
   var st=rulingState(r),ru=st&&st.ru;var codes={};S.rows.forEach(function(x){if(x.payload.DECLINE_REASON_CODE)codes[x.payload.DECLINE_REASON_CODE]=1});
   var h='<div class="rul"><h3>Tim ruling · overrides display; becomes canonical via STATE_CHANGE_REQUEST</h3>';
-  if(ru)h+='<div class="mono" style="margin-bottom:6px;color:'+(st.s==='PENDING'?'var(--nm)':'var(--nc)')+'">'+esc(st.s)+' · '+esc(ru.kind)+(ru.value?' '+esc(ru.value):'')+(ru.code?' · '+esc(ru.code):'')+' · '+esc((ru.ts||'').slice(0,16))+(ru.note?'<br>'+esc(ru.note):'')+(st.s==='MASTER CHANGED'?'<br>master now: '+esc(r.BUCKET)+' / '+esc(r.DISPOSITION)+' (ruled at '+esc(ru.snap.BUCKET)+' / '+esc(ru.snap.DISPOSITION)+')':'')+'</div>';
+  if(ru)h+='<div class="mono" style="margin-bottom:6px;color:'+(st.s==='CANONICAL'?'var(--nc)':'var(--nm)')+'">'+esc(st.s)+' · '+esc(ru.kind)+(ru.value?' '+esc(ru.value):'')+(ru.code?' · '+esc(ru.code):'')+' · '+esc((ru.ts||'').slice(0,16))+(ru.note?'<br>'+esc(ru.note):'')+(ru.error?'<br>error: '+esc(ru.error):'')+(ru.receipt?'<br>receipt '+esc(ru.receipt.REQUEST_ID)+' · '+esc(ru.receipt.COMPLETION_STATUS)+' · readback '+esc(ru.receipt.READBACK_VERIFIED):'')+(st.s==='MASTER CHANGED'?'<br>master now: '+esc(r.BUCKET)+' / '+esc(r.DISPOSITION)+' (ruled at '+esc(ru.snap.BUCKET)+' / '+esc(ru.snap.DISPOSITION)+')':'')+'</div>';
+  h+='<div class="tip" style="margin-bottom:6px">'+(hasWriter()?'<span class="pill ok">WRITER ON</span> rulings are written into the master row immediately':'<span class="pill bad">WRITER OFF</span> rulings stay on this device until the writer is set up (⚙). Use "Copy request text" to hand them to ChatGPT meanwhile.')+'</div>';
   h+='<div class="row"><span class="u">apply now</span><button data-r="APPLY_NOW:YES" class="neon">Yes, pursue</button><button data-r="APPLY_NOW:NO" class="danger">No, do not pursue</button></div>';
   h+='<div class="row"><span class="u">decline</span><select id="r-code"><option value="TIM_EXPLICIT_DECLINE">TIM_EXPLICIT_DECLINE</option>'+Object.keys(codes).sort().map(function(k){return k==='TIM_EXPLICIT_DECLINE'?'':'<option>'+esc(k)+'</option>'}).join('')+'</select><button data-r="DECLINE" class="danger">Decline</button></div>';
   h+='<div class="row"><span class="u">applied</span><button data-r="APPLIED">I applied</button><span class="u">note</span></div><textarea id="r-note" placeholder="note or reason (goes into the request)" style="width:100%;height:48px">'+esc(ru&&ru.note||'')+'</textarea>';
   h+='<div class="row"><button data-r="NOTE">Save note only</button><button data-r="CLEAR">Clear my ruling</button><button id="r-copy">Copy request text</button></div>';
-  h+='<div class="tip">Rulings are held on this device until the Authorized State Writer applies them to the master (Amendment 58). They survive Refresh. "Master changed" means the master moved after you ruled: check it.</div></div>';
+  h+='<div id="r-status" class="tip"></div></div>';
   h+='<div class="kv">';FIXED.forEach(function(c){h+='<div>'+esc(c)+'</div><div>'+linkify(r[c])+'</div>'});
   h+='<div>SECTION</div><div>'+esc(r.section||'')+'</div><div>CELLS</div><div>'+r.cellCount+(r.parseError?' · <span style="color:var(--nm)">'+esc(r.parseError)+'</span>':'')+'</div>';
   r.payloadOrder.forEach(function(k){h+='<div>'+esc(k)+'</div><div>'+linkify(r.payload[k])+'</div>'});
   h+='</div><div class="tip" style="margin-top:8px">raw line '+r.line+'</div>';
   $('d-body').innerHTML=h;$('drawer').classList.add('on');
   $('d-body').querySelectorAll('[data-r]').forEach(function(b){b.onclick=function(){var a=b.getAttribute('data-r').split(':');var note=$('r-note').value.trim();
-    if(a[0]==='CLEAR'){delete S.rulings[r.id]}else{S.rulings[r.id]={kind:a[0],value:a[1]||'',code:a[0]==='DECLINE'?$('r-code').value:'',note:note,ts:new Date().toISOString(),snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID}}
-    LS.set('rulings',S.rulings);render();openRow(r.id)}});
+    if(a[0]==='CLEAR'){delete S.rulings[r.id];LS.set('rulings',S.rulings);syncStateUp();render();openRow(r.id);return}
+    if(a[0]==='NOTE'&&!note){alert('Type a note first.');return}
+    var ts=new Date().toISOString();var ru={kind:a[0],value:a[1]||'',code:a[0]==='DECLINE'?$('r-code').value:'',note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
+    S.rulings[r.id]=ru;LS.set('rulings',S.rulings);render();openRow(r.id);
+    if(hasWriter()){var st=$('r-status');if(st)st.innerHTML='<span class="pill">WRITING…</span> sending to the master';
+      gsPost({action:'ruling',ruling:ru}).then(function(j){ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');S.rulings[r.id]=ru;LS.set('rulings',S.rulings);syncStateUp();if(j.ok){load()}else{render();openRow(r.id)}})
+      .catch(function(e){ru.error='network: '+e.message;S.rulings[r.id]=ru;LS.set('rulings',S.rulings);render();openRow(r.id)})}
+    else syncStateUp()}});
   $('r-copy').onclick=function(){var t=scrText([r.id]);navigator.clipboard&&navigator.clipboard.writeText(t);alert('Copied:\n\n'+t)};
   render();
 }
@@ -294,7 +316,7 @@ function renderReports(){
   var m=S.master,h='';var rl=function(r){return '<a href="#" data-open="'+esc(r.id)+'">'+esc(r.COMPANY)+'</a> · '+esc(r.TITLE)};
   h+='<div class="panel active rep"><h3>Integrity</h3>'+tbl(['check','result'],[['COUNTS line vs row BUCKET tally',m.checksum.ok?'<span style="color:var(--ng)">OK</span>':'<span style="color:var(--nm)">'+esc(JSON.stringify(m.checksum.diffs))+'</span>'],['rows / declared TOTAL',m.rows.length+' / '+(m.counts&&m.counts.TOTAL)],['heading ≠ BUCKET',m.sectionMismatches.length+' (headings are presentation only)'],['parse errors',m.parseErrors.length],['11-cell rows (pipe inside payload)',m.rows.filter(function(r){return r.cellCount===11}).length],['schema',esc(JSON.stringify(m.schema))],['source',esc(S.meta.id||'')+' · fetched '+esc(S.meta.fetchedAt||'')+(S.meta.fromCache?' (cached)':'')]])+'</div>';
   var byB=Object.keys(m.byBucket).map(function(b){return [esc(b),m.byBucket[b],m.counts&&m.counts[b]!==undefined?m.counts[b]:'—']});h+='<div class="panel rep"><h3>Buckets</h3>'+tbl(['bucket','rows','declared'],byB)+'</div>';
-  h+='<div class="panel rep"><h3>My rulings</h3>'+tbl(['company','ruling','state','when'],S.rows.filter(function(r){return ruling(r)}).map(function(r){var st=rulingState(r);return [rl(r),esc(st.ru.kind+' '+(st.ru.value||'')+' '+(st.ru.code||'')),esc(st.s),esc((st.ru.ts||'').slice(0,16))]}))+'<div class="row"><button id="copy-all">Copy all pending as STATE_CHANGE_REQUESTs</button><button id="export-rul">Export rulings JSON</button><button id="import-rul">Import rulings JSON</button></div></div>';
+  h+='<div class="panel rep"><h3>My rulings'+(hasWriter()?' · writer on':' · writer off, held on this device')+'</h3>'+tbl(['company','ruling','state','when'],S.rows.filter(function(r){return ruling(r)}).map(function(r){var st=rulingState(r);return [rl(r),esc(st.ru.kind+' '+(st.ru.value||'')+' '+(st.ru.code||'')),esc(st.s),esc((st.ru.ts||'').slice(0,16))]}))+'<div class="row"><button id="copy-all">Copy all pending as STATE_CHANGE_REQUESTs</button><button id="export-rul">Export rulings JSON</button><button id="import-rul">Import rulings JSON</button></div></div>';
   h+='<div class="panel rep"><h3>Heading ≠ BUCKET (row BUCKET is authoritative)</h3>'+tbl(['row','heading','BUCKET'],m.sectionMismatches.slice(0,200).map(function(r){return [rl(r),esc(r.section),esc(r.BUCKET)]}))+'</div>';
   var now=Date.now();var aging=S.rows.filter(function(r){var e=PipelineParser.parseDate(r.payload.SALARY_EXPIRES);var a=PipelineParser.parseDate(r.payload.SALARY_ASOF);return (e&&e.getTime()<now)||(a&&(now-a.getTime())/864e5>30)}).filter(function(r){return ['READY_TO_PURSUE','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED'].indexOf(r.BUCKET)>=0});
   h+='<div class="panel rep"><h3>Aging estimates on active rows (SALARY_ASOF &gt; 30d or SALARY_EXPIRES past)</h3>'+tbl(['row','bucket','SALARY_ASOF','SALARY_EXPIRES'],aging.map(function(r){return [rl(r),esc(r.BUCKET),esc(r.payload.SALARY_ASOF||''),esc(r.payload.SALARY_EXPIRES||'')]}))+'</div>';
@@ -351,8 +373,21 @@ function renderColumns(){var v=$('view-columns');var h='<div class="panel active
   $('c-save').onclick=function(){S.cols.bucketOrder=$('bo').value.split(',').map(function(s){return s.trim()}).filter(Boolean);S.newDays=+$('newdays').value||1;LS.set('cols',S.cols);render();switchTab('pipeline')};
   $('c-reset').onclick=function(){S.cols={desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};LS.set('cols',S.cols);renderColumns()};
 }
+/* ---------- settings (writer) ---------- */
+function renderSettings(){var v=$('view-settings');v.innerHTML='<div class="panel active"><h3>Writer setup · Google Apps Script running in your account</h3><div class="tip" style="margin-bottom:8px">With this configured the page reads the master through the script (no link sharing needed), writes your rulings into the master row in place with a receipt, and syncs seen-state and rulings across your devices. Setup steps: <span class="mono">apps-script/README.md</span> in the repo. Nothing runs on a schedule.</div>'+
+ '<div class="row"><span class="u" style="width:90px">script URL</span><input type="text" id="cfg-url" style="flex:1;min-width:240px" placeholder="https://script.google.com/macros/s/…/exec" value="'+esc(S.cfg.url)+'"></div>'+
+ '<div class="row"><span class="u" style="width:90px">passphrase</span><input type="text" id="cfg-key" style="width:220px" value="'+esc(S.cfg.key)+'"></div>'+
+ '<div class="row"><button id="cfg-test">Test</button><button id="cfg-save" class="neon">Save</button><button id="cfg-clear">Clear</button><span id="cfg-msg" class="tip"></span></div>'+
+ '<div class="tip" style="margin-top:8px">Status: '+(hasWriter()?'<span class="pill ok">WRITER ON</span>':'<span class="pill bad">WRITER OFF</span> reading via /api/master (needs the Doc shared by link); rulings held on this device')+'</div></div>'+
+ '<div class="panel"><h3>Receipts</h3><div class="row"><button id="cfg-receipts">Load receipts from Drive</button></div><pre id="cfg-rc" class="mono" style="white-space:pre-wrap;font-size:9.5px;color:var(--dim)"></pre></div>';
+ $('cfg-test').onclick=function(){var u=$('cfg-url').value.trim(),k=$('cfg-key').value.trim();var old=S.cfg;S.cfg={url:u,key:k};$('cfg-msg').textContent='testing…';gsGet('ping').then(function(j){$('cfg-msg').textContent=j.ok?'OK · script answers · master '+(j.master||'').slice(0,12)+'…':'script says: '+(j.error||'not ok');S.cfg=old}).catch(function(e){$('cfg-msg').textContent='no answer: '+e.message;S.cfg=old})};
+ $('cfg-save').onclick=function(){S.cfg={url:$('cfg-url').value.trim(),key:$('cfg-key').value.trim()};LS.set('cfg',S.cfg);renderSettings();load()};
+ $('cfg-clear').onclick=function(){S.cfg={url:'',key:''};LS.set('cfg',S.cfg);renderSettings()};
+ $('cfg-receipts').onclick=function(){if(!hasWriter()){$('cfg-rc').textContent='writer not configured';return}gsGet('receipts').then(function(j){$('cfg-rc').textContent=j.ok?(j.text||'(no receipts yet)'):(j.error||'error')}).catch(function(e){$('cfg-rc').textContent=e.message})};
+}
+$('settings').onclick=function(){switchTab('settings')};
 /* ---------- tabs, hash, boot ---------- */
-function switchTab(t){S.tab=t;document.querySelectorAll('nav button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t)});document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+t)});$('presets').style.display=t==='pipeline'?'flex':'none';$('filters').style.display=(t==='pipeline'&&Object.keys(S.filters).length)?'flex':'none';if(S.master)render()}
+function switchTab(t){S.tab=t;document.querySelectorAll('nav button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t)});$('settings').classList.toggle('on',t==='settings');document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+t)});$('presets').style.display=t==='pipeline'?'flex':'none';$('filters').style.display=(t==='pipeline'&&Object.keys(S.filters).length)?'flex':'none';if(t==='settings')renderSettings();if(S.master)render()}
 document.querySelectorAll('nav button').forEach(function(b){b.onclick=function(){switchTab(b.getAttribute('data-tab'))}});
 $('refresh').onclick=function(){load()};
 function pushHash(){var o={p:S.preset,s:S.sort,f:S.filters};try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(o)))}catch(e){}}
