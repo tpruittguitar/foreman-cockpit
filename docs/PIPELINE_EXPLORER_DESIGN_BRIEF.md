@@ -1,10 +1,12 @@
-# PIPELINE EXPLORER — DESIGN BRIEF v0.5
+# PIPELINE EXPLORER — DESIGN BRIEF v0.6
 
-**Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 second-round corrections; v0.5 adds the non-interference rule from Tim)
+**Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 second-round corrections; v0.5 non-interference rule; v0.6 Tim's rulings on the numbered questions)
 **Author:** Claude (Foreman node), from Tim's spec in this session
 **Status:** PROPOSAL FOR REVIEW. No code written. No Drive files changed. **v1 is read-only.** Nothing is authorized until Tim rules on §9. Merging this PR files the proposal; it does not authorize a build.
 **Reviewers:** Tim (final authority), ChatGPT, Grok
 **Repo:** tpruittguitar/foreman-cockpit (`docs/PIPELINE_EXPLORER_DESIGN_BRIEF.md`)
+
+**What changed in v0.6 (Tim's rulings, 2026-09-30).** §9 is replaced by §9A "Rulings received" and §9B "Still open, with plain-language explanations". Rulings applied: no paste, a refresh button that fetches the live fixed-ID master (§3.1); no new cost and no new website (§8); APPLY NOW is the AI disposition, with a Tim ruling field that overrides per row (§4.3); NEW is one day or "not yet seen by Tim", tracked per row (§4.2); AI decision capabilities unchanged, Tim overrules per row and the ruling becomes canonical through the pipeline's own request channel, and the nodes learn from his rulings (§5, §9B); visual: black and greys, white text, thin lines, neon only for focus, HUD feel (§7); portrait phone is a narrow scrolling table with smaller readable text (§8). Step 1 build is **on hold** at Tim's instruction until §9B is closed.
 
 **What changed in v0.5 (Tim's instruction, 2026-09-30).** Tim: "Make sure the AI schedules and automation work continue like designed. This is just a viewer and analysis and management tool for their work." That is now §2.1, a hard rule above every other section. Two proposals that would have asked the pipeline to change its output are withdrawn as requests (SCHEMA header line, canonical APPLY_NOW field); the app adapts to whatever the pipeline produces. Manual refresh only, no polling. Reads are confirmed not to touch the master's modifiedTime, which the writers' concurrency protocol depends on.
 
@@ -79,7 +81,7 @@ The Explorer is a viewer, analysis and management tool **for** the pipeline's wo
 
 **Master source.** One constant, `MASTER_FILE_ID = 19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`, set from the governing cutover document, overridable only by a future explicit Tim ruling. No search, no pattern, no newest-wins. The status line shows the file's title, ID and modifiedTime on every load. If the title is not `V2_CURRENT_POPULATION_MASTER.txt` the status line shows a warning; the app still renders.
 
-**Fetch.** Raw text: Doc export as `text/plain`. Never the connector's markdown rendering. Offline: paste or file drop of the same export.
+**Fetch.** Raw text: Doc export as `text/plain`. Never the connector's markdown rendering. **Tim's ruling (Q2): no pasting.** The page loads the live master on open and on a Refresh button. Constraints from Q3: nothing that costs money, no new website. The repo is public (verified 2026-09-30), so a copy of the master cannot be committed for testing. The zero-cost private path is a Google Apps Script web app deployed once from Tim's own Google account: it runs as Tim, reads the fixed-ID Doc, and returns the text to the page over HTTPS, gated by a secret the page stores after Tim enters it once. Tim's one-time setup is about five minutes (paste the script, click Deploy, copy the URL into the page). Fallback if Tim prefers zero setup: share the master Doc as "anyone with the link, viewer" and fetch its export through the existing Netlify function, exactly as the cockpit feed works today; this exposes the master to anyone who obtains the ID, and is not recommended for a file holding application history. Paste and file drop remain as an emergency path only, not the normal one.
 
 **Parser contract.**
 1. Split header from body at the first `====` rule line. Parse `COUNTS:` and `COLUMNS:` from the header. If a `SCHEMA:` line exists (§3.4), parse it; if absent, assume schema 1 and say so in the status line.
@@ -119,7 +121,7 @@ Full-width table, sticky header, frozen COMPANY and BUCKET, horizontal scroll. ~
 
 ### 4.2 Default ordering
 1. BUCKET order (local config): READY_TO_PURSUE, TIM_DECISION_REQUIRED, BLOCKED, MANUAL_RESEARCH, APPLIED, REJECTED_BY_EMPLOYER, DECLINED_BY_TIM, DUPLICATE, CLOSED_DEAD.
-2. Within bucket: `DATE_ADDED` descending; `PRE-EXISTING` rows last. IS_NEW = DATE_ADDED within the last N days (default 3). No local-storage newness.
+2. Within bucket: `DATE_ADDED` descending; `PRE-EXISTING` rows last. **IS_NEW (Tim's ruling, Q5):** a row is NEW if `DATE_ADDED` is within the last 1 day, OR Tim has not yet seen it. "Seen" means Tim opened the row, interacted with it, or commented on it. Seen-state is per PRIMARY_ID and is Tim's own app state, not canonical state: it is kept in a small Tim-owned file outside AI_Coordination (via the same Apps Script) so phone and laptop agree, with browser storage as the offline cache. No node reads it. A "mark all seen" control exists.
 3. Then `SALARY_ASOF` / `FLEX_ASOF` descending.
 Any header click overrides; "reset" restores priority order.
 
@@ -128,11 +130,12 @@ Enum columns get checkbox lists with counts; text columns contains / not-contain
 
 Presets are saved filter sets. The active preset's predicate is printed in the status line so the reader always sees exactly what was filtered. **The Explorer does not recreate job policy.** Each term below is canonical state already written into the master by the nodes that own that policy, with its source labeled. If the ranking node ever writes an explicit `APPLY_NOW=YES/NO` (or equivalent) into the row on its own initiative, the preset switches to that field and this predicate is retired. The Explorer does not ask for that field (§2.1 item 2).
 
-- **APPLY NOW (proposed; Tim to accept or replace; note open item #92 "APPLY NOW seat divergence"):**
+- **APPLY NOW (Tim's ruling, Q4: "let the AIs decide; I can change their decision in my editable field and rule against apply now"):** the preset shows the AI disposition as the nodes wrote it, and Tim's per-row ruling (§5) overrides the display where one exists. Interim predicate until the nodes write an explicit field:
   `BUCKET = READY_TO_PURSUE` (disposition owned by Foreman/Scout under current rules)
   `AND no BLOCKER key` (unresolved decision-changing blocker, written by resolver)
   `AND no ANTI_RESURRECTION key` (terminal suppression, Amendment 58 §14)
-  `AND BUCKET ≠ APPLIED` (redundant with the first term; stated for the reader).
+  `AND BUCKET ≠ APPLIED` (redundant with the first term; stated for the reader)
+  `AND no Tim ruling against pursuit on this row` (Tim's override, §5).
   Not included: liveness (no canonical column yet), first-party URL (per Tim's 2026-09-26 change as reported by ChatGPT; not independently verified this session), floor and FLEX tests (both are already inputs to the READY_TO_PURSUE disposition; re-applying them here would let the app second-guess Tim-advanced degree-wall rows such as those tagged `DEGREE_WALL_TIM_ADVANCE`). The row's own `FLOOR_STATUS`, where present, is shown as a column so the reader can see it.
 - **NEW:** IS_NEW, any bucket except DUPLICATE and CLOSED_DEAD.
 - **NEEDS ACTION:** BUCKET in (TIM_DECISION_REQUIRED, BLOCKED, MANUAL_RESEARCH). `VERIFY_LATER` is **excluded**: the master header defines it as "unknown but decision-irrelevant" that "must not remain in NEEDS_RESOLUTION", and 6 of the 12 rows carrying it are READY_TO_PURSUE. If a canonical NEXT_ACTION or DECISION_CHANGING field appears later, the preset switches to it.
@@ -146,6 +149,9 @@ Right-side drawer on desktop, full-screen on phone. Every real and payload field
 ---
 
 ## 5. Write channel (v2, gated) — built on Amendment 58
+
+### 5.0 Tim's ruling (Q6, 2026-09-30)
+"Don't change AI decision capabilities. I want the ability to overrule and make my ruling canonical for each one. Then improve decisions of the AI based on interpretation of my guidance. Learn. Get better." Three consequences: (1) the nodes keep deciding exactly as they do now; (2) Tim gets an editable ruling per row, and that ruling becomes canonical in the master through the pipeline's own STATE_CHANGE_REQUEST channel, not by the app editing the master; (3) the learning loop is a governance instruction to the nodes (read Tim's rulings and treat them as precedent when deciding similar rows), which is Tim's to issue and outside this app. The master already carries Tim-ruling vocabulary (`DECLINE_REASON_CODE=TIM_EXPLICIT_DECLINE`, `TIM_DISPOSITION=`, `DEGREE_WALL_TIM_ADVANCE`), so the request format reuses it. This moves the write channel from "maybe later" to "the next thing after the viewer", still behind the §5.2 gate.
 
 ### 5.1 Principle
 Amendment 58 already answers "who materializes canonical state": an Authorized State Writer, defined by capability, executing STATE_CHANGE_REQUESTs and emitting STATE_CHANGE_RECEIPTs. Tim's direct statement is the highest-precedence evidence for his own application status (§6). So the Explorer's job is to let Tim make that statement in the pipeline's own request format. **There is no ledger, no merge rule for nodes, and no app-side mutation.** v0.2's ledger design is withdrawn.
@@ -177,14 +183,14 @@ Never mutates the master. Never writes on behalf of a node. Never changes BUCKET
 
 ---
 
-## 7. Visual design
-Pure black base, near-white text, two greys, 1 px hairlines, no gradients or animation. System sans for labels, monospace for data, uppercase micro-labels with wide tracking. One accent (§9 P1) for active tab, primary button, focused row, header rule. Status colors: green (READY_TO_PURSUE, APPLIED), red (REJECTED_BY_EMPLOYER, CLOSED_DEAD, BLOCKED), grey (DECLINED_BY_TIM, DUPLICATE, MANUAL_RESEARCH), accent for TIM_DECISION_REQUIRED and for "requested" overlays in v2. Corner brackets on the active panel, faint grid texture in the header band, monospace status line. 11 px body, 22 px rows; phone portrait 12 px with the phone column set.
+## 7. Visual design (Tim's ruling, Q10 and Q11)
+Black base and shades of grey only. White text, thin 1 px lines. **White is the accent** for active tab, primary control and header rule. Bright neon (one green, one cyan, one magenta, used sparingly) only for the element that needs focus: a highlighted row, the selected cell, a NEW marker, a Tim ruling. Star Trek, Anduril, Shield AI weapons-HUD feel: reticle corner brackets on the active panel, a faint grid in the header band, monospace readouts, no gradients, no animation beyond a focus pulse. System sans for labels, monospace for data, uppercase micro-labels with wide tracking. Status is shown by a small monochrome glyph plus text, not by colored chips, so the neon stays reserved for focus. Exceptions: NEW marker in neon green, Tim ruling in neon cyan, "requested, not yet canonical" in neon magenta. Corner brackets on the active panel, faint grid texture in the header band, monospace status line. 11 px body, 22 px rows on desktop. Portrait phone (Q11): narrow table, smaller but readable text, both axes scrollable, COMPANY and BUCKET frozen; no card list.
 
 ---
 
 ## 8. Platform and delivery
 
-- One HTML file, no framework, no build step, second page in this repo (`pipeline.html`) on the existing Netlify site. Cockpit untouched.
+- One HTML file, no framework, no build step, on the existing free Netlify site in this repo. **No new cost, no new website (Q3).** The only backend is a Google Apps Script in Tim's own account, also free. See §9B item 8 for whether this page replaces the cockpit page or sits beside it.
 - Size: step 1 ≈ 1,200–1,600 lines. Step 2 adds ~300. Step 3 (v2) adds roughly step 1 again.
 - Mobile: same page; breakpoints switch column set; filters become bottom sheets; drawer full-screen. Landscape phone fits ~8 dense columns; portrait shows the phone set with COMPANY + BUCKET frozen.
 
@@ -198,31 +204,36 @@ Step 1 replaces the stale cockpit feed as the way to see the master and is testa
 
 ---
 
-## 9. Open decisions for Tim
+## 9A. Rulings received (Tim, 2026-09-30)
 
-**Architecture**
+| Q | Tim's ruling | Applied where |
+|---|---|---|
+| 1 | Hold the Step 1 build until the other questions are answered. | Build not started. |
+| 2 | No pasting. Load the latest list and give a Refresh button. | §3.1: Apps Script read of the fixed-ID master; fallback stated. |
+| 3 | No new cost, no new website. | §8: existing Netlify site + free Apps Script. |
+| 4 | Let the AIs decide APPLY NOW; Tim's editable field overrides per row. | §4.3, §5.0. |
+| 5 | NEW = one day, or not yet shown to / interacted with by Tim. | §4.2 seen-state. |
+| 6 | Do not change AI decision capabilities. Tim overrules per row; ruling becomes canonical; AIs learn from his guidance. | §5.0. Learning loop is a governance instruction (§9B item 6). |
+| 7 | "I don't know what this means." | Explained in §9B item 7. |
+| 8 | "What's the difference? I asked for one app." | Explained in §9B item 8. |
+| 9 | CSV is more portable and fundamental. | Explained in §9B item 9. |
+| 10 | White, not gold. Black and greys, white text, thin lines, neon only for focus. HUD feel. | §7. |
+| 11 | Narrow table, smaller readable text, scrolling. | §7, §8. |
 
-| # | Question | Reviewer position | Claude position |
-|---|---|---|---|
-| A1 | Read backend for step 2: Apps Script executed as Tim with shared secret, vs Netlify function + service account | Grok: Apps Script. ChatGPT: defer, step 1 needs neither | Defer to step 2; recommend Apps Script then |
-| A2 | Which Authorized State Writer executes app-originated STATE_CHANGE_REQUESTs, via what surface (the §5.2 gate). Cutover REV2 §8 item 2 says this is unresolved even for the pipeline's own writes | Both: one named materializer, never "every node" | Agree. Amendment 58 already says this; the gap is naming the surface |
-| A3 | Is a browser-originated request with REQUESTED_BY=Tim acceptable as "direct Tim statement" under Amendment 58 §6? | Both reviewers: not with a shared secret alone; possession of a bearer secret is not identity | Agree, revised: v2 needs authenticated Google identity or a server-side authenticated session so the writer can distinguish "Tim submitted this" from "someone held the secret". Not needed for Step 1 or 2 |
-| A4 | Floors as data | Both: no | Agree; tied to open item #90 |
-| A5 | UI config as a Drive governing file | Both: no, local first | Agree |
-| A6 | APPLY NOW predicate (§4.3) | ChatGPT: prefer a canonical field | Accept or replace the interim predicate. Whether the pipeline ever writes a canonical APPLY_NOW field is a pipeline decision under #92, not an ask from this project (§2.1) |
-| A7 | Sheet/CSV migration | Both: not now | Agree; REV2 §8 item 4 already defers it |
-| A8 | `SCHEMA:` header line in the master (§3.4) | ChatGPT proposed it; Grok: optional | Withdrawn as a request per §2.1. Recorded as an idea the pipeline may adopt; the app tolerates its absence |
-| Q3 | Cockpit page (calendar/tasks/nodes): keep as a separate page, or retire after the Explorer ships | — | Keep both a week, then decide |
-| Q4 | May a copy of the master export be committed to this public repo as a fixture? | — | No; scrubbed 20-row fixture |
+## 9B. Still open, in plain language
 
-**Paint**
+**6 and 7 together: how your ruling becomes canonical, and who is allowed to say it came from you.**
+When you tap "overrule" on your phone, something has to physically edit the master file in Drive. Your own Amendment 58 says Claude cannot edit files in place and must not create replacement files; only an "Authorized State Writer" may change the master, by reading a STATE_CHANGE_REQUEST, editing the row, reading it back, and writing a receipt. Amendment 58's filing note says ChatGPT holds in-place Drive edit authority today; Grok may also qualify. So the flow is: the app writes your ruling as a request into a small queue file; ChatGPT or Grok applies it to the master on its next run and writes a receipt; the app shows "requested" in magenta until the receipt arrives, then shows it as canonical. **Decision 6:** name which node picks up app-originated requests (recommend ChatGPT/Forge), and confirm you will add one line to their instructions telling them to do so and to treat your rulings as precedent for similar rows. That line is the "learn, get better" part; the app cannot make them learn. **Decision 7 (identity):** the queue is written by a web page. Anyone holding the page URL and the secret could file a ruling in your name, and Amendment 58 treats a direct Tim statement as the highest evidence. Options: accept that risk because the secret is yours alone and the tool is personal (recommended now, zero cost); or add Google sign-in to the page later (free, more setup) so the writer can verify it was your account. Recommend: accept the secret for now, revisit if the page is ever shared.
 
-| # | Question | Reviewer position | Claude position |
-|---|---|---|---|
-| P1 | Accent color | Grok: cyan | Either |
-| P2 | Portrait phone | Both: narrow table, no cards | Agree |
+**8: cockpit versus Explorer, and "one app".**
+There is no standalone app being proposed. Both are web pages. The cockpit is the page you have today: nodes, calendar, task board, top targets, fed by a Doc that has not been updated since August 11. The Explorer is the new master viewer. "One app" is achievable: make the Explorer the home page, and carry over the cockpit panels that still earn their place (upcoming interviews, node schedule) as tabs, if their data source is brought back to life by the pipeline. Otherwise the stale panels are dropped. **Recommend:** one page, the Explorer replaces the cockpit at the same address once it works; the old page stays reachable at a sub-address for a while. Your yes or no.
 
----
+**9: CSV.**
+You are right that CSV is more portable, and the master's row format is already nearly CSV (pipe-separated with a payload). But the master is written by ChatGPT and Grok, so moving it to CSV means changing how they write, which is a pipeline change under the cutover plan (REV2 defers it) and outside this app by your own non-interference rule. The app is built format-agnostic: it reads the pipe format today and will read CSV the day the pipeline produces it. **Recommend:** do not change the master's format for the viewer's sake; if you want CSV, issue it as a pipeline directive when the cutover is stable. Your call.
+
+**2, follow-up:** Apps Script needs one five-minute setup by you. Confirm you are willing, or choose the link-sharing fallback with its exposure stated in §3.1.
+
+**5, follow-up:** seen-state needs a small Tim-owned file so phone and laptop agree. It lives outside AI_Coordination and no node reads it. Confirm.
 
 ## 10. Risks and weak assumptions
 - **Writer surface unresolved.** Even the pipeline's own in-place writes are flagged as a tool gap (REV2 §8 item 2). Until A2 is settled, v2 cannot be built. Step 1 has no exposure.
@@ -241,6 +252,7 @@ Step 1 replaces the stale cockpit feed as the way to see the master and is testa
 - 2026-09-29 v0.2 — Revised after Grok review. Verified against `V2_CURRENT_POPULATION_MASTER.txt` by full export (526 rows, vocabulary, keys, 99 mismatches, encoding). No Drive writes, no code.
 - 2026-09-29 v0.3 — Revised after ChatGPT review. Read `FORGE_AMENDMENT_58_CANONICAL_STATE_WRITE_ARCHITECTURE_2026-09-27` (`1Vz-ifWCspz1RPf_QyWZ9XYND2GrZsAwx`), `MASTER_TABLE_CUTOVER_IMPLEMENTATION_2026-09-29_REV2.txt` (`1t83d2awD2gA_JstH8eCHsfs5YLtxKDLW`), and `STATE_CHANGE_REQUEST_SCR-2026-09-27-001`. Master resolution corrected to fixed ID. Write channel rebuilt on Amendment 58; ledger withdrawn. v1 scoped read-only. §3.3, §3.4 added. §4.3 predicate reduced and labeled. No Drive writes, no code.
 - 2026-09-30 v0.4 — Second-round corrections from ChatGPT and Grok, each verified against the live master before applying: VERIFY_LATER removed from NEEDS ACTION (header rule confirmed; 12 rows carry the key, 6 of them READY_TO_PURSUE); Salary Floors deferred to #90, row-level FLOOR_STATUS shown (present on 6 rows); SCHEMA fields revised; PIPELINE preset checked against where interview/offer states live (DISPOSITION under APPLIED); predicate shown in status line; cancel-pending replaces 30 s undo; five fixture cases specified; A3 position revised. No Drive writes, no code.
+- 2026-09-30 v0.6 — Tim's rulings on the eleven numbered questions recorded (§9A) and applied to §3.1, §4.2, §4.3, §5.0, §7, §8; open items restated in plain language with recommendations (§9B). Repo visibility verified public. Build on hold per Tim. No Drive writes, no code.
 - 2026-09-30 v0.5 — Tim's non-interference instruction added as §2.1 and applied: SCHEMA line and canonical APPLY_NOW field withdrawn as requests; manual refresh only; reads confirmed not to touch modifiedTime; nothing written to AI_Coordination in v1. No Drive writes, no code.
 
 ---
