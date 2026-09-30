@@ -35,7 +35,10 @@ td.sticky,th.sticky{position:sticky;z-index:2;background:#050505}th.sticky{z-ind
 tbody tr:hover td{background:#0e0e0e}tbody tr.focus td{background:#101416;box-shadow:inset 0 -1px 0 var(--nc)}
 tbody tr.seen td{color:#c9c9c9}td.mono{font-family:var(--mono);font-size:10.5px}
 .g{font-family:var(--mono);margin-right:4px}.g.new{color:var(--ng)}.g.rule{color:var(--nc)}.g.pend{color:var(--nm)}.g.err{color:var(--nm)}
-td.b-READY_TO_PURSUE{color:var(--white)}td.b-APPLIED{color:var(--white)}td.b-DECLINED_BY_TIM,td.b-DUPLICATE,td.b-CLOSED_DEAD{color:var(--faint)}td.b-BLOCKED,td.b-TIM_DECISION_REQUIRED{color:var(--nc)}
+td.b-READY_TO_PURSUE{color:var(--white)}td.b-APPLIED{color:var(--white)}td.b-DECLINED_BY_TIM,td.b-DUPLICATE,td.b-CLOSED_DEAD,td.b-INVALID_DISCOVERY{color:var(--faint)}td.b-BLOCKED,td.b-TIM_DECISION_REQUIRED{color:var(--nc)}
+td.b-SCOUT_INTAKE{color:var(--ng);font-weight:600}td.b-DISCOVERY_LEAD{color:var(--ng);opacity:.75}
+.chip.hot{border-color:var(--ng);color:var(--ng)}.sec{border:1px solid var(--line);margin:8px 0;padding:6px 8px}.sec h4{margin:0 0 4px;font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}.sec.scout h4{color:var(--ng)}.sec.claude h4{color:#b58cff}.sec.forge h4{color:var(--white)}.sec.tim h4{color:var(--nc)}
+.kpi{display:inline-block;min-width:110px;margin:3px 6px 3px 0;padding:4px 8px;border:1px solid var(--line2)}.kpi b{display:block;font-family:var(--mono);font-size:14px;color:var(--white)}.kpi span{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--faint)}
 .panel{border:1px solid var(--line);background:var(--panel);margin:8px;padding:8px 10px;position:relative}
 .panel.active::before,.panel.active::after{content:"";position:absolute;width:10px;height:10px;border:1px solid var(--white)}
 .panel.active::before{top:-1px;left:-1px;border-right:0;border-bottom:0}.panel.active::after{bottom:-1px;right:-1px;border-left:0;border-top:0}
@@ -64,7 +67,7 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
   <div class="brand">PIPELINE EXPLORER<small id="brandsub">canonical master · viewer + Tim rulings</small></div>
   <div id="readout">no data</div>
   <nav>
-    <button data-tab="pipeline" class="on">Pipeline</button><button data-tab="reports">Reports</button><button data-tab="automations">Automations</button><button data-tab="columns">Columns</button>
+    <button data-tab="pipeline" class="on">Pipeline</button><button data-tab="reports">Reports</button><button data-tab="quality">Scout quality</button><button data-tab="rules">Rules</button><button data-tab="automations">Automations</button><button data-tab="columns">Columns</button>
   </nav>
   <button id="refresh" class="neon">Refresh</button>
   <button id="settings" title="Writer setup">⚙</button>
@@ -77,12 +80,15 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
   <div class="view" id="view-automations"></div>
   <div class="view" id="view-columns"></div>
   <div class="view" id="view-settings"></div>
+  <div class="view" id="view-quality"></div>
+  <div class="view" id="view-rules"></div>
   <aside id="drawer"><div class="dh"><div style="flex:1"><h2 id="d-title"></h2><div class="sub" id="d-sub"></div></div><button id="d-close">✕</button></div><div class="db" id="d-body"></div></aside>
 </main>
 <div id="autobar" title="Automation timers · click to expand"></div>
 </div>
 <div id="pop"></div>
 <script src="pipeline-parser.js"></script>
+<script src="pipeline-quality.js"></script>
 <script>
 (function(){
 'use strict';
@@ -92,13 +98,19 @@ var LS={get:function(k,d){try{var v=localStorage.getItem('px.'+k);return v?JSON.
 var MASTER_FILE_ID='19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI';
 var FIXED=['INV','PRIMARY_ID','COMPANY','TITLE','BUCKET','DISPOSITION','TAGS','REQ','LOCATION','SCOUT_ACTION'];
 var COMPUTED=['NEW','TIM_RULING','SECTION','MISMATCH','COMP_MID','CELLS'];
-var BUCKET_ORDER_DEFAULT=['READY_TO_PURSUE','TIM_DECISION_REQUIRED','BLOCKED','MANUAL_RESEARCH','APPLIED','REJECTED_BY_EMPLOYER','DECLINED_BY_TIM','DUPLICATE','CLOSED_DEAD'];
-var DESK_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DISPOSITION','LOCATION','DATE_ADDED','SALARY_BASE_EST','FLEX','FLOOR_STATUS','REQ','NOTIFICATION_SOURCE','TAGS','DECLINE_REASON_CODE','BLOCKER','SECTION'];
+var BUCKET_ORDER_DEFAULT=['SCOUT_INTAKE','DISCOVERY_LEAD','READY_TO_PURSUE','TIM_DECISION_REQUIRED','BLOCKED','MANUAL_RESEARCH','APPLIED','REJECTED_BY_EMPLOYER','DECLINED_BY_TIM','DUPLICATE','CLOSED_DEAD','INVALID_DISCOVERY'];
+var PROTECTED=['APPLIED','REJECTED_BY_EMPLOYER'];
+var DESK_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DISPOSITION','LOCATION','DATE_ADDED','SALARY_BASE_EST','FLEX','FLOOR_STATUS','REQ','NOTIFICATION_SOURCE','IDENTITY_CONFIDENCE','SCOUT_RUN_ID','TAGS','DECLINE_REASON_CODE','BLOCKER','SECTION'];
+var SCOUT_KEYS=['INTAKE_KEY','SCOUT_RUN_ID','DISCOVERED_AT_ET','DISCOVERY_SOURCE','SOURCE_URL','SOURCE_PROVIDER','REQ_ID','IDENTITY_CONFIDENCE','INITIAL_UNKNOWN_FIELDS','POSSIBLE_MATCHES','PAY_POSTED','DEGREE_TEXT','FLEX_HINT','REPORTING_LEVEL','EMPLOYER_DOMAIN_HINT','EMPLOYER_PRIMARY_BUSINESS','SCOUT_NOTES','POSTING_DATE','REMOTE_HYBRID','NOTIFICATION_SOURCE','DATE_ADDED','SOURCE'];
+var TIM_KEYS=['TIM_NOTE','TIM_RULING','TIM_DISPOSITION','DECLINE_REASON_CODE','DECLINE_REASON_CODE_PRIOR','DECLINE_REASON_TEXT','REOPEN_TRIGGER','DUP_OF','INVALID_REASON','RESEARCH_REQUEST','STATE_SOURCE','STATE_UPDATED_AT'];
+function keyGroup(k){if(TIM_KEYS.indexOf(k)>=0)return 'tim';if(/^(CLAUDE_|ANALYSIS_|PROPOSED_|RANK_|FIT$|FIT_)/.test(k))return 'claude';if(SCOUT_KEYS.indexOf(k)>=0)return 'scout';return 'forge'}
 var PHONE_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DATE_ADDED','SALARY_BASE_EST','LOCATION'];
 var DATE_KEYS={DATE_ADDED:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
 var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,tab:'pipeline',newDays:1,search:''};
 S.cols=S.cols||{desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};
+if(S.cols.bucketOrder.indexOf('SCOUT_INTAKE')<0){S.cols.bucketOrder=['SCOUT_INTAKE','DISCOVERY_LEAD'].concat(S.cols.bucketOrder.filter(function(b){return b!=='SCOUT_INTAKE'&&b!=='DISCOVERY_LEAD'})).concat(['INVALID_DISCOVERY']).filter(function(b,i,a){return a.indexOf(b)===i});LS.set('cols',S.cols)}
+S.runs=[];S.rules=null;
 
 /* ---------- data source adapters (read-only; manual refresh only; no polling) ---------- */
 function hasWriter(){return !!(S.cfg.url&&S.cfg.key)}
@@ -113,7 +125,7 @@ function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
   readout('<b>fetching…</b>');
   var p=src?Source.url(src):(hasWriter()?Source.script():Source.netlify());
-  if(hasWriter()&&!src)syncStateDown();
+  if(hasWriter()&&!src){syncStateDown();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality()}}).catch(function(){});gsGet('rules').then(function(j){if(j.ok){S.rules=j.rules;if(S.tab==='rules')renderRules()}}).catch(function(){})}
   p.then(function(res){
     if(!res.ok){readout('<span class="bad">FETCH FAILED</span> '+esc(res.hint||res.error||('status '+res.status)));var c=LS.get('cache',null);if(c){apply(c.text,c.meta,true)}return}
     var meta={id:res.id,fetchedAt:res.fetchedAt,bytes:res.bytes,modifiedTime:res.modifiedTime||''};LS.set('cache',{text:res.text,meta:meta});apply(res.text,meta,false);
@@ -135,8 +147,9 @@ function decorate(r){
 }
 function isNew(r){if(S.seen[r.id])return false;if(r.dateAdded){var age=(Date.now()-r.dateAdded.getTime())/864e5;if(age<=S.newDays)return true}return !S.seen[r.id]}
 function ruling(r){return S.rulings[r.id]||null}
+var EXPECT_BUCKET={DECLINE:'DECLINED_BY_TIM',APPLIED:'APPLIED',MANUAL_RESEARCH:'MANUAL_RESEARCH',DUPLICATE:'DUPLICATE',CLOSED_DEAD:'CLOSED_DEAD',INVALID_DISCOVERY:'INVALID_DISCOVERY'};
 function rulingState(r){var ru=ruling(r);if(!ru)return null;if(ru.receipt&&ru.receipt.COMPLETION_STATUS==='COMPLETE')return{s:'CANONICAL',ru:ru};if(ru.error)return{s:'WRITE FAILED',ru:ru};var changed=ru.snap&&(ru.snap.BUCKET!==r.BUCKET||ru.snap.DISPOSITION!==r.DISPOSITION);if(!changed)return{s:'PENDING',ru:ru};
-  var applied=(ru.kind==='DECLINE'&&r.BUCKET==='DECLINED_BY_TIM')||(ru.kind==='APPLIED'&&r.BUCKET==='APPLIED')||(ru.kind==='APPLY_NOW'&&ru.value==='YES'&&r.BUCKET==='READY_TO_PURSUE')||(ru.kind==='NOTE');
+  var exp=ru.kind==='APPLY_NOW'?(ru.value==='YES'?'READY_TO_PURSUE':'DECLINED_BY_TIM'):EXPECT_BUCKET[ru.kind];var applied=(ru.kind==='NOTE')||(exp&&r.BUCKET===exp);
   return{s:applied?'CANONICAL':'MASTER CHANGED',ru:ru}}
 function val(r,c){
   switch(c){
@@ -174,16 +187,18 @@ function visibleCols(){var phone=window.innerWidth<=760;var set=phone?S.cols.pho
 /* ---------- presets ---------- */
 var PRESETS={
   ALL:{label:'All',text:'no preset',fn:function(){return true}},
-  APPLY_NOW:{label:'Apply now',text:'BUCKET=READY_TO_PURSUE (AI disposition) AND no BLOCKER AND no ANTI_RESURRECTION AND Tim ruling not against',fn:function(r){var ru=ruling(r);return r.BUCKET==='READY_TO_PURSUE'&&!r.payload.BLOCKER&&!r.payload.ANTI_RESURRECTION&&!(ru&&((ru.kind==='APPLY_NOW'&&ru.value==='NO')||ru.kind==='DECLINE'))}},
-  NEW:{label:'New',text:'DATE_ADDED within '+1+' day OR not yet seen by Tim; excludes DUPLICATE, CLOSED_DEAD',fn:function(r){return isNew(r)&&r.BUCKET!=='DUPLICATE'&&r.BUCKET!=='CLOSED_DEAD'}},
-  NEEDS_ACTION:{label:'Needs action',text:'BUCKET in (TIM_DECISION_REQUIRED, BLOCKED, MANUAL_RESEARCH); VERIFY_LATER excluded by master rule',fn:function(r){return ['TIM_DECISION_REQUIRED','BLOCKED','MANUAL_RESEARCH'].indexOf(r.BUCKET)>=0}},
-  PIPELINE:{label:'Pipeline',text:'BUCKET=APPLIED, grouped by DISPOSITION (interview/offer states live in DISPOSITION today)',fn:function(r){return r.BUCKET==='APPLIED'}},
+  SCOUT_INTAKE:{label:'New Scout intake',hot:true,text:'BUCKET=SCOUT_INTAKE (discovered by Scout, awaiting Claude analysis and Forge verification; not an endorsement)',fn:function(r){return r.BUCKET==='SCOUT_INTAKE'}},
+  LEADS:{label:'Discovery leads',hot:true,text:'BUCKET=DISCOVERY_LEAD (plausible opportunity, identity not yet resolved; never silently dropped)',fn:function(r){return r.BUCKET==='DISCOVERY_LEAD'}},
+  NEEDS_ANALYSIS:{label:'Needs analysis',text:'BUCKET in (SCOUT_INTAKE, DISCOVERY_LEAD, MANUAL_RESEARCH, BLOCKED, TIM_DECISION_REQUIRED); VERIFY_LATER excluded by master rule',fn:function(r){return ['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED'].indexOf(r.BUCKET)>=0}},
+  APPLY_NOW:{label:'Ready to pursue',text:'BUCKET=READY_TO_PURSUE (AI disposition) AND no BLOCKER AND no ANTI_RESURRECTION AND Tim ruling not against',fn:function(r){var ru=ruling(r);return r.BUCKET==='READY_TO_PURSUE'&&!r.payload.BLOCKER&&!r.payload.ANTI_RESURRECTION&&!(ru&&((ru.kind==='APPLY_NOW'&&ru.value==='NO')||ru.kind==='DECLINE'))}},
+  NEW:{label:'New to me',text:'DATE_ADDED within '+1+' day OR not yet seen by Tim; excludes DUPLICATE, CLOSED_DEAD, INVALID_DISCOVERY',fn:function(r){return isNew(r)&&['DUPLICATE','CLOSED_DEAD','INVALID_DISCOVERY'].indexOf(r.BUCKET)<0}},
   RULED:{label:'My rulings',text:'rows with a Tim ruling (pending, canonical, or master changed)',fn:function(r){return !!ruling(r)}},
   DECLINED:{label:'Declined',text:'BUCKET=DECLINED_BY_TIM',fn:function(r){return r.BUCKET==='DECLINED_BY_TIM'}},
-  CLOSED:{label:'Closed',text:'BUCKET in (REJECTED_BY_EMPLOYER, DUPLICATE, CLOSED_DEAD)',fn:function(r){return ['REJECTED_BY_EMPLOYER','DUPLICATE','CLOSED_DEAD'].indexOf(r.BUCKET)>=0}}
+  APPLIED:{label:'Applied',text:'BUCKET=APPLIED, grouped by DISPOSITION (interview/offer states live in DISPOSITION today)',fn:function(r){return r.BUCKET==='APPLIED'}},
+  TERMINAL:{label:'Terminal / archive',text:'BUCKET in (REJECTED_BY_EMPLOYER, DUPLICATE, CLOSED_DEAD, INVALID_DISCOVERY); nothing here is deleted',fn:function(r){return ['REJECTED_BY_EMPLOYER','DUPLICATE','CLOSED_DEAD','INVALID_DISCOVERY'].indexOf(r.BUCKET)>=0}}
 };
 function renderPresets(){
-  var h='';Object.keys(PRESETS).forEach(function(k){var n=S.rows.filter(PRESETS[k].fn).length;h+='<span class="chip'+(S.preset===k?' on':'')+'" data-p="'+k+'">'+PRESETS[k].label+' <span class="mono faint">'+n+'</span></span>'});
+  var h='';Object.keys(PRESETS).forEach(function(k){var n=S.rows.filter(PRESETS[k].fn).length;h+='<span class="chip'+(S.preset===k?' on':'')+(PRESETS[k].hot&&n?' hot':'')+'" data-p="'+k+'">'+PRESETS[k].label+' <span class="mono'+(PRESETS[k].hot&&n?'':' faint')+'">'+n+'</span></span>'});
   h+='<span style="flex:1"></span><input type="text" id="search" placeholder="search all columns…" value="'+esc(S.search)+'" style="width:180px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
   h+='<div id="predicate"></div>';
   $('presets').innerHTML=h;
@@ -206,7 +221,7 @@ function passes(r){
 }
 function defaultSort(a,b){
   var bo=S.cols.bucketOrder;var ia=bo.indexOf(a.BUCKET),ib=bo.indexOf(b.BUCKET);if(ia<0)ia=99;if(ib<0)ib=99;if(ia!==ib)return ia-ib;
-  if(S.preset==='PIPELINE'){var d=cmp(a.DISPOSITION,b.DISPOSITION);if(d)return d}
+  if(S.preset==='APPLIED'){var d=cmp(a.DISPOSITION,b.DISPOSITION);if(d)return d}
   var na=isNew(a)?0:1,nb=isNew(b)?0:1;if(na!==nb)return na-nb;
   var ta=a.dateAdded?a.dateAdded.getTime():-1,tb=b.dateAdded?b.dateAdded.getTime():-1;if(ta!==tb)return tb-ta;
   return cmp(b.payload.SALARY_ASOF||'',a.payload.SALARY_ASOF||'')||cmp(a.COMPANY,b.COMPANY);
@@ -217,7 +232,8 @@ function readout(h){$('readout').innerHTML=h}
 function renderReadout(){
   var m=S.master;if(!m)return;var ck=m.checksum.ok?'<span class="good">COUNTS OK</span>':'<span class="bad">COUNTS MISMATCH '+esc(m.checksum.diffs.map(function(d){return d.bucket+' '+d.declared+'≠'+d.parsed}).join(', '))+'</span>';
   var t=m.title.split('(')[0].trim().slice(0,48);
-  readout('<b>'+esc(t)+'</b> · '+m.rows.length+' rows · '+ck+' · '+(m.parseErrors.length?'<span class="bad">'+m.parseErrors.length+' parse err</span>':'0 parse err')+' · '+m.sectionMismatches.length+' heading≠bucket · fetched '+esc((S.meta.fetchedAt||'').replace('T',' ').slice(0,16))+'Z'+(S.meta.fromCache?' <span class="bad">(CACHED)</span>':'')+' · schema '+esc(m.schema.MASTER_SCHEMA_VERSION||'?')+(hasWriter()?' · <span class="good">WRITER ON</span>':' · <span class="bad">WRITER OFF</span>')+(S.meta.modifiedTime?' · master modified '+esc(S.meta.modifiedTime.replace('T',' ').slice(0,16))+'Z':''));
+  var si=(m.byBucket.SCOUT_INTAKE||0)+(m.byBucket.DISCOVERY_LEAD||0);
+  readout('<b>'+esc(t)+'</b> · '+m.rows.length+' rows · '+(si?'<span class="good">'+si+' SCOUT NEW</span> · ':'')+ck+' · '+(m.parseErrors.length?'<span class="bad">'+m.parseErrors.length+' parse err</span>':'0 parse err')+' · '+m.sectionMismatches.length+' heading≠bucket · fetched '+esc((S.meta.fetchedAt||'').replace('T',' ').slice(0,16))+'Z'+(S.meta.fromCache?' <span class="bad">(CACHED)</span>':'')+' · schema '+esc(m.schema.MASTER_SCHEMA_VERSION||'?')+(hasWriter()?' · <span class="good">WRITER ON</span>':' · <span class="bad">WRITER OFF</span>')+(S.meta.modifiedTime?' · master modified '+esc(S.meta.modifiedTime.replace('T',' ').slice(0,16))+'Z':''));
 }
 function render(){
   if(!S.master)return;renderReadout();
@@ -279,20 +295,29 @@ function openRow(id){var r=S.rows.filter(function(x){return x.id===id})[0];if(!r
   var h='<div class="rul"><h3>Tim ruling · overrides display; becomes canonical via STATE_CHANGE_REQUEST</h3>';
   if(ru)h+='<div class="mono" style="margin-bottom:6px;color:'+(st.s==='CANONICAL'?'var(--nc)':'var(--nm)')+'">'+esc(st.s)+' · '+esc(ru.kind)+(ru.value?' '+esc(ru.value):'')+(ru.code?' · '+esc(ru.code):'')+' · '+esc((ru.ts||'').slice(0,16))+(ru.note?'<br>'+esc(ru.note):'')+(ru.error?'<br>error: '+esc(ru.error):'')+(ru.receipt?'<br>receipt '+esc(ru.receipt.REQUEST_ID)+' · '+esc(ru.receipt.COMPLETION_STATUS)+' · readback '+esc(ru.receipt.READBACK_VERIFIED):'')+(st.s==='MASTER CHANGED'?'<br>master now: '+esc(r.BUCKET)+' / '+esc(r.DISPOSITION)+' (ruled at '+esc(ru.snap.BUCKET)+' / '+esc(ru.snap.DISPOSITION)+')':'')+'</div>';
   h+='<div class="tip" style="margin-bottom:6px">'+(hasWriter()?'<span class="pill ok">WRITER ON</span> rulings are written into the master row immediately':'<span class="pill bad">WRITER OFF</span> rulings stay on this device until the writer is set up (⚙). Use "Copy request text" to hand them to ChatGPT meanwhile.')+'</div>';
-  h+='<div class="row"><span class="u">apply now</span><button data-r="APPLY_NOW:YES" class="neon">Yes, pursue</button><button data-r="APPLY_NOW:NO" class="danger">No, do not pursue</button></div>';
-  h+='<div class="row"><span class="u">decline</span><select id="r-code"><option value="TIM_EXPLICIT_DECLINE">TIM_EXPLICIT_DECLINE</option>'+Object.keys(codes).sort().map(function(k){return k==='TIM_EXPLICIT_DECLINE'?'':'<option>'+esc(k)+'</option>'}).join('')+'</select><button data-r="DECLINE" class="danger">Decline</button></div>';
-  h+='<div class="row"><span class="u">applied</span><button data-r="APPLIED">I applied</button><span class="u">note</span></div><textarea id="r-note" placeholder="note or reason (goes into the request)" style="width:100%;height:48px">'+esc(ru&&ru.note||'')+'</textarea>';
+  var prot=PROTECTED.indexOf(r.BUCKET)>=0;
+  if(prot)h+='<div class="tip" style="margin-bottom:6px;color:var(--nc)">'+esc(r.BUCKET)+' is protected applicant state: notes only, no downgrade.</div>';
+  else{
+    h+='<div class="row"><span class="u">pursue</span><button data-r="APPLY_NOW:YES" class="neon">'+(r.BUCKET==='READY_TO_PURSUE'?'Confirm pursue':'Pursue → READY_TO_PURSUE')+'</button><button data-r="APPLY_NOW:NO" class="danger">Do not pursue</button></div>';
+    h+='<div class="row"><span class="u">decline</span><select id="r-code"><option value="TIM_EXPLICIT_DECLINE">TIM_EXPLICIT_DECLINE</option>'+Object.keys(codes).sort().map(function(k){return k==='TIM_EXPLICIT_DECLINE'?'':'<option>'+esc(k)+'</option>'}).join('')+'</select><button data-r="DECLINE" class="danger">Decline</button></div>';
+    h+='<div class="row"><span class="u">state</span><button data-r="APPLIED">I applied</button><button data-r="MANUAL_RESEARCH">Manual research</button><button data-r="CLOSED_DEAD">Closed / dead</button>'+(['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED'].indexOf(r.BUCKET)>=0?'<button data-r="INVALID_DISCOVERY" class="danger">Invalid discovery</button>':'')+'</div>';
+    h+='<div class="row"><span class="u">duplicate of</span><input type="text" id="r-dupof" placeholder="PRIMARY_ID of the row it duplicates" style="width:260px" value="'+esc((r.payload.POSSIBLE_MATCHES||'').split(',')[0]||'')+'"><button data-r="DUPLICATE">Mark duplicate</button></div>';
+  }
+  h+='<div class="row"><span class="u">note</span></div><textarea id="r-note" placeholder="note or reason (goes into the master row)" style="width:100%;height:48px">'+esc(ru&&ru.note||'')+'</textarea>';
   h+='<div class="row"><button data-r="NOTE">Save note only</button><button data-r="CLEAR">Clear my ruling</button><button id="r-copy">Copy request text</button></div>';
   h+='<div id="r-status" class="tip"></div></div>';
   h+='<div class="kv">';FIXED.forEach(function(c){h+='<div>'+esc(c)+'</div><div>'+linkify(r[c])+'</div>'});
-  h+='<div>SECTION</div><div>'+esc(r.section||'')+'</div><div>CELLS</div><div>'+r.cellCount+(r.parseError?' · <span style="color:var(--nm)">'+esc(r.parseError)+'</span>':'')+'</div>';
-  r.payloadOrder.forEach(function(k){h+='<div>'+esc(k)+'</div><div>'+linkify(r.payload[k])+'</div>'});
-  h+='</div><div class="tip" style="margin-top:8px">raw line '+r.line+'</div>';
+  h+='<div>SECTION</div><div>'+esc(r.section||'')+'</div><div>CELLS</div><div>'+r.cellCount+(r.parseError?' · <span style="color:var(--nm)">'+esc(r.parseError)+'</span>':'')+'</div></div>';
+  var groups={scout:[],claude:[],forge:[],tim:[]};r.payloadOrder.forEach(function(k){groups[keyGroup(k)].push(k)});
+  [['scout','Scout discovery facts'],['claude','Claude proposed analysis'],['forge','Forge verified / canonical facts'],['tim','Tim rulings']].forEach(function(g){
+    h+='<div class="sec '+g[0]+'"><h4>'+g[1]+(groups[g[0]].length?'':' · none')+'</h4>'+(groups[g[0]].length?'<div class="kv">'+groups[g[0]].map(function(k){return '<div>'+esc(k)+'</div><div>'+linkify(r.payload[k])+'</div>'}).join('')+'</div>':'')+'</div>'});
+  h+='<div class="tip" style="margin-top:8px">raw line '+r.line+'</div>';
   $('d-body').innerHTML=h;$('drawer').classList.add('on');
   $('d-body').querySelectorAll('[data-r]').forEach(function(b){b.onclick=function(){var a=b.getAttribute('data-r').split(':');var note=$('r-note').value.trim();
     if(a[0]==='CLEAR'){delete S.rulings[r.id];LS.set('rulings',S.rulings);syncStateUp();render();openRow(r.id);return}
     if(a[0]==='NOTE'&&!note){alert('Type a note first.');return}
-    var ts=new Date().toISOString();var ru={kind:a[0],value:a[1]||'',code:a[0]==='DECLINE'?$('r-code').value:'',note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
+    var dupOf=$('r-dupof')?$('r-dupof').value.trim():'';if(a[0]==='DUPLICATE'&&!dupOf){alert('Enter the PRIMARY_ID this row duplicates.');return}
+    var ts=new Date().toISOString();var ru={kind:a[0],value:a[1]||'',code:a[0]==='DECLINE'&&$('r-code')?$('r-code').value:'',dupOf:dupOf,note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
     S.rulings[r.id]=ru;LS.set('rulings',S.rulings);render();openRow(r.id);
     if(hasWriter()){var st=$('r-status');if(st)st.innerHTML='<span class="pill">WRITING…</span> sending to the master';
       gsPost({action:'ruling',ruling:ru}).then(function(j){ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');S.rulings[r.id]=ru;LS.set('rulings',S.rulings);syncStateUp();if(j.ok){load()}else{render();openRow(r.id)}})
@@ -306,7 +331,7 @@ $('d-close').onclick=function(){$('drawer').classList.remove('on');S.focus=null;
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){$('drawer').classList.remove('on');closePop()}});
 function scrText(ids){ // Amendment 58 section 7 minimum fields, one record per ruling
   var out=[];(ids||Object.keys(S.rulings)).forEach(function(id){var ru=S.rulings[id];if(!ru)return;var r=S.rows.filter(function(x){return x.id===id})[0]||{};
-    var reqState=ru.kind==='APPLIED'?'APPLIED':ru.kind==='DECLINE'?'DECLINED_BY_TIM':ru.kind==='APPLY_NOW'?(ru.value==='YES'?'READY_TO_PURSUE (Tim: pursue)':'DECLINED_BY_TIM (Tim: do not pursue)'):'(no state change; note only)';
+    var reqState=ru.kind==='APPLIED'?'APPLIED':ru.kind==='DECLINE'?'DECLINED_BY_TIM':ru.kind==='APPLY_NOW'?(ru.value==='YES'?'READY_TO_PURSUE (Tim: pursue)':'DECLINED_BY_TIM (Tim: do not pursue)'):ru.kind==='DUPLICATE'?'DUPLICATE (DUP_OF '+(ru.dupOf||'?')+')':EXPECT_BUCKET[ru.kind]||'(no state change; note only)';
     out.push(['STATE_CHANGE_REQUEST','REQUEST_ID=PX-'+(ru.ts||'').replace(/[-:.TZ]/g,'').slice(0,14)+'-'+id.slice(-6),'TIMESTAMP='+ru.ts,'REQUESTED_BY=Tim (direct statement via Pipeline Explorer)','TARGET_SYSTEM=V2_CURRENT_POPULATION_MASTER.txt','TARGET_CANONICAL_ID='+(ru.primaryId||id),'COMPANY='+(ru.company||r.COMPANY||''),'TITLE='+(ru.title||r.TITLE||''),'REQ_ID='+(ru.req||r.REQ||''),'CURRENT_APPLICATION_STATE='+(ru.snap?ru.snap.BUCKET+' / '+ru.snap.DISPOSITION:''),'REQUIRED_APPLICATION_STATE='+reqState+(ru.code?' ; DECLINE_REASON_CODE='+ru.code:''),'CURRENT_POSTING_STATE=n/a','REQUIRED_POSTING_STATE=n/a','SOURCE_OF_CHANGE=Tim ruling in Pipeline Explorer'+(ru.note?' ; NOTE='+ru.note.replace(/\n/g,' '):''),'TARGET_CANONICAL_ARTIFACT=Drive ID '+MASTER_FILE_ID,'AUTHORIZED_WRITER=per Amendment 58 (capable writer)','VERIFICATION_REQUIREMENTS=Amendment 58 sections 8-9: read-before-write, identity check, read-back, STATE_CHANGE_RECEIPT','END STATE_CHANGE_REQUEST'].join('\n'))});
   return out.join('\n\n');
 }
@@ -373,6 +398,32 @@ function renderColumns(){var v=$('view-columns');var h='<div class="panel active
   $('c-save').onclick=function(){S.cols.bucketOrder=$('bo').value.split(',').map(function(s){return s.trim()}).filter(Boolean);S.newDays=+$('newdays').value||1;LS.set('cols',S.cols);render();switchTab('pipeline')};
   $('c-reset').onclick=function(){S.cols={desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};LS.set('cols',S.cols);renderColumns()};
 }
+/* ---------- Scout quality (cohorts by SCOUT_RUN_ID) ---------- */
+function pct(v){return v==null?'—':(Math.round(v*1000)/10)+'%'}
+function hrs(v){return v==null?'—':(v<48?Math.round(v*10)/10+'h':Math.round(v/24*10)/10+'d')}
+function renderQuality(){var v=$('view-quality');var cs=PipelineQuality.cohorts(S.rows,S.runs,{});var now=Date.now();
+  var h='';
+  if(!cs.length){h+='<div class="panel active"><h3>Scout quality</h3><div class="tip">No cohort data yet. Cohorts appear once Scout submits discoveries through the intake endpoint (rows carry SCOUT_RUN_ID) and the writer logs run metrics'+(hasWriter()?'':'; the writer is not configured on this device, so run metrics (GROSS_FOUND, never-consider exclusions) cannot be loaded')+'.</div></div>';$('view-quality').innerHTML=h;return}
+  var wins=[['Today',1],['Rolling 7 days',7],['Rolling 30 days',30]];
+  h+='<div class="panel active"><h3>Scout quality · windows</h3>'+wins.map(function(w){var a=PipelineQuality.window(cs,w[1],now);if(!a.cohorts)return '<div class="tip">'+w[0]+': no cohorts</div>';
+    return '<div style="margin:6px 0"><div class="u" style="margin-bottom:3px">'+w[0]+' · '+a.cohorts+' cohort'+(a.cohorts>1?'s':'')+' · '+a.finalized+' finalized'+(a.finalized<a.cohorts?' · <span style="color:var(--nm)">rates include immature cohorts</span>':'')+'</div>'+
+    [['gross found',a.GROSS_FOUND],['never-consider',a.NEVER_CONSIDER_EXCLUDED],['entered master',a.ENTERED_MASTER],['admission',pct(a.ADMISSION_RATE)],['validity',pct(a.VALIDITY_RATE)],['actionable yield',pct(a.ACTIONABLE_YIELD)],['duplicate',pct(a.DUPLICATE_RATE)],['invalid',pct(a.INVALID_RATE)],['unresolved',pct(a.UNRESOLVED_RATE)],['median to final',hrs(a.MEDIAN_TIME_TO_FINAL_DISPOSITION_H)]].map(function(k){return '<div class="kpi"><b>'+esc(String(k[1]))+'</b><span>'+esc(k[0])+'</span></div>'}).join('')+'</div>'}).join('')+'<div class="tip">A run declined for pay, geography, FLEX or domain preference counts as a valid discovery. Immature = under 24h old; in progress = unresolved rows and under 72h; only finalized cohorts are fair to score.</div></div>';
+  h+='<div class="panel rep"><h3>Per run</h3>'+tbl(['run','maturity','age','gross','excluded','entered','intake','lead','valid','dup','dead','invalid','ready','applied','declined','unresolved','admission','validity','yield','median→final'],cs.map(function(c){return [esc(c.SCOUT_RUN_ID),'<span style="color:'+(c.maturity==='FINALIZED'?'var(--ng)':c.maturity==='IMMATURE'?'var(--nm)':'var(--nc)')+'">'+esc(c.maturity)+'</span>',hrs(c.ageHours),c.GROSS_FOUND,c.NEVER_CONSIDER_EXCLUDED,c.ENTERED_MASTER,c.SCOUT_INTAKE,c.DISCOVERY_LEAD,c.VALID_DISTINCT,c.DUPLICATE,c.DEAD_OR_STALE,c.INVALID_DISCOVERY,c.READY,c.APPLIED,c.DECLINED,c.STILL_UNRESOLVED,pct(c.ADMISSION_RATE),pct(c.VALIDITY_RATE),pct(c.ACTIONABLE_YIELD),hrs(c.MEDIAN_TIME_TO_FINAL_DISPOSITION_H)]}))+'</div>';
+  v.innerHTML=h;
+}
+/* ---------- never-consider rules (Tim-editable configuration in Drive; not a job store) ---------- */
+var RULES_LOCAL_DEFAULT={version:1,rules:[{id:'NC-PHARMA',enabled:true,category:'pharmaceutical',label:'Pharmaceutical manufacturer/employer',domains:['pharmaceutical','pharma','biopharma','biopharmaceutical','drug manufacturer','drug maker'],employers:[]},{id:'NC-MEDDEV',enabled:true,category:'medical-device',label:'Medical-device manufacturer/employer',domains:['medical device','medical devices','medtech','med device','medical equipment manufacturer'],employers:[]},{id:'NC-FOODBEV',enabled:true,category:'food-beverage',label:'Food or beverage manufacturer/employer',domains:['food manufacturer','food manufacturing','food processing','beverage','brewery','bottling','dairy','meat processing','snack','confectionery','bakery'],employers:[]},{id:'NC-FOODSVC',enabled:true,category:'food-service',label:'Restaurant / fast-food / food-service employer',domains:['restaurant','fast food','quick service restaurant','qsr','food service','foodservice','catering'],employers:[]}]};
+function renderRules(){var v=$('view-rules');var R=S.rules||RULES_LOCAL_DEFAULT;var live=!!S.rules;
+  var h='<div class="panel active"><h3>Never-consider rules · TIM_NEVER_CONSIDER_RULES.json beside the master'+(live?'':' · <span style="color:var(--nm)">showing built-in defaults; writer not configured, so the live file cannot be loaded or saved</span>')+'</h3><div class="tip" style="margin-bottom:6px">Rules apply to the employer\'s primary business or an explicit employer list, never to job-title keywords, customers, suppliers or equipment. Scout stops hard exclusions before a master row is created and reports them by rule id in run metrics. Disable a rule instead of deleting it.</div>'+
+   tbl(['on','id','label','category','domain terms (primary business)','employers (exact)'],R.rules.map(function(r,i){return ['<input type="checkbox" data-i="'+i+'" class="rl-on"'+(r.enabled?' checked':'')+'>','<span class="mono">'+esc(r.id)+'</span>',esc(r.label||''),esc(r.category||''),'<input type="text" class="rl-dom" data-i="'+i+'" style="width:100%" value="'+esc((r.domains||[]).join(', '))+'">','<input type="text" class="rl-emp" data-i="'+i+'" style="width:100%" value="'+esc((r.employers||[]).join(', '))+'">']}))+
+   '<div class="row" style="margin-top:8px"><span class="u">add rule</span><input type="text" id="rl-newid" placeholder="ID e.g. NC-TOBACCO" style="width:130px"><input type="text" id="rl-newlabel" placeholder="label" style="width:200px"><input type="text" id="rl-newdom" placeholder="domain terms, comma-separated" style="width:260px"><button id="rl-add">Add</button></div>'+
+   '<div class="row"><button id="rl-save" class="neon"'+(live?'':' disabled')+'>Save to Drive</button><button id="rl-reset">Reset to defaults</button><span id="rl-msg" class="tip"></span></div></div>';
+  v.innerHTML=h;
+  function collect(){var out=JSON.parse(JSON.stringify(R));v.querySelectorAll('.rl-on').forEach(function(i){out.rules[+i.getAttribute('data-i')].enabled=i.checked});v.querySelectorAll('.rl-dom').forEach(function(i){out.rules[+i.getAttribute('data-i')].domains=i.value.split(',').map(function(s){return s.trim().toLowerCase()}).filter(Boolean)});v.querySelectorAll('.rl-emp').forEach(function(i){out.rules[+i.getAttribute('data-i')].employers=i.value.split(',').map(function(s){return s.trim()}).filter(Boolean)});return out}
+  $('rl-add').onclick=function(){var id=$('rl-newid').value.trim().toUpperCase();if(!id){alert('rule id required');return}var out=collect();out.rules.push({id:id,enabled:true,category:'',label:$('rl-newlabel').value.trim()||id,domains:$('rl-newdom').value.split(',').map(function(s){return s.trim().toLowerCase()}).filter(Boolean),employers:[]});S.rules=out;renderRules()};
+  $('rl-reset').onclick=function(){S.rules=JSON.parse(JSON.stringify(RULES_LOCAL_DEFAULT));renderRules()};
+  $('rl-save').onclick=function(){var out=collect();$('rl-msg').textContent='saving…';gsPost({action:'rules_save',rules:out}).then(function(j){if(j.ok){S.rules=j.rules;$('rl-msg').textContent='saved '+(j.rules.updatedAt||'');renderRules()}else $('rl-msg').textContent='error: '+(j.error||'')}).catch(function(e){$('rl-msg').textContent='network: '+e.message})};
+}
 /* ---------- settings (writer) ---------- */
 function renderSettings(){var v=$('view-settings');v.innerHTML='<div class="panel active"><h3>Writer setup · Google Apps Script running in your account</h3><div class="tip" style="margin-bottom:8px">With this configured the page reads the master through the script (no link sharing needed), writes your rulings into the master row in place with a receipt, and syncs seen-state and rulings across your devices. Setup steps: <span class="mono">apps-script/README.md</span> in the repo. Nothing runs on a schedule.</div>'+
  '<div class="row"><span class="u" style="width:90px">script URL</span><input type="text" id="cfg-url" style="flex:1;min-width:240px" placeholder="https://script.google.com/macros/s/…/exec" value="'+esc(S.cfg.url)+'"></div>'+
@@ -387,7 +438,7 @@ function renderSettings(){var v=$('view-settings');v.innerHTML='<div class="pane
 }
 $('settings').onclick=function(){switchTab('settings')};
 /* ---------- tabs, hash, boot ---------- */
-function switchTab(t){S.tab=t;document.querySelectorAll('nav button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t)});$('settings').classList.toggle('on',t==='settings');document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+t)});$('presets').style.display=t==='pipeline'?'flex':'none';$('filters').style.display=(t==='pipeline'&&Object.keys(S.filters).length)?'flex':'none';if(t==='settings')renderSettings();if(S.master)render()}
+function switchTab(t){S.tab=t;document.querySelectorAll('nav button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t)});$('settings').classList.toggle('on',t==='settings');document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+t)});$('presets').style.display=t==='pipeline'?'flex':'none';$('filters').style.display=(t==='pipeline'&&Object.keys(S.filters).length)?'flex':'none';if(t==='settings')renderSettings();if(t==='quality')renderQuality();if(t==='rules')renderRules();if(S.master)render()}
 document.querySelectorAll('nav button').forEach(function(b){b.onclick=function(){switchTab(b.getAttribute('data-tab'))}});
 $('refresh').onclick=function(){load()};
 function pushHash(){var o={p:S.preset,s:S.sort,f:S.filters};try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(o)))}catch(e){}}

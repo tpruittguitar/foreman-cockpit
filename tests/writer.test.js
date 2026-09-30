@@ -63,6 +63,6 @@ if (real && fs.existsSync(real)) {
   ok(c2 === orig, 'real export: recomputed COUNTS equals the existing line exactly\n      ' + c2 + '\n      ' + orig);
   let n = 0, bad = 0;
   rl.filter(l => /^\d+ \| /.test(l)).forEach(l => { const m = W.mutateRow(l, { kind: 'NOTE', note: 'probe', ts: '2026-09-30T00:00:00.000Z' }); n++; const a = P.parseRow(l, 1, null), b = P.parseRow(m.after, 1, null); if (!m.ok || a.PRIMARY_ID !== b.PRIMARY_ID || a.BUCKET !== b.BUCKET || Object.keys(a.payload).some(k => b.payload[k] !== a.payload[k])) bad++; });
-  ok(bad === 0, 'real export: note-mutation preserves every existing field on all ' + n + ' rows (' + bad + ' bad)');
+  ok(bad === 0, 'real export: note-mutation preserves every existing field on all rows (' + n + ' rows, ' + bad + ' bad)');
 }
 console.log(fails ? ('\n' + fails + ' FAILED') : '\nALL PASS'); process.exit(fails ? 1 : 0);

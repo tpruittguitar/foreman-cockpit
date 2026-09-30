@@ -1,10 +1,12 @@
-# PIPELINE EXPLORER — DESIGN BRIEF v0.8
+# PIPELINE EXPLORER — DESIGN BRIEF v0.9
 
-**Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 second-round corrections; v0.5 non-interference rule; v0.6 Tim's rulings on the numbered questions)
+**Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 second-round corrections; v0.5 non-interference rule; v0.6 Tim's rulings on the numbered questions; v0.8 state writer; v0.9 Scout intake architecture)
 **Author:** Claude (Foreman node), from Tim's spec in this session
 **Status:** Step 1 BUILT (2026-09-30) per Tim's answers to the numbered questions; see §9C. `pipeline.html` reads the fixed master through `netlify/functions/master.js` and holds Tim's rulings locally until the Authorized State Writer applies them. No Drive files changed by this project. The master must be shared "Anyone with the link, Viewer" by Tim for the live fetch to work.
 **Reviewers:** Tim (final authority), ChatGPT, Grok
 **Repo:** tpruittguitar/foreman-cockpit (`docs/PIPELINE_EXPLORER_DESIGN_BRIEF.md`)
+
+**What changed in v0.9 (Tim's architectural ruling, 2026-09-30: canonical job pipeline = one population).** Scout no longer keeps a separate discovery population. Every plausible discovery enters the single fixed master (ID `19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`) as a `SCOUT_INTAKE` or `DISCOVERY_LEAD` row through a new `action=intake` on the same Authorized State Writer that applies Tim's rulings (PR #3). Unknown pay, degree, FLEX, scope, reporting level, liveness or req ID is a **research state, not a rejection reason**; hard exclusions come only from `TIM_NEVER_CONSIDER_RULES.json` (pharma, medical device, food/beverage, restaurant/food service; primary business only). Three new buckets (`SCOUT_INTAKE`, `DISCOVERY_LEAD`, `INVALID_DISCOVERY`), a Scout Quality dashboard per `SCOUT_RUN_ID`, a Rules tab, new presets and a four-section row detail (Scout facts / Claude proposed analysis / Forge verified facts / Tim rulings). §2.1 item 5 and §5.4 are corrected: **the Explorer is never a second state store. All canonical mutations go through the Authorized State Writer against the single fixed master and require readback verification.** Full spec in §9E and `docs/SCOUT_INTAKE_CONTRACT.md`. Built as a PR for Tim's review; not merged, not deployed. Verified population at the time of writing is 562 rows; no size is hard-coded anywhere.
 
 **What changed in v0.8 (Tim's ruling 2026-09-30: "it did not save my comments and decisions to the master job file").** Step 1 held rulings on the device by design; Tim wants them in the master. v0.8 adds a **state writer**: a Google Apps Script in Tim's account that applies Tim's rulings to the master row in place under the Amendment 58 writer contract, plus cross-device sync of seen-state and rulings. See §9D. The non-interference rule (§2.1) still holds: the writer only answers requests from the page, only touches the ruled row and the COUNTS line, never runs on a schedule, and never touches any other pipeline file.
 
@@ -59,7 +61,7 @@ The Explorer is a viewer, analysis and management tool **for** the pipeline's wo
 2. **The Explorer requests nothing from the pipeline.** It adapts to whatever the master and governance files contain. Proposals in this brief that would change a node's output (a SCHEMA header line, a canonical APPLY_NOW field) are recorded as ideas the pipeline may adopt on its own schedule, not as requirements. The app must work identically whether or not they ever happen.
 3. **Reads leave no trace the writers can see.** Fetching the master by export does not change its modifiedTime, which the cutover REV2 read-before-write protocol relies on. The app never opens the Doc in an editing session and never copies, renames or moves it.
 4. **Manual refresh only.** No background polling of Drive. One fetch per explicit user action, with the last fetch cached in the browser. The viewer must never be a source of load or quota use against the writers' Drive access.
-5. **The Explorer writes nothing into AI_Coordination** in v1 or v2 except, in v2 and only after §9 A2/A3 are ruled, STATE_CHANGE_REQUEST records in the form Amendment 58 already defines, which is the pipeline's own designed input channel. Even then the Authorized State Writer processes them on its own schedule; the app never blocks on, retries into, or escalates to a node.
+5. **The Explorer is never a second state store.** All canonical mutations go through the Authorized State Writer against the single fixed master and require readback verification. The Explorer holds no ledger, no queue and no replacement master; browser storage carries only seen-state and a display copy of Tim's rulings until the master reflects them. The writer never runs on a schedule, and the app never blocks on, retries into, or escalates to a node.
 6. **Findings are not actions.** Step 1 will expose heading/BUCKET mismatches, legacy decline reasons, expired estimates and parse anomalies. Those are displayed for Tim's judgment. The Explorer never triggers a cleanup, a re-run, or a message to a node.
 7. **The existing cockpit and its feed function are untouched.** Same repo, same Netlify site, a separate page.
 
@@ -172,7 +174,7 @@ No write channel is built until Tim confirms (a) which Authorized State Writer e
 6. **Foreman verification duty** (Amendment 58 §13) is unchanged: at the next sweep Foreman checks propagation of open requests. The app's receipt view makes that check faster; it does not replace it.
 
 ### 5.4 What the app never does
-Never mutates the master. Never writes on behalf of a node. Never changes BUCKET or DISPOSITION itself. Never creates a row; a missing opportunity is a request to Scout, not an insert. Never reads the 455-row Applicant Status Ledger as live state.
+The Explorer is never a second state store. All canonical mutations go through the Authorized State Writer against the single fixed master and require readback verification. The page itself never edits the master text, never writes on behalf of a node, and never creates a job row from the browser; rows enter only through Scout intake (§9E) or the pipeline's own regeneration. Never reads the 455-row Applicant Status Ledger as live state.
 
 ---
 
@@ -284,6 +286,52 @@ These reuse vocabulary the master already carries (`DECLINE_REASON_CODE`, `REOPE
 
 **Not done.** Wife/second-user attribution (all rulings are Tim's). Real-run verification of the Apps Script after Tim deploys it.
 
+## 9E. Scout intake architecture (Tim's ruling, 2026-09-30)
+
+**Ruling (verbatim intent).** One canonical population, one fixed master, one state per job from discovery to final disposition. Scout's job is to find and admit, not to reject. UNKNOWN IS A RESEARCH STATE, NOT A REJECTION REASON. Do not hard-code the population size (562 verified today). Do not create a second job population, a second ledger or a replacement master. Do not change the fixed ID. Never delete historical rows. Do not change Tim's application protections. Do not break any scheduled AI work.
+
+### 9E.1 Buckets
+| Bucket | Meaning | Who sets it |
+|---|---|---|
+| `SCOUT_INTAKE` | Admitted discovery awaiting Claude analysis and Forge verification. Identity resolved (no existing match). | intake only |
+| `DISCOVERY_LEAD` | Admitted discovery whose identity could not be resolved against existing rows (ambiguous employer+title, conflicting or unstated location, several candidates). Carries `POSSIBLE_MATCHES`. Never asserts identity. | intake only |
+| `INVALID_DISCOVERY` | A row Tim or Forge judged not to be a real, distinct opportunity (mirror, agency repost, wrong entity). Row preserved, never deleted. | Tim ruling / Forge |
+| `MANUAL_RESEARCH`, `BLOCKED` | unchanged: unresolved research states | Forge / Tim |
+| `READY_TO_PURSUE`, `APPLIED`, `REJECTED_BY_EMPLOYER`, `DECLINED_BY_TIM`, `DUPLICATE`, `CLOSED_DEAD` | unchanged final/terminal states | Forge / Tim |
+
+Intake can only create `SCOUT_INTAKE` or `DISCOVERY_LEAD` rows. A `PROPOSED_BUCKET` in a record is ignored. Intake never edits an existing row for any reason; a re-discovered job returns `EXISTING_MATCH` with the existing PRIMARY_ID and bucket, so `APPLIED` and `REJECTED_BY_EMPLOYER` (protected applicant state, Amendment 58) and every finalized state are untouchable from intake.
+
+### 9E.2 Writer: `action=intake`
+Same Apps Script web app as §9D. Sequence: LockService lock → read the fixed master (never a search) → parse → load rules → sanitize each record (newline, `; ` and ` | ` neutralized, non-http URLs dropped, 400-char cap) → classify against never-consider rules → dedupe in order INTAKE_KEY replay, REQ core token, canonical URL, normalized employer+title(+location) → allocate next INV and a collision-checked `V2I-` PRIMARY_ID → re-check modifiedTime → insert grouped under `=== SCOUT_INTAKE (n) ===` / `=== DISCOVERY_LEAD (n) ===` headings before the END marker → recompute `COUNTS:` (new buckets appear once they have rows; key order preserved) and `END … (N rows)` → save → reopen and read back every inserted line byte-for-byte → `INTAKE_RECEIPT` with `COMPLETION_STATUS=COMPLETE` only if readback matched → append a `SCOUT_RUN_METRICS.jsonl` record. Batch limit 200 records. Idempotent: replaying a batch creates zero rows (`REPLAY` by `INTAKE_KEY`). Fail closed: an ambiguous identity becomes a `DISCOVERY_LEAD`, never a merge; a modifiedTime change between read and write aborts with no write.
+
+Provenance on every intake row: `INTAKE_KEY`, `SCOUT_RUN_ID`, `DISCOVERED_AT_ET`, `DISCOVERY_SOURCE`, `SOURCE_URL`, `SOURCE_PROVIDER`, `REQ_ID`, `IDENTITY_CONFIDENCE`, `INITIAL_UNKNOWN_FIELDS`, optional `POSSIBLE_MATCHES`, then any Scout facts (`PAY_POSTED`, `DEGREE_TEXT`, `FLEX_HINT`, `REPORTING_LEVEL`, `EMPLOYER_DOMAIN_HINT`, `SCOUT_NOTES`, `POSTING_DATE`, `REMOTE_HYBRID`), `DATE_ADDED`, `NOTIFICATION_SOURCE`, `STATE_SOURCE=SCOUT_INTAKE:<run>`, `STATE_UPDATED_AT`. Contract with JSON shapes: `docs/SCOUT_INTAKE_CONTRACT.md`.
+
+### 9E.3 TIM_NEVER_CONSIDER_RULES
+A JSON file beside the master (`TIM_NEVER_CONSIDER_RULES.json`), created by the writer with four default rules (`NC-PHARMA`, `NC-MEDDEV`, `NC-FOODBEV`, `NC-FOODSVC`) when first read. Each rule: `id`, `enabled`, `category`, `label`, `domains[]` (matched against `EMPLOYER_DOMAIN_HINT` / `EMPLOYER_PRIMARY_BUSINESS` only, with a negation guard so "automation supplier to pharma" is not excluded), `employers[]` (exact normalized employer names), `note`. A title is never a basis for exclusion. Every exclusion is reported by rule id in the intake response and the run metrics (auditable). Rules are editable in the Explorer's Rules tab (`rules_save`) or directly in Drive; adding a rule needs no code change. Scout should apply the same file before submitting and report what it excluded in `run.NEVER_CONSIDER_EXCLUDED`; the writer applies the file again as a backstop.
+
+### 9E.4 Explorer
+Presets: All · New Scout intake (hot) · Discovery leads (hot) · Needs analysis (`SCOUT_INTAKE`, `DISCOVERY_LEAD`, `MANUAL_RESEARCH`, `BLOCKED`) · Ready to pursue · New to me · My rulings · Declined · Applied · Terminal/archive. `SCOUT_INTAKE` rows are drawn in the focus color, and the status readout shows "<n> SCOUT NEW". Row detail is grouped: Scout discovery facts / Claude proposed analysis (`CLAUDE_*`, `ANALYSIS_*`, `PROPOSED_*`) / Forge verified facts / Tim rulings. Dispositions: Pursue, Do not pursue, Decline (coded), I applied, Manual research, Closed-dead, Invalid discovery (offered on `SCOUT_INTAKE`, `DISCOVERY_LEAD`, `MANUAL_RESEARCH`, `BLOCKED`), Mark duplicate (PRIMARY_ID field, prefilled from `POSSIBLE_MATCHES`), Note only. `APPLIED` and `REJECTED_BY_EMPLOYER` rows expose only note and clear.
+
+Scout Quality tab (needs the writer configured for run metrics): per `SCOUT_RUN_ID` cohort with GROSS_FOUND, NEVER_CONSIDER_EXCLUDED, ENTERED_MASTER, SCOUT_INTAKE, DISCOVERY_LEAD, VALID_DISTINCT, DUPLICATE, DEAD_OR_STALE, INVALID_DISCOVERY, READY, APPLIED, DECLINED, STILL_UNRESOLVED; rates ADMISSION, VALIDITY, ACTIONABLE_YIELD, DUPLICATE, INVALID, UNRESOLVED; MEDIAN_TIME_TO_FINAL_DISPOSITION; windows Today / 7 days / 30 days. Cohorts younger than 24 h are IMMATURE, unresolved cohorts younger than 72 h are IN_PROGRESS, the rest FINALIZED; windows that include immature cohorts say so. A decline for pay, geography, FLEX or domain preference counts as a valid discovery (Scout found a real job; Tim chose not to pursue it).
+
+### 9E.5 Migration implications
+1. Nothing changes in the master until Tim redeploys the script and Scout starts posting to `action=intake`. Existing 562 rows are untouched; the new buckets appear in `COUNTS:` only once they have rows (verified byte-identical `COUNTS:` on a dry run against the live export).
+2. Forge's regeneration/publication step must **preserve** `SCOUT_INTAKE`, `DISCOVERY_LEAD` and `INVALID_DISCOVERY` rows and their `SCOUT_*`/`INTAKE_KEY` keys when it rewrites the master, and must recount them. If a node rebuilds the master from an older snapshot, intake rows written since would be lost; the intake receipts and `SCOUT_RUN_METRICS.jsonl` allow a replay (idempotent by `INTAKE_KEY`).
+3. Scout (Grok) needs a new output step: post discoveries as JSON to the writer instead of writing its own population file. Amendment 55's "Forge intake → Scout resolution" split becomes "Scout admits → Claude analyzes → Forge verifies" on the same row. That is a governance amendment for Tim to issue; this PR does not write it.
+4. Claude's analysis and Forge's verification write to the same row through the writer (a future `enrich` action, not in this PR) or through Forge's existing regeneration. Until then those sections in the drawer read "none".
+5. The parser's `BUCKETS` list is extended; older Explorer builds would still show the rows (row BUCKET is displayed as-is) but without the presets.
+
+### 9E.6 Risks and open questions
+- **Scout does not yet call intake.** Until Grok's routine is changed, `SCOUT_INTAKE` stays empty; nothing breaks.
+- **Passphrase is shared** between Tim's page and Scout. A leak lets anyone add intake rows (never finalize or edit). Rotate by editing `Code.gs`.
+- **Identity resolution is heuristic.** Wrong `EXISTING_MATCH` on a req-ID collision across employers is possible in theory; the req core must be at least 5 characters and match exactly. Ambiguity always fails closed to a lead.
+- **Never-consider needs `EMPLOYER_DOMAIN_HINT`.** Without it, only the employer list can exclude; Scout should supply a primary-business hint.
+- **Google Docs concurrency.** LockService plus modifiedTime re-check covers the writer against itself and against Forge's Drive writes, but a Forge rewrite that starts before and saves after an intake would overwrite intake rows (see migration item 2).
+- **Run metrics live beside the master** (`SCOUT_RUN_METRICS.jsonl`), not in the master; the quality tab needs the writer configured on that device.
+- **`END … (N rows)` marker** is now recomputed by both actions; if Forge stops emitting it, the writer simply leaves it absent.
+
+---
+
 ## 10. Risks and weak assumptions
 - **Writer surface unresolved.** Even the pipeline's own in-place writes are flagged as a tool gap (REV2 §8 item 2). Until A2 is settled, v2 cannot be built. Step 1 has no exposure.
 - **Parser fragility.** Pipes inside values, headings that lag, 197 rows without a real DATE_ADDED. The parser never drops rows; Data Quality surfaces what it could not read.
@@ -301,6 +349,7 @@ These reuse vocabulary the master already carries (`DECLINE_REASON_CODE`, `REOPE
 - 2026-09-29 v0.2 — Revised after Grok review. Verified against `V2_CURRENT_POPULATION_MASTER.txt` by full export (526 rows, vocabulary, keys, 99 mismatches, encoding). No Drive writes, no code.
 - 2026-09-29 v0.3 — Revised after ChatGPT review. Read `FORGE_AMENDMENT_58_CANONICAL_STATE_WRITE_ARCHITECTURE_2026-09-27` (`1Vz-ifWCspz1RPf_QyWZ9XYND2GrZsAwx`), `MASTER_TABLE_CUTOVER_IMPLEMENTATION_2026-09-29_REV2.txt` (`1t83d2awD2gA_JstH8eCHsfs5YLtxKDLW`), and `STATE_CHANGE_REQUEST_SCR-2026-09-27-001`. Master resolution corrected to fixed ID. Write channel rebuilt on Amendment 58; ledger withdrawn. v1 scoped read-only. §3.3, §3.4 added. §4.3 predicate reduced and labeled. No Drive writes, no code.
 - 2026-09-30 v0.4 — Second-round corrections from ChatGPT and Grok, each verified against the live master before applying: VERIFY_LATER removed from NEEDS ACTION (header rule confirmed; 12 rows carry the key, 6 of them READY_TO_PURSUE); Salary Floors deferred to #90, row-level FLOOR_STATUS shown (present on 6 rows); SCHEMA fields revised; PIPELINE preset checked against where interview/offer states live (DISPOSITION under APPLIED); predicate shown in status line; cancel-pending replaces 30 s undo; five fixture cases specified; A3 position revised. No Drive writes, no code.
+- 2026-09-30 v0.9 — Tim's Scout-intake architecture ruling. Writer gains `action=intake`, `rules`, `rules_save`, `runs`; parser gains the three buckets and END-marker check; `pipeline-quality.js` and the Scout Quality and Rules tabs added; presets, row detail sections and dispositions revised; §2.1 item 5 and §5.4 rewritten (Explorer is never a second state store). Tests: parser, writer, intake (synthetic 562+ population, no size assumption), rules, quality; all pass, also against the live 562-row export in dry run. Built on branch `feat/scout-intake` as a draft PR; not merged, not deployed, no Drive files modified.
 - 2026-09-30 v0.8 — Tim ruled that rulings must be saved to the master. Added the Apps Script state writer (`apps-script/Code.gs`, README), writer settings in the page, cross-device state sync, writer tests. §9D. Non-interference rule unchanged. No Drive files modified by this session; Tim deploys the script himself.
 - 2026-09-30 v0.7 — Second-round answers recorded (§9C). Step 1 built: `pipeline.html`, parser, Netlify master function, tests, scrubbed fixture. Verified against the real export and in headless Chromium at three viewports. No Drive files modified by this project; Tim shares the master Doc by link himself.
 - 2026-09-30 v0.6 — Tim's rulings on the eleven numbered questions recorded (§9A) and applied to §3.1, §4.2, §4.3, §5.0, §7, §8; open items restated in plain language with recommendations (§9B). Repo visibility verified public. Build on hold per Tim. No Drive writes, no code.

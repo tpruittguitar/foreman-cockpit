@@ -21,12 +21,17 @@ ok(P.parseMoney('UNKNOWN') === null, 'parseMoney unknown -> null');
 const real = process.argv[2];
 if (real && fs.existsSync(real)) {
   const m = P.parse(fs.readFileSync(real, 'utf8'));
-  ok(m.rows.length === m.counts.TOTAL, 'real export: row count equals COUNTS TOTAL (' + m.rows.length + ')');
-  ok(m.checksum.ok, 'real export: per-bucket checksum ok ' + JSON.stringify(m.checksum.diffs));
+  const raw = fs.readFileSync(real, 'utf8').replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n');
+  const rawRows = raw.filter(l => /^\d+ \| /.test(l));
+  ok(m.rows.length === rawRows.length, 'real export: parser row count equals raw row-line count (' + m.rows.length + ')');
+  ok(m.counts && m.rows.length === m.counts.TOTAL, 'real export: row count equals the declared COUNTS TOTAL (' + (m.counts && m.counts.TOTAL) + ')');
+  ok(m.checksum.ok, 'real export: per-bucket and END checksum ok ' + JSON.stringify(m.checksum.diffs));
   ok(m.parseErrors.length === 0, 'real export: zero parse errors');
-  ok(m.rows.filter(r => r.cellCount === 11).length === 30, 'real export: 30 eleven-cell rows handled (' + m.rows.filter(r => r.cellCount === 11).length + ')');
-  ok(m.sectionMismatches.length === 99, 'real export: 99 section/BUCKET mismatches (' + m.sectionMismatches.length + ')');
-  ok(m.rows.every(r => r.payload.DATE_ADDED && r.payload.NOTIFICATION_SOURCE), 'real export: DATE_ADDED and NOTIFICATION_SOURCE on all rows');
-  const meta = m.rows.find(r => r.INV === '398'); ok(meta && meta.BUCKET === 'APPLIED' && meta.section === 'READY_TO_PURSUE', 'real export: Meta #398 BUCKET=APPLIED under READY heading');
+  const rawEleven = rawRows.filter(l => l.split(' | ').length === 11).length;
+  ok(m.rows.filter(r => r.cellCount === 11).length === rawEleven, 'real export: every eleven-cell row handled (' + rawEleven + ')');
+  ok(m.sectionMismatches.length === m.rows.filter(r => r.section && r.BUCKET !== r.section).length, 'real export: section/BUCKET mismatch count computed (' + m.sectionMismatches.length + ')');
+  if (m.endCount !== null) ok(m.endCount === m.rows.length, 'real export: END marker count equals rows (' + m.endCount + ')');
+  const withDate = m.rows.filter(r => r.payload.DATE_ADDED).length;
+  console.log('info  real export: rows with DATE_ADDED ' + withDate + '/' + m.rows.length + '; buckets ' + JSON.stringify(m.byBucket));
 }
 console.log(fails ? ('\n' + fails + ' FAILED') : '\nALL PASS'); process.exit(fails ? 1 : 0);

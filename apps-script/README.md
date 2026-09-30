@@ -17,4 +17,6 @@ That is all. With the script configured, the page reads the master through it (t
 
 **To change the script later:** edit `Code.gs` in the Apps Script editor, then **Deploy → Manage deployments → edit (pencil) → Version: New version → Deploy**. The URL stays the same.
 
+**Also in this script (scout-intake PR):** `action=intake` for Scout discoveries (see `docs/SCOUT_INTAKE_CONTRACT.md`), `action=rules` / `rules_save` for `TIM_NEVER_CONSIDER_RULES.json`, and `action=runs` for `SCOUT_RUN_METRICS.jsonl`. After updating the script, redeploy: **Deploy → Manage deployments → pencil → Version: New version → Deploy**. The URL stays the same.
+
 **What it writes.** Only the row you ruled on, plus the `COUNTS:` line. Notes go into a `TIM_NOTE=` payload key. "Do not pursue" and "Decline" set `BUCKET=DECLINED_BY_TIM` with `DECLINE_REASON_CODE`, `DECLINE_REASON_TEXT`, `REOPEN_TRIGGER`, `TIM_DISPOSITION`. "Pursue" sets `BUCKET=READY_TO_PURSUE` with `TIM_RULING=PURSUE`. "I applied" sets `BUCKET=APPLIED` with `APP_DATE` and `ANTI_RESURRECTION=YES`. Every write adds `STATE_SOURCE=TIM_EXPLORER:<request id>` and `STATE_UPDATED_AT`. Rows already APPLIED or REJECTED_BY_EMPLOYER cannot be declined or set to pursue (protected applicant state, Amendment 58). Section headings are left where they are; the master's own rule says row BUCKET is authoritative.
