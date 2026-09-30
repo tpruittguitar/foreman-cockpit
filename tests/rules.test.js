@@ -16,6 +16,15 @@ ok(c({ COMPANY: 'Pfizer', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE
 ok(c({ COMPANY: 'Medtronic', NEVER_CONSIDER_RULE_ID: 'NC-002', EXCLUSION_CONFIDENCE: 'HIGH' }).outcome === 'EXCLUDE', 'NC-002 medical-device hard exclusion');
 ok(c({ COMPANY: 'Coca-Cola Bottling', NEVER_CONSIDER_RULE_ID: 'nc-003', EXCLUSION_CONFIDENCE: 'high' }).outcome === 'EXCLUDE', 'NC-003 food/beverage hard exclusion (case-insensitive id and confidence)');
 ok(c({ COMPANY: 'Chick-fil-A', NEVER_CONSIDER_RULE_ID: 'NC-004', EXCLUSION_CONFIDENCE: 'HIGH' }).ruleId === 'NC-004', 'NC-004 restaurant/food-service hard exclusion reported by rule id');
+// HIGH is necessary, not sufficient: supplied employer evidence naming a protected case (DO_NOT_MATCH) wins (Forge review item 1)
+const ev1 = c({ COMPANY: 'Automation Partners', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH', EMPLOYER_DOMAIN_HINT: 'industrial automation supplier serving pharmaceutical plants' });
+ok(ev1.outcome === 'REVIEW' && ev1.ruleId === 'NC-001' && /^EVIDENCE_CONFLICT_DO_NOT_MATCH/.test(ev1.basis), 'NC-001 cited HIGH but evidence says industrial automation supplier: REVIEW, never EXCLUDE (' + ev1.basis + ')');
+const ev3 = c({ COMPANY: 'PackLine Systems', NEVER_CONSIDER_RULE_ID: 'NC-003', EXCLUSION_CONFIDENCE: 'HIGH', EMPLOYER_PRIMARY_BUSINESS: 'packaging equipment maker for food and beverage plants' });
+ok(ev3.outcome === 'REVIEW' && /^EVIDENCE_CONFLICT_DO_NOT_MATCH/.test(ev3.basis), 'NC-003 cited HIGH but evidence says packaging-equipment maker: REVIEW, never EXCLUDE');
+const ev2 = c({ COMPANY: 'MedBuild Integrators', NEVER_CONSIDER_RULE_ID: 'NC-002', EXCLUSION_CONFIDENCE: 'HIGH', EMPLOYER_DOMAIN_HINT: 'automation integration for medical device lines' });
+ok(ev2.outcome === 'REVIEW', 'NC-002 cited HIGH but evidence says integrator: REVIEW');
+ok(c({ COMPANY: 'Pfizer', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH', EMPLOYER_DOMAIN_HINT: 'pharmaceutical manufacturer' }).outcome === 'EXCLUDE', 'NC-001 cited HIGH with consistent evidence still excludes');
+ok(W.protectedCaseEvidence({ EMPLOYER_DOMAIN_HINT: 'commercial pharmaceutical production' }) === '', 'consistent evidence carries no protected-case term');
 // not excluded
 ok(c({ COMPANY: 'Automation Partners', EMPLOYER_DOMAIN_HINT: 'industrial automation supplier serving pharmaceutical plants' }).outcome === 'ALLOW', 'industrial automation supplier serving pharma is NOT excluded (no review flag either: reads as a supplier)');
 ok(c({ COMPANY: 'Conveyor Systems Inc', EMPLOYER_DOMAIN_HINT: 'industrial equipment for the food manufacturing industry customers' }).outcome === 'ALLOW', 'equipment supplier serving food plants is NOT excluded');

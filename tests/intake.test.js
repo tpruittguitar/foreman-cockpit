@@ -40,7 +40,14 @@ ok(R.every(r => W.INTAKE_OUTCOMES.indexOf(r.result) >= 0), 'every result is one 
 // run-level counters in the canonical vocabulary (as the writer logs them), including Scout's own pre-intake exclusions
 const runWithScoutEx = { SCOUT_RUN_ID: 'RUN-TEST-1', GROSS_FOUND: 9, NEVER_CONSIDER_EXCLUDED: [{ COMPANY: 'Burger Barn', TITLE: 'GM', NEVER_CONSIDER_RULE_ID: 'NC-004', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'restaurant operator' }, { COMPANY: 'Mystery Co', NEVER_CONSIDER_RULE_ID: 'NC-042', EXCLUSION_CONFIDENCE: 'HIGH' }] };
 const ctr = W.runCounters_(runWithScoutEx, plan, rules, true);
+ok(ctr.GROSS_FOUND === 9 && ctr.RUN_ACCOUNTING === 'OVERREPORTED' && ctr.DISCOVERY_UNACCOUNTED === -1, 'a supplied GROSS_FOUND that disagrees with submitted outcomes is never silent (here 9 reported, 10 accounted -> OVERREPORTED)');
 ok(ctr.GROSS_FOUND === 9 && ctr.NEVER_CONSIDER_EXCLUDED === 3 && ctr['NC-001_COUNT'] === 1 && ctr['NC-004_COUNT'] === 1 && ctr['NC-002_COUNT'] === 0 && ctr['NC-003_COUNT'] === 0 && ctr['UNKNOWN_RULE_COUNT'] === 1 && ctr.ENTERED_MASTER === 3 && ctr.SCOUT_INTAKE_WRITTEN === 2 && ctr.DISCOVERY_LEAD_WRITTEN === 1 && ctr.EXISTING_MATCH === 3 && ctr.WRITE_FAILED === 1, 'run counters: GROSS_FOUND, NEVER_CONSIDER_EXCLUDED, NC-00x_COUNT, ENTERED_MASTER, SCOUT_INTAKE_WRITTEN, DISCOVERY_LEAD_WRITTEN, EXISTING_MATCH, WRITE_FAILED: ' + JSON.stringify(ctr));
+const ctrOk = W.runCounters_(Object.assign({}, runWithScoutEx, { GROSS_FOUND: 10 }), plan, rules, true);
+ok(ctrOk.RUN_ACCOUNTING === 'RECONCILED' && ctrOk.DISCOVERY_UNACCOUNTED === 0 && ctrOk.DISCOVERY_ACCOUNTED === ctrOk.NEVER_CONSIDER_EXCLUDED + ctrOk.SCOUT_INTAKE_WRITTEN + ctrOk.DISCOVERY_LEAD_WRITTEN + ctrOk.EXISTING_MATCH + ctrOk.WRITE_FAILED, 'GROSS_FOUND = NEVER_CONSIDER_EXCLUDED + SCOUT_INTAKE_WRITTEN + DISCOVERY_LEAD_WRITTEN + EXISTING_MATCH + WRITE_FAILED -> RECONCILED');
+const ctrInc = W.runCounters_(Object.assign({}, runWithScoutEx, { GROSS_FOUND: 13 }), plan, rules, true);
+ok(ctrInc.RUN_ACCOUNTING === 'INCOMPLETE' && ctrInc.DISCOVERY_UNACCOUNTED === 3, 'GROSS_FOUND larger than submitted outcomes -> DISCOVERY_UNACCOUNTED=3, run INCOMPLETE');
+const ctrDerived = W.runCounters_(Object.assign({}, runWithScoutEx, { GROSS_FOUND: undefined }), plan, rules, true);
+ok(ctrDerived.GROSS_FOUND === 10 && ctrDerived.RUN_ACCOUNTING === 'RECONCILED', 'GROSS_FOUND omitted -> derived from records + Scout exclusions, reconciled');
 ok(W.scoutExclusions_(runWithScoutEx, rules)[1].RULE_VALID === 'NO', 'a Scout exclusion citing a rule id not in the canonical file is kept for audit but marked RULE_VALID=NO');
 const ctrFail = W.runCounters_(runWithScoutEx, plan, rules, false);
 ok(ctrFail.ENTERED_MASTER === 0 && ctrFail.WRITE_FAILED === 4, 'if readback fails nothing counts as entered; the would-be rows count as WRITE_FAILED');
@@ -78,6 +85,24 @@ if (dupTitleCompany) {
   const p = W.planIntake(lines0, [{ COMPANY: dupTitleCompany.COMPANY, TITLE: dupTitleCompany.TITLE, LOCATION: 'Somewhere Else, ZZ' }], rules, ctx);
   ok(p.results[0].result === 'DISCOVERY_LEAD_WRITTEN' && p.results[0].BUCKET === 'DISCOVERY_LEAD' && /AMBIGUOUS/.test(p.results[0].matchedBy) && /POSSIBLE_MATCHES=/.test(p.newLines[0]), 'ambiguous employer+title with different location: no merge, DISCOVERY_LEAD with POSSIBLE_MATCHES');
 } else ok(false, 'fixture lacks an ambiguous-identity case');
+// (Forge review item 2) employer+title with a missing location never becomes exact identity, across runs
+const runA = W.planIntake(lines0, [{ COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', REQ_ID: 'GH-8800000001', SOURCE_URL: 'https://job-boards.greenhouse.io/twinreq/jobs/8800000001' }], rules, { run: { SCOUT_RUN_ID: 'RUN-A' }, now: '2026-10-01T12:00:00.000Z', nowET: '2026-10-01 08:00 ET' });
+ok(runA.results[0].result === 'SCOUT_INTAKE_WRITTEN', 'run A: first Twin Req role (no location) admitted as SCOUT_INTAKE');
+const linesA = W.applyPlanToLines(lines0, runA);
+const runB = W.planIntake(linesA, [{ COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', REQ_ID: 'GH-8800000002' }], rules, { run: { SCOUT_RUN_ID: 'RUN-B' }, now: '2026-10-03T12:00:00.000Z', nowET: '2026-10-03 08:00 ET' });
+ok(runB.results[0].result === 'DISCOVERY_LEAD_WRITTEN' && runB.results[0].PRIMARY_ID !== runA.results[0].PRIMARY_ID && /POSSIBLE_MATCHES=/.test(runB.newLines[0]) && runB.newLines[0].includes(runA.results[0].PRIMARY_ID) && /location unstated/.test(runB.results[0].matchedBy), 'run B: same employer+title, different req, no location on either side -> preserved as DISCOVERY_LEAD with POSSIBLE_MATCHES, not swallowed as EXISTING_MATCH');
+const runB2 = W.planIntake(linesA, [{ COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', LOCATION: 'Mobile, AL' }], rules, ctx);
+ok(runB2.results[0].result === 'DISCOVERY_LEAD_WRITTEN', 'located record vs unlocated existing row: still ambiguous (both locations must be present and equal)');
+const sameLocRow = base.rows.find(r => r.LOCATION && r.LOCATION !== 'NOT_STATED' && base.rows.filter(x => x.COMPANY === r.COMPANY && x.TITLE === r.TITLE).length === 1);
+const exactId = W.planIntake(lines0, [{ COMPANY: sameLocRow.COMPANY, TITLE: sameLocRow.TITLE, LOCATION: sameLocRow.LOCATION }], rules, ctx);
+ok(exactId.results[0].result === 'EXISTING_MATCH' && exactId.results[0].matchedBy === 'EMPLOYER_TITLE_LOCATION' && exactId.results[0].PRIMARY_ID === sameLocRow.PRIMARY_ID, 'employer+title with both locations present and equal, single candidate -> EXISTING_MATCH');
+// (Forge review item 3) requisition ids are employer-bound
+const reqRow = base.rows.find(r => /^(LI|GH)-\d{5,}/.test(r.REQ));
+const otherEmp = W.planIntake(lines0, [{ COMPANY: 'Completely Different Employer LLC', TITLE: 'Plant Manager', REQ_ID: reqRow.REQ }], rules, ctx);
+ok(otherEmp.results[0].result === 'DISCOVERY_LEAD_WRITTEN' && /REQ_ID \(employer differs\)/.test(otherEmp.results[0].matchedBy) && otherEmp.newLines[0].includes(reqRow.PRIMARY_ID), 'same req token at a different employer is NOT an EXISTING_MATCH: DISCOVERY_LEAD with the colliding row in POSSIBLE_MATCHES');
+const urlRow = base.rows.find(r => (r.payload.SOURCE || '').includes('linkedin.com/jobs/view/') && /^LI-\d{5,}/.test(r.REQ) && r.payload.SOURCE.endsWith(r.REQ.slice(3)));
+const urlBound = W.planIntake(lines0, [{ COMPANY: 'Different Name For Same Employer', TITLE: 'X', REQ_ID: urlRow.REQ, SOURCE_URL: urlRow.payload.SOURCE }], rules, ctx);
+ok(urlBound.results[0].result === 'EXISTING_MATCH' && urlBound.results[0].matchedBy === 'REQ_ID+SOURCE_URL' && urlBound.results[0].PRIMARY_ID === urlRow.PRIMARY_ID, 'same req with a canonical URL that binds it to the row -> EXISTING_MATCH even if the employer name differs');
 // many unknowns admitted
 const p3 = W.planIntake(lines0, [{ COMPANY: 'Unknown Everything Co', TITLE: 'VP Operations', INITIAL_UNKNOWN_FIELDS: ['PAY', 'DEGREE', 'FLEX', 'FIT', 'LIVENESS', 'REPORTING_LEVEL', 'REQ_ID', 'LOCATION', 'URL'] }], rules, ctx);
 ok(/_WRITTEN$/.test(p3.results[0].result), 'record with nearly everything UNKNOWN is still admitted (unknown is a research state)');

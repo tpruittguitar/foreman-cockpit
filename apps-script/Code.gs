@@ -165,7 +165,8 @@ function applyIntakeToMaster_(req) {
       DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, NEVER_CONSIDER_REVIEW_NEEDED: plan.summary.NEVER_CONSIDER_REVIEW_NEEDED,
       NEW_PRIMARY_IDS: plan.newLines.map(function (l) { return l.split(' | ')[1]; }),
       COUNTS_UPDATED: 'YES', END_UPDATED: newEnd ? 'YES' : 'NO_END_LINE', READBACK_VERIFIED: verified ? 'YES' : 'NO',
-      TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: verified ? 'COMPLETE' : 'FAILED', MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: new Date().toISOString()
+      RUN_ACCOUNTING: counters.RUN_ACCOUNTING, DISCOVERY_UNACCOUNTED: counters.DISCOVERY_UNACCOUNTED,
+      TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: !verified ? 'FAILED' : (counters.RUN_ACCOUNTING === 'RECONCILED' ? 'COMPLETE' : 'INCOMPLETE'), MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: new Date().toISOString()
     };
     appendReceipt_(receipt);
     // telemetry beside the master (SCOUT_RUN_METRICS.jsonl): counters + exclusion audit. Not candidate state; never a second ledger.
@@ -190,6 +191,10 @@ function runCounters_(run, plan, R, verified) {
   scoutEx.concat(plan.excluded).forEach(function (x) { var rule = ruleById(R, x.NEVER_CONSIDER_RULE_ID); var k = (rule && rule.active ? rule.RULE_ID : 'UNKNOWN_RULE') + '_COUNT'; c[k] = (c[k] || 0) + 1; });  // never a count under a category the canonical file does not carry as ACTIVE
   c.ENTERED_MASTER = verified ? s.ENTERED_MASTER : 0; c.SCOUT_INTAKE_WRITTEN = verified ? s.SCOUT_INTAKE_WRITTEN : 0; c.DISCOVERY_LEAD_WRITTEN = verified ? s.DISCOVERY_LEAD_WRITTEN : 0;
   c.EXISTING_MATCH = s.EXISTING_MATCH; c.WRITE_FAILED = s.WRITE_FAILED + (verified ? 0 : s.ENTERED_MASTER); c.NEVER_CONSIDER_REVIEW_NEEDED = s.NEVER_CONSIDER_REVIEW_NEEDED;
+  // full-accounting invariant: GROSS_FOUND = NEVER_CONSIDER_EXCLUDED + SCOUT_INTAKE_WRITTEN + DISCOVERY_LEAD_WRITTEN + EXISTING_MATCH + WRITE_FAILED
+  var accounted = c.NEVER_CONSIDER_EXCLUDED + c.SCOUT_INTAKE_WRITTEN + c.DISCOVERY_LEAD_WRITTEN + c.EXISTING_MATCH + c.WRITE_FAILED;
+  c.DISCOVERY_ACCOUNTED = accounted; c.DISCOVERY_UNACCOUNTED = c.GROSS_FOUND - accounted;
+  c.RUN_ACCOUNTING = c.DISCOVERY_UNACCOUNTED === 0 ? 'RECONCILED' : (c.DISCOVERY_UNACCOUNTED > 0 ? 'INCOMPLETE' : 'OVERREPORTED');
   return c;
 }
 /* ================= pure functions: row mutation ================= */
@@ -343,23 +348,28 @@ function matchExisting(rec, idx) {
   var key = rec.INTAKE_KEY;
   if (key) { var k = idx.filter(function (r) { return r.intakeKey === key; }); if (k.length) return { kind: 'exact', rows: k, by: 'INTAKE_KEY' }; }
   var rc = reqCore(rec.REQ_ID || '');
-  if (rc && rc.length >= 5) { var byReq = idx.filter(function (r) { return r.reqCores.indexOf(rc) >= 0; }); if (byReq.length === 1) return { kind: 'exact', rows: byReq, by: 'REQ_ID' }; if (byReq.length > 1) return { kind: 'ambiguous', rows: byReq, by: 'REQ_ID' }; }
-  var cu = canonUrl(rec.SOURCE_URL || '');
-  if (cu && !/^(linkedin\.com\/jobs\/search|indeed\.com\/jobs)/.test(cu) && cu.length > 12) { var byUrl = idx.filter(function (r) { return r.urls.indexOf(cu) >= 0; }); if (byUrl.length === 1) return { kind: 'exact', rows: byUrl, by: 'SOURCE_URL' }; if (byUrl.length > 1) return { kind: 'ambiguous', rows: byUrl, by: 'SOURCE_URL' }; }
   var ne = normEmployer(rec.COMPANY), nt = normTitle(rec.TITLE), nl = normLocation(rec.LOCATION);
+  var cu = canonUrl(rec.SOURCE_URL || '');
+  if (rc && rc.length >= 5) {
+    // requisition ids are employer-local: exact only with the same normalized employer, or when the record's canonical URL binds it to that row
+    var byReq = idx.filter(function (r) { return r.reqCores.indexOf(rc) >= 0; });
+    var byReqEmp = byReq.filter(function (r) { return ne && r.ne === ne; });
+    var byReqUrl = byReq.filter(function (r) { return cu && r.urls.indexOf(cu) >= 0; });
+    if (byReqEmp.length === 1) return { kind: 'exact', rows: byReqEmp, by: 'REQ_ID' };
+    if (byReqEmp.length > 1) return { kind: 'ambiguous', rows: byReqEmp, by: 'REQ_ID' };
+    if (byReqUrl.length === 1) return { kind: 'exact', rows: byReqUrl, by: 'REQ_ID+SOURCE_URL' };
+    if (byReq.length) return { kind: 'ambiguous', rows: byReq, by: 'REQ_ID (employer differs)' };
+  }
+  if (cu && !/^(linkedin\.com\/jobs\/search|indeed\.com\/jobs)/.test(cu) && cu.length > 12) { var byUrl = idx.filter(function (r) { return r.urls.indexOf(cu) >= 0; }); if (byUrl.length === 1) return { kind: 'exact', rows: byUrl, by: 'SOURCE_URL' }; if (byUrl.length > 1) return { kind: 'ambiguous', rows: byUrl, by: 'SOURCE_URL' }; }
   if (ne && nt) {
+    // employer+title is a provisional identity: exact only when BOTH normalized locations are present and equal and exactly one row matches.
+    // A missing location on either side never resolves identity (a later distinct req at the same employer/title must not be swallowed); fail closed.
     var byId = idx.filter(function (r) { return r.ne === ne && r.nt === nt; });
-    if (byId.length === 1) {
-      // a single employer+title candidate: exact only when the locations do not conflict (either side unstated counts as no conflict)
-      var only = byId[0];
-      if (!nl || !only.nl || only.nl === nl) return { kind: 'exact', rows: byId, by: 'EMPLOYER_TITLE_LOCATION' };
-      return { kind: 'ambiguous', rows: byId, by: 'EMPLOYER_TITLE (location differs)' };
-    }
-    if (byId.length > 1) {
-      // several candidates: an unstated location on either side never resolves identity; fail closed
+    if (byId.length) {
       var sameLoc = byId.filter(function (r) { return nl && r.nl && r.nl === nl; });
       if (sameLoc.length === 1) return { kind: 'exact', rows: sameLoc, by: 'EMPLOYER_TITLE_LOCATION' };
-      return { kind: 'ambiguous', rows: sameLoc.length > 1 ? sameLoc : byId, by: sameLoc.length > 1 ? 'EMPLOYER_TITLE_LOCATION' : 'EMPLOYER_TITLE (location differs or unstated)' };
+      if (sameLoc.length > 1) return { kind: 'ambiguous', rows: sameLoc, by: 'EMPLOYER_TITLE_LOCATION' };
+      return { kind: 'ambiguous', rows: byId, by: nl && byId.every(function (r) { return r.nl; }) ? 'EMPLOYER_TITLE (location differs)' : 'EMPLOYER_TITLE (location unstated)' };
     }
   }
   return { kind: 'none', rows: [], by: '' };
@@ -394,7 +404,10 @@ function parseRulesText(text) {
 function ruleById(R, id) { id = String(id || '').trim().toUpperCase(); for (var i = 0; i < (R.rules || []).length; i++) if (String(R.rules[i].RULE_ID).toUpperCase() === id) return R.rules[i]; return null; }
 /** Words of a CATEGORY (e.g. FOOD_OR_BEVERAGE_MANUFACTURER) that may hint at the domain. Used only to flag a review, never to exclude. */
 function categoryTerms(cat) { var stop = { OR: 1, AND: 1, MANUFACTURER: 1, SERVICE: 1, OF: 1, THE: 1 }; return String(cat || '').toUpperCase().split(/[^A-Z]+/).filter(function (w) { return w && !stop[w] && w.length > 3; }).map(function (w) { return w.toLowerCase(); }); }
-var NEG_HINT_RE = /\b(supplier|supplies|serving|serves|customers? in|for the|equipment for|automation for|to the|vendor|integrator|consult|software|logistics|component)\b/;
+/** Evidence that the employer is one of the cases every rule's DO_NOT_MATCH / general rule 2 protects: supplier, equipment/machine maker, automation, software, integrator, consultancy, engineering firm, logistics, component supplier, or "serving" an industry. */
+var PROTECTED_CASE_RE = /\b(supplier|supplies|serving|serves|customers? in|for the|equipment for|equipment maker|equipment manufacturer|packaging equipment|process equipment|machine builder|automation|integrator|integration|consult(ing|ancy)?|software|logistics|component|engineering firm|contract engineering|vendor|to the)\b/;
+var NEG_HINT_RE = PROTECTED_CASE_RE;
+function protectedCaseEvidence(rec) { var e = String((rec.EMPLOYER_DOMAIN_HINT || '') + ' ' + (rec.EMPLOYER_PRIMARY_BUSINESS || '')).toLowerCase(); var m = e.match(PROTECTED_CASE_RE); return m ? m[0] : ''; }
 /**
  * Classify one record. Outcome EXCLUDE only when Scout cites an ACTIVE rule with EXCLUSION_CONFIDENCE=HIGH (the file says Scout classifies;
  * the writer verifies against the canonical file). MED/LOW, an unknown rule id, an unavailable file, or a writer-side domain hint all
@@ -411,7 +424,12 @@ function classifyNeverConsider(rec, R) {
     if (!rule) return { outcome: 'REVIEW', ruleId: cited, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'UNKNOWN_RULE_ID' };
     if (!rule.active) return { outcome: 'REVIEW', ruleId: cited, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'RULE_INACTIVE' };
     if (String(rule.ACTION || '').toUpperCase() !== 'DO_NOT_ADD') return { outcome: 'REVIEW', ruleId: cited, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'RULE_ACTION_' + (rule.ACTION || 'UNSET') };
-    if (conf === 'HIGH') return { outcome: 'EXCLUDE', ruleId: rule.RULE_ID, confidence: 'HIGH', reason: reason || rule.REASON, basis: 'SCOUT_CLASSIFICATION' };
+    if (conf === 'HIGH') {
+      // HIGH is necessary, not sufficient: supplied employer evidence that names a protected case (DO_NOT_MATCH) wins over the classification
+      var pc = protectedCaseEvidence(rec);
+      if (pc) return { outcome: 'REVIEW', ruleId: rule.RULE_ID, confidence: 'HIGH', reason: reason, basis: 'EVIDENCE_CONFLICT_DO_NOT_MATCH:' + pc };
+      return { outcome: 'EXCLUDE', ruleId: rule.RULE_ID, confidence: 'HIGH', reason: reason || rule.REASON, basis: 'SCOUT_CLASSIFICATION' };
+    }
     return { outcome: 'REVIEW', ruleId: rule.RULE_ID, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'CONFIDENCE_NOT_HIGH' };
   }
   // writer-side hint: the employer's stated primary business mentions a category word and does not read as a supplier/vendor to it
@@ -532,4 +550,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, scoutExclusions_: scoutExclusions_, runCounters_: runCounters_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, scoutExclusions_: scoutExclusions_, runCounters_: runCounters_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };
