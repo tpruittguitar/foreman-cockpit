@@ -1,19 +1,39 @@
+// Never-consider rules: parsed from the canonical TIM_NEVER_CONSIDER_RULES Doc text (fixture is a copy of the Doc), never invented here.
+const fs = require('fs'), path = require('path');
 const W = require('../apps-script/Code.gs');
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
-const R = W.defaultRules();
-ok(R.rules.length === 4 && R.rules.every(r => r.id && r.enabled && r.domains.length), 'four default rules, all enabled, each with domain terms');
+const text = fs.readFileSync(path.join(__dirname, 'fixtures', 'TIM_NEVER_CONSIDER_RULES.sample.txt'), 'utf8');
+const R = W.parseRulesText(text);
+ok(R.status === 'ACTIVE' && R.defaultAction === 'ALLOW_INTAKE' && R.header.OWNER === 'Tim Pruitt', 'canonical Doc parses: STATUS=ACTIVE, DEFAULT_ACTION=ALLOW_INTAKE, header kept');
+ok(R.rules.length === 4 && R.activeIds.join(',') === 'NC-001,NC-002,NC-003,NC-004', 'four ACTIVE rules NC-001..NC-004 with their ids preserved');
+ok(R.rules.every(r => r.CATEGORY && r.ACTION === 'DO_NOT_ADD' && r.MATCH && r.DO_NOT_MATCH && r.REASON && r.EXCEPTION && r.STATUS === 'ACTIVE'), 'each rule carries CATEGORY, ACTION, MATCH, DO_NOT_MATCH, REASON, EXCEPTION, STATUS');
+ok(R.rules[2].CATEGORY === 'FOOD_OR_BEVERAGE_MANUFACTURER' && /Packaging-equipment makers/.test(R.rules[2].DO_NOT_MATCH), 'multi-word values kept verbatim');
+ok(!R.header.SCOUT_RUN_ID && !R.header['NC-001_COUNT'], 'template KEY= lines after the rules section are not treated as header or rules');
+ok(W.parseRulesText(text.replace(/_/g, '\\_')).rules.length === 4, 'Markdown-escaped underscores (as some exporters emit) still parse');
 const c = (rec) => W.classifyNeverConsider(rec, R);
-ok(c({ COMPANY: 'Pfizer', EMPLOYER_DOMAIN_HINT: 'pharmaceutical manufacturer' }).ruleId === 'NC-PHARMA', 'pharma primary business excluded');
-ok(c({ COMPANY: 'Medtronic', EMPLOYER_DOMAIN_HINT: 'medical device manufacturer' }).ruleId === 'NC-MEDDEV', 'medical device excluded');
-ok(c({ COMPANY: 'Coca-Cola Bottling', EMPLOYER_DOMAIN_HINT: 'beverage bottling' }).ruleId === 'NC-FOODBEV', 'beverage excluded');
-ok(c({ COMPANY: 'Chick-fil-A', EMPLOYER_DOMAIN_HINT: 'quick service restaurant' }).ruleId === 'NC-FOODSVC', 'restaurant excluded');
-ok(!c({ COMPANY: 'Automation Partners', EMPLOYER_DOMAIN_HINT: 'industrial automation supplier serving pharmaceutical plants' }).excluded, 'supplier to pharma NOT excluded');
-ok(!c({ COMPANY: 'Conveyor Systems Inc', EMPLOYER_DOMAIN_HINT: 'industrial equipment for the food manufacturing industry customers' }).excluded, 'equipment maker with food customers NOT excluded');
-ok(!c({ COMPANY: 'Anduril', TITLE: 'Director, Pharmaceutical Robotics', EMPLOYER_DOMAIN_HINT: 'defense technology' }).excluded, 'keyword in title never triggers a rule');
-ok(!c({ COMPANY: 'Unknown Co' }).excluded, 'no hint, no employer match -> not excluded (unknown is not a rejection)');
-const custom = W.normRules({ rules: [{ id: 'NC-PHARMA', enabled: false, domains: ['pharmaceutical'] }, { id: 'NC-TOBACCO', enabled: true, domains: ['tobacco'], employers: ['Altria Group, Inc.'] }] });
-ok(!W.classifyNeverConsider({ COMPANY: 'Pfizer', EMPLOYER_DOMAIN_HINT: 'pharmaceutical manufacturer' }, custom).excluded, 'disabled rule does not exclude');
-ok(W.classifyNeverConsider({ COMPANY: 'Altria Group Inc', EMPLOYER_DOMAIN_HINT: '' }, custom).ruleId === 'NC-TOBACCO', 'new rule with employer list matches by normalized employer name (no code change)');
-ok(W.normRules({ garbage: true }).rules.length === 4, 'malformed rules file falls back to defaults');
-ok(W.normRules({ rules: [{ nope: 1 }, { id: 'X' }] }).rules.length === 1, 'rules without an id are dropped');
+// hard exclusions: Scout cites an ACTIVE rule with HIGH confidence
+ok(c({ COMPANY: 'Pfizer', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'pharmaceutical manufacturer' }).outcome === 'EXCLUDE', 'NC-001 pharmaceutical hard exclusion');
+ok(c({ COMPANY: 'Medtronic', NEVER_CONSIDER_RULE_ID: 'NC-002', EXCLUSION_CONFIDENCE: 'HIGH' }).outcome === 'EXCLUDE', 'NC-002 medical-device hard exclusion');
+ok(c({ COMPANY: 'Coca-Cola Bottling', NEVER_CONSIDER_RULE_ID: 'nc-003', EXCLUSION_CONFIDENCE: 'high' }).outcome === 'EXCLUDE', 'NC-003 food/beverage hard exclusion (case-insensitive id and confidence)');
+ok(c({ COMPANY: 'Chick-fil-A', NEVER_CONSIDER_RULE_ID: 'NC-004', EXCLUSION_CONFIDENCE: 'HIGH' }).ruleId === 'NC-004', 'NC-004 restaurant/food-service hard exclusion reported by rule id');
+// not excluded
+ok(c({ COMPANY: 'Automation Partners', EMPLOYER_DOMAIN_HINT: 'industrial automation supplier serving pharmaceutical plants' }).outcome === 'ALLOW', 'industrial automation supplier serving pharma is NOT excluded (no review flag either: reads as a supplier)');
+ok(c({ COMPANY: 'Conveyor Systems Inc', EMPLOYER_DOMAIN_HINT: 'industrial equipment for the food manufacturing industry customers' }).outcome === 'ALLOW', 'equipment supplier serving food plants is NOT excluded');
+const amb = c({ COMPANY: 'Northline Holdings', EMPLOYER_DOMAIN_HINT: 'diversified: pharmaceutical packaging and specialty chemicals', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'MED' });
+ok(amb.outcome === 'REVIEW' && amb.ruleId === 'NC-001', 'ambiguous domain (MED confidence) does not hard-exclude; admitted with NEVER_CONSIDER_REVIEW_NEEDED');
+ok(c({ COMPANY: 'Somebody', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'LOW' }).outcome === 'REVIEW', 'LOW confidence never excludes');
+ok(c({ COMPANY: 'Somebody', NEVER_CONSIDER_RULE_ID: 'NC-001' }).outcome === 'REVIEW', 'cited rule without a confidence never excludes');
+ok(c({ COMPANY: 'Anduril', TITLE: 'Director, Pharmaceutical Robotics', EMPLOYER_DOMAIN_HINT: 'defense technology' }).outcome === 'ALLOW', 'keyword in the title never triggers a rule');
+ok(c({ COMPANY: 'Unknown Co', INITIAL_UNKNOWN_FIELDS: 'PAY,FLEX,DEGREE' }).outcome === 'ALLOW', 'unknown pay/FLEX/degree is not a basis for anything');
+const wh = c({ COMPANY: 'Generic Pharma Works', EMPLOYER_DOMAIN_HINT: 'pharmaceutical manufacturer' });
+ok(wh.outcome === 'REVIEW' && wh.ruleId === 'NC-001' && wh.basis === 'DOMAIN_HINT', 'writer-side domain hint only flags a review (never excludes on its own)');
+// never invent
+ok(c({ COMPANY: 'X', NEVER_CONSIDER_RULE_ID: 'NC-099', EXCLUSION_CONFIDENCE: 'HIGH' }).outcome === 'REVIEW' && c({ COMPANY: 'X', NEVER_CONSIDER_RULE_ID: 'NC-099', EXCLUSION_CONFIDENCE: 'HIGH' }).basis === 'UNKNOWN_RULE_ID', 'a rule id not in the canonical file cannot exclude (never invent a category)');
+const retired = W.parseRulesText(text.replace('RULE_ID=NC-004\nCATEGORY=RESTAURANT_OR_FOOD_SERVICE\nACTION=DO_NOT_ADD', 'RULE_ID=NC-004\nCATEGORY=RESTAURANT_OR_FOOD_SERVICE\nACTION=DO_NOT_ADD').replace(/(RULE_ID=NC-004[\s\S]*?)STATUS=ACTIVE/, '$1STATUS=INACTIVE'));
+ok(retired.activeIds.length === 3 && W.classifyNeverConsider({ COMPANY: 'Chick-fil-A', NEVER_CONSIDER_RULE_ID: 'NC-004', EXCLUSION_CONFIDENCE: 'HIGH' }, retired).outcome === 'REVIEW', 'STATUS=INACTIVE retires a rule without reusing its id; citing it no longer excludes');
+const added = W.parseRulesText(text.replace('SCOUT REQUIRED OUTPUT', 'RULE_ID=NC-005\nCATEGORY=TOBACCO_MANUFACTURER\nACTION=DO_NOT_ADD\nMATCH=x\nDO_NOT_MATCH=y\nREASON=z\nEXCEPTION=Tim\nSTATUS=ACTIVE\n\nSCOUT REQUIRED OUTPUT'));
+ok(added.activeIds.length === 5 && W.classifyNeverConsider({ COMPANY: 'Altria', NEVER_CONSIDER_RULE_ID: 'NC-005', EXCLUSION_CONFIDENCE: 'HIGH' }, added).outcome === 'EXCLUDE', 'a rule Tim adds to the Doc is honored with no code change');
+const bad = W.parseRulesText('');
+ok(bad.status === 'UNAVAILABLE' && W.classifyNeverConsider({ COMPANY: 'Pfizer', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH' }, bad).outcome === 'REVIEW', 'unreadable rules file: default ALLOW_INTAKE, nothing excluded, review flagged');
+ok(W.categoryTerms('FOOD_OR_BEVERAGE_MANUFACTURER').join(',') === 'food,beverage', 'category terms derive from the CATEGORY name (no hard-coded category list)');
 console.log(fails ? ('\n' + fails + ' FAILED') : '\nALL PASS'); process.exit(fails ? 1 : 0);

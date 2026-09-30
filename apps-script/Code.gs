@@ -4,12 +4,12 @@
  * single fixed master, with read-back verification (FORGE_AMENDMENT_58 Authorized State Writer contract).
  *
  * Actions (GET):  ping | master | state | receipts | rules | runs
- * Actions (POST): state | ruling | intake | rules_save
+ * Actions (POST): state | ruling | intake
  *
  * ruling  = Tim disposition on one existing row by exact PRIMARY_ID (PR #3).
  * intake  = Scout discovery intake: one or a batch of proposed records -> dedupe -> append canonical rows in
  *           SCOUT_INTAKE or DISCOVERY_LEAD only; idempotent by INTAKE_KEY; never touches existing rows.
- * rules   = TIM_NEVER_CONSIDER_RULES.json beside the master (Tim-editable configuration, not a job store).
+ * rules   = the canonical Google Doc TIM_NEVER_CONSIDER_RULES in AI_Coordination (fixed ID), read-only here.
  * runs    = SCOUT_RUN_METRICS.jsonl beside the master (per-run cohort metrics, not a job store).
  *
  * DEPLOY: apps-script/README.md.  Pure functions below are unit-tested in tests/*.test.js via CommonJS export.
@@ -18,7 +18,10 @@ var MASTER_ID = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI'; // fixed per Tim
 var PASSPHRASE = 'CHANGE-ME';                                   // set your own; the page asks for it once
 var STATE_FILE_NAME = 'PIPELINE_EXPLORER_STATE.json';
 var RECEIPTS_DOC_NAME = 'PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS';
-var RULES_FILE_NAME = 'TIM_NEVER_CONSIDER_RULES.json';
+/** Canonical never-consider configuration: the Google Doc TIM_NEVER_CONSIDER_RULES in AI_Coordination (fixed ID, read-only here). Configuration only; never a job store. */
+var RULES_DOC_ID = '1qLeVwmW76Cm_lHdleb342sE7_ej4dqTfODR1TcnF5os';
+/** Every gross Scout discovery ends in exactly one of these outcomes. */
+var INTAKE_OUTCOMES = ['NEVER_CONSIDER_EXCLUDED', 'SCOUT_INTAKE_WRITTEN', 'DISCOVERY_LEAD_WRITTEN', 'EXISTING_MATCH', 'WRITE_FAILED'];
 var RUNS_FILE_NAME = 'SCOUT_RUN_METRICS.jsonl';
 
 var FIXED_N = 9;
@@ -33,11 +36,11 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master', 'state', 'receipts', 'rules', 'runs', 'ruling', 'intake', 'rules_save'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master', 'state', 'receipts', 'rules', 'runs', 'ruling', 'intake'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
-    if (a === 'rules') return out_({ ok: true, rules: readRules_() });
+    if (a === 'rules') { var R = readRules_(); return out_({ ok: R.status !== 'UNAVAILABLE', rules: R }); }
     if (a === 'runs') return out_({ ok: true, runs: readRuns_() });
     return out_({ ok: false, error: 'unknown action ' + a });
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err) }); }
@@ -50,7 +53,6 @@ function doPost(e) {
     if (req.action === 'state') { writeState_(req.state || {}); return out_({ ok: true }); }
     if (req.action === 'ruling') return out_(applyRulingToMaster_(req.ruling || {}));
     if (req.action === 'intake') return out_(applyIntakeToMaster_(req));
-    if (req.action === 'rules_save') return out_(saveRules_(req.rules));
     return out_({ ok: false, error: 'unknown action ' + req.action });
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err) }); }
 }
@@ -155,20 +157,41 @@ function applyIntakeToMaster_(req) {
     var countsBack = null;
     for (var c = 0; c < p2.length; c++) if (/^COUNTS:/.test(p2[c].getText())) countsBack = p2[c].getText();
     var verified = missing.length === 0 && countsBack === newCounts;
+    if (!verified) plan.results.forEach(function (r) { if (r.result === 'SCOUT_INTAKE_WRITTEN' || r.result === 'DISCOVERY_LEAD_WRITTEN') { r.result = 'WRITE_FAILED'; r.detail = 'readback did not verify'; } });
+    var counters = runCounters_(req.run || {}, plan, rules, verified);
     var receipt = {
       RECEIPT: 'INTAKE_RECEIPT', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
-      RECORDS_RECEIVED: (req.records || []).length, CREATED: plan.summary.CREATED, EXISTING_MATCH: plan.summary.EXISTING_MATCH, REPLAY: plan.summary.REPLAY,
-      DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, EXCLUDED_NEVER_CONSIDER: plan.summary.EXCLUDED, INVALID_INPUT: plan.summary.INVALID,
+      RECORDS_RECEIVED: (req.records || []).length, COUNTERS: counters, RULES_STATUS: rules.status, RULES_DOC_ID: RULES_DOC_ID,
+      DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, NEVER_CONSIDER_REVIEW_NEEDED: plan.summary.NEVER_CONSIDER_REVIEW_NEEDED,
       NEW_PRIMARY_IDS: plan.newLines.map(function (l) { return l.split(' | ')[1]; }),
       COUNTS_UPDATED: 'YES', END_UPDATED: newEnd ? 'YES' : 'NO_END_LINE', READBACK_VERIFIED: verified ? 'YES' : 'NO',
       TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: verified ? 'COMPLETE' : 'FAILED', MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: new Date().toISOString()
     };
     appendReceipt_(receipt);
-    appendRun_({ SCOUT_RUN_ID: receipt.SCOUT_RUN_ID, RECEIVED_AT: receipt.EXECUTED_AT, RUN: req.run || {}, GROSS_FOUND: num_(req.run && req.run.GROSS_FOUND), NEVER_CONSIDER_EXCLUDED: (req.run && req.run.NEVER_CONSIDER_EXCLUDED) || [], WRITER_EXCLUDED: plan.excluded, RESULTS: plan.results.map(function (r) { return { INTAKE_KEY: r.INTAKE_KEY, result: r.result, PRIMARY_ID: r.PRIMARY_ID, BUCKET: r.BUCKET }; }), COMPLETION_STATUS: receipt.COMPLETION_STATUS });
+    // telemetry beside the master (SCOUT_RUN_METRICS.jsonl): counters + exclusion audit. Not candidate state; never a second ledger.
+    appendRun_({ SCOUT_RUN_ID: receipt.SCOUT_RUN_ID, RECEIVED_AT: receipt.EXECUTED_AT, RUN: req.run || {}, COUNTERS: counters, GROSS_FOUND: counters.GROSS_FOUND, NEVER_CONSIDER_EXCLUDED: counters.NEVER_CONSIDER_EXCLUDED,
+      EXCLUSIONS: scoutExclusions_(req.run || {}, rules).concat(plan.excluded), RESULTS: plan.results.map(function (r) { return { INTAKE_KEY: r.INTAKE_KEY, result: r.result, PRIMARY_ID: r.PRIMARY_ID, BUCKET: r.BUCKET, NEVER_CONSIDER_REVIEW_NEEDED: r.NEVER_CONSIDER_REVIEW_NEEDED }; }), COMPLETION_STATUS: receipt.COMPLETION_STATUS });
     return { ok: verified, receipt: receipt, results: plan.results, counts: newCounts, endLine: newEnd };
   } finally { lock.releaseLock(); }
 }
 
+/** Scout-side exclusions reported in run.NEVER_CONSIDER_EXCLUDED, normalized to the audit contract and checked against the canonical file. */
+function scoutExclusions_(run, R) {
+  var list = Array.isArray(run.NEVER_CONSIDER_EXCLUDED) ? run.NEVER_CONSIDER_EXCLUDED : [];
+  return list.map(function (x) { x = x || {}; var id = clean_(x.NEVER_CONSIDER_RULE_ID || x.RULE_ID || ''); var rule = ruleById(R, id);
+    return { SCOUT_RUN_ID: clean_(run.SCOUT_RUN_ID || ''), DISCOVERED_AT_ET: clean_(x.DISCOVERED_AT_ET || ''), COMPANY: clean_(x.COMPANY || x.EMPLOYER || ''), TITLE: clean_(x.TITLE || ''), LOCATION: clean_(x.LOCATION || ''), SOURCE: clean_(x.SOURCE || ''), SOURCE_URL: clean_(x.SOURCE_URL || ''),
+      NEVER_CONSIDER_RULE_ID: id, EXCLUSION_CONFIDENCE: clean_(x.EXCLUSION_CONFIDENCE || 'HIGH').toUpperCase(), EXCLUSION_REASON: clean_(x.EXCLUSION_REASON || x.REASON || ''), TIM_OVERRIDE: 'NO', BASIS: 'SCOUT_PRE_INTAKE', RULE_VALID: rule && rule.active ? 'YES' : 'NO' }; });
+}
+/** Run-level counters in the canonical vocabulary. GROSS_FOUND comes from Scout when supplied, else records + Scout exclusions. Per-rule counts use the ACTIVE rule ids from the canonical file. */
+function runCounters_(run, plan, R, verified) {
+  var scoutEx = scoutExclusions_(run, R); var s = plan.summary;
+  var c = { GROSS_FOUND: num_(run.GROSS_FOUND) || (plan.results.length + scoutEx.length), NEVER_CONSIDER_EXCLUDED: scoutEx.length + s.NEVER_CONSIDER_EXCLUDED };
+  (R.rules || []).forEach(function (r) { c[r.RULE_ID + '_COUNT'] = 0; });
+  scoutEx.concat(plan.excluded).forEach(function (x) { var rule = ruleById(R, x.NEVER_CONSIDER_RULE_ID); var k = (rule && rule.active ? rule.RULE_ID : 'UNKNOWN_RULE') + '_COUNT'; c[k] = (c[k] || 0) + 1; });  // never a count under a category the canonical file does not carry as ACTIVE
+  c.ENTERED_MASTER = verified ? s.ENTERED_MASTER : 0; c.SCOUT_INTAKE_WRITTEN = verified ? s.SCOUT_INTAKE_WRITTEN : 0; c.DISCOVERY_LEAD_WRITTEN = verified ? s.DISCOVERY_LEAD_WRITTEN : 0;
+  c.EXISTING_MATCH = s.EXISTING_MATCH; c.WRITE_FAILED = s.WRITE_FAILED + (verified ? 0 : s.ENTERED_MASTER); c.NEVER_CONSIDER_REVIEW_NEEDED = s.NEVER_CONSIDER_REVIEW_NEEDED;
+  return c;
+}
 /* ================= pure functions: row mutation ================= */
 function today_(ts) { return String(ts || new Date().toISOString()).slice(0, 10); }
 function parsePayload(rest) {
@@ -342,38 +365,76 @@ function matchExisting(rec, idx) {
   return { kind: 'none', rows: [], by: '' };
 }
 /* ================= pure functions: never-consider rules ================= */
-function defaultRules() {
-  return { version: 1, updatedAt: '', note: 'Applies to the employer primary business/domain only, never to keywords, customers, suppliers or equipment. Edit in the Explorer (Rules tab) or directly in Drive. Set enabled:false to disable a rule without deleting it.',
-    rules: [
-      { id: 'NC-PHARMA', enabled: true, category: 'pharmaceutical', label: 'Pharmaceutical manufacturer/employer', domains: ['pharmaceutical', 'pharma', 'biopharma', 'biopharmaceutical', 'drug manufacturer', 'drug maker'], employers: [] },
-      { id: 'NC-MEDDEV', enabled: true, category: 'medical-device', label: 'Medical-device manufacturer/employer', domains: ['medical device', 'medical devices', 'medtech', 'med device', 'medical equipment manufacturer'], employers: [] },
-      { id: 'NC-FOODBEV', enabled: true, category: 'food-beverage', label: 'Food or beverage manufacturer/employer', domains: ['food manufacturer', 'food manufacturing', 'food processing', 'beverage', 'brewery', 'bottling', 'dairy', 'meat processing', 'snack', 'confectionery', 'bakery'], employers: [] },
-      { id: 'NC-FOODSVC', enabled: true, category: 'food-service', label: 'Restaurant / fast-food / food-service employer', domains: ['restaurant', 'fast food', 'quick service restaurant', 'qsr', 'food service', 'foodservice', 'catering'], employers: [] }
-    ] };
-}
-function normRules(obj) { var r = obj && Array.isArray(obj.rules) ? obj : defaultRules(); r.rules = r.rules.filter(function (x) { return x && x.id; }).map(function (x) { return { id: String(x.id), enabled: x.enabled !== false, category: x.category || '', label: x.label || x.id, domains: (x.domains || []).map(function (s) { return String(s).toLowerCase().trim(); }).filter(Boolean), employers: (x.employers || []).map(function (s) { return normEmployer(s); }).filter(Boolean), note: x.note || '' }; }); return r; }
-/** Classify one record against rules. Uses EMPLOYER_DOMAIN_HINT (primary business) and exact employer list. Never the title. */
-function classifyNeverConsider(rec, rulesObj) {
-  var R = normRules(rulesObj); var hint = String(rec.EMPLOYER_DOMAIN_HINT || rec.EMPLOYER_PRIMARY_BUSINESS || '').toLowerCase(); var ne = normEmployer(rec.COMPANY);
-  for (var i = 0; i < R.rules.length; i++) {
-    var rule = R.rules[i]; if (!rule.enabled) continue;
-    if (ne && rule.employers.indexOf(ne) >= 0) return { excluded: true, ruleId: rule.id, basis: 'EMPLOYER_LIST' };
-    if (hint) { var neg = /\b(supplier|supplies|serving|serves|customers? in|for the|equipment for|automation for|to the)\b/.test(hint);
-      for (var j = 0; j < rule.domains.length; j++) { var d = rule.domains[j]; var re = new RegExp('(^|[^a-z])' + d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^a-z]|$)'); if (re.test(hint) && !neg) return { excluded: true, ruleId: rule.id, basis: 'DOMAIN_HINT:' + d }; } }
+/**
+ * Parse the canonical TIM_NEVER_CONSIDER_RULES text (KEY=VALUE lines; rule blocks start at RULE_ID=).
+ * Returns { status, defaultAction, header:{...}, rules:[{RULE_ID, CATEGORY, ACTION, MATCH, DO_NOT_MATCH, REASON, EXCEPTION, STATUS, active}], activeIds:[] }.
+ * The Doc is the only authority: nothing is invented here, no category is hard-coded, an unreadable file yields status UNAVAILABLE and default ALLOW_INTAKE.
+ */
+function parseRulesText(text) {
+  var out = { source: 'TIM_NEVER_CONSIDER_RULES', status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: '' };
+  if (!text || typeof text !== 'string') { out.error = 'empty rules text'; return out; }
+  var lines = text.replace(/\\_/g, '_').split(/\r?\n/), cur = null, inRules = false;
+  for (var i = 0; i < lines.length; i++) {
+    var l = lines[i].trim(); if (!l) continue;
+    if (/^ACTIVE RULES$/i.test(l)) { inRules = true; continue; }
+    if (/^(SCOUT REQUIRED OUTPUT|RUN-LEVEL COUNTERS|QUALITY PRINCIPLE|CHANGE CONTROL|END TIM_NEVER_CONSIDER_RULES)/i.test(l)) { if (cur) { out.rules.push(cur); cur = null; } inRules = false; continue; }
+    var m = l.match(/^([A-Z][A-Z0-9_\-]*)=(.*)$/); if (!m) continue;
+    var k = m[1], v = m[2].trim();
+    if (k === 'RULE_ID') { if (cur) out.rules.push(cur); cur = { RULE_ID: v, CATEGORY: '', ACTION: '', MATCH: '', DO_NOT_MATCH: '', REASON: '', EXCEPTION: '', STATUS: '' }; continue; }
+    if (cur) { cur[k] = v; continue; }
+    if (!inRules) out.header[k] = v;
   }
-  return { excluded: false, ruleId: '', basis: '' };
+  if (cur) out.rules.push(cur);
+  out.rules.forEach(function (r) { r.active = String(r.STATUS || '').toUpperCase() === 'ACTIVE'; if (r.active) out.activeIds.push(r.RULE_ID); });
+  out.defaultAction = out.header.DEFAULT_ACTION || 'ALLOW_INTAKE';
+  out.status = out.rules.length ? (String(out.header.STATUS || 'ACTIVE').toUpperCase()) : 'UNAVAILABLE';
+  if (!out.rules.length) out.error = 'no RULE_ID blocks found';
+  return out;
+}
+function ruleById(R, id) { id = String(id || '').trim().toUpperCase(); for (var i = 0; i < (R.rules || []).length; i++) if (String(R.rules[i].RULE_ID).toUpperCase() === id) return R.rules[i]; return null; }
+/** Words of a CATEGORY (e.g. FOOD_OR_BEVERAGE_MANUFACTURER) that may hint at the domain. Used only to flag a review, never to exclude. */
+function categoryTerms(cat) { var stop = { OR: 1, AND: 1, MANUFACTURER: 1, SERVICE: 1, OF: 1, THE: 1 }; return String(cat || '').toUpperCase().split(/[^A-Z]+/).filter(function (w) { return w && !stop[w] && w.length > 3; }).map(function (w) { return w.toLowerCase(); }); }
+var NEG_HINT_RE = /\b(supplier|supplies|serving|serves|customers? in|for the|equipment for|automation for|to the|vendor|integrator|consult|software|logistics|component)\b/;
+/**
+ * Classify one record. Outcome EXCLUDE only when Scout cites an ACTIVE rule with EXCLUSION_CONFIDENCE=HIGH (the file says Scout classifies;
+ * the writer verifies against the canonical file). MED/LOW, an unknown rule id, an unavailable file, or a writer-side domain hint all
+ * yield REVIEW (admit + NEVER_CONSIDER_REVIEW_NEEDED). Unknown/incomplete information is never a basis. Title is never a basis.
+ */
+function classifyNeverConsider(rec, R) {
+  R = R || { status: 'UNAVAILABLE', rules: [] };
+  var cited = String(rec.NEVER_CONSIDER_RULE_ID || '').trim().toUpperCase();
+  var conf = String(rec.EXCLUSION_CONFIDENCE || '').trim().toUpperCase(); if (conf === 'MEDIUM') conf = 'MED';
+  var reason = rec.EXCLUSION_REASON || rec.NEVER_CONSIDER_REASON || '';
+  if (cited) {
+    var rule = ruleById(R, cited);
+    if (R.status === 'UNAVAILABLE') return { outcome: 'REVIEW', ruleId: cited, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'RULES_UNAVAILABLE' };
+    if (!rule) return { outcome: 'REVIEW', ruleId: cited, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'UNKNOWN_RULE_ID' };
+    if (!rule.active) return { outcome: 'REVIEW', ruleId: cited, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'RULE_INACTIVE' };
+    if (String(rule.ACTION || '').toUpperCase() !== 'DO_NOT_ADD') return { outcome: 'REVIEW', ruleId: cited, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'RULE_ACTION_' + (rule.ACTION || 'UNSET') };
+    if (conf === 'HIGH') return { outcome: 'EXCLUDE', ruleId: rule.RULE_ID, confidence: 'HIGH', reason: reason || rule.REASON, basis: 'SCOUT_CLASSIFICATION' };
+    return { outcome: 'REVIEW', ruleId: rule.RULE_ID, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'CONFIDENCE_NOT_HIGH' };
+  }
+  // writer-side hint: the employer's stated primary business mentions a category word and does not read as a supplier/vendor to it
+  var hint = String(rec.EMPLOYER_DOMAIN_HINT || rec.EMPLOYER_PRIMARY_BUSINESS || '').toLowerCase();
+  if (hint && R.status !== 'UNAVAILABLE' && !NEG_HINT_RE.test(hint)) {
+    for (var i = 0; i < R.rules.length; i++) { var r = R.rules[i]; if (!r.active) continue;
+      var terms = categoryTerms(r.CATEGORY); for (var j = 0; j < terms.length; j++) { if (new RegExp('(^|[^a-z])' + terms[j] + '([^a-z]|$)').test(hint)) return { outcome: 'REVIEW', ruleId: r.RULE_ID, confidence: 'MED', reason: 'employer primary business mentions "' + terms[j] + '"', basis: 'DOMAIN_HINT' }; } }
+  }
+  return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
 }
 /* ================= pure functions: intake planning ================= */
 var INTAKE_FACT_KEYS = ['PAY_POSTED', 'DEGREE_TEXT', 'FLEX_HINT', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
-  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_PRIMARY_BUSINESS'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0, 400); });
+  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0, 400); });
   var unk = rec.INITIAL_UNKNOWN_FIELDS; out.INITIAL_UNKNOWN_FIELDS = Array.isArray(unk) ? unk.map(clean_).filter(Boolean).join(',') : clean_(unk || '');
   if (out.SOURCE_URL && !/^https?:\/\//i.test(out.SOURCE_URL)) out.SOURCE_URL = '';
+  if (out.SOURCE && !out.DISCOVERY_SOURCE) out.DISCOVERY_SOURCE = out.SOURCE;
   return out;
 }
 function planIntake(lines, records, rulesObj, ctx) {
-  ctx = ctx || {}; var results = [], newLines = [], excluded = [], summary = { CREATED: 0, EXISTING_MATCH: 0, REPLAY: 0, AMBIGUOUS_LEAD: 0, EXCLUDED: 0, INVALID: 0 };
+  ctx = ctx || {}; var results = [], newLines = [], excluded = [], summary = { NEVER_CONSIDER_EXCLUDED: 0, SCOUT_INTAKE_WRITTEN: 0, DISCOVERY_LEAD_WRITTEN: 0, EXISTING_MATCH: 0, WRITE_FAILED: 0, ENTERED_MASTER: 0, NEVER_CONSIDER_REVIEW_NEEDED: 0, REPLAY: 0, AMBIGUOUS_LEAD: 0 }, byRule = {};
+  var R = rulesObj && rulesObj.rules ? rulesObj : { status: 'UNAVAILABLE', rules: [], activeIds: [] };
   if (!Array.isArray(records)) return { ok: false, error: 'records must be an array' };
   if (records.length > 200) return { ok: false, error: 'batch too large (max 200)' };
   var idx = indexExisting(lines);
@@ -382,15 +443,20 @@ function planIntake(lines, records, rulesObj, ctx) {
   var batchKeys = {};
   for (var i = 0; i < records.length; i++) {
     var rec = sanitizeRecord(records[i]);
-    var res = { index: i, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '' };
-    if (!rec || !rec.COMPANY || !rec.TITLE) { res.result = 'INVALID_INPUT'; res.detail = 'COMPANY and TITLE are required'; summary.INVALID++; results.push(res); continue; }
+    var res = { index: i, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '', NEVER_CONSIDER_RULE_ID: '', NEVER_CONSIDER_REVIEW_NEEDED: '' };
+    if (!rec || !rec.COMPANY || !rec.TITLE) { res.result = 'WRITE_FAILED'; res.detail = 'INVALID_INPUT: COMPANY and TITLE are required'; summary.WRITE_FAILED++; results.push(res); continue; }
     if (!rec.INTAKE_KEY) rec.INTAKE_KEY = 'IK-' + hashHex([runId, normEmployer(rec.COMPANY), normTitle(rec.TITLE), normLocation(rec.LOCATION), reqCore(rec.REQ_ID), canonUrl(rec.SOURCE_URL)].join('|')).slice(0, 16);
     res.INTAKE_KEY = rec.INTAKE_KEY;
-    if (batchKeys[rec.INTAKE_KEY]) { res.result = 'REPLAY'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; summary.REPLAY++; results.push(res); continue; }
-    var nc = classifyNeverConsider(rec, rulesObj);
-    if (nc.excluded) { res.result = 'EXCLUDED_NEVER_CONSIDER'; res.detail = nc.ruleId + ' (' + nc.basis + ')'; summary.EXCLUDED++; excluded.push({ INTAKE_KEY: rec.INTAKE_KEY, COMPANY: rec.COMPANY, RULE_ID: nc.ruleId, BASIS: nc.basis }); results.push(res); continue; }
+    if (batchKeys[rec.INTAKE_KEY]) { res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
+    var nc = classifyNeverConsider(rec, R);
+    if (nc.outcome === 'EXCLUDE') {
+      res.result = 'NEVER_CONSIDER_EXCLUDED'; res.NEVER_CONSIDER_RULE_ID = nc.ruleId; res.detail = nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'; summary.NEVER_CONSIDER_EXCLUDED++; byRule[nc.ruleId] = (byRule[nc.ruleId] || 0) + 1;
+      excluded.push({ SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis });
+      results.push(res); continue;
+    }
+    if (nc.outcome === 'REVIEW') { res.NEVER_CONSIDER_REVIEW_NEEDED = nc.ruleId; summary.NEVER_CONSIDER_REVIEW_NEEDED++; }
     var m = matchExisting(rec, idx);
-    if (m.kind === 'exact') { res.result = m.by === 'INTAKE_KEY' ? 'REPLAY' : 'EXISTING_MATCH'; res.PRIMARY_ID = m.rows[0].id; res.INV = m.rows[0].inv; res.BUCKET = m.rows[0].bucket; res.matchedBy = m.by; if (res.result === 'REPLAY') summary.REPLAY++; else summary.EXISTING_MATCH++; results.push(res); continue; }
+    if (m.kind === 'exact') { res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = m.rows[0].id; res.INV = m.rows[0].inv; res.BUCKET = m.rows[0].bucket; res.matchedBy = m.by; if (m.by === 'INTAKE_KEY') { res.detail = 'REPLAY'; summary.REPLAY++; } summary.EXISTING_MATCH++; results.push(res); continue; }
     var proposed = String(rec.PROPOSED_BUCKET || '').toUpperCase(); var conf = String(rec.IDENTITY_CONFIDENCE || '').toUpperCase() || (rec.REQ_ID || rec.SOURCE_URL ? 'MEDIUM' : 'LOW');
     var bucket;
     if (m.kind === 'ambiguous') { bucket = 'DISCOVERY_LEAD'; conf = 'LOW'; res.matchedBy = 'AMBIGUOUS:' + m.by; res.detail = 'possible matches ' + m.rows.map(function (r) { return r.id; }).join(','); summary.AMBIGUOUS_LEAD++; }
@@ -407,12 +473,13 @@ function planIntake(lines, records, rulesObj, ctx) {
     set('SOURCE_URL', rec.SOURCE_URL); set('SOURCE_PROVIDER', rec.SOURCE_PROVIDER); set('REQ_ID', rec.REQ_ID); set('IDENTITY_CONFIDENCE', conf);
     set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED'); if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
     INTAKE_FACT_KEYS.forEach(function (k) { set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
+    if (nc.outcome === 'REVIEW') { set('NEVER_CONSIDER_REVIEW_NEEDED', nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'); set('NEVER_CONSIDER_REASON', nc.reason); }
     set('DATE_ADDED', today_(now)); set('NOTIFICATION_SOURCE', rec.SOURCE_PROVIDER || rec.DISCOVERY_SOURCE || 'Scout');
     set('STATE_SOURCE', 'SCOUT_INTAKE:' + (runId || 'UNSPECIFIED')); set('STATE_UPDATED_AT', now);
     var disposition = bucket === 'SCOUT_INTAKE' ? 'INTAKE/AWAITING_ANALYSIS' : 'INTAKE/IDENTITY_UNRESOLVED';
     var line = [String(inv), pid, rec.COMPANY, rec.TITLE, bucket, disposition, tags.join('; '), rec.REQ_ID || 'UNCAPTURED', rec.LOCATION || 'NOT_STATED'].join(' | ') + ' | ' + buildPayload('SCOUT_INTAKE_PENDING (Claude analysis, then Forge verification)', P, O);
     newLines.push(line); idx.push({ inv: inv, id: pid, company: rec.COMPANY, title: rec.TITLE, bucket: bucket, location: rec.LOCATION, reqTokens: reqTokens(rec.REQ_ID), reqCores: reqTokens(rec.REQ_ID).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), urls: urlsIn(rec.SOURCE_URL), ne: normEmployer(rec.COMPANY), nt: normTitle(rec.TITLE), nl: normLocation(rec.LOCATION), intakeKey: rec.INTAKE_KEY });
-    res.result = 'CREATED'; res.PRIMARY_ID = pid; res.INV = inv; res.BUCKET = bucket; summary.CREATED++; results.push(res);
+    res.result = bucket === 'SCOUT_INTAKE' ? 'SCOUT_INTAKE_WRITTEN' : 'DISCOVERY_LEAD_WRITTEN'; res.PRIMARY_ID = pid; res.INV = inv; res.BUCKET = bucket; summary[res.result]++; summary.ENTERED_MASTER++; results.push(res);
   }
   // Insert block: rows grouped by bucket, each group under its own heading, so a SCOUT_INTAKE row never sits under
   // a DISCOVERY_LEAD heading (row BUCKET stays authoritative; headings are presentation and may repeat).
@@ -421,7 +488,7 @@ function planIntake(lines, records, rulesObj, ctx) {
     var group = newLines.filter(function (l) { return l.split(' | ')[4] === b; }); if (!group.length) return;
     var h = '=== ' + b + ' (' + group.length + ') ==='; headingLines.push(h); insertLines.push(h); insertLines = insertLines.concat(group);
   });
-  return { ok: true, results: results, newLines: newLines, headingLines: headingLines, insertLines: insertLines, summary: summary, excluded: excluded };
+  return { ok: true, results: results, newLines: newLines, headingLines: headingLines, insertLines: insertLines, summary: summary, excluded: excluded, byRule: byRule, rulesStatus: R.status };
 }
 /** Apply a plan to an array of lines (used by tests and by any non-Docs backend): insert before END, recount. */
 function applyPlanToLines(lines, plan) {
@@ -444,8 +511,15 @@ function findOrCreate_(name, mime, initial) {
 }
 function readState_() { var f = findOrCreate_(STATE_FILE_NAME, 'text', '{"seen":{},"rulings":{}}'); try { return JSON.parse(f.getBlob().getDataAsString() || '{}'); } catch (e) { return { seen: {}, rulings: {} }; } }
 function writeState_(state) { var f = findOrCreate_(STATE_FILE_NAME, 'text', '{}'); f.setContent(JSON.stringify(state)); }
-function readRules_() { var f = findOrCreate_(RULES_FILE_NAME, 'text', JSON.stringify(defaultRules(), null, 2)); try { return normRules(JSON.parse(f.getBlob().getDataAsString() || '{}')); } catch (e) { return defaultRules(); } }
-function saveRules_(rules) { var r = normRules(rules); r.updatedAt = new Date().toISOString(); var f = findOrCreate_(RULES_FILE_NAME, 'text', '{}'); f.setContent(JSON.stringify(r, null, 2)); return { ok: true, rules: r }; }
+/** Read the canonical never-consider Doc (fixed ID). Read-only: the Doc is opened and never saved, so its modifiedTime is untouched. Edits are Tim's, in the Doc. */
+function readRules_() {
+  try {
+    var text = DocumentApp.openById(RULES_DOC_ID).getBody().getText();
+    var R = parseRulesText(text); R.id = RULES_DOC_ID; R.raw = text;
+    try { R.modifiedTime = DriveApp.getFileById(RULES_DOC_ID).getLastUpdated().toISOString(); } catch (e2) { R.modifiedTime = ''; }
+    return R;
+  } catch (e) { return { source: 'TIM_NEVER_CONSIDER_RULES', id: RULES_DOC_ID, status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: String(e && e.message || e) }; }
+}
 function readRuns_() { var it = folder_().getFilesByName(RUNS_FILE_NAME); if (!it.hasNext()) return []; var txt = it.next().getBlob().getDataAsString(); return txt.split('\n').filter(Boolean).map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean); }
 function appendRun_(rec) { var f = findOrCreate_(RUNS_FILE_NAME, 'text', ''); var cur = f.getBlob().getDataAsString(); f.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + JSON.stringify(rec) + '\n'); }
 function appendReceipt_(r) {
@@ -458,4 +532,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, defaultRules: defaultRules, normRules: normRules, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };
+if (typeof module !== 'undefined') module.exports = { mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, scoutExclusions_: scoutExclusions_, runCounters_: runCounters_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };

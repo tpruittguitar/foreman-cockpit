@@ -17,7 +17,14 @@
   function cohorts(rows, runs, opts) {
     opts = opts || {}; var now = opts.now || Date.now(); var matH = opts.maturityHours || 72, quietH = opts.quietHours || 24;
     var byRun = {};
-    (runs || []).forEach(function (r) { var id = r.SCOUT_RUN_ID || 'UNSPECIFIED'; var c = byRun[id] || (byRun[id] = blank(id)); c.runs.push(r); c.GROSS_FOUND += +r.GROSS_FOUND || 0; c.NEVER_CONSIDER_EXCLUDED += (r.NEVER_CONSIDER_EXCLUDED || []).length + (r.WRITER_EXCLUDED || []).length; if (!c.receivedAt || (r.RECEIVED_AT && r.RECEIVED_AT < c.receivedAt)) c.receivedAt = r.RECEIVED_AT || c.receivedAt; });
+    (runs || []).forEach(function (r) { var id = r.SCOUT_RUN_ID || 'UNSPECIFIED'; var c = byRun[id] || (byRun[id] = blank(id)); c.runs.push(r); var K = r.COUNTERS || {};
+      c.GROSS_FOUND += +(K.GROSS_FOUND !== undefined ? K.GROSS_FOUND : r.GROSS_FOUND) || 0;
+      var ex = K.NEVER_CONSIDER_EXCLUDED !== undefined ? +K.NEVER_CONSIDER_EXCLUDED : (typeof r.NEVER_CONSIDER_EXCLUDED === 'number' ? r.NEVER_CONSIDER_EXCLUDED : (r.NEVER_CONSIDER_EXCLUDED || []).length + (r.WRITER_EXCLUDED || []).length);
+      c.NEVER_CONSIDER_EXCLUDED += ex || 0;
+      ['SCOUT_INTAKE_WRITTEN', 'DISCOVERY_LEAD_WRITTEN', 'EXISTING_MATCH', 'WRITE_FAILED', 'NEVER_CONSIDER_REVIEW_NEEDED'].forEach(function (k) { c[k] += +K[k] || 0; });
+      Object.keys(K).forEach(function (k) { var m = k.match(/^(.+)_COUNT$/); if (m) c.byRule[m[1]] = (c.byRule[m[1]] || 0) + (+K[k] || 0); });
+      (r.EXCLUSIONS || []).forEach(function (x) { if (!K.NEVER_CONSIDER_EXCLUDED && x && x.NEVER_CONSIDER_RULE_ID) c.byRule[x.NEVER_CONSIDER_RULE_ID] = (c.byRule[x.NEVER_CONSIDER_RULE_ID] || 0) + 1; });
+      if (!c.receivedAt || (r.RECEIVED_AT && r.RECEIVED_AT < c.receivedAt)) c.receivedAt = r.RECEIVED_AT || c.receivedAt; });
     rows.forEach(function (r) { var id = r.payload && r.payload.SCOUT_RUN_ID; if (!id) return; var c = byRun[id] || (byRun[id] = blank(id)); c.ENTERED_MASTER++; c.buckets[r.BUCKET] = (c.buckets[r.BUCKET] || 0) + 1;
       var d0 = pDate(r.payload.DISCOVERED_AT_ET) || pDate(r.payload.DATE_ADDED); if (d0 && (!c.firstSeen || d0 < c.firstSeen)) c.firstSeen = d0;
       if (FINAL.indexOf(r.BUCKET) >= 0) { var d1 = pDate(r.payload.STATE_UPDATED_AT); if (d0 && d1 && d1 >= d0) c.ttf.push((d1 - d0) / 36e5); } });
@@ -35,10 +42,10 @@
     out.sort(function (a, b) { return (b.firstSeen || 0) - (a.firstSeen || 0); });
     return out;
   }
-  function blank(id) { return { SCOUT_RUN_ID: id, runs: [], GROSS_FOUND: 0, NEVER_CONSIDER_EXCLUDED: 0, ENTERED_MASTER: 0, buckets: {}, ttf: [], firstSeen: null, receivedAt: null }; }
+  function blank(id) { return { SCOUT_RUN_ID: id, runs: [], GROSS_FOUND: 0, NEVER_CONSIDER_EXCLUDED: 0, ENTERED_MASTER: 0, SCOUT_INTAKE_WRITTEN: 0, DISCOVERY_LEAD_WRITTEN: 0, EXISTING_MATCH: 0, WRITE_FAILED: 0, NEVER_CONSIDER_REVIEW_NEEDED: 0, byRule: {}, buckets: {}, ttf: [], firstSeen: null, receivedAt: null }; }
   /** Aggregate cohorts within a window (days back from now). Only the sums; rates recomputed from sums. */
   function window(cs, days, now) { now = now || Date.now(); var cut = now - days * 864e5; var sel = cs.filter(function (c) { return c.firstSeen && c.firstSeen >= cut; }); var agg = blank('window_' + days + 'd'); var ttf = [];
-    sel.forEach(function (c) { ['GROSS_FOUND', 'NEVER_CONSIDER_EXCLUDED', 'ENTERED_MASTER', 'SCOUT_INTAKE', 'DISCOVERY_LEAD', 'VALID_DISTINCT', 'DUPLICATE', 'DEAD_OR_STALE', 'INVALID_DISCOVERY', 'READY', 'APPLIED', 'DECLINED', 'STILL_UNRESOLVED'].forEach(function (k) { agg[k] = (agg[k] || 0) + (c[k] || 0); }); ttf = ttf.concat(c.ttf); });
+    sel.forEach(function (c) { ['GROSS_FOUND', 'NEVER_CONSIDER_EXCLUDED', 'ENTERED_MASTER', 'SCOUT_INTAKE_WRITTEN', 'DISCOVERY_LEAD_WRITTEN', 'EXISTING_MATCH', 'WRITE_FAILED', 'NEVER_CONSIDER_REVIEW_NEEDED', 'SCOUT_INTAKE', 'DISCOVERY_LEAD', 'VALID_DISTINCT', 'DUPLICATE', 'DEAD_OR_STALE', 'INVALID_DISCOVERY', 'READY', 'APPLIED', 'DECLINED', 'STILL_UNRESOLVED'].forEach(function (k) { agg[k] = (agg[k] || 0) + (c[k] || 0); }); Object.keys(c.byRule || {}).forEach(function (k) { agg.byRule[k] = (agg.byRule[k] || 0) + c.byRule[k]; }); ttf = ttf.concat(c.ttf); });
     agg.cohorts = sel.length; agg.finalized = sel.filter(function (c) { return c.scored; }).length;
     agg.ADMISSION_RATE = rate(agg.ENTERED_MASTER, agg.GROSS_FOUND); agg.VALIDITY_RATE = rate(agg.VALID_DISTINCT, agg.ENTERED_MASTER); agg.ACTIONABLE_YIELD = rate((agg.READY || 0) + (agg.APPLIED || 0), agg.ENTERED_MASTER);
     agg.DUPLICATE_RATE = rate(agg.DUPLICATE, agg.ENTERED_MASTER); agg.INVALID_RATE = rate(agg.INVALID_DISCOVERY, agg.ENTERED_MASTER); agg.UNRESOLVED_RATE = rate(agg.STILL_UNRESOLVED, agg.ENTERED_MASTER); agg.MEDIAN_TIME_TO_FINAL_DISPOSITION_H = median(ttf);
