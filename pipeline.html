@@ -107,7 +107,7 @@ function keyGroup(k){if(TIM_KEYS.indexOf(k)>=0)return 'tim';if(/^(CLAUDE_|ANALYS
 var PHONE_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DATE_ADDED','SALARY_BASE_EST','LOCATION'];
 var DATE_KEYS={DATE_ADDED:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
-var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,tab:'pipeline',newDays:1,search:''};
+var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,tab:'pipeline',newDays:1,search:'',writePending:{}};
 S.cols=S.cols||{desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};
 if(S.cols.bucketOrder.indexOf('SCOUT_INTAKE')<0){S.cols.bucketOrder=['SCOUT_INTAKE','DISCOVERY_LEAD'].concat(S.cols.bucketOrder.filter(function(b){return b!=='SCOUT_INTAKE'&&b!=='DISCOVERY_LEAD'})).concat(['INVALID_DISCOVERY']).filter(function(b,i,a){return a.indexOf(b)===i});LS.set('cols',S.cols)}
 S.runs=[];S.rules=null;
@@ -313,16 +313,34 @@ function openRow(id){var r=S.rows.filter(function(x){return x.id===id})[0];if(!r
     h+='<div class="sec '+g[0]+'"><h4>'+g[1]+(groups[g[0]].length?'':' · none')+'</h4>'+(groups[g[0]].length?'<div class="kv">'+groups[g[0]].map(function(k){return '<div>'+esc(k)+'</div><div>'+linkify(r.payload[k])+'</div>'}).join('')+'</div>':'')+'</div>'});
   h+='<div class="tip" style="margin-top:8px">raw line '+r.line+'</div>';
   $('d-body').innerHTML=h;$('drawer').classList.add('on');
-  $('d-body').querySelectorAll('[data-r]').forEach(function(b){b.onclick=function(){var a=b.getAttribute('data-r').split(':');var note=$('r-note').value.trim();
+  $('d-body').querySelectorAll('[data-r]').forEach(function(b){b.onclick=function(){
+    if(S.writePending[r.id])return;
+    var a=b.getAttribute('data-r').split(':');var note=$('r-note').value.trim();
     if(a[0]==='CLEAR'){delete S.rulings[r.id];LS.set('rulings',S.rulings);syncStateUp();render();openRow(r.id);return}
     if(a[0]==='NOTE'&&!note){alert('Type a note first.');return}
     var dupOf=$('r-dupof')?$('r-dupof').value.trim():'';if(a[0]==='DUPLICATE'&&!dupOf){alert('Enter the PRIMARY_ID this row duplicates.');return}
+    var destructive=a[0]==='DECLINE'||a[0]==='CLOSED_DEAD'||a[0]==='INVALID_DISCOVERY'||a[0]==='DUPLICATE'||a[0]==='APPLIED'||(a[0]==='APPLY_NOW'&&a[1]==='NO');
+    if(hasWriter()&&destructive){
+      var target=a[0]==='DECLINE'||(a[0]==='APPLY_NOW'&&a[1]==='NO')?'DECLINED_BY_TIM':a[0]==='CLOSED_DEAD'?'CLOSED_DEAD':a[0]==='INVALID_DISCOVERY'?'INVALID_DISCOVERY':a[0]==='DUPLICATE'?'DUPLICATE':a[0]==='APPLIED'?'APPLIED':a[0];
+      var msg='Confirm canonical state change\n\n'+r.COMPANY+' — '+r.TITLE+'\n'+r.BUCKET+' → '+target+(note?'\n\nNote/reason: '+note:'');
+      if(!confirm(msg))return;
+    }
     var ts=new Date().toISOString();var ru={kind:a[0],value:a[1]||'',code:a[0]==='DECLINE'&&$('r-code')?$('r-code').value:'',dupOf:dupOf,note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
-    S.rulings[r.id]=ru;LS.set('rulings',S.rulings);render();openRow(r.id);
-    if(hasWriter()){var st=$('r-status');if(st)st.innerHTML='<span class="pill">WRITING…</span> sending to the master';
-      gsPost({action:'ruling',ruling:ru}).then(function(j){ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');S.rulings[r.id]=ru;LS.set('rulings',S.rulings);syncStateUp();if(j.ok){load()}else{render();openRow(r.id)}})
-      .catch(function(e){ru.error='network: '+e.message;S.rulings[r.id]=ru;LS.set('rulings',S.rulings);render();openRow(r.id)})}
-    else syncStateUp()}});
+    S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
+    if(hasWriter()){
+      S.writePending[r.id]=true;
+      $('d-body').querySelectorAll('[data-r],select,input,textarea').forEach(function(el){el.disabled=true});
+      var st=$('r-status');if(st)st.innerHTML='<span class="pill">WRITING…</span> sending to the master · controls locked';
+      gsPost({action:'ruling',ruling:ru}).then(function(j){
+        delete S.writePending[r.id];
+        ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');S.rulings[r.id]=ru;LS.set('rulings',S.rulings);syncStateUp();
+        if(j.ok){$('drawer').classList.remove('on');S.focus=null;load()}else{render();openRow(r.id)}
+      }).catch(function(e){
+        delete S.writePending[r.id];
+        ru.error='network: '+e.message;S.rulings[r.id]=ru;LS.set('rulings',S.rulings);render();openRow(r.id)
+      })
+    } else {render();openRow(r.id);syncStateUp()}
+  }});
   $('r-copy').onclick=function(){var t=scrText([r.id]);navigator.clipboard&&navigator.clipboard.writeText(t);alert('Copied:\n\n'+t)};
   render();
 }
