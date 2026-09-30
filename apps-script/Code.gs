@@ -15,7 +15,8 @@
  * DEPLOY: apps-script/README.md.  Pure functions below are unit-tested in tests/*.test.js via CommonJS export.
  */
 var MASTER_ID = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI'; // fixed per Tim's 2026-09-29 ruling (cutover REV2)
-var PASSPHRASE = 'CHANGE-ME';                                   // set your own; the page asks for it once
+var PASSPHRASE = 'CHANGE-ME';                                   // admin/Explorer key: Tim rulings + state + reads
+var SCOUT_INTAKE_KEY = '';                                      // separate Scout secret: POST action=intake ONLY; set only in deployed Apps Script
 var STATE_FILE_NAME = 'PIPELINE_EXPLORER_STATE.json';
 var RECEIPTS_DOC_NAME = 'PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS';
 /** Canonical never-consider configuration: the Google Doc TIM_NEVER_CONSIDER_RULES in AI_Coordination (fixed ID, read-only here). Configuration only; never a job store. */
@@ -48,15 +49,23 @@ function doGet(e) {
 function doPost(e) {
   var req = {};
   try { req = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (x) { return out_({ ok: false, error: 'bad JSON' }); }
-  if (!auth_(req.key)) return out_({ ok: false, error: 'bad key' });
+  var action = req.action || '';
+  if (!authForAction_(action, req.key)) return out_({ ok: false, error: 'bad key' });
   try {
-    if (req.action === 'state') { writeState_(req.state || {}); return out_({ ok: true }); }
-    if (req.action === 'ruling') return out_(applyRulingToMaster_(req.ruling || {}));
-    if (req.action === 'intake') return out_(applyIntakeToMaster_(req));
-    return out_({ ok: false, error: 'unknown action ' + req.action });
+    if (action === 'state') { writeState_(req.state || {}); return out_({ ok: true }); }
+    if (action === 'ruling') return out_(applyRulingToMaster_(req.ruling || {}));
+    if (action === 'intake') return out_(applyIntakeToMaster_(req));
+    return out_({ ok: false, error: 'unknown action ' + action });
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err) }); }
 }
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
+/** Admin key can perform every action. Scout key is deliberately scoped to intake only. */
+function authForAction_(action, k, adminKey, scoutKey) {
+  var admin = adminKey === undefined ? PASSPHRASE : adminKey;
+  var scout = scoutKey === undefined ? SCOUT_INTAKE_KEY : scoutKey;
+  if (admin && k === admin) return true;
+  return action === 'intake' && !!scout && k === scout;
+}
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 
 /* ================= master read ================= */
@@ -564,4 +573,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };
+if (typeof module !== 'undefined') module.exports = { authForAction_: authForAction_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };
