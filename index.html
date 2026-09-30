@@ -216,7 +216,7 @@ function render(){
   if(status==="err")banner='<div class="panel" style="border-color:var(--nok)"><div class="pb" style="color:var(--nok)">\u2715 feed unreachable \u2014 confirm COCKPIT_FEED_v2 is public, then refresh.</div></div>';
 
   let html='';
-  html+='<div class="head"><div class="row"><div><div style="font-size:15px;font-weight:800;letter-spacing:1.2px">FOREMAN COCKPIT</div><div class="mono" style="font-size:10px;color:var(--faint);margin-top:2px">'+(d.board||"\u2014")+' \u00B7 '+(easternStamp(d.updated)||"no feed")+statusTxt+'</div></div><div style="display:flex;gap:6px"><button class="btn on" onclick="loadFeed()">\u21BB refresh</button><button class="btn" onclick="togglePaste()">'+(showPaste?"close":"paste")+'</button></div></div></div>';
+  html+='<div class="head"><div class="row"><div><div style="font-size:15px;font-weight:800;letter-spacing:1.2px">FOREMAN COCKPIT</div><div class="mono" style="font-size:10px;color:var(--faint);margin-top:2px">'+(d.board||"\u2014")+' \u00B7 '+(easternStamp(d.updated)||"no feed")+statusTxt+'</div></div><div style="display:flex;gap:6px"><a class="btn" href="/pipeline.html" title="Pipeline Explorer: canonical master viewer, Tim rulings, Scout intake, Scout quality" style="text-decoration:none;display:inline-flex;align-items:center">\u25A6 Pipeline Explorer</a><button class="btn on" onclick="loadFeed()">\u21BB refresh</button><button class="btn" onclick="togglePaste()">'+(showPaste?"close":"paste")+'</button></div></div></div>';
   html+=banner;
   if(showPaste)html+='<div class="panel"><div class="pb"><textarea id="pb" placeholder="paste feed text\u2026"></textarea><div style="margin-top:7px"><button class="btn on" onclick="applyPaste()">parse</button></div></div></div>';
 

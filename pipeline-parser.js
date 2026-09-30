@@ -7,6 +7,10 @@
   'use strict';
   var FIXED_COLUMNS = ['INV', 'PRIMARY_ID', 'COMPANY', 'TITLE', 'BUCKET', 'DISPOSITION', 'TAGS', 'REQ', 'LOCATION'];
   var ROW_RE = /^(\d+) \| /;
+  var END_RE = /^END V2_CURRENT_POPULATION_MASTER \((\d+) rows\)/;
+  var BUCKETS = ['SCOUT_INTAKE', 'DISCOVERY_LEAD', 'READY_TO_PURSUE', 'TIM_DECISION_REQUIRED', 'BLOCKED', 'MANUAL_RESEARCH', 'APPLIED', 'REJECTED_BY_EMPLOYER', 'DECLINED_BY_TIM', 'DUPLICATE', 'CLOSED_DEAD', 'INVALID_DISCOVERY'];
+  var FINAL_BUCKETS = ['READY_TO_PURSUE', 'APPLIED', 'REJECTED_BY_EMPLOYER', 'DECLINED_BY_TIM', 'DUPLICATE', 'CLOSED_DEAD', 'INVALID_DISCOVERY'];
+  var UNRESOLVED_BUCKETS = ['SCOUT_INTAKE', 'DISCOVERY_LEAD', 'TIM_DECISION_REQUIRED', 'BLOCKED', 'MANUAL_RESEARCH'];
   var SECTION_RE = /^=== (.+?) \((\d+)\) ===\s*$/;
   var KV_RE = /^([A-Z][A-Z0-9_]*)=([\s\S]*)$/;
 
@@ -56,7 +60,7 @@
   function parse(text) {
     text = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
     var lines = text.split('\n');
-    var header = [], rows = [], sections = [], counts = null, columnsLine = null, schema = null, title = lines[0] || '';
+    var header = [], rows = [], sections = [], counts = null, columnsLine = null, schema = null, title = lines[0] || '', endLine = null, endCount = null;
     var inBody = false, section = null, sectionCounts = {};
     for (var i = 0; i < lines.length; i++) {
       var ln = lines[i];
@@ -68,6 +72,8 @@
         else if (/^SCHEMA:/.test(ln)) schema = parseSchema(ln);
         continue;
       }
+      var em = ln.match(END_RE);
+      if (em) { endLine = ln; endCount = +em[1]; continue; }
       var sm = ln.match(SECTION_RE);
       if (sm) { section = sm[1]; sectionCounts[section] = +sm[2]; sections.push({ name: section, declared: +sm[2], line: i + 1 }); continue; }
       if (ROW_RE.test(ln)) { rows.push(parseRow(ln, i + 1, section)); continue; }
@@ -92,9 +98,11 @@
       var wellFormed = rows.filter(function (r) { return !r.parseError; }).length;
       if (counts.TOTAL !== undefined && counts.TOTAL !== wellFormed) { checksum.ok = false; checksum.diffs.push({ bucket: 'TOTAL', declared: counts.TOTAL, parsed: wellFormed }); }
     } else { checksum.ok = false; checksum.diffs.push({ bucket: 'COUNTS', declared: null, parsed: rows.length }); }
+    var wellFormedN = rows.filter(function (r) { return !r.parseError; }).length;
+    if (endCount !== null && endCount !== wellFormedN) { checksum.ok = false; checksum.diffs.push({ bucket: 'END', declared: endCount, parsed: wellFormedN }); }
     return {
       title: title, header: header, columnsLine: columnsLine, counts: counts, schema: schema || { MASTER_SCHEMA_VERSION: '1 (assumed; no SCHEMA line)' },
-      sections: sections, rows: rows, byBucket: byBucket, sectionMismatches: mismatches,
+      sections: sections, rows: rows, byBucket: byBucket, sectionMismatches: mismatches, endLine: endLine, endCount: endCount,
       payloadKeys: payloadKeys, keyFreq: keyFreq, checksum: checksum,
       parseErrors: rows.filter(function (r) { return r.parseError; })
     };
@@ -110,5 +118,5 @@
     return { low: Math.min.apply(null, nums), high: Math.max.apply(null, nums), mid: (Math.min.apply(null, nums) + Math.max.apply(null, nums)) / 2 };
   }
   function parseDate(s) { if (!s) return null; var m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/); if (!m) return null; return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)); }
-  return { parse: parse, parseRow: parseRow, parsePayload: parsePayload, parseMoney: parseMoney, parseDate: parseDate, FIXED_COLUMNS: FIXED_COLUMNS };
+  return { parse: parse, parseRow: parseRow, parsePayload: parsePayload, parseMoney: parseMoney, parseDate: parseDate, FIXED_COLUMNS: FIXED_COLUMNS, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, UNRESOLVED_BUCKETS: UNRESOLVED_BUCKETS };
 }));

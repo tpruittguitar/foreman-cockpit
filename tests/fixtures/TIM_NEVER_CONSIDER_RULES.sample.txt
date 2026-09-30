@@ -1,0 +1,165 @@
+TIM_NEVER_CONSIDER_RULES
+
+OWNER=Tim Pruitt
+
+STATUS=ACTIVE
+
+PURPOSE=Canonical hard-exclusion configuration for job discovery intake. This file controls which employer/role domains Scout may exclude before creating a SCOUT_INTAKE or DISCOVERY_LEAD row.
+
+SCOPE=Discovery admission only. This file is not a job database and does not replace the fixed canonical master.
+
+DEFAULT_ACTION=ALLOW_INTAKE
+
+UNKNOWN_RULE=Unknown or incomplete information is NOT a reason to exclude. Unknown remains a research state.
+
+EXCEPTION_AUTHORITY=Tim explicit override only.
+
+AUDIT_REQUIREMENT=Every hard exclusion must be counted and logged by RULE_ID in the Scout run metrics. Nothing may silently disappear.
+
+GENERAL INTERPRETATION RULES
+
+1. Apply hard exclusions based primarily on the employer's core operating business/domain, not incidental keywords in the job description.
+
+2. Do NOT exclude an industrial supplier, automation company, equipment maker, software company, integrator, consulting firm, or engineering company merely because it serves an excluded industry.
+
+3. Do NOT exclude a role merely because compensation, degree/FLEX, reporting level, exact req ID, plant ownership, work arrangement, scope, or other decision-quality data is unknown.
+
+4. Do NOT exclude solely because a role is Manager or Senior Manager, comes from a recruiter/aggregator, lacks a first-party ATS URL, or requires more research.
+
+5. When classification is genuinely ambiguous, DO NOT hard-exclude. Admit as SCOUT_INTAKE or DISCOVERY_LEAD and record the ambiguity.
+
+6. Hard exclusions prevent initial master-row creation only when the rule clearly applies. Scout must still log the excluded discovery in run metrics with company/title/source and RULE_ID.
+
+7. If a role already exists in the canonical master, these rules do not authorize deletion. Existing rows remain auditable; downstream disposition may use the applicable rule with Tim/Forge governance.
+
+ACTIVE RULES
+
+RULE_ID=NC-001
+
+CATEGORY=PHARMACEUTICAL_MANUFACTURER
+
+ACTION=DO_NOT_ADD
+
+MATCH=Employer's primary business is pharmaceutical drug development, pharmaceutical manufacturing, or commercial pharmaceutical production.
+
+DO_NOT_MATCH=Industrial suppliers, automation/equipment vendors, contract engineering firms, software vendors, or other companies merely serving pharmaceutical customers.
+
+REASON=Tim does not want pharmaceutical-company roles.
+
+EXCEPTION=Tim explicit override.
+
+STATUS=ACTIVE
+
+RULE_ID=NC-002
+
+CATEGORY=MEDICAL_DEVICE_MANUFACTURER
+
+ACTION=DO_NOT_ADD
+
+MATCH=Employer's primary business is manufacturing or commercializing medical devices, medical equipment, surgical devices, diagnostic devices, or comparable regulated healthcare hardware.
+
+DO_NOT_MATCH=Industrial suppliers, machine builders, automation/integration companies, component suppliers, software vendors, or other companies merely serving medical-device customers.
+
+REASON=Tim does not want medical-device-company roles.
+
+EXCEPTION=Tim explicit override.
+
+STATUS=ACTIVE
+
+RULE_ID=NC-003
+
+CATEGORY=FOOD_OR_BEVERAGE_MANUFACTURER
+
+ACTION=DO_NOT_ADD
+
+MATCH=Employer's primary business is manufacturing, processing, packaging, or commercially producing food or beverage products.
+
+DO_NOT_MATCH=Packaging-equipment makers, automation vendors, industrial equipment suppliers, refrigeration/process-equipment companies, logistics firms, or other companies merely serving food/beverage manufacturers.
+
+REASON=Tim does not want food/beverage-manufacturing-company roles.
+
+EXCEPTION=Tim explicit override.
+
+STATUS=ACTIVE
+
+RULE_ID=NC-004
+
+CATEGORY=RESTAURANT_OR_FOOD_SERVICE
+
+ACTION=DO_NOT_ADD
+
+MATCH=Employer's primary business is restaurant operations, fast-food operations, quick-service restaurants, food service, catering, or similar consumer meal-service operations.
+
+DO_NOT_MATCH=Industrial equipment suppliers, restaurant-equipment manufacturers, automation/software vendors, logistics firms, or other companies merely serving restaurants.
+
+REASON=Tim does not want restaurant/fast-food/food-service roles.
+
+EXCEPTION=Tim explicit override.
+
+STATUS=ACTIVE
+
+SCOUT REQUIRED OUTPUT FOR EXCLUSIONS
+
+For every excluded discovery record:
+
+SCOUT_RUN_ID=
+
+DISCOVERED_AT_ET=
+
+COMPANY=
+
+TITLE=
+
+LOCATION=
+
+SOURCE=
+
+SOURCE_URL=
+
+NEVER_CONSIDER_RULE_ID=
+
+EXCLUSION_CONFIDENCE=HIGH|MED|LOW
+
+EXCLUSION_REASON=
+
+TIM_OVERRIDE=NO
+
+RUN-LEVEL COUNTERS
+
+GROSS_FOUND=
+
+NEVER_CONSIDER_EXCLUDED=
+
+NC-001_COUNT=
+
+NC-002_COUNT=
+
+NC-003_COUNT=
+
+NC-004_COUNT=
+
+ENTERED_MASTER=
+
+SCOUT_INTAKE_WRITTEN=
+
+DISCOVERY_LEAD_WRITTEN=
+
+EXISTING_MATCH=
+
+WRITE_FAILED=
+
+QUALITY PRINCIPLE
+
+Scout quality must not improve artificially by hiding uncertain discoveries. A legitimate role later declined for Tim's pay, geography, FLEX, scope, or other preference remains a valid Scout discovery. NEVER_CONSIDER is only for Tim-owned hard exclusions.
+
+CHANGE CONTROL
+
+- Tim may add, disable, edit, or override rules.
+
+- Grok/Scout, Claude, and Forge may propose changes but may not invent new hard exclusion categories.
+
+- A new or modified hard exclusion rule becomes active only after Tim approval and update of this canonical file.
+
+- Preserve rule IDs for historical metrics. If a rule is retired, set STATUS=INACTIVE rather than reusing its RULE_ID.
+
+END TIM_NEVER_CONSIDER_RULES
