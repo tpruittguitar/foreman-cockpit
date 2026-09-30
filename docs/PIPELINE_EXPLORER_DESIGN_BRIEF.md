@@ -1,10 +1,12 @@
-# PIPELINE EXPLORER — DESIGN BRIEF v0.4
+# PIPELINE EXPLORER — DESIGN BRIEF v0.5
 
-**Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 applies the second-round corrections from ChatGPT and Grok)
+**Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 second-round corrections; v0.5 adds the non-interference rule from Tim)
 **Author:** Claude (Foreman node), from Tim's spec in this session
 **Status:** PROPOSAL FOR REVIEW. No code written. No Drive files changed. **v1 is read-only.** Nothing is authorized until Tim rules on §9. Merging this PR files the proposal; it does not authorize a build.
 **Reviewers:** Tim (final authority), ChatGPT, Grok
 **Repo:** tpruittguitar/foreman-cockpit (`docs/PIPELINE_EXPLORER_DESIGN_BRIEF.md`)
+
+**What changed in v0.5 (Tim's instruction, 2026-09-30).** Tim: "Make sure the AI schedules and automation work continue like designed. This is just a viewer and analysis and management tool for their work." That is now §2.1, a hard rule above every other section. Two proposals that would have asked the pipeline to change its output are withdrawn as requests (SCHEMA header line, canonical APPLY_NOW field); the app adapts to whatever the pipeline produces. Manual refresh only, no polling. Reads are confirmed not to touch the master's modifiedTime, which the writers' concurrency protocol depends on.
 
 **What changed in v0.4 (targeted; no redesign).** NEEDS ACTION no longer includes `VERIFY_LATER` (§4.3). Salary Floors tab deferred; the app shows row-level `FLOOR_STATUS` where the master carries it and never presents a reconstructed floor table as authoritative (§6.3). SCHEMA line fields revised for the fixed-ID, in-place regime (§3.4). PIPELINE preset verified against where interview and offer states actually live (§4.3). Active predicate shown in the status line. Undo window for v2 requests changed to "until the writer picks it up" (§5.3). Two fixture cases added (§3.1). Both reviewers state v0.3 architecture is acceptable for Step 1 with these edits; **Tim has not yet ruled.**
 
@@ -45,6 +47,16 @@ A single-file web app, hosted next to the existing Foreman Cockpit, that opens t
 
 ## 2. Goals and non-goals
 
+### 2.1 Non-interference rule (Tim, 2026-09-30; overrides anything below that conflicts)
+The Explorer is a viewer, analysis and management tool **for** the pipeline's work. The AI schedules and automations continue exactly as designed. Concretely:
+1. **No node depends on the Explorer.** It is not a governing artifact, it is not in any node's load order, and no automation reads it. It can be switched off with no effect on discovery, resolution, freeze, ranking, publication, failover or watchdog.
+2. **The Explorer requests nothing from the pipeline.** It adapts to whatever the master and governance files contain. Proposals in this brief that would change a node's output (a SCHEMA header line, a canonical APPLY_NOW field) are recorded as ideas the pipeline may adopt on its own schedule, not as requirements. The app must work identically whether or not they ever happen.
+3. **Reads leave no trace the writers can see.** Fetching the master by export does not change its modifiedTime, which the cutover REV2 read-before-write protocol relies on. The app never opens the Doc in an editing session and never copies, renames or moves it.
+4. **Manual refresh only.** No background polling of Drive. One fetch per explicit user action, with the last fetch cached in the browser. The viewer must never be a source of load or quota use against the writers' Drive access.
+5. **The Explorer writes nothing into AI_Coordination** in v1 or v2 except, in v2 and only after §9 A2/A3 are ruled, STATE_CHANGE_REQUEST records in the form Amendment 58 already defines, which is the pipeline's own designed input channel. Even then the Authorized State Writer processes them on its own schedule; the app never blocks on, retries into, or escalates to a node.
+6. **Findings are not actions.** Step 1 will expose heading/BUCKET mismatches, legacy decline reasons, expired estimates and parse anomalies. Those are displayed for Tim's judgment. The Explorer never triggers a cleanup, a re-run, or a message to a node.
+7. **The existing cockpit and its feed function are untouched.** Same repo, same Netlify site, a separate page.
+
 **Goals (v1, read-only)**
 1. Tim sees the whole master, filters and sorts any real or payload column, and finds APPLY NOW and new rows without scrolling.
 2. Integrity faults are visible: parsed counts vs COUNTS, heading vs BUCKET, unparsed rows, expired estimates.
@@ -79,7 +91,7 @@ A single-file web app, hosted next to the existing Foreman Cockpit, that opens t
 7. Computed columns (render only): COMP_MID, DAYS_SINCE_SALARY_ASOF, DAYS_SINCE_FLEX_ASOF, IS_NEW (§4.2), SECTION_MISMATCH. No floor recalculation (§6.3); the row's own `FLOOR_STATUS` is shown when present.
 8. Checksum: per-bucket counts from row cells vs the COUNTS line. Mismatch is a visible integrity fault in the status line. Heading counts are ignored.
 
-**Also read.** Newest `TIM_APPROVED_SEARCH_RULES_v*` for the floors table (read-only). In v2, STATE_CHANGE_RECEIPT records (§5).
+**Also read.** Newest `TIM_APPROVED_SEARCH_RULES_v*` and later amendments, for inspection only (§6.3). In v2, STATE_CHANGE_RECEIPT records (§5). All reads are on explicit user action; no polling (§2.1 item 4).
 
 **Fixture.** A scrubbed 20-row fixture in the repo for parser tests. The real export is not committed (§9 Q4). The fixture must include at minimum: a row with a pipe character inside a payload URL (an 11-cell row); a row whose SECTION heading differs from its BUCKET cell; a row with `DATE_ADDED=PRE-EXISTING / EXACT DATE NOT ESTABLISHED`; a row carrying an unknown payload key; and one deliberately malformed row that cannot be split into nine cells.
 
@@ -89,7 +101,7 @@ None in v1. v2 is §5.
 ### 3.3 Backend adapter
 The UI talks to one interface: `source.getMaster() → {text, title, id, modifiedTime}` and `source.getFile(id) → {text, ...}`. Adapters: `PasteSource` (v1), `AppsScriptSource` (step 2), and later `SheetCsvSource` if the master ever becomes structured. Parsers are keyed by schema version. Changing the master's storage changes an adapter, not the application.
 
-### 3.4 Schema-version line (proposal to Tim and the Authorized State Writer; not something the app can add)
+### 3.4 Schema-version line (idea for the pipeline to adopt or ignore; not a request from this project, per §2.1 item 2)
 The master's header already carries `COUNTS:` and `COLUMNS:` lines that every parser skips or reads by prefix. One more line of the same shape would let consumers know what they are reading:
 
 ```
@@ -114,7 +126,7 @@ Any header click overrides; "reset" restores priority order.
 ### 4.3 Filters and presets
 Enum columns get checkbox lists with counts; text columns contains / not-contains; money and dates min/max. Active filters are chips; filter, sort and column set live in the URL hash.
 
-Presets are saved filter sets. The active preset's predicate is printed in the status line so the reader always sees exactly what was filtered. **The Explorer does not recreate job policy.** Each term below is canonical state already written into the master by the nodes that own that policy, with its source labeled. If the ranking node later writes an explicit `APPLY_NOW=YES/NO` (or equivalent) into the row, the preset switches to that field and this predicate is retired.
+Presets are saved filter sets. The active preset's predicate is printed in the status line so the reader always sees exactly what was filtered. **The Explorer does not recreate job policy.** Each term below is canonical state already written into the master by the nodes that own that policy, with its source labeled. If the ranking node ever writes an explicit `APPLY_NOW=YES/NO` (or equivalent) into the row on its own initiative, the preset switches to that field and this predicate is retired. The Explorer does not ask for that field (§2.1 item 2).
 
 - **APPLY NOW (proposed; Tim to accept or replace; note open item #92 "APPLY NOW seat divergence"):**
   `BUCKET = READY_TO_PURSUE` (disposition owned by Foreman/Scout under current rules)
@@ -197,9 +209,9 @@ Step 1 replaces the stale cockpit feed as the way to see the master and is testa
 | A3 | Is a browser-originated request with REQUESTED_BY=Tim acceptable as "direct Tim statement" under Amendment 58 §6? | Both reviewers: not with a shared secret alone; possession of a bearer secret is not identity | Agree, revised: v2 needs authenticated Google identity or a server-side authenticated session so the writer can distinguish "Tim submitted this" from "someone held the secret". Not needed for Step 1 or 2 |
 | A4 | Floors as data | Both: no | Agree; tied to open item #90 |
 | A5 | UI config as a Drive governing file | Both: no, local first | Agree |
-| A6 | APPLY NOW predicate (§4.3), and whether the ranking node should write an explicit canonical APPLY_NOW field so the app stops deriving it | ChatGPT: prefer a canonical field | Agree; tied to open item #92 |
+| A6 | APPLY NOW predicate (§4.3) | ChatGPT: prefer a canonical field | Accept or replace the interim predicate. Whether the pipeline ever writes a canonical APPLY_NOW field is a pipeline decision under #92, not an ask from this project (§2.1) |
 | A7 | Sheet/CSV migration | Both: not now | Agree; REV2 §8 item 4 already defers it |
-| A8 | Add a `SCHEMA:` header line to the master (§3.4) via STATE_CHANGE_REQUEST to a capable writer | ChatGPT proposed it; Grok: optional, do not block Step 1 | Recommend yes, later; Step 1 does not wait for it |
+| A8 | `SCHEMA:` header line in the master (§3.4) | ChatGPT proposed it; Grok: optional | Withdrawn as a request per §2.1. Recorded as an idea the pipeline may adopt; the app tolerates its absence |
 | Q3 | Cockpit page (calendar/tasks/nodes): keep as a separate page, or retire after the Explorer ships | — | Keep both a week, then decide |
 | Q4 | May a copy of the master export be committed to this public repo as a fixture? | — | No; scrubbed 20-row fixture |
 
@@ -215,6 +227,7 @@ Step 1 replaces the stale cockpit feed as the way to see the master and is testa
 ## 10. Risks and weak assumptions
 - **Writer surface unresolved.** Even the pipeline's own in-place writes are flagged as a tool gap (REV2 §8 item 2). Until A2 is settled, v2 cannot be built. Step 1 has no exposure.
 - **Parser fragility.** Pipes inside values, headings that lag, 197 rows without a real DATE_ADDED. The parser never drops rows; Data Quality surfaces what it could not read.
+- **Drive quota and writer interference.** Mitigated by §2.1: manual refresh, export reads only, no polling, nothing written to AI_Coordination.
 - **Step 1 will make the pipeline look dirty.** It will show 99 heading/BUCKET mismatches and 195 `LEGACY_REASON_NEEDS_NORMALIZATION` declines on day one. That is the point. It must not trigger a cleanup pass from the Explorer; cleanup is a pipeline action under the directive's non-destructive cutover rules.
 - **Fixed ID is a single point.** If a future ruling moves the master, the constant must change. The status-line title check makes a silent move visible.
 - **Public site + shared secret** is acceptable for read. Any write surface needs the A2/A3 rulings first.
@@ -228,6 +241,7 @@ Step 1 replaces the stale cockpit feed as the way to see the master and is testa
 - 2026-09-29 v0.2 — Revised after Grok review. Verified against `V2_CURRENT_POPULATION_MASTER.txt` by full export (526 rows, vocabulary, keys, 99 mismatches, encoding). No Drive writes, no code.
 - 2026-09-29 v0.3 — Revised after ChatGPT review. Read `FORGE_AMENDMENT_58_CANONICAL_STATE_WRITE_ARCHITECTURE_2026-09-27` (`1Vz-ifWCspz1RPf_QyWZ9XYND2GrZsAwx`), `MASTER_TABLE_CUTOVER_IMPLEMENTATION_2026-09-29_REV2.txt` (`1t83d2awD2gA_JstH8eCHsfs5YLtxKDLW`), and `STATE_CHANGE_REQUEST_SCR-2026-09-27-001`. Master resolution corrected to fixed ID. Write channel rebuilt on Amendment 58; ledger withdrawn. v1 scoped read-only. §3.3, §3.4 added. §4.3 predicate reduced and labeled. No Drive writes, no code.
 - 2026-09-30 v0.4 — Second-round corrections from ChatGPT and Grok, each verified against the live master before applying: VERIFY_LATER removed from NEEDS ACTION (header rule confirmed; 12 rows carry the key, 6 of them READY_TO_PURSUE); Salary Floors deferred to #90, row-level FLOOR_STATUS shown (present on 6 rows); SCHEMA fields revised; PIPELINE preset checked against where interview/offer states live (DISPOSITION under APPLIED); predicate shown in status line; cancel-pending replaces 30 s undo; five fixture cases specified; A3 position revised. No Drive writes, no code.
+- 2026-09-30 v0.5 — Tim's non-interference instruction added as §2.1 and applied: SCHEMA line and canonical APPLY_NOW field withdrawn as requests; manual refresh only; reads confirmed not to touch modifiedTime; nothing written to AI_Coordination in v1. No Drive writes, no code.
 
 ---
 
