@@ -1,10 +1,12 @@
-# PIPELINE EXPLORER — DESIGN BRIEF v0.6
+# PIPELINE EXPLORER — DESIGN BRIEF v0.7
 
 **Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 second-round corrections; v0.5 non-interference rule; v0.6 Tim's rulings on the numbered questions)
 **Author:** Claude (Foreman node), from Tim's spec in this session
-**Status:** PROPOSAL FOR REVIEW. No code written. No Drive files changed. **v1 is read-only.** Nothing is authorized until Tim rules on §9. Merging this PR files the proposal; it does not authorize a build.
+**Status:** Step 1 BUILT (2026-09-30) per Tim's answers to the numbered questions; see §9C. `pipeline.html` reads the fixed master through `netlify/functions/master.js` and holds Tim's rulings locally until the Authorized State Writer applies them. No Drive files changed by this project. The master must be shared "Anyone with the link, Viewer" by Tim for the live fetch to work.
 **Reviewers:** Tim (final authority), ChatGPT, Grok
 **Repo:** tpruittguitar/foreman-cockpit (`docs/PIPELINE_EXPLORER_DESIGN_BRIEF.md`)
+
+**What changed in v0.7 (Tim's second-round answers and Step 1 build, 2026-09-30).** Q2: master made link-readable (Tim's call; privacy accepted) and fetched by a Netlify function, no Apps Script needed. Q6/7: rulings are held on the device across refreshes and shown as pending until the master reflects them; trust deferred. Q8: yes, one app; the Explorer will replace the cockpit page once Tim is satisfied. Q9: agree, master format unchanged; parser is format-agnostic. Q5: confirmed. New: automation timer panel. Step 1 built and smoke-tested against the real 526-row export on desktop, phone landscape and phone portrait; details in §9C.
 
 **What changed in v0.6 (Tim's rulings, 2026-09-30).** §9 is replaced by §9A "Rulings received" and §9B "Still open, with plain-language explanations". Rulings applied: no paste, a refresh button that fetches the live fixed-ID master (§3.1); no new cost and no new website (§8); APPLY NOW is the AI disposition, with a Tim ruling field that overrides per row (§4.3); NEW is one day or "not yet seen by Tim", tracked per row (§4.2); AI decision capabilities unchanged, Tim overrules per row and the ruling becomes canonical through the pipeline's own request channel, and the nodes learn from his rulings (§5, §9B); visual: black and greys, white text, thin lines, neon only for focus, HUD feel (§7); portrait phone is a narrow scrolling table with smaller readable text (§8). Step 1 build is **on hold** at Tim's instruction until §9B is closed.
 
@@ -235,6 +237,23 @@ You are right that CSV is more portable, and the master's row format is already 
 
 **5, follow-up:** seen-state needs a small Tim-owned file so phone and laptop agree. It lives outside AI_Coordination and no node reads it. Confirm.
 
+## 9C. Second-round answers (Tim, 2026-09-30) and what was built
+
+| Q | Tim | Applied |
+|---|---|---|
+| 2 | "Make it public. Create the script and store it where it needs to be. Not concerned with privacy." | `netlify/functions/master.js` fetches the fixed-ID Doc's text export; `/api/master` redirect added. Requires Tim to set the Doc to "Anyone with the link, Viewer" (the Drive tool available to Claude can only share to a named email). The page shows the exact instruction on screen until then. |
+| 6, 7 | "If I overrule and ChatGPT's update is an hour away, every refresh brings back the old status. Hold my ruling local until ChatGPT's next run. Not worried about trust. Function first." | Rulings are stored on the device with a snapshot of the row's BUCKET and DISPOSITION at ruling time. They survive Refresh and overlay the grid as PENDING (magenta ◇). When the master changes the row to match, the ruling shows as canonical (cyan ◈); if the master changes to something else, it shows MASTER CHANGED for Tim to look at. Rulings never edit the master. "Copy request text" and "Copy all pending" produce Amendment 58 STATE_CHANGE_REQUEST records to hand to the writer until a queue exists. Identity deferred per Tim. |
+| 8 | Yes, one app. | `pipeline.html` is a second page for now. After Tim's feedback it becomes `index.html` and the cockpit moves to `cockpit.html`. |
+| 9 | Agree; see what it looks like. | Master format untouched. Parser reads the pipe format; a CSV adapter is a small addition if the pipeline ever moves. |
+| 5 | Confirmed. | Seen-state is per device today (browser storage, exportable/importable from Reports). The cross-device file comes with the first write endpoint. First visit on a device baselines everything already in the master as seen, except rows added within the NEW window, so NEW means new from then on. |
+| New | Automation timer monitoring: who runs what, purpose, time until next run; minimized bar with expanded view. | Bottom bar shows the next four automations with live countdowns in ET; the Automations tab shows all of them with owner, purpose, schedule, source and a verified flag, plus an editable JSON config stored in the browser. Defaults were seeded from the August cockpit feed, TASK_BOARD v269, Amendment 55 and Cutover REV2 and are all marked **unverified** until Tim confirms the times. Countdowns are computed on the device from the schedule; nothing contacts the pipeline, and last-run evidence is not available through a public export. |
+
+**Files added:** `pipeline.html` (app), `pipeline-parser.js` (parser, shared with tests), `netlify/functions/master.js`, `netlify.toml` (redirect), `tests/parser.test.js`, `tests/make_fixture.py`, `tests/fixtures/master.sample.txt` (scrubbed 21-row fixture: company names replaced, IDs hashed, URLs and Gmail IDs replaced, evidence text blanked).
+
+**Verified before push:** parser tests pass on the fixture and on the real export (526 rows, COUNTS reconcile, 0 parse errors, 30 eleven-cell rows, 99 heading/BUCKET mismatches, Meta #398 case). Headless Chromium smoke test at 1440×900, 844×390 and 390×844: zero page errors, grid renders 526 rows, APPLY NOW preset yields 20, drawer and ruling buttons work, filter popover opens, Reports and Automations render.
+
+**Not done:** cross-device seen-state and ruling sync (needs a write endpoint); STATE_CHANGE_REQUEST queue file (needs A2); governance file listing (needs Drive listing access); cockpit panel migration.
+
 ## 10. Risks and weak assumptions
 - **Writer surface unresolved.** Even the pipeline's own in-place writes are flagged as a tool gap (REV2 §8 item 2). Until A2 is settled, v2 cannot be built. Step 1 has no exposure.
 - **Parser fragility.** Pipes inside values, headings that lag, 197 rows without a real DATE_ADDED. The parser never drops rows; Data Quality surfaces what it could not read.
@@ -252,6 +271,7 @@ You are right that CSV is more portable, and the master's row format is already 
 - 2026-09-29 v0.2 — Revised after Grok review. Verified against `V2_CURRENT_POPULATION_MASTER.txt` by full export (526 rows, vocabulary, keys, 99 mismatches, encoding). No Drive writes, no code.
 - 2026-09-29 v0.3 — Revised after ChatGPT review. Read `FORGE_AMENDMENT_58_CANONICAL_STATE_WRITE_ARCHITECTURE_2026-09-27` (`1Vz-ifWCspz1RPf_QyWZ9XYND2GrZsAwx`), `MASTER_TABLE_CUTOVER_IMPLEMENTATION_2026-09-29_REV2.txt` (`1t83d2awD2gA_JstH8eCHsfs5YLtxKDLW`), and `STATE_CHANGE_REQUEST_SCR-2026-09-27-001`. Master resolution corrected to fixed ID. Write channel rebuilt on Amendment 58; ledger withdrawn. v1 scoped read-only. §3.3, §3.4 added. §4.3 predicate reduced and labeled. No Drive writes, no code.
 - 2026-09-30 v0.4 — Second-round corrections from ChatGPT and Grok, each verified against the live master before applying: VERIFY_LATER removed from NEEDS ACTION (header rule confirmed; 12 rows carry the key, 6 of them READY_TO_PURSUE); Salary Floors deferred to #90, row-level FLOOR_STATUS shown (present on 6 rows); SCHEMA fields revised; PIPELINE preset checked against where interview/offer states live (DISPOSITION under APPLIED); predicate shown in status line; cancel-pending replaces 30 s undo; five fixture cases specified; A3 position revised. No Drive writes, no code.
+- 2026-09-30 v0.7 — Second-round answers recorded (§9C). Step 1 built: `pipeline.html`, parser, Netlify master function, tests, scrubbed fixture. Verified against the real export and in headless Chromium at three viewports. No Drive files modified by this project; Tim shares the master Doc by link himself.
 - 2026-09-30 v0.6 — Tim's rulings on the eleven numbered questions recorded (§9A) and applied to §3.1, §4.2, §4.3, §5.0, §7, §8; open items restated in plain language with recommendations (§9B). Repo visibility verified public. Build on hold per Tim. No Drive writes, no code.
 - 2026-09-30 v0.5 — Tim's non-interference instruction added as §2.1 and applied: SCHEMA line and canonical APPLY_NOW field withdrawn as requests; manual refresh only; reads confirmed not to touch modifiedTime; nothing written to AI_Coordination in v1. No Drive writes, no code.
 

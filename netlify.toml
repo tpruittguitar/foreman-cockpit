@@ -5,3 +5,8 @@
   from = "/api/feed"
   to = "/.netlify/functions/feed"
   status = 200
+
+[[redirects]]
+  from = "/api/master"
+  to = "/.netlify/functions/master"
+  status = 200
