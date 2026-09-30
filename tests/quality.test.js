@@ -10,7 +10,8 @@ const rows = [
 ];
 const runs = [
   { SCOUT_RUN_ID: 'R1', RECEIVED_AT: '2026-10-01T12:00:00Z', COUNTERS: { GROSS_FOUND: 10, NEVER_CONSIDER_EXCLUDED: 2, 'NC-001_COUNT': 1, 'NC-002_COUNT': 0, 'NC-003_COUNT': 1, 'NC-004_COUNT': 0, ENTERED_MASTER: 6, SCOUT_INTAKE_WRITTEN: 5, DISCOVERY_LEAD_WRITTEN: 1, EXISTING_MATCH: 2, WRITE_FAILED: 0 }, EXCLUSIONS: [{ NEVER_CONSIDER_RULE_ID: 'NC-001' }, { NEVER_CONSIDER_RULE_ID: 'NC-003' }] },
-  { SCOUT_RUN_ID: 'R2', RECEIVED_AT: '2026-10-05T10:05:00Z', GROSS_FOUND: 4, NEVER_CONSIDER_EXCLUDED: [] }   // older record shape still accepted
+  { SCOUT_RUN_ID: 'R2', RECEIVED_AT: '2026-10-05T10:05:00Z', GROSS_FOUND: 4, NEVER_CONSIDER_EXCLUDED: [] },   // older record shape still accepted
+  { SCOUT_RUN_ID: 'R2', RECEIVED_AT: '2026-10-05T10:06:00Z', COUNTERS: { GROSS_FOUND: 0, DISCOVERY_UNACCOUNTED: 2, RUN_ACCOUNTING: 'INCOMPLETE' }, WRITE_VERIFIED: true, COMPLETION_STATUS: 'INCOMPLETE' }
 ];
 const cs = Q.cohorts(rows, runs, { now });
 const r1 = cs.find(c => c.SCOUT_RUN_ID === 'R1'), r2 = cs.find(c => c.SCOUT_RUN_ID === 'R2');
@@ -23,6 +24,7 @@ ok(Math.abs(r1.MEDIAN_TIME_TO_FINAL_DISPOSITION_H - 18) < 1e-9, 'R1 median time 
 ok(r1.maturity === 'FINALIZED' && r1.scored, 'R1 is finalized (old enough, nothing unresolved)');
 ok(r2.STILL_UNRESOLVED === 2 && r2.UNRESOLVED_RATE === 2 / 3 && r2.maturity === 'IMMATURE' && !r2.scored, 'R2 is immature (fresh run) and not scored');
 ok(r2.ADMISSION_RATE === 0.75, 'R2 admission rate');
+ok(r1.accountingIssues === 0 && r1.writeFailures === 0 && r2.accountingIssues === 1 && r2.DISCOVERY_UNACCOUNTED === 2 && r2.writeFailures === 0 && r2.lastStatus === 'INCOMPLETE', 'run status: R1 clean, R2 write verified but run incomplete (2 unaccounted)');
 const w7 = Q.window(cs, 7, now), w1 = Q.window(cs, 1, now);
 ok(w7.cohorts === 2 && w7.finalized === 1 && w7.ENTERED_MASTER === 9 && w7.GROSS_FOUND === 14 && Math.abs(w7.ADMISSION_RATE - 9 / 14) < 1e-9 && w7.byRule['NC-001'] === 1 && w7.SCOUT_INTAKE_WRITTEN === 5, '7-day window aggregates both cohorts (sums, per-rule counts) and recomputes rates from sums');
 ok(w1.cohorts === 1 && w1.ENTERED_MASTER === 3, 'today window holds only the fresh cohort');

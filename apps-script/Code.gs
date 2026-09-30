@@ -165,30 +165,31 @@ function applyIntakeToMaster_(req) {
       DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, NEVER_CONSIDER_REVIEW_NEEDED: plan.summary.NEVER_CONSIDER_REVIEW_NEEDED,
       NEW_PRIMARY_IDS: plan.newLines.map(function (l) { return l.split(' | ')[1]; }),
       COUNTS_UPDATED: 'YES', END_UPDATED: newEnd ? 'YES' : 'NO_END_LINE', READBACK_VERIFIED: verified ? 'YES' : 'NO',
-      RUN_ACCOUNTING: counters.RUN_ACCOUNTING, DISCOVERY_UNACCOUNTED: counters.DISCOVERY_UNACCOUNTED,
+      RUN_ACCOUNTING: counters.RUN_ACCOUNTING, DISCOVERY_UNACCOUNTED: counters.DISCOVERY_UNACCOUNTED, WRITE_VERIFIED: verified ? 'YES' : 'NO',
       TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: !verified ? 'FAILED' : (counters.RUN_ACCOUNTING === 'RECONCILED' ? 'COMPLETE' : 'INCOMPLETE'), MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: new Date().toISOString()
     };
     appendReceipt_(receipt);
     // telemetry beside the master (SCOUT_RUN_METRICS.jsonl): counters + exclusion audit. Not candidate state; never a second ledger.
     appendRun_({ SCOUT_RUN_ID: receipt.SCOUT_RUN_ID, RECEIVED_AT: receipt.EXECUTED_AT, RUN: req.run || {}, COUNTERS: counters, GROSS_FOUND: counters.GROSS_FOUND, NEVER_CONSIDER_EXCLUDED: counters.NEVER_CONSIDER_EXCLUDED,
-      EXCLUSIONS: scoutExclusions_(req.run || {}, rules).concat(plan.excluded), RESULTS: plan.results.map(function (r) { return { INTAKE_KEY: r.INTAKE_KEY, result: r.result, PRIMARY_ID: r.PRIMARY_ID, BUCKET: r.BUCKET, NEVER_CONSIDER_REVIEW_NEEDED: r.NEVER_CONSIDER_REVIEW_NEEDED }; }), COMPLETION_STATUS: receipt.COMPLETION_STATUS });
-    return { ok: verified, receipt: receipt, results: plan.results, counts: newCounts, endLine: newEnd };
+      EXCLUSIONS: plan.excluded, RESULTS: plan.results.map(function (r) { return { INTAKE_KEY: r.INTAKE_KEY, SUBMITTED_VIA: r.SUBMITTED_VIA, result: r.result, PRIMARY_ID: r.PRIMARY_ID, BUCKET: r.BUCKET, NEVER_CONSIDER_REVIEW_NEEDED: r.NEVER_CONSIDER_REVIEW_NEEDED }; }), WRITE_VERIFIED: verified, COMPLETION_STATUS: receipt.COMPLETION_STATUS });
+    return intakeResponse_(verified, counters, receipt, plan, newCounts, newEnd);
   } finally { lock.releaseLock(); }
 }
 
-/** Scout-side exclusions reported in run.NEVER_CONSIDER_EXCLUDED, normalized to the audit contract and checked against the canonical file. */
-function scoutExclusions_(run, R) {
+/** run.NEVER_CONSIDER_EXCLUDED entries (legacy transport) normalized into input candidates. They are never accepted as excluded; the writer adjudicates each one. */
+function preExclusionCandidates(run) {
   var list = Array.isArray(run.NEVER_CONSIDER_EXCLUDED) ? run.NEVER_CONSIDER_EXCLUDED : [];
-  return list.map(function (x) { x = x || {}; var id = clean_(x.NEVER_CONSIDER_RULE_ID || x.RULE_ID || ''); var rule = ruleById(R, id);
-    return { SCOUT_RUN_ID: clean_(run.SCOUT_RUN_ID || ''), DISCOVERED_AT_ET: clean_(x.DISCOVERED_AT_ET || ''), COMPANY: clean_(x.COMPANY || x.EMPLOYER || ''), TITLE: clean_(x.TITLE || ''), LOCATION: clean_(x.LOCATION || ''), SOURCE: clean_(x.SOURCE || ''), SOURCE_URL: clean_(x.SOURCE_URL || ''),
-      NEVER_CONSIDER_RULE_ID: id, EXCLUSION_CONFIDENCE: clean_(x.EXCLUSION_CONFIDENCE || 'HIGH').toUpperCase(), EXCLUSION_REASON: clean_(x.EXCLUSION_REASON || x.REASON || ''), TIM_OVERRIDE: 'NO', BASIS: 'SCOUT_PRE_INTAKE', RULE_VALID: rule && rule.active ? 'YES' : 'NO' }; });
+  return list.map(function (x) { x = x || {}; return {
+    SUBMITTED_VIA: 'RUN_PRE_EXCLUSION', COMPANY: x.COMPANY || x.EMPLOYER || '', TITLE: x.TITLE || '', LOCATION: x.LOCATION || '', SOURCE: x.SOURCE || '', SOURCE_URL: x.SOURCE_URL || '', DISCOVERED_AT_ET: x.DISCOVERED_AT_ET || '', REQ_ID: x.REQ_ID || '',
+    EMPLOYER_DOMAIN_HINT: x.EMPLOYER_DOMAIN_HINT || '', EMPLOYER_PRIMARY_BUSINESS: x.EMPLOYER_PRIMARY_BUSINESS || '',
+    NEVER_CONSIDER_RULE_ID: x.NEVER_CONSIDER_RULE_ID || x.RULE_ID || '', EXCLUSION_CONFIDENCE: x.EXCLUSION_CONFIDENCE || 'HIGH', EXCLUSION_REASON: x.EXCLUSION_REASON || x.REASON || '' }; });
 }
-/** Run-level counters in the canonical vocabulary. GROSS_FOUND comes from Scout when supplied, else records + Scout exclusions. Per-rule counts use the ACTIVE rule ids from the canonical file. */
+/** Run-level counters in the canonical vocabulary. Every outcome comes from the writer's own adjudication of every submitted candidate (records + legacy pre-exclusion entries). */
 function runCounters_(run, plan, R, verified) {
-  var scoutEx = scoutExclusions_(run, R); var s = plan.summary;
-  var c = { GROSS_FOUND: num_(run.GROSS_FOUND) || (plan.results.length + scoutEx.length), NEVER_CONSIDER_EXCLUDED: scoutEx.length + s.NEVER_CONSIDER_EXCLUDED };
+  var s = plan.summary; var results = plan.results || [];
+  var c = { GROSS_FOUND: num_(run.GROSS_FOUND) || results.length, CANDIDATES_SUBMITTED: results.length, PRE_EXCLUSION_ENTRIES: results.filter(function (r) { return r.SUBMITTED_VIA === 'RUN_PRE_EXCLUSION'; }).length, NEVER_CONSIDER_EXCLUDED: s.NEVER_CONSIDER_EXCLUDED };
   (R.rules || []).forEach(function (r) { c[r.RULE_ID + '_COUNT'] = 0; });
-  scoutEx.concat(plan.excluded).forEach(function (x) { var rule = ruleById(R, x.NEVER_CONSIDER_RULE_ID); var k = (rule && rule.active ? rule.RULE_ID : 'UNKNOWN_RULE') + '_COUNT'; c[k] = (c[k] || 0) + 1; });  // never a count under a category the canonical file does not carry as ACTIVE
+  (plan.excluded || []).forEach(function (x) { var k = x.NEVER_CONSIDER_RULE_ID + '_COUNT'; c[k] = (c[k] || 0) + 1; });
   c.ENTERED_MASTER = verified ? s.ENTERED_MASTER : 0; c.SCOUT_INTAKE_WRITTEN = verified ? s.SCOUT_INTAKE_WRITTEN : 0; c.DISCOVERY_LEAD_WRITTEN = verified ? s.DISCOVERY_LEAD_WRITTEN : 0;
   c.EXISTING_MATCH = s.EXISTING_MATCH; c.WRITE_FAILED = s.WRITE_FAILED + (verified ? 0 : s.ENTERED_MASTER); c.NEVER_CONSIDER_REVIEW_NEEDED = s.NEVER_CONSIDER_REVIEW_NEEDED;
   // full-accounting invariant: GROSS_FOUND = NEVER_CONSIDER_EXCLUDED + SCOUT_INTAKE_WRITTEN + DISCOVERY_LEAD_WRITTEN + EXISTING_MATCH + WRITE_FAILED
@@ -197,7 +198,15 @@ function runCounters_(run, plan, R, verified) {
   c.RUN_ACCOUNTING = c.DISCOVERY_UNACCOUNTED === 0 ? 'RECONCILED' : (c.DISCOVERY_UNACCOUNTED > 0 ? 'INCOMPLETE' : 'OVERREPORTED');
   return c;
 }
-/* ================= pure functions: row mutation ================= */
+/** Caller-facing response: ok means the WHOLE intake contract completed (readback verified AND run reconciled). WRITE_VERIFIED is kept separate. */
+function intakeResponse_(verified, counters, receipt, plan, newCounts, newEnd) {
+  var reconciled = counters.RUN_ACCOUNTING === 'RECONCILED';
+  return { ok: !!verified && reconciled, WRITE_VERIFIED: !!verified, RUN_ACCOUNTING: counters.RUN_ACCOUNTING, DISCOVERY_UNACCOUNTED: counters.DISCOVERY_UNACCOUNTED,
+    COMPLETION_STATUS: !verified ? 'FAILED' : (reconciled ? 'COMPLETE' : 'INCOMPLETE'),
+    error: !verified ? 'readback did not verify' : (reconciled ? '' : 'run does not reconcile: GROSS_FOUND ' + counters.GROSS_FOUND + ' vs ' + counters.DISCOVERY_ACCOUNTED + ' accounted (' + counters.RUN_ACCOUNTING + '); rows already written are canonical, do not retry them; submit the missing discoveries as records'),
+    receipt: receipt, results: plan.results, counts: newCounts, endLine: newEnd };
+}
+/* ================= pure functions: row mutation ================= *//* ================= pure functions: row mutation ================= */
 function today_(ts) { return String(ts || new Date().toISOString()).slice(0, 10); }
 function parsePayload(rest) {
   var segs = rest.split('; '), payload = {}, order = [], lead = [], last = null;
@@ -454,22 +463,27 @@ function planIntake(lines, records, rulesObj, ctx) {
   ctx = ctx || {}; var results = [], newLines = [], excluded = [], summary = { NEVER_CONSIDER_EXCLUDED: 0, SCOUT_INTAKE_WRITTEN: 0, DISCOVERY_LEAD_WRITTEN: 0, EXISTING_MATCH: 0, WRITE_FAILED: 0, ENTERED_MASTER: 0, NEVER_CONSIDER_REVIEW_NEEDED: 0, REPLAY: 0, AMBIGUOUS_LEAD: 0 }, byRule = {};
   var R = rulesObj && rulesObj.rules ? rulesObj : { status: 'UNAVAILABLE', rules: [], activeIds: [] };
   if (!Array.isArray(records)) return { ok: false, error: 'records must be an array' };
-  if (records.length > 200) return { ok: false, error: 'batch too large (max 200)' };
+  // Scout's pre-excluded list is NOT accepted as already excluded: every entry is a candidate that goes through the same
+  // classification/admission path below (the writer, not Scout, owns NEVER_CONSIDER_EXCLUDED). Kept for backward compatibility only.
+  var pre = preExclusionCandidates(ctx.run || {});
+  records = records.map(function (r) { return r; }).concat(pre);
+  if (records.length > 200) return { ok: false, error: 'batch too large (max 200 including run.NEVER_CONSIDER_EXCLUDED entries)' };
   var idx = indexExisting(lines);
   var maxInv = 0, seenIds = {}; idx.forEach(function (r) { if (r.inv > maxInv) maxInv = r.inv; seenIds[r.id] = true; });
   var run = ctx.run || {}; var runId = clean_(run.SCOUT_RUN_ID || ''); var now = ctx.now || new Date().toISOString(); var nowET = ctx.nowET || '';
   var batchKeys = {};
   for (var i = 0; i < records.length; i++) {
     var rec = sanitizeRecord(records[i]);
-    var res = { index: i, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '', NEVER_CONSIDER_RULE_ID: '', NEVER_CONSIDER_REVIEW_NEEDED: '' };
-    if (!rec || !rec.COMPANY || !rec.TITLE) { res.result = 'WRITE_FAILED'; res.detail = 'INVALID_INPUT: COMPANY and TITLE are required'; summary.WRITE_FAILED++; results.push(res); continue; }
+    var via = records[i] && records[i].SUBMITTED_VIA === 'RUN_PRE_EXCLUSION' ? 'RUN_PRE_EXCLUSION' : 'RECORDS';
+    var res = { index: i, SUBMITTED_VIA: via, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '', NEVER_CONSIDER_RULE_ID: '', NEVER_CONSIDER_REVIEW_NEEDED: '' };
+    if (!rec || !rec.COMPANY || !rec.TITLE) { res.result = 'WRITE_FAILED'; res.detail = 'INVALID_INPUT: COMPANY and TITLE are required' + (via === 'RUN_PRE_EXCLUSION' ? ' (pre-excluded entry lacks them; resubmit as a record)' : ''); summary.WRITE_FAILED++; results.push(res); continue; }
     if (!rec.INTAKE_KEY) rec.INTAKE_KEY = 'IK-' + hashHex([runId, normEmployer(rec.COMPANY), normTitle(rec.TITLE), normLocation(rec.LOCATION), reqCore(rec.REQ_ID), canonUrl(rec.SOURCE_URL)].join('|')).slice(0, 16);
     res.INTAKE_KEY = rec.INTAKE_KEY;
     if (batchKeys[rec.INTAKE_KEY]) { res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
     var nc = classifyNeverConsider(rec, R);
     if (nc.outcome === 'EXCLUDE') {
       res.result = 'NEVER_CONSIDER_EXCLUDED'; res.NEVER_CONSIDER_RULE_ID = nc.ruleId; res.detail = nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'; summary.NEVER_CONSIDER_EXCLUDED++; byRule[nc.ruleId] = (byRule[nc.ruleId] || 0) + 1;
-      excluded.push({ SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis });
+      excluded.push({ SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis, SUBMITTED_VIA: via, DECIDED_BY: 'WRITER' });
       results.push(res); continue;
     }
     if (nc.outcome === 'REVIEW') { res.NEVER_CONSIDER_REVIEW_NEEDED = nc.ruleId; summary.NEVER_CONSIDER_REVIEW_NEEDED++; }
@@ -550,4 +564,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, scoutExclusions_: scoutExclusions_, runCounters_: runCounters_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };

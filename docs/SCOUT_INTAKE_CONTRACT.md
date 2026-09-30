@@ -20,7 +20,7 @@ POST to the Explorer's Apps Script web app (the same one that applies Tim's ruli
     "SCOUT_RUN_ID": "SCOUT-2026-10-01-0300",
     "RUN_STARTED_AT_ET": "2026-10-01 03:00 ET",
     "GROSS_FOUND": 23,
-    "NEVER_CONSIDER_EXCLUDED": [ { "SCOUT_RUN_ID": "SCOUT-2026-10-01-0300", "DISCOVERED_AT_ET": "2026-10-01 03:05 ET", "COMPANY": "Acme Pharma", "TITLE": "Plant Manager", "LOCATION": "Boston, MA", "SOURCE": "LinkedIn", "SOURCE_URL": "https://www.linkedin.com/jobs/view/...", "NEVER_CONSIDER_RULE_ID": "NC-001", "EXCLUSION_CONFIDENCE": "HIGH", "EXCLUSION_REASON": "pharmaceutical manufacturer (primary business)", "TIM_OVERRIDE": "NO" } ],
+    "NEVER_CONSIDER_EXCLUDED": [ ],
     "SOURCE_PROVIDERS": ["LinkedIn", "Greenhouse"]
   },
   "records": [
@@ -47,7 +47,7 @@ POST to the Explorer's Apps Script web app (the same one that applies Tim's ruli
 
 `COMPANY` and `TITLE` are required. Everything else may be empty or UNKNOWN. `SOURCE` is accepted as an alias of `DISCOVERY_SOURCE`. `EMPLOYER_DOMAIN_HINT` is the employer's **primary business** (never the job title). Batch limit 200 records.
 
-Never-consider classification is Scout's, checked by the writer against the canonical Doc: a record may carry `NEVER_CONSIDER_RULE_ID` (an id that is ACTIVE in the Doc), `EXCLUSION_CONFIDENCE` (`HIGH|MED|LOW`) and `EXCLUSION_REASON`. Scout may instead exclude before submitting and report those discoveries in `run.NEVER_CONSIDER_EXCLUDED` using the exclusion audit contract above; both paths are counted.
+**Every gross discovery is submitted as a record. The writer, not Scout, owns the NEVER_CONSIDER_EXCLUDED decision.** A record may *propose* `NEVER_CONSIDER_RULE_ID` (an id that is ACTIVE in the Doc), `EXCLUSION_CONFIDENCE` (`HIGH|MED|LOW`), `EXCLUSION_REASON` and employer evidence (`EMPLOYER_DOMAIN_HINT` / `EMPLOYER_PRIMARY_BUSINESS`); the writer adjudicates. `GROSS_FOUND` should equal the number of records submitted. `run.NEVER_CONSIDER_EXCLUDED` is retained only for backward compatibility and is **not** accepted as already excluded: each entry is appended as an input candidate (`SUBMITTED_VIA=RUN_PRE_EXCLUSION`) and goes through the same classification and admission path; an entry the writer cannot adjudicate (no COMPANY/TITLE) is `WRITE_FAILED`, never silently excluded. Run metadata can carry counters but can never remove a candidate from writer adjudication.
 
 ## Outcomes
 Every gross discovery ends in exactly one explicit outcome; nothing is omitted because information is unknown:
@@ -64,7 +64,7 @@ Every gross discovery ends in exactly one explicit outcome; nothing is omitted b
 
 ## Response
 ```json
-{ "ok": true,
+{ "ok": true, "WRITE_VERIFIED": true, "RUN_ACCOUNTING": "RECONCILED", "DISCOVERY_UNACCOUNTED": 0, "COMPLETION_STATUS": "COMPLETE", "error": "",
   "receipt": { "RECEIPT": "INTAKE_RECEIPT", "SCOUT_RUN_ID": "...", "RECORDS_RECEIVED": 23,
                "COUNTERS": { "GROSS_FOUND": 23, "NEVER_CONSIDER_EXCLUDED": 2, "NC-001_COUNT": 1, "NC-002_COUNT": 0, "NC-003_COUNT": 0, "NC-004_COUNT": 1, "ENTERED_MASTER": 18, "SCOUT_INTAKE_WRITTEN": 15, "DISCOVERY_LEAD_WRITTEN": 3, "EXISTING_MATCH": 3, "WRITE_FAILED": 0, "NEVER_CONSIDER_REVIEW_NEEDED": 1, "DISCOVERY_ACCOUNTED": 23, "DISCOVERY_UNACCOUNTED": 0, "RUN_ACCOUNTING": "RECONCILED" },
                "RULES_STATUS": "ACTIVE", "RULES_DOC_ID": "1qLeVwmW76Cm_lHdleb342sE7_ej4dqTfODR1TcnF5os", "DISCOVERY_LEAD_AMBIGUOUS": 1,
@@ -73,7 +73,7 @@ Every gross discovery ends in exactly one explicit outcome; nothing is omitted b
   "counts": "COUNTS: TOTAL=... SCOUT_INTAKE=... UNACCOUNTED=0",
   "endLine": "END V2_CURRENT_POPULATION_MASTER (N rows)" }
 ```
-`COMPLETION_STATUS`: `COMPLETE` only when every inserted line and the COUNTS line were read back from the Doc **and** the run reconciles; `FAILED` when readback did not verify (Scout retries once; safe because the endpoint is idempotent); `INCOMPLETE` when the write verified but the run does not reconcile.
+`ok` means the **whole** intake contract completed: readback verified **and** the run reconciles. `WRITE_VERIFIED` is reported separately so a caller can tell a successful canonical write from incomplete Scout accounting. `COMPLETION_STATUS`: `COMPLETE` (ok:true); `FAILED` when readback did not verify (ok:false, WRITE_VERIFIED:false; Scout retries once, safe because the endpoint is idempotent); `INCOMPLETE` when the write verified but the run does not reconcile (ok:false, WRITE_VERIFIED:true; rows already written are canonical and must not be retried; Scout submits the missing discoveries as records). The Explorer's Scout quality tab shows each run as COMPLETE, WRITE VERIFIED / RUN INCOMPLETE, or WRITE FAILED.
 
 **Full-accounting invariant**, checked per submitted run: `GROSS_FOUND = NEVER_CONSIDER_EXCLUDED + SCOUT_INTAKE_WRITTEN + DISCOVERY_LEAD_WRITTEN + EXISTING_MATCH + WRITE_FAILED`. A supplied `GROSS_FOUND` never disagrees silently: the difference is emitted as `DISCOVERY_UNACCOUNTED` with `RUN_ACCOUNTING=INCOMPLETE` (discoveries Scout found but did not submit or list as excluded; Scout must submit them) or `OVERREPORTED` (fewer found than outcomes). When `GROSS_FOUND` is omitted it is derived from the submitted records plus Scout's exclusion list and reconciles by construction.
 
@@ -103,4 +103,4 @@ Modify, overwrite or reclassify any existing row. Create `READY_TO_PURSUE`, `APP
 - `INVALID_DISCOVERY` rows are never deleted; the ruling preserves the row with `INVALID_REASON`, `TIM_RULING`, `STATE_UPDATED_AT` and `STATE_SOURCE`. They are Scout quality evidence.
 
 ## Scout quality counters
-Per run: `GROSS_FOUND`, `NEVER_CONSIDER_EXCLUDED`, `<RULE_ID>_COUNT` for every rule in the Doc (plus `UNKNOWN_RULE_COUNT` for a cited id the Doc does not carry as ACTIVE), `ENTERED_MASTER`, `SCOUT_INTAKE_WRITTEN`, `DISCOVERY_LEAD_WRITTEN`, `EXISTING_MATCH`, `WRITE_FAILED`, `NEVER_CONSIDER_REVIEW_NEEDED`. Downstream cohort metrics from the live rows: `VALID_DISTINCT`, `READY`, `APPLIED`, `DECLINED`, `DUPLICATE`, `DEAD_OR_STALE`, `INVALID_DISCOVERY`, `STILL_UNRESOLVED`. Derived: `ADMISSION_RATE = ENTERED_MASTER / GROSS_FOUND`, `VALIDITY_RATE = VALID_DISTINCT / ENTERED_MASTER`, `ACTIONABLE_YIELD = (READY + APPLIED) / ENTERED_MASTER`, `DUPLICATE_RATE`, `INVALID_RATE`, `UNRESOLVED_RATE`, `MEDIAN_TIME_TO_FINAL_DISPOSITION`. A role Tim declines for pay, geography, degree/FLEX, scope, industry preference or compensation stays a valid discovery.
+Per run: `GROSS_FOUND`, `CANDIDATES_SUBMITTED`, `PRE_EXCLUSION_ENTRIES`, `NEVER_CONSIDER_EXCLUDED`, `<RULE_ID>_COUNT` for every rule in the Doc (an exclusion can only ever cite an ACTIVE rule, because the writer decides), `ENTERED_MASTER`, `SCOUT_INTAKE_WRITTEN`, `DISCOVERY_LEAD_WRITTEN`, `EXISTING_MATCH`, `WRITE_FAILED`, `NEVER_CONSIDER_REVIEW_NEEDED`. Downstream cohort metrics from the live rows: `VALID_DISTINCT`, `READY`, `APPLIED`, `DECLINED`, `DUPLICATE`, `DEAD_OR_STALE`, `INVALID_DISCOVERY`, `STILL_UNRESOLVED`. Derived: `ADMISSION_RATE = ENTERED_MASTER / GROSS_FOUND`, `VALIDITY_RATE = VALID_DISTINCT / ENTERED_MASTER`, `ACTIONABLE_YIELD = (READY + APPLIED) / ENTERED_MASTER`, `DUPLICATE_RATE`, `INVALID_RATE`, `UNRESOLVED_RATE`, `MEDIAN_TIME_TO_FINAL_DISPOSITION`. A role Tim declines for pay, geography, degree/FLEX, scope, industry preference or compensation stays a valid discovery.

@@ -38,19 +38,43 @@ ok(R[7].result === 'EXISTING_MATCH' && R[7].detail === 'REPLAY' && R[7].PRIMARY_
 ok(plan.newLines.length === 3 && plan.summary.ENTERED_MASTER === 3 && plan.summary.SCOUT_INTAKE_WRITTEN === 2 && plan.summary.DISCOVERY_LEAD_WRITTEN === 1 && plan.summary.EXISTING_MATCH === 3 && plan.summary.NEVER_CONSIDER_EXCLUDED === 1 && plan.summary.WRITE_FAILED === 1, 'exactly three rows minted; every record has one explicit outcome: ' + JSON.stringify(plan.summary));
 ok(R.every(r => W.INTAKE_OUTCOMES.indexOf(r.result) >= 0), 'every result is one of ' + W.INTAKE_OUTCOMES.join('|'));
 // run-level counters in the canonical vocabulary (as the writer logs them), including Scout's own pre-intake exclusions
-const runWithScoutEx = { SCOUT_RUN_ID: 'RUN-TEST-1', GROSS_FOUND: 9, NEVER_CONSIDER_EXCLUDED: [{ COMPANY: 'Burger Barn', TITLE: 'GM', NEVER_CONSIDER_RULE_ID: 'NC-004', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'restaurant operator' }, { COMPANY: 'Mystery Co', NEVER_CONSIDER_RULE_ID: 'NC-042', EXCLUSION_CONFIDENCE: 'HIGH' }] };
-const ctr = W.runCounters_(runWithScoutEx, plan, rules, true);
-ok(ctr.GROSS_FOUND === 9 && ctr.RUN_ACCOUNTING === 'OVERREPORTED' && ctr.DISCOVERY_UNACCOUNTED === -1, 'a supplied GROSS_FOUND that disagrees with submitted outcomes is never silent (here 9 reported, 10 accounted -> OVERREPORTED)');
-ok(ctr.GROSS_FOUND === 9 && ctr.NEVER_CONSIDER_EXCLUDED === 3 && ctr['NC-001_COUNT'] === 1 && ctr['NC-004_COUNT'] === 1 && ctr['NC-002_COUNT'] === 0 && ctr['NC-003_COUNT'] === 0 && ctr['UNKNOWN_RULE_COUNT'] === 1 && ctr.ENTERED_MASTER === 3 && ctr.SCOUT_INTAKE_WRITTEN === 2 && ctr.DISCOVERY_LEAD_WRITTEN === 1 && ctr.EXISTING_MATCH === 3 && ctr.WRITE_FAILED === 1, 'run counters: GROSS_FOUND, NEVER_CONSIDER_EXCLUDED, NC-00x_COUNT, ENTERED_MASTER, SCOUT_INTAKE_WRITTEN, DISCOVERY_LEAD_WRITTEN, EXISTING_MATCH, WRITE_FAILED: ' + JSON.stringify(ctr));
-const ctrOk = W.runCounters_(Object.assign({}, runWithScoutEx, { GROSS_FOUND: 10 }), plan, rules, true);
-ok(ctrOk.RUN_ACCOUNTING === 'RECONCILED' && ctrOk.DISCOVERY_UNACCOUNTED === 0 && ctrOk.DISCOVERY_ACCOUNTED === ctrOk.NEVER_CONSIDER_EXCLUDED + ctrOk.SCOUT_INTAKE_WRITTEN + ctrOk.DISCOVERY_LEAD_WRITTEN + ctrOk.EXISTING_MATCH + ctrOk.WRITE_FAILED, 'GROSS_FOUND = NEVER_CONSIDER_EXCLUDED + SCOUT_INTAKE_WRITTEN + DISCOVERY_LEAD_WRITTEN + EXISTING_MATCH + WRITE_FAILED -> RECONCILED');
-const ctrInc = W.runCounters_(Object.assign({}, runWithScoutEx, { GROSS_FOUND: 13 }), plan, rules, true);
+// run-level counters in the canonical vocabulary. The writer, not Scout, owns NEVER_CONSIDER_EXCLUDED: entries in
+// run.NEVER_CONSIDER_EXCLUDED (legacy transport) are candidates that go through the same adjudication as records.
+const preEx = [
+  { COMPANY: 'Burger Barn', TITLE: 'GM', NEVER_CONSIDER_RULE_ID: 'NC-004', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'restaurant operator', EMPLOYER_DOMAIN_HINT: 'fast-food restaurant chain' },   // legitimately excluded by the writer
+  { COMPANY: 'Mystery Co', NEVER_CONSIDER_RULE_ID: 'NC-042', EXCLUSION_CONFIDENCE: 'HIGH' }   // no TITLE: cannot be adjudicated -> WRITE_FAILED (nothing silently disappears)
+];
+const runEx = { SCOUT_RUN_ID: 'RUN-TEST-1', GROSS_FOUND: 10, NEVER_CONSIDER_EXCLUDED: preEx };
+const planEx = W.planIntake(lines0, records, rules, Object.assign({}, ctx, { run: runEx }));
+ok(planEx.results.length === records.length + preEx.length && planEx.results.filter(r => r.SUBMITTED_VIA === 'RUN_PRE_EXCLUSION').length === 2, 'pre-excluded entries are appended as candidates and adjudicated by the writer');
+const bb = planEx.results.find(r => r.SUBMITTED_VIA === 'RUN_PRE_EXCLUSION' && r.index === records.length), my = planEx.results.find(r => r.index === records.length + 1);
+ok(bb.result === 'NEVER_CONSIDER_EXCLUDED' && bb.NEVER_CONSIDER_RULE_ID === 'NC-004' && planEx.excluded.find(x => x.COMPANY === 'Burger Barn').SUBMITTED_VIA === 'RUN_PRE_EXCLUSION' && planEx.excluded.find(x => x.COMPANY === 'Burger Barn').DECIDED_BY === 'WRITER', 'a consistent pre-exclusion is excluded by the writer and audited with SUBMITTED_VIA=RUN_PRE_EXCLUSION');
+ok(my.result === 'WRITE_FAILED' && /resubmit/.test(my.detail), 'a pre-exclusion the writer cannot adjudicate (no TITLE) is WRITE_FAILED, never counted excluded');
+const ctr = W.runCounters_(runEx, planEx, rules, true);
+ok(ctr.GROSS_FOUND === 10 && ctr.CANDIDATES_SUBMITTED === 10 && ctr.PRE_EXCLUSION_ENTRIES === 2 && ctr.NEVER_CONSIDER_EXCLUDED === 2 && ctr['NC-001_COUNT'] === 1 && ctr['NC-004_COUNT'] === 1 && ctr['NC-002_COUNT'] === 0 && ctr['NC-003_COUNT'] === 0 && ctr.UNKNOWN_RULE_COUNT === undefined && ctr.ENTERED_MASTER === 3 && ctr.SCOUT_INTAKE_WRITTEN === 2 && ctr.DISCOVERY_LEAD_WRITTEN === 1 && ctr.EXISTING_MATCH === 3 && ctr.WRITE_FAILED === 2, 'run counters: GROSS_FOUND, NEVER_CONSIDER_EXCLUDED, NC-00x_COUNT, ENTERED_MASTER, SCOUT_INTAKE_WRITTEN, DISCOVERY_LEAD_WRITTEN, EXISTING_MATCH, WRITE_FAILED: ' + JSON.stringify(ctr));
+ok(ctr.RUN_ACCOUNTING === 'RECONCILED' && ctr.DISCOVERY_UNACCOUNTED === 0 && ctr.DISCOVERY_ACCOUNTED === ctr.NEVER_CONSIDER_EXCLUDED + ctr.SCOUT_INTAKE_WRITTEN + ctr.DISCOVERY_LEAD_WRITTEN + ctr.EXISTING_MATCH + ctr.WRITE_FAILED, 'GROSS_FOUND = NEVER_CONSIDER_EXCLUDED + SCOUT_INTAKE_WRITTEN + DISCOVERY_LEAD_WRITTEN + EXISTING_MATCH + WRITE_FAILED -> RECONCILED');
+const ctrInc = W.runCounters_(Object.assign({}, runEx, { GROSS_FOUND: 13 }), planEx, rules, true);
 ok(ctrInc.RUN_ACCOUNTING === 'INCOMPLETE' && ctrInc.DISCOVERY_UNACCOUNTED === 3, 'GROSS_FOUND larger than submitted outcomes -> DISCOVERY_UNACCOUNTED=3, run INCOMPLETE');
-const ctrDerived = W.runCounters_(Object.assign({}, runWithScoutEx, { GROSS_FOUND: undefined }), plan, rules, true);
-ok(ctrDerived.GROSS_FOUND === 10 && ctrDerived.RUN_ACCOUNTING === 'RECONCILED', 'GROSS_FOUND omitted -> derived from records + Scout exclusions, reconciled');
-ok(W.scoutExclusions_(runWithScoutEx, rules)[1].RULE_VALID === 'NO', 'a Scout exclusion citing a rule id not in the canonical file is kept for audit but marked RULE_VALID=NO');
-const ctrFail = W.runCounters_(runWithScoutEx, plan, rules, false);
-ok(ctrFail.ENTERED_MASTER === 0 && ctrFail.WRITE_FAILED === 4, 'if readback fails nothing counts as entered; the would-be rows count as WRITE_FAILED');
+const ctrOver = W.runCounters_(Object.assign({}, runEx, { GROSS_FOUND: 9 }), planEx, rules, true);
+ok(ctrOver.RUN_ACCOUNTING === 'OVERREPORTED' && ctrOver.DISCOVERY_UNACCOUNTED === -1, 'a supplied GROSS_FOUND that disagrees with submitted outcomes is never silent (9 reported, 10 accounted -> OVERREPORTED)');
+const ctrDerived = W.runCounters_(Object.assign({}, runEx, { GROSS_FOUND: undefined }), planEx, rules, true);
+ok(ctrDerived.GROSS_FOUND === 10 && ctrDerived.RUN_ACCOUNTING === 'RECONCILED', 'GROSS_FOUND omitted -> derived from every submitted candidate, reconciled');
+const ctrFail = W.runCounters_(runEx, planEx, rules, false);
+ok(ctrFail.ENTERED_MASTER === 0 && ctrFail.WRITE_FAILED === 5, 'if readback fails nothing counts as entered; the would-be rows count as WRITE_FAILED');
+// (Forge review 2, item 1) pre-exclusion bypass: a supplier pre-excluded as NC-001 HIGH only through run.NEVER_CONSIDER_EXCLUDED must still get a row
+const bypass = W.planIntake(lines0, [], rules, Object.assign({}, ctx, { run: { SCOUT_RUN_ID: 'RUN-BYPASS', NEVER_CONSIDER_EXCLUDED: [{ COMPANY: 'Automation Partners', TITLE: 'Director of Manufacturing', LOCATION: 'Dayton, OH', REQ_ID: 'GH-9100000001', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'pharma', EMPLOYER_DOMAIN_HINT: 'industrial automation supplier serving pharmaceutical plants' }] } }));
+ok(bypass.results.length === 1 && bypass.results[0].result === 'SCOUT_INTAKE_WRITTEN' && bypass.results[0].NEVER_CONSIDER_REVIEW_NEEDED === 'NC-001' && bypass.excluded.length === 0 && bypass.newLines.length === 1 && /NEVER_CONSIDER_REVIEW_NEEDED=NC-001 HIGH \(EVIDENCE_CONFLICT_DO_NOT_MATCH/.test(bypass.newLines[0]), 'Scout cannot bypass the writer: a supplier pre-excluded as NC-001 HIGH via run.NEVER_CONSIDER_EXCLUDED is admitted as SCOUT_INTAKE with a review flag, not excluded');
+ok(W.runCounters_({ SCOUT_RUN_ID: 'RUN-BYPASS', GROSS_FOUND: 1 }, bypass, rules, true)['NC-001_COUNT'] === 0, 'and it is not counted as an NC-001 exclusion');
+// (Forge review 2, item 2) caller-facing response: ok means the whole contract completed, not only the Drive readback
+const rcpt = { RECEIPT: 'INTAKE_RECEIPT' };
+const respOk = W.intakeResponse_(true, ctr, rcpt, planEx, 'COUNTS: x', 'END x');
+ok(respOk.ok === true && respOk.WRITE_VERIFIED === true && respOk.COMPLETION_STATUS === 'COMPLETE' && respOk.RUN_ACCOUNTING === 'RECONCILED', 'verified + reconciled -> ok:true, WRITE_VERIFIED:true, COMPLETE');
+const respInc = W.intakeResponse_(true, ctrInc, rcpt, planEx, 'COUNTS: x', 'END x');
+ok(respInc.ok === false && respInc.WRITE_VERIFIED === true && respInc.COMPLETION_STATUS === 'INCOMPLETE' && respInc.DISCOVERY_UNACCOUNTED === 3 && /do not retry/.test(respInc.error), 'verified but DISCOVERY_UNACCOUNTED != 0 -> ok:false, WRITE_VERIFIED:true, INCOMPLETE, error tells Scout to submit the missing discoveries and not retry written rows');
+const respOver = W.intakeResponse_(true, ctrOver, rcpt, planEx, 'COUNTS: x', 'END x');
+ok(respOver.ok === false && respOver.WRITE_VERIFIED === true && respOver.RUN_ACCOUNTING === 'OVERREPORTED', 'overreported -> ok:false, WRITE_VERIFIED:true');
+const respFail = W.intakeResponse_(false, ctrFail, rcpt, planEx, 'COUNTS: x', 'END x');
+ok(respFail.ok === false && respFail.WRITE_VERIFIED === false && respFail.COMPLETION_STATUS === 'FAILED', 'readback failure -> ok:false, WRITE_VERIFIED:false, FAILED');
 // telemetry never alters population: excluding does not touch a single master line
 const exclOnly = W.planIntake(lines0, [{ COMPANY: 'Pillcorp Therapeutics', TITLE: 'QA Director', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH' }], rules, ctx);
 ok(exclOnly.newLines.length === 0 && exclOnly.excluded.length === 1 && W.applyPlanToLines(lines0, exclOnly).join('\n') === lines0.join('\n'), 'never-consider telemetry does not alter canonical master population counts (master byte-identical)');
