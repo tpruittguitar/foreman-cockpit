@@ -89,7 +89,8 @@
         if (k === 'TOTAL' || k === 'UNACCOUNTED') return;
         var have = byBucket[k] || 0; if (have !== counts[k]) { checksum.ok = false; checksum.diffs.push({ bucket: k, declared: counts[k], parsed: have }); }
       });
-      if (counts.TOTAL !== undefined && counts.TOTAL !== rows.length) { checksum.ok = false; checksum.diffs.push({ bucket: 'TOTAL', declared: counts.TOTAL, parsed: rows.length }); }
+      var wellFormed = rows.filter(function (r) { return !r.parseError; }).length;
+      if (counts.TOTAL !== undefined && counts.TOTAL !== wellFormed) { checksum.ok = false; checksum.diffs.push({ bucket: 'TOTAL', declared: counts.TOTAL, parsed: wellFormed }); }
     } else { checksum.ok = false; checksum.diffs.push({ bucket: 'COUNTS', declared: null, parsed: rows.length }); }
     return {
       title: title, header: header, columnsLine: columnsLine, counts: counts, schema: schema || { MASTER_SCHEMA_VERSION: '1 (assumed; no SCHEMA line)' },

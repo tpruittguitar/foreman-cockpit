@@ -1,10 +1,12 @@
-# PIPELINE EXPLORER — DESIGN BRIEF v0.7
+# PIPELINE EXPLORER — DESIGN BRIEF v0.8
 
 **Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 second-round corrections; v0.5 non-interference rule; v0.6 Tim's rulings on the numbered questions)
 **Author:** Claude (Foreman node), from Tim's spec in this session
 **Status:** Step 1 BUILT (2026-09-30) per Tim's answers to the numbered questions; see §9C. `pipeline.html` reads the fixed master through `netlify/functions/master.js` and holds Tim's rulings locally until the Authorized State Writer applies them. No Drive files changed by this project. The master must be shared "Anyone with the link, Viewer" by Tim for the live fetch to work.
 **Reviewers:** Tim (final authority), ChatGPT, Grok
 **Repo:** tpruittguitar/foreman-cockpit (`docs/PIPELINE_EXPLORER_DESIGN_BRIEF.md`)
+
+**What changed in v0.8 (Tim's ruling 2026-09-30: "it did not save my comments and decisions to the master job file").** Step 1 held rulings on the device by design; Tim wants them in the master. v0.8 adds a **state writer**: a Google Apps Script in Tim's account that applies Tim's rulings to the master row in place under the Amendment 58 writer contract, plus cross-device sync of seen-state and rulings. See §9D. The non-interference rule (§2.1) still holds: the writer only answers requests from the page, only touches the ruled row and the COUNTS line, never runs on a schedule, and never touches any other pipeline file.
 
 **What changed in v0.7 (Tim's second-round answers and Step 1 build, 2026-09-30).** Q2: master made link-readable (Tim's call; privacy accepted) and fetched by a Netlify function, no Apps Script needed. Q6/7: rulings are held on the device across refreshes and shown as pending until the master reflects them; trust deferred. Q8: yes, one app; the Explorer will replace the cockpit page once Tim is satisfied. Q9: agree, master format unchanged; parser is format-agnostic. Q5: confirmed. New: automation timer panel. Step 1 built and smoke-tested against the real 526-row export on desktop, phone landscape and phone portrait; details in §9C.
 
@@ -254,6 +256,34 @@ You are right that CSV is more portable, and the master's row format is already 
 
 **Not done:** cross-device seen-state and ruling sync (needs a write endpoint); STATE_CHANGE_REQUEST queue file (needs A2); governance file listing (needs Drive listing access); cockpit panel migration.
 
+## 9D. State writer (Tim's ruling, 2026-09-30)
+
+**Ruling.** Tim: rulings and comments made in the Explorer must be saved to the master job file. Tim has final authority; this supersedes the v0.3–v0.7 gate that waited for the pipeline to name a writer surface. It is implemented as an Authorized State Writer under Amendment 58 §2 (capability-based, not tied to an agent).
+
+**Mechanism.** `apps-script/Code.gs`, deployed once by Tim as a web app executing as Tim (`apps-script/README.md`). Endpoints: `master` (read the fixed-ID Doc text), `state` (read/write the Explorer's seen and rulings JSON in `PIPELINE_EXPLORER_STATE.json` beside the master), `ruling` (apply one ruling), `receipts` (read the receipt log). The page prefers the script for reads when configured, so the Doc no longer needs link sharing.
+
+**Writer contract, as implemented.** Script lock; read the master's modifiedTime; find the row by exact PRIMARY_ID and fail closed on 0 or more than 1 match; mutate only that row; re-read modifiedTime immediately before committing and abort if it changed (REV2 concurrency protocol); write the row paragraph in place; recompute the `COUNTS:` line from row BUCKET values; read back and verify; append a STATE_CHANGE_RECEIPT (Amendment 58 §9 fields) to `PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS` beside the master; return the receipt to the page. Section headings are not moved (BUCKET_AUTHORITY rule). Rows in APPLIED or REJECTED_BY_EMPLOYER cannot be declined or set to pursue (protected applicant state).
+
+**What each ruling writes.**
+
+| Ruling | BUCKET / DISPOSITION | Payload keys | TAGS |
+|---|---|---|---|
+| Note only | unchanged | `TIM_NOTE=<text> [Tim YYYY-MM-DD]` | — |
+| Pursue | READY_TO_PURSUE / RESOLVED/PURSUE_CANDIDATE | `TIM_RULING=PURSUE`; prior `DECLINE_REASON_CODE` moved to `DECLINE_REASON_CODE_PRIOR` | `TIM_OVERRIDE_PURSUE_<date>` |
+| Do not pursue / Decline | DECLINED_BY_TIM / RESOLVED/DECLINED_BY_TIM | `TIM_RULING=DO_NOT_PURSUE`, `DECLINE_REASON_CODE` (chosen, default TIM_EXPLICIT_DECLINE), `DECLINE_REASON_TEXT`, `REOPEN_TRIGGER=Tim explicitly overrides.`, `TIM_DISPOSITION=TIM_PASS_<date>_EXPLORER` | `TIM_DECLINE_<date>` |
+| I applied | APPLIED / RESOLVED/APPLIED_CONFIRMED | `APP_DATE`, `APP_STATUS_EVIDENCE=Tim direct statement…`, `ANTI_RESURRECTION=YES`, `TIM_RULING=APPLIED` | `TIM_APPLIED_<date>` |
+| every write | | `STATE_SOURCE=TIM_EXPLORER:<REQUEST_ID>`, `STATE_UPDATED_AT=<ISO>` | |
+
+These reuse vocabulary the master already carries (`DECLINE_REASON_CODE`, `REOPEN_TRIGGER`, `TIM_DISPOSITION`, `APP_DATE`, `ANTI_RESURRECTION`). New keys are `TIM_NOTE`, `TIM_RULING`, `STATE_SOURCE`, `STATE_UPDATED_AT`, `DECLINE_REASON_CODE_PRIOR`. Nodes that parse payload keys they do not know should ignore them; none of the existing keys change meaning.
+
+**For ChatGPT and Grok.** Tim's rulings now arrive in the master directly, tagged `STATE_SOURCE=TIM_EXPLORER:*`. Per Amendment 58 §6 these are direct Tim statements and outrank posting-state inference. Receipts are in `PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS` for Foreman's verification duty (§13). No change to any node's schedule or behavior is requested; whether to read `TIM_NOTE` / `TIM_RULING` as precedent is the "learn, get better" instruction Tim said he would issue.
+
+**Identity.** Deferred by Tim ("not worried about trust; function first"). The passphrase is set in the script and entered once in the page. Anyone with the page URL and the passphrase could write rulings in Tim's name.
+
+**Verified.** `tests/writer.test.js`: decline, pursue-override, note, applied, protected-state refusal, pipe-in-payload preservation, COUNTS recomputation; on the real export the recomputed COUNTS line equals the existing one exactly and a note mutation preserves every existing field on all 526 rows. Browser end-to-end with a mocked script endpoint: a "do not pursue" ruling writes the row, the page reloads the master, the row leaves APPLY NOW, shows CANONICAL, and COUNTS updates. The Apps Script runtime itself could not be executed from this session; the Drive and Docs calls are standard and the pure logic is what the tests cover.
+
+**Not done.** Wife/second-user attribution (all rulings are Tim's). Real-run verification of the Apps Script after Tim deploys it.
+
 ## 10. Risks and weak assumptions
 - **Writer surface unresolved.** Even the pipeline's own in-place writes are flagged as a tool gap (REV2 §8 item 2). Until A2 is settled, v2 cannot be built. Step 1 has no exposure.
 - **Parser fragility.** Pipes inside values, headings that lag, 197 rows without a real DATE_ADDED. The parser never drops rows; Data Quality surfaces what it could not read.
@@ -271,6 +301,7 @@ You are right that CSV is more portable, and the master's row format is already 
 - 2026-09-29 v0.2 — Revised after Grok review. Verified against `V2_CURRENT_POPULATION_MASTER.txt` by full export (526 rows, vocabulary, keys, 99 mismatches, encoding). No Drive writes, no code.
 - 2026-09-29 v0.3 — Revised after ChatGPT review. Read `FORGE_AMENDMENT_58_CANONICAL_STATE_WRITE_ARCHITECTURE_2026-09-27` (`1Vz-ifWCspz1RPf_QyWZ9XYND2GrZsAwx`), `MASTER_TABLE_CUTOVER_IMPLEMENTATION_2026-09-29_REV2.txt` (`1t83d2awD2gA_JstH8eCHsfs5YLtxKDLW`), and `STATE_CHANGE_REQUEST_SCR-2026-09-27-001`. Master resolution corrected to fixed ID. Write channel rebuilt on Amendment 58; ledger withdrawn. v1 scoped read-only. §3.3, §3.4 added. §4.3 predicate reduced and labeled. No Drive writes, no code.
 - 2026-09-30 v0.4 — Second-round corrections from ChatGPT and Grok, each verified against the live master before applying: VERIFY_LATER removed from NEEDS ACTION (header rule confirmed; 12 rows carry the key, 6 of them READY_TO_PURSUE); Salary Floors deferred to #90, row-level FLOOR_STATUS shown (present on 6 rows); SCHEMA fields revised; PIPELINE preset checked against where interview/offer states live (DISPOSITION under APPLIED); predicate shown in status line; cancel-pending replaces 30 s undo; five fixture cases specified; A3 position revised. No Drive writes, no code.
+- 2026-09-30 v0.8 — Tim ruled that rulings must be saved to the master. Added the Apps Script state writer (`apps-script/Code.gs`, README), writer settings in the page, cross-device state sync, writer tests. §9D. Non-interference rule unchanged. No Drive files modified by this session; Tim deploys the script himself.
 - 2026-09-30 v0.7 — Second-round answers recorded (§9C). Step 1 built: `pipeline.html`, parser, Netlify master function, tests, scrubbed fixture. Verified against the real export and in headless Chromium at three viewports. No Drive files modified by this project; Tim shares the master Doc by link himself.
 - 2026-09-30 v0.6 — Tim's rulings on the eleven numbered questions recorded (§9A) and applied to §3.1, §4.2, §4.3, §5.0, §7, §8; open items restated in plain language with recommendations (§9B). Repo visibility verified public. Build on hold per Tim. No Drive writes, no code.
 - 2026-09-30 v0.5 — Tim's non-interference instruction added as §2.1 and applied: SCHEMA line and canonical APPLY_NOW field withdrawn as requests; manual refresh only; reads confirmed not to touch modifiedTime; nothing written to AI_Coordination in v1. No Drive writes, no code.
