@@ -129,6 +129,12 @@ function parseAmd59Recovery_(text) {
     if (rec.COMP && !rec.PAY_POSTED) rec.PAY_POSTED = rec.COMP;
     if (rec.FLEX && !rec.FLEX_HINT) rec.FLEX_HINT = rec.FLEX;
     if (rec.EVIDENCE && !rec.SCOUT_NOTES) rec.SCOUT_NOTES = rec.EVIDENCE;
+    if (rec.POSSIBLE_MATCHES && !isNotProvided_(rec.POSSIBLE_MATCHES)) {
+      rec.SCOUT_NOTES = (rec.SCOUT_NOTES ? rec.SCOUT_NOTES + ' | ' : '') + 'CLAUDE_POSSIBLE_MATCHES=' + rec.POSSIBLE_MATCHES;
+    }
+    if (rec.CLAUDE_IDENTITY_FLAG && !isNotProvided_(rec.CLAUDE_IDENTITY_FLAG)) {
+      rec.SCOUT_NOTES = (rec.SCOUT_NOTES ? rec.SCOUT_NOTES + ' | ' : '') + 'CLAUDE_IDENTITY_FLAG=' + rec.CLAUDE_IDENTITY_FLAG;
+    }
     if (rec.EXCLUSION_REASON && !rec.NEVER_CONSIDER_REASON) rec.NEVER_CONSIDER_REASON = rec.EXCLUSION_REASON;
 
     // Preserve source identity without inventing facts.
@@ -166,7 +172,7 @@ function parseKeyValueBlock_(block) {
 function isNotProvided_(v) {
   if (v === undefined || v === null) return true;
   var s = String(v).trim().toUpperCase();
-  return !s || s === 'NOT PROVIDED' || s === 'UNKNOWN' || s === 'NOT_STATED';
+  return !s || s === 'NOT PROVIDED' || s === 'UNKNOWN' || s === 'NOT_STATED' || s.indexOf('NOT PROVIDED') === 0 || s.indexOf('UNKNOWN') === 0;
 }
 
 function findMasterLine_(text, re) {
@@ -231,7 +237,7 @@ function summarizeAmd59Results_(results) {
   };
   for (var i = 0; i < results.length; i++) {
     var o = results[i].output || {};
-    var src = o.summary || o;
+    var src = (o.receipt && o.receipt.COUNTERS) || o.summary || o;
     Object.keys(s).forEach(function (k) {
       if (src[k] !== undefined && src[k] !== null && !isNaN(Number(src[k]))) s[k] += Number(src[k]);
     });
