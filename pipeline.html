@@ -245,12 +245,12 @@ var FIXED=['INV','PRIMARY_ID','COMPANY','TITLE','BUCKET','DISPOSITION','TAGS','R
 var COMPUTED=['NEW','TIM_RULING','SECTION','MISMATCH','COMP_MID','CELLS'];
 var BUCKET_ORDER_DEFAULT=['READY_TO_PURSUE','TIM_DECISION_REQUIRED','SCOUT_INTAKE','DISCOVERY_LEAD','BLOCKED','MANUAL_RESEARCH','APPLIED','REJECTED_BY_EMPLOYER','DECLINED_BY_TIM','DUPLICATE','CLOSED_DEAD','INVALID_DISCOVERY'];
 var PROTECTED=['APPLIED','REJECTED_BY_EMPLOYER'];
-var DESK_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DISPOSITION','LOCATION','DATE_ADDED','SALARY_BASE_EST','FLEX','FLOOR_STATUS','REQ','NOTIFICATION_SOURCE','IDENTITY_CONFIDENCE','SCOUT_RUN_ID','TAGS','DECLINE_REASON_CODE','BLOCKER','SECTION'];
+var DESK_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DISPOSITION','LOCATION','DATE_ADDED','MASTER_LOADED_AT','SALARY_BASE_EST','FLEX','FLOOR_STATUS','REQ','NOTIFICATION_SOURCE','IDENTITY_CONFIDENCE','SCOUT_RUN_ID','TAGS','DECLINE_REASON_CODE','BLOCKER','SECTION'];
 var SCOUT_KEYS=['INTAKE_KEY','SCOUT_RUN_ID','DISCOVERED_AT_ET','DISCOVERY_SOURCE','SOURCE_URL','SOURCE_PROVIDER','REQ_ID','IDENTITY_CONFIDENCE','INITIAL_UNKNOWN_FIELDS','POSSIBLE_MATCHES','PAY_POSTED','DEGREE_TEXT','FLEX_HINT','REPORTING_LEVEL','EMPLOYER_DOMAIN_HINT','EMPLOYER_PRIMARY_BUSINESS','SCOUT_NOTES','POSTING_DATE','REMOTE_HYBRID','NEVER_CONSIDER_REVIEW_NEEDED','NEVER_CONSIDER_REASON','NOTIFICATION_SOURCE','DATE_ADDED','SOURCE'];
 var TIM_KEYS=['TIM_NOTE','TIM_RULING','TIM_DISPOSITION','DECLINE_REASON_CODE','DECLINE_REASON_CODE_PRIOR','DECLINE_REASON_TEXT','REOPEN_TRIGGER','DUP_OF','INVALID_REASON','RESEARCH_REQUEST','STATE_SOURCE','STATE_UPDATED_AT'];
 function keyGroup(k){if(TIM_KEYS.indexOf(k)>=0)return 'tim';if(/^(CLAUDE_|ANALYSIS_|PROPOSED_|RANK_|FIT$|FIT_)/.test(k))return 'claude';if(SCOUT_KEYS.indexOf(k)>=0)return 'scout';return 'forge'}
 var PHONE_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DATE_ADDED','SALARY_BASE_EST','LOCATION'];
-var DATE_KEYS={DATE_ADDED:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
+var DATE_KEYS={DATE_ADDED:1,MASTER_LOADED_AT:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
 var mapView={zoom:1,x:480,y:255,focus:null,hasFocused:false,animation:0,request:0,found:[],active:null,overview:null,returnView:null};
 var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),docSelection:LS.get('docSelection',null),cols:LS.get('cols',null),autos:LS.get('autos',null),chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,events:{},interview:{}};
@@ -325,7 +325,7 @@ function apply(text,meta,fromCache){
 }
 function decorate(r){
   r.id=r.PRIMARY_ID||('INV-'+r.INV);
-  var d=PipelineParser.parseDate(r.payload.DATE_ADDED);r.dateAdded=d;r.dateAddedStr=d?d.toISOString().slice(0,10):(r.payload.DATE_ADDED||'');
+  var d=PipelineParser.parseDate(r.payload.DATE_ADDED),loaded=PipelineParser.parseDate(r.payload.MASTER_LOADED_AT);r.dateAdded=d;r.dateAddedStr=d?d.toISOString().slice(0,10):(r.payload.DATE_ADDED||'');r.masterLoadedAt=loaded;r.masterLoadedAtStr=loaded?loaded.toISOString():(r.payload.MASTER_LOADED_AT||'');
   var mm=PipelineParser.parseMoney(r.payload.SALARY_BASE_POSTED)||PipelineParser.parseMoney(r.payload.PAY_POSTED)||PipelineParser.parseMoney(r.payload.SALARY_BASE_EST);r.compMid=mm?mm.mid:null;
   r.mismatch=!!(r.section&&r.BUCKET&&r.section!==r.BUCKET);
   return r;
@@ -344,6 +344,7 @@ function val(r,c){
     case 'COMP_MID':return r.compMid!=null?String(r.compMid):'';
     case 'CELLS':return String(r.cellCount);
     case 'DATE_ADDED':return r.dateAddedStr;
+    case 'MASTER_LOADED_AT':return r.masterLoadedAtStr;
   }
   if(FIXED.indexOf(c)>=0)return r[c]||'';
   return r.payload[c]!==undefined?r.payload[c]:'';
@@ -395,11 +396,13 @@ var PRESETS={
 function renderPresets(){
   var h='<div class="preset-list">';Object.keys(PRESETS).forEach(function(k){var n=S.rows.filter(PRESETS[k].fn).length;h+='<span class="chip'+(S.preset===k?' on':'')+(PRESETS[k].hot&&n?' hot':'')+'" data-p="'+k+'">'+PRESETS[k].label+' <span class="mono'+(PRESETS[k].hot&&n?'':' faint')+'">'+n+'</span></span>'});
   var nsel=Object.keys(S.checked).filter(function(k){return S.checked[k]}).length;
-  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar">'+(nsel?'<b>'+nsel+' selected</b><button data-bulk="DECLINE">Decline</button><button data-bulk="MANUAL_RESEARCH">Research</button><button data-bulk="INVALID_DISCOVERY">Invalid</button>':'')+'</span><input type="text" id="search" placeholder="global search…" value="'+esc(S.search)+'" style="width:190px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
+  var discoverable=filteredRows().filter(function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length}).length;
+  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar">'+(nsel?'<b>'+nsel+' selected</b><button data-bulk="DECLINE">Decline</button><button data-bulk="MANUAL_RESEARCH">Research</button><button data-bulk="INVALID_DISCOVERY">Invalid</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><input type="text" id="search" placeholder="global search…" value="'+esc(S.search)+'" style="width:190px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
   h+='</div><div id="predicate"></div>';
   $('presets').innerHTML=h;
   $('presets').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){S.chartFilter=null;S.preset=el.getAttribute('data-p');pushHash();render()}});
   $('search').oninput=function(){S.search=this.value;render()};
+  $('discover-data').onclick=function(){requestDiscoveryForRows_(filteredRows().filter(function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length}))};
   $('markseen').onclick=function(){filteredRows().forEach(function(r){S.seen[r.id]=Date.now()});LS.set('seen',S.seen);syncStateUp();render()};
   $('presets').querySelectorAll('[data-bulk]').forEach(function(b){b.onclick=function(){bulkAction(b.getAttribute('data-bulk'))}});
 }
@@ -462,7 +465,7 @@ function render(){
   $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
   fixSticky();
   $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
-  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();return}openRow(tr.getAttribute('data-id'))}});
+  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();return}selectMapRow_(tr.getAttribute('data-id'))}});
   applyColumnWidths();enableColumnResize();scheduleVisibleMap_();
   if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();document.querySelectorAll('[data-chart-filter]').forEach(function(el){el.setAttribute('aria-pressed',S.chartFilter&&JSON.parse(el.dataset.chartFilter).label===S.chartFilter.label?'true':'false')});
 }
@@ -522,11 +525,18 @@ function saveEnrichment_(r){
   $('enrich-status').textContent='Submitting enrichment; readback pending…';
   gsPost({action:'ruling',ruling:ru}).then(function(j){if(!j.ok)throw new Error(j.error||'Enrichment failed');$('enrich-status').textContent='Saved and read back from the master.';return load()}).catch(function(e){$('enrich-status').textContent=e.message})
 }
+function requestDiscoveryForRows_(rows){
+  rows=rows||[];
+  if(!rows.length){readout('No active rows in this view are missing salary, posting link, or FLEX evidence.');return Promise.resolve({ok:false,error:'no rows'})}
+  if(rows.length>50){readout('Discovery request limited to 50 rows. Narrow the view and run again for the remainder.');return Promise.resolve({ok:false,error:'too many rows'})}
+  var requests=rows.map(function(r){return {primaryId:r.PRIMARY_ID,fields:researchGaps_(r).map(function(g){return g==='salary'?'SALARY':g==='posting link'?'SOURCE_URL':'FLEX'}),priority:'HIGH',actor:'TIM',instructions:'Search current public sources and fill only missing structured fields on this exact canonical row. Preserve exact source URLs, label estimates, capture FLEX wording, and leave unknowns unknown.'}});
+  readout('Queueing AI discovery for '+rows.length+' rows…');
+  if(!hasWriter()){readout('Writer required to queue AI discovery.');return Promise.resolve({ok:false,error:'writer required'})}
+  return gsPost({action:'data_discovery',requests:requests}).then(function(j){if(!j.ok)throw new Error(j.error||'AI discovery request failed');readout('<span class="good">AI discovery queued</span> · '+(j.requested||0)+' requests. The next Forge discovery run will research and write back to the same rows.');return j}).catch(function(e){readout('<span class="bad">AI discovery failed</span> '+esc(e.message));throw e})
+}
 function requestResearch_(r){
-  var g=researchGaps_(r),note='Research missing fields on this same canonical row: '+(g.length?g.join(', '):'recheck salary, posting link, and FLEX evidence')+'. Verify the exact employer/ATS posting, preserve the URL, and return structured fields with provenance.';
-  if(!hasWriter()){$('enrich-status').textContent='Writer required to place this row in MANUAL_RESEARCH.';return}
-  $('enrich-status').textContent='Sending research request…';var ts=new Date().toISOString(),ru={kind:'MANUAL_RESEARCH',note:note,ts:ts,primaryId:r.PRIMARY_ID,company:r.COMPANY,title:r.TITLE,req:r.REQ,actor:'TIM',requestId:'PX-RESEARCH-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
-  gsPost({action:'ruling',ruling:ru}).then(function(j){if(!j.ok)throw new Error(j.error||'Research request failed');$('enrich-status').textContent='Queued in MANUAL_RESEARCH.';return load()}).catch(function(e){$('enrich-status').textContent=e.message})
+  if(!hasWriter()){$('enrich-status').textContent='Writer required to queue AI discovery.';return}
+  $('enrich-status').textContent='Queueing AI discovery…';requestDiscoveryForRows_([r]).then(function(){ $('enrich-status').textContent='AI discovery queued; Forge will research the missing fields on this row.'}).catch(function(e){$('enrich-status').textContent=e.message});
 }
 function renderDetail(r){
   $('d-title').textContent=r.COMPANY+' — '+r.TITLE;
@@ -538,7 +548,7 @@ function renderDetail(r){
 function renderOverview(r){
   var dups=duplicateCandidates(r),codes={TIM_EXPLICIT_DECLINE:1,PAY_BELOW_FLOOR:1,GEOGRAPHY_GATE_FAIL:1,FLEX_STRICT_NO:1,SCOPE_BELOW_TARGET:1,FIT_TOO_WEAK:1,DOMAIN_MISMATCH:1,LOCATION_NOT_ACCEPTABLE:1,MULTIPLE_RULE_FAILURES:1};S.rows.forEach(function(x){if(x.payload.DECLINE_REASON_CODE)codes[x.payload.DECLINE_REASON_CODE]=1});
   var h='<div class="detail-grid"><div class="detail-card full"><h3>Tim decision</h3><div class="edit-grid"><label>State</label><select id="edit-state"><option value="">No state change</option><option value="READY_TO_PURSUE">READY_TO_PURSUE</option><option value="APPLIED">APPLIED</option><option value="REJECTED_BY_EMPLOYER">Rejected by Employer</option><option value="MANUAL_RESEARCH">MANUAL_RESEARCH</option><option value="DECLINED_BY_TIM">DECLINED_BY_TIM</option><option value="CLOSED_DEAD">CLOSED_DEAD</option><option value="INVALID_DISCOVERY">INVALID_DISCOVERY</option><option value="DUPLICATE">DUPLICATE</option></select><label class="rejection-field" hidden>Rejection date</label><input class="rejection-field" hidden type="date" id="edit-event-date"><label class="rejection-field" hidden>Rejection evidence</label><input class="rejection-field" hidden type="text" id="edit-evidence" placeholder="Email sender / subject, Gmail ID, or employer notice"><label>Reason code</label><select id="edit-reason"><option value="">—</option>'+Object.keys(codes).sort().map(function(x){return '<option>'+esc(x)+'</option>'}).join('')+'</select><label>Duplicate of</label><input id="edit-dup" type="text" value="'+esc((r.payload.POSSIBLE_MATCHES||'').split(',')[0]||'')+'"><label>My note</label><textarea id="edit-note" placeholder="What I decided, why, or what an AI should do next…"></textarea></div><div class="row"><button id="save-decision" class="neon">Save decision</button><button id="undo-decision">Undo last Tim decision</button><button id="compare-role">Compare role</button><button id="pin-row" class="'+(S.pins[r.id]?'on':'')+'">'+(S.pins[r.id]?'★ Pinned':'☆ Pin')+'</button><span id="edit-status" class="tip"></span></div></div>';
-  h+='<div class="detail-card"><h3>Current state</h3><div class="kv"><div>Bucket</div><div>'+esc(r.BUCKET)+'</div><div>Disposition</div><div>'+esc(r.DISPOSITION)+'</div><div>Location</div><div>'+esc(r.LOCATION)+'</div><div>Req</div><div>'+esc(r.REQ)+'</div><div>FLEX</div><div>'+esc(r.payload.FLEX||r.payload.FLEX_HINT||'UNKNOWN')+' '+confidence(PipelineTrust.flex(r.payload))+'</div><div>Identity</div><div>'+esc(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN')+' '+confidence(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN')+'</div></div></div>';
+  h+='<div class="detail-card"><h3>Current state</h3><div class="kv"><div>Bucket</div><div>'+esc(r.BUCKET)+'</div><div>Disposition</div><div>'+esc(r.DISPOSITION)+'</div><div>Location</div><div>'+esc(r.LOCATION)+'</div><div>Req</div><div>'+esc(r.REQ)+'</div><div>First loaded</div><div class="mono">'+esc(r.masterLoadedAtStr||'PRE-EXISTING · TIME NOT RECORDED')+'</div><div>FLEX</div><div>'+esc(r.payload.FLEX||r.payload.FLEX_HINT||'UNKNOWN')+' '+confidence(PipelineTrust.flex(r.payload))+'</div><div>Identity</div><div>'+esc(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN')+' '+confidence(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN')+'</div></div></div>';
   h+='<div class="detail-card"><h3>Duplicate warning</h3>'+(dups.length?dups.map(function(x){return '<div class="tip" style="margin-bottom:5px"><b>'+esc(x.COMPANY)+'</b> · '+esc(x.TITLE)+'<br><span class="mono">'+esc(x.PRIMARY_ID)+' · '+esc(x.REQ)+'</span></div>'}).join(''):'<div class="tip">No close canonical match detected.</div>')+'</div>';
   h+=compStrip(r);
   h+=researchCard_(r);
@@ -721,7 +731,7 @@ function nearestMapPin_(clientX,clientY){var box=$('job-map');if(!box)return nul
 function mapSnapshot_(){return {mode:S.mapMode,zoom:mapView.targetZoom||mapView.zoom,x:mapView.x,y:mapView.y,preset:S.preset,search:S.search,filters:JSON.parse(JSON.stringify(S.filters)),sort:S.sort&&Object.assign({},S.sort),chartFilter:S.chartFilter,scroll:$('gridwrap').scrollTop}}
 function closeMapPicker_(){var picker=$('map-job-picker');if(picker)picker.remove()}
 function setMapMode_(mode){closeMapPicker_();if(mode==='selected'&&S.mapMode!=='selected')mapView.overview=mapSnapshot_();mapView.returnView=null;S.mapMode=mode;LS.set('mapMode',mode);renderDashboard()}
-function selectMapRow_(id){var r=rowById(id);if(!r)return;closeMapPicker_();if(!mapView.returnView)mapView.returnView=S.mapMode==='selected'?(mapView.overview||Object.assign(mapSnapshot_(),{mode:'visible',zoom:1,x:480,y:255})):mapSnapshot_();
+function selectMapRow_(id){var r=rowById(id);if(!r)return;closeMapPicker_();mapView.rowFocusZoom=1.5;if(!mapView.returnView)mapView.returnView=S.mapMode==='selected'?(mapView.overview||Object.assign(mapSnapshot_(),{mode:'visible',zoom:1,x:480,y:255})):mapSnapshot_();
   if(!filteredRows().some(function(row){return row.id===id})){S.preset='ALL';S.search='';S.filters={};S.chartFilter=null;pushHash();renderPresets()}
   S.mapMode='selected';LS.set('mapMode','selected');openRow(id);var tr=Array.from($('grid').querySelectorAll('tbody tr[data-id]')).filter(function(el){return el.dataset.id===id})[0];if(tr){var wrap=$('gridwrap'),b=tr.getBoundingClientRect(),w=wrap.getBoundingClientRect(),top=$('grid').querySelector('thead').getBoundingClientRect().bottom;if(b.top<top)wrap.scrollTop-=top-b.top;else if(b.bottom>w.bottom)wrap.scrollTop+=b.bottom-w.bottom;tr.setAttribute('tabindex','-1');tr.focus({preventScroll:true})}
 }
@@ -770,7 +780,7 @@ function renderJobMap(){
     var approx=found.filter(function(x){return x.approx}).length;
     $('job-map').innerHTML=mapBaseSvg_(found.map(pinSvg_).join(''));
     mapView.found=found;mapView.active=found.length===1?0:null;applyMapView_();
-    if(r&&(mode==='selected'||mode==='visible')&&mapView.focus!==focusId){var primary=mapLocationsForRow_(r)[0],hit=found.filter(function(p){return primary&&p.label===primary.label})[0];if(hit){var q=projectUS_(+hit.lat,+hit.lon,stateCodeFromText_(hit.label)),zoom=mapView.hasFocused?(mapView.targetZoom||mapView.zoom):(mapView.zoom===1?2:mapView.zoom);mapView.focus=focusId;mapView.hasFocused=true;animateMap_({zoom:zoom,x:q.x,y:q.y})}}
+    if(r&&(mode==='selected'||mode==='visible')&&mapView.focus!==focusId){var primary=mapLocationsForRow_(r)[0],hit=found.filter(function(p){return primary&&p.label===primary.label})[0];if(hit){var q=projectUS_(+hit.lat,+hit.lon,stateCodeFromText_(hit.label)),zoom=mapView.rowFocusZoom||1.5;mapView.focus=focusId;mapView.hasFocused=true;mapView.rowFocusZoom=null;animateMap_({zoom:zoom,x:q.x,y:q.y})}}
     $('map-loc-status').textContent=approx?(approx+' APPROX'):(found.length+' PIN'+(found.length===1?'':'S'));
   });
 }

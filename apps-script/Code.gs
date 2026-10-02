@@ -19,6 +19,7 @@ var MASTER_ID = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI'; // fixed per Tim
 var PASSPHRASE = 'CHANGE-ME';                                   // set your own; the page asks for it once
 var STATE_FILE_NAME = 'PIPELINE_EXPLORER_STATE.json';
 var RECEIPTS_DOC_NAME = 'PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS';
+var DISCOVERY_REQUESTS_NAME = 'PIPELINE_DATA_DISCOVERY_REQUESTS.jsonl';
 /** Runtime Never-Consider authority is the active TIM_PIPELINE_RULES_CANONICAL document. RULES_DOC_ID is retained as a compatibility alias for receipts/tests. */
 var RULES_DOC_ID = '1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
 /** Every gross Scout discovery ends in exactly one of these outcomes. */
@@ -47,7 +48,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','request_result','ruling','intake','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
@@ -56,6 +57,7 @@ function doGet(e) {
     if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200)) });
     if (a === 'interview_notes') return out_(readInterviewNotes_(p.primaryId || ''));
     if (a === 'documents') return out_(readJobDocuments_());
+    if (a === 'discovery_requests') return out_(readDiscoveryRequests_(p.primaryId || '', +(p.limit || 100)));
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'canonical_rules') return out_(readCanonicalRules_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
@@ -76,12 +78,13 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'undo_ruling', 'install_automation', 'batch'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'undo_ruling', 'install_automation', 'batch'];
 function dispatchWrite_(req) {
   req = req || {};
   var a = String(req.action || '');
   if (a === 'intake') return applyIntakeToMaster_(req);
   if (a === 'ruling') return applyRulingToMaster_(req.ruling || {});
+  if (a === 'data_discovery') return applyDataDiscoveryRequest_(req);
   if (a === 'upsert_application') return applyUpsertToMaster_(req.event || req);
   if (a === 'interview_note') return saveInterviewNote_(req.note || req);
   if (a === 'approve_resume') return approveResume_(req.selection || req);
@@ -174,6 +177,36 @@ function applyRulingToMaster_(ruling) {
     appendReceipt_(receipt);
     appendEvent_({ type: 'TIM_RULING', primaryId: pid, actor: ruling.actor || 'TIM', ts: receipt.EXECUTED_AT, requestId: ruling.requestId || '', kind: ruling.kind || '', code: ruling.code || '', note: ruling.note || '', before: before, after: res.after, verified: verified });
     return { ok: verified, receipt: receipt, before: before, after: res.after, counts: newCounts };
+  } finally { lock.releaseLock(); }
+}
+/* ================= AI data-discovery request queue ================= */
+/* The button creates a durable request; it does not mutate the master or become a second job store. */
+function applyDataDiscoveryRequest_(req) {
+  req = req || {};
+  var list = Array.isArray(req.requests) ? req.requests : (req.request ? [req.request] : []);
+  if (!list.length) return { ok:false, error:'data_discovery requires requests[]' };
+  if (list.length > 50) return { ok:false, error:'data_discovery batch too large (max 50)' };
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var paras = DocumentApp.openById(MASTER_ID).getBody().getParagraphs(), rows = {};
+    for (var i=0;i<paras.length;i++) {
+      var t=paras[i].getText(); if (!/^\d+ \| /.test(t)) continue;
+      var c=t.split(' | '); if (c.length < FIXED_N + 1) continue;
+      rows[c[1].trim()] = { primaryId:c[1].trim(), company:c[2].trim(), title:c[3].trim(), bucket:c[4].trim(), req:c[7].trim(), location:c[8].trim() };
+    }
+    var f=findOrCreate_(DISCOVERY_REQUESTS_NAME,'text',''), out=[], accepted=0, now=new Date().toISOString();
+    for (var j=0;j<list.length;j++) {
+      var x=list[j]||{}, pid=String(x.primaryId||x.PRIMARY_ID||'').trim(), row=rows[pid];
+      if (!row) { out.push({ok:false,primaryId:pid,error:'PRIMARY_ID not found in current master'}); continue; }
+      var requested=Array.isArray(x.fields)?x.fields.map(function(v){return String(v||'').trim().toUpperCase()}).filter(Boolean):['SALARY','SOURCE_URL','FLEX'];
+      requested=requested.filter(function(v,n,a){return a.indexOf(v)===n&&['SALARY','SOURCE_URL','FLEX','DEGREE','REMOTE_HYBRID','REQ_ID','POSTING_DATE'].indexOf(v)>=0});
+      if (!requested.length) { out.push({ok:false,primaryId:pid,error:'no supported missing fields requested'}); continue; }
+      var rid=String(x.requestId||'').trim()||('DD-'+now.replace(/[-:.TZ]/g,'')+'-'+pid.slice(-8));
+      var rec={type:'DATA_DISCOVERY_REQUEST',requestId:rid,requestedAt:now,actor:String(x.actor||'TIM').toUpperCase(),primaryId:pid,company:row.company,title:row.title,req:row.req,location:row.location,bucket:row.bucket,fields:requested,priority:String(x.priority||'NORMAL'),instructions:clean_(x.instructions||'Research only the missing fields; preserve the same canonical row and do not invent unknowns.')};
+      appendJsonLine_(f,rec); appendEvent_({type:'DATA_DISCOVERY_REQUESTED',requestId:rid,primaryId:pid,actor:rec.actor,ts:now,fields:requested,company:row.company,title:row.title});
+      out.push({ok:true,requestId:rid,primaryId:pid,fields:requested}); accepted++;
+    }
+    return {ok:out.every(function(v){return v.ok}),requested:accepted,results:out,pendingFile:DISCOVERY_REQUESTS_NAME};
   } finally { lock.releaseLock(); }
 }
 function fail_(msg, ruling) {
@@ -479,7 +512,7 @@ function planUpsertApplication(lines, ev, ctx) {
   set('SOURCE_URL', /^https?:\/\//i.test(ev.SOURCE_URL || '') ? ev.SOURCE_URL : ''); set('REQ_ID', ev.REQ_ID); set('ANTI_RESURRECTION', 'YES');
   if (ev.NOTE) set('NOTE', ev.NOTE);
   var fr = applyFields_(ev.fields, P, O, set); if (!fr.ok) return { ok: false, mode: 'INVALID', error: fr.error };
-  set('DATE_ADDED', today_(now)); set('NOTIFICATION_SOURCE', 'EMAIL'); set('STATE_SOURCE', String(ruling.actor).toUpperCase().replace(/[^A-Z0-9_]/g, '') + ':' + ruling.requestId); set('STATE_UPDATED_AT', now);
+  set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', 'EMAIL'); set('STATE_SOURCE', String(ruling.actor).toUpperCase().replace(/[^A-Z0-9_]/g, '') + ':' + ruling.requestId); set('STATE_UPDATED_AT', now);
   var disp = state === 'APPLIED' ? 'RESOLVED/APPLIED_CONFIRMED' : 'RESOLVED/REJECTED_BY_EMPLOYER';
   var tag = (state === 'APPLIED' ? 'APPLIED_' : 'EMPLOYER_REJECTION_') + evDate;
   var line = [String(inv), pid, company, title, state, disp, 'EMAIL_UPSERT_' + today_(now) + '; ' + tag + '; ANTI_RESURRECTION', clean_(ev.REQ_ID || '') || 'UNCAPTURED', clean_(ev.LOCATION || '') || 'NOT_STATED'].join(' | ') + ' | ' + buildPayload('EMAIL_CONFIRMED_UPSERT', P, O);
@@ -740,7 +773,7 @@ function planIntake(lines, records, rulesObj, ctx) {
     set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED'); if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
     INTAKE_FACT_KEYS.forEach(function (k) { set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
     if (nc.outcome === 'REVIEW') { set('NEVER_CONSIDER_REVIEW_NEEDED', nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'); set('NEVER_CONSIDER_REASON', nc.reason); }
-    set('DATE_ADDED', today_(now)); set('NOTIFICATION_SOURCE', rec.SOURCE_PROVIDER || rec.DISCOVERY_SOURCE || 'Scout');
+    set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', rec.SOURCE_PROVIDER || rec.DISCOVERY_SOURCE || 'Scout');
     set('STATE_SOURCE', 'SCOUT_INTAKE:' + (runId || 'UNSPECIFIED')); set('STATE_UPDATED_AT', now);
     var disposition = bucket === 'SCOUT_INTAKE' ? 'INTAKE/AWAITING_ANALYSIS' : 'INTAKE/IDENTITY_UNRESOLVED';
     var line = [String(inv), pid, rec.COMPANY, rec.TITLE, bucket, disposition, tags.join('; '), rec.REQ_ID || 'UNCAPTURED', rec.LOCATION || 'NOT_STATED'].join(' | ') + ' | ' + buildPayload('SCOUT_INTAKE_PENDING (Claude analysis, then Forge verification)', P, O);
@@ -785,6 +818,15 @@ function readEvents_(primaryId, limit) {
   if (primaryId) rows = rows.filter(function (r) { return String(r.primaryId || '') === String(primaryId); });
   rows.sort(function (a,b) { return String(b.ts||'').localeCompare(String(a.ts||'')); });
   return rows.slice(0, Math.max(1, Math.min(limit || 200, 1000)));
+}
+function readDiscoveryRequests_(primaryId, limit) {
+  var it=folder_().getFilesByName(DISCOVERY_REQUESTS_NAME), rows=[];
+  if (it.hasNext()) rows=it.next().getBlob().getDataAsString().split('\n').filter(Boolean).map(function(l){try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean);
+  if (primaryId) rows=rows.filter(function(r){return String(r.primaryId||'')===String(primaryId)});
+  var ev=readEvents_('',1000), by={}; ev.forEach(function(e){if(e.requestId)by[e.requestId]=e});
+  rows=rows.map(function(r){var e=by[r.requestId];return Object.assign({},r,e&&e.type==='TIM_RULING'?{lastEventType:e.type,lastEventAt:e.ts,lastActor:e.actor||'',status:e.verified?'ENRICHED':'SUBMITTED'}:{status:'REQUESTED'})});
+  rows.sort(function(a,b){return String(b.requestedAt||'').localeCompare(String(a.requestedAt||''))});
+  return {ok:true,fileName:DISCOVERY_REQUESTS_NAME,requests:rows.slice(0,Math.max(1,Math.min(limit||100,500)))};
 }
 function safeName_(s) { return String(s || '').replace(/[\\\/:*?"<>|#%{}~]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 140); }
 function interviewFile_(primaryId, createIfMissing) {
