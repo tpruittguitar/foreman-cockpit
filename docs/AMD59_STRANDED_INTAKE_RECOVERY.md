@@ -106,6 +106,6 @@ Independent pre-execution validation performed against the real Drive request (`
 E1=15, E2=16, E3=7, total=38, unique=38, missing COMPANY/TITLE=0; never-consider candidates E1-13, E1-14, E1-15, E3-06, E3-07; U-01..U-04 and H-01 sections present and untouched by the parser.
 
 Master baseline before any recovery (`19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`, modified 2026-10-01T05:29:21.969Z):
-`COUNTS: TOTAL=569 … SCOUT_INTAKE=0 DISCOVERY_LEAD=2`, `END V2_CURRENT_POPULATION_MASTER (569 rows)`, 569 data rows, 0 duplicate PRIMARY_IDs, 0 rows carrying the E1/E2 run IDs or `RECOVERY-AMD59-20261001-E3`. No `MASTER_CHANGE_APPLIED_` or `MASTER_WRITER_FAILURE_` AMD59 receipt exists in AI_Coordination.
+`COUNTS: TOTAL=569 … SCOUT_INTAKE=0 DISCOVERY_LEAD=2`, `END V2_CURRENT_POPULATION_MASTER (569 rows)`, 569 data rows, 3 pre-existing repeated PRIMARY_IDs (V2L-SKYWAYS INV469/510, V2S-KAPTA-DIR-MFG-RADAR INV419/507, V2S-VULCAN-DIR-MFG-ENG INV420/508, each a DUPLICATE row self-pointing at the surviving row; predates this recovery and is the no-new-duplicates baseline), 0 rows carrying the E1/E2 run IDs or `RECOVERY-AMD59-20261001-E3`. No `MASTER_CHANGE_APPLIED_` or `MASTER_WRITER_FAILURE_` AMD59 receipt exists in AI_Coordination.
 
 The only remaining execution path is the manual "How to run" above, performed by Tim inside the existing project.
