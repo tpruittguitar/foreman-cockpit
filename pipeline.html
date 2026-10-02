@@ -731,7 +731,7 @@ function nearestMapPin_(clientX,clientY){var box=$('job-map');if(!box)return nul
 function mapSnapshot_(){return {mode:S.mapMode,zoom:mapView.targetZoom||mapView.zoom,x:mapView.x,y:mapView.y,preset:S.preset,search:S.search,filters:JSON.parse(JSON.stringify(S.filters)),sort:S.sort&&Object.assign({},S.sort),chartFilter:S.chartFilter,scroll:$('gridwrap').scrollTop}}
 function closeMapPicker_(){var picker=$('map-job-picker');if(picker)picker.remove()}
 function setMapMode_(mode){closeMapPicker_();if(mode==='selected'&&S.mapMode!=='selected')mapView.overview=mapSnapshot_();mapView.returnView=null;S.mapMode=mode;LS.set('mapMode',mode);renderDashboard()}
-function selectMapRow_(id){var r=rowById(id);if(!r)return;closeMapPicker_();mapView.rowFocusZoom=1.5;if(!mapView.returnView)mapView.returnView=S.mapMode==='selected'?(mapView.overview||Object.assign(mapSnapshot_(),{mode:'visible',zoom:1,x:480,y:255})):mapSnapshot_();
+function selectMapRow_(id){var r=rowById(id);if(!r)return;closeMapPicker_();mapView.rowFocusZoom=6;if(!mapView.returnView)mapView.returnView=S.mapMode==='selected'?(mapView.overview||Object.assign(mapSnapshot_(),{mode:'visible',zoom:1,x:480,y:255})):mapSnapshot_();
   if(!filteredRows().some(function(row){return row.id===id})){S.preset='ALL';S.search='';S.filters={};S.chartFilter=null;pushHash();renderPresets()}
   S.mapMode='selected';LS.set('mapMode','selected');openRow(id);var tr=Array.from($('grid').querySelectorAll('tbody tr[data-id]')).filter(function(el){return el.dataset.id===id})[0];if(tr){var wrap=$('gridwrap'),b=tr.getBoundingClientRect(),w=wrap.getBoundingClientRect(),top=$('grid').querySelector('thead').getBoundingClientRect().bottom;if(b.top<top)wrap.scrollTop-=top-b.top;else if(b.bottom>w.bottom)wrap.scrollTop+=b.bottom-w.bottom;tr.setAttribute('tabindex','-1');tr.focus({preventScroll:true})}
 }
@@ -780,7 +780,7 @@ function renderJobMap(){
     var approx=found.filter(function(x){return x.approx}).length;
     $('job-map').innerHTML=mapBaseSvg_(found.map(pinSvg_).join(''));
     mapView.found=found;mapView.active=found.length===1?0:null;applyMapView_();
-    if(r&&(mode==='selected'||mode==='visible')&&mapView.focus!==focusId){var primary=mapLocationsForRow_(r)[0],hit=found.filter(function(p){return primary&&p.label===primary.label})[0];if(hit){var q=projectUS_(+hit.lat,+hit.lon,stateCodeFromText_(hit.label)),zoom=mapView.rowFocusZoom||1.5;mapView.focus=focusId;mapView.hasFocused=true;mapView.rowFocusZoom=null;animateMap_({zoom:zoom,x:q.x,y:q.y})}}
+    if(r&&(mode==='selected'||mode==='visible')&&mapView.focus!==focusId){var primary=mapLocationsForRow_(r)[0],hit=found.filter(function(p){return primary&&p.label===primary.label})[0];if(hit){var q=projectUS_(+hit.lat,+hit.lon,stateCodeFromText_(hit.label)),zoom=mapView.rowFocusZoom||6;mapView.focus=focusId;mapView.hasFocused=true;mapView.rowFocusZoom=null;animateMap_({zoom:zoom,x:q.x,y:q.y})}}
     $('map-loc-status').textContent=approx?(approx+' APPROX'):(found.length+' PIN'+(found.length===1?'':'S'));
   });
 }
