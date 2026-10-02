@@ -20,7 +20,7 @@ Save one file into **AI_Coordination/WRITER_QUEUE** (folder `1IVyEKPxqY_7uL9GG9R
 ```
 POST https://script.google.com/macros/s/AKfycbwShspSkto70NeFWjgTuyIf-W3EDgUmKmoWevE-jZq95pm6SAulrJYHX1HmiPg8tx3i/exec
 Content-Type: text/plain
-{"key":"5150", ...write body...}
+{"key":"<current private writer credential>", ...write body...}
 ```
 
 Follow the 302 redirect with a GET, which `curl -L` does by default.
@@ -28,14 +28,14 @@ Follow the 302 redirect with a GET, which `curl -L` does by default.
 ## 3. HTTP GET only, for runtimes that can only fetch a URL
 
 ```
-GET <same URL>?action=submit&key=5150&payload=<URL-encoded JSON write body>
+GET <same URL>?action=submit&key=<current-private-writer-credential>&payload=<URL-encoded JSON write body>
 ```
 
 Keep GET payloads small, roughly one ruling or 1 to 5 intake records. Use the queue or a POST for anything larger.
 
 ## Reads (GET)
 
-`?action=ping&key=5150`, `?action=master&key=5150` (full master text plus modifiedTime), `?action=rules&key=5150`, `?action=runs&key=5150`, `?action=receipts&key=5150`, and `?action=automation&key=5150` (queue status).
+`?action=ping&key=<current-private-writer-credential>`, `?action=master&key=<current-private-writer-credential>` (full master text plus modifiedTime), `?action=rules&key=<current-private-writer-credential>`, `?action=runs&key=<current-private-writer-credential>`, `?action=receipts&key=<current-private-writer-credential>`, and `?action=automation&key=<current-private-writer-credential>` (queue status).
 
 ## Write bodies
 

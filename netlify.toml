@@ -10,3 +10,9 @@
   from = "/api/master"
   to = "/.netlify/functions/master"
   status = 200
+
+[[redirects]]
+  from = "/"
+  to = "/pipeline.html"
+  status = 302
+  force = true
