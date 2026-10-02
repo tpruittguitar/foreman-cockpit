@@ -79,7 +79,14 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
 .conf{display:inline-block;margin-left:5px;padding:1px 5px;border:1px solid var(--line2);border-radius:8px;font:9px var(--mono)}.conf.VERIFIED,.conf.HIGH{color:var(--ng);border-color:var(--ng)}.conf.ESTIMATED,.conf.MED,.conf.MEDIUM{color:var(--nc);border-color:var(--nc)}.conf.UNKNOWN,.conf.LOW{color:var(--nm);border-color:var(--nm)}
 .changed{color:var(--nc);font-size:9px;margin-left:4px}.pin{font-size:14px;color:var(--faint)}.pin.on{color:#fff}
 .timeline{border-left:1px solid var(--line2);margin-left:6px;padding-left:12px}.event{margin:0 0 12px;position:relative}.event:before{content:"";position:absolute;left:-16px;top:4px;width:7px;height:7px;border-radius:50%;background:#aaa}.event .ts{font:9px var(--mono);color:var(--faint)}.event .ev{font-size:10.5px}
-.docgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:10px}.docbox{border:1px solid var(--line);border-radius:7px;background:#090909;padding:10px;min-height:220px}.docbox h3{margin:0 0 8px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase}.docitem{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #171717}.docitem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.approved{color:var(--ng);font:9px var(--mono)}
+.doc-workspace{display:grid;grid-template-columns:minmax(360px,44%) minmax(0,56%);height:calc(100vh - 118px);min-height:540px;overflow:hidden}
+.doc-library{min-width:0;overflow:auto;border-right:1px solid var(--line);background:#060606}
+.docgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:10px;align-content:start}
+.docbox{border:1px solid var(--line);border-radius:7px;background:#090909;padding:10px;min-height:220px}.docbox h3{margin:0 0 8px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase}
+.docitem{display:flex;gap:8px;align-items:center;padding:7px 5px;border-bottom:1px solid #171717;border-radius:4px;cursor:pointer}.docitem:hover{background:#111}.docitem.selected{background:#151515;outline:1px solid #303030}.docitem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.docitem .nm .docname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.approved{color:var(--ng);font:9px var(--mono)}
+.doc-preview-pane{min-width:0;display:flex;flex-direction:column;background:#050505}
+.doc-preview-head{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);background:#090909;min-height:56px}.doc-preview-head .meta{flex:1;min-width:0}.doc-preview-head h3{margin:0 0 3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.doc-preview-head .tip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-preview-actions{display:flex;gap:6px;flex:none}.doc-preview-body{position:relative;flex:1;min-height:0;background:#111}.doc-preview-body iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}.doc-preview-empty{height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px;color:var(--faint);font:11px var(--mono);line-height:1.6}.doc-preview-fallback{padding:18px}.doc-type{display:inline-block;border:1px solid #333;border-radius:10px;padding:2px 6px;font:8px var(--mono);color:#aaa;margin-left:6px}
 .bulkbar{display:inline-flex;gap:4px;align-items:center}.bulkbar b{font:10px var(--mono);color:#fff}
 .resize-handle{position:absolute;right:-2px;top:0;width:5px;height:100%;cursor:col-resize;z-index:5}
 th{position:sticky} th{min-width:70px} td,th{max-width:none}
@@ -110,7 +117,7 @@ th{position:sticky} th{min-width:70px} td,th{max-width:none}
 .map-legend{position:absolute;left:10px;bottom:7px;z-index:3;display:flex;gap:10px;align-items:center;color:#8d8d8d;font:8px var(--mono);pointer-events:none}.map-legend span{display:flex;gap:4px;align-items:center}.map-dot{width:6px;height:6px;border-radius:50%;background:#eee;box-shadow:0 0 7px rgba(255,255,255,.55)}.map-dot.secondary{background:#999;box-shadow:none}.map-dot.home{background:#fff;border:1px solid #777;box-shadow:0 0 8px rgba(255,255,255,.8)}
 .map-loc-status{position:absolute;right:10px;bottom:7px;color:#666;font:8px var(--mono);z-index:3}
 @media(max-width:980px){#dash{height:32%;max-height:330px;grid-template-columns:repeat(6,minmax(0,1fr))}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 3}#job-map-card{grid-column:4/7;grid-row:1/3}#worksplit{height:68%}#drawer{width:52%;min-width:330px}}
-@media(max-width:760px){#dash{height:38%;max-height:390px;min-height:220px}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 6}#job-map-card{grid-column:1/-1;grid-row:auto;min-height:210px}#worksplit{height:62%}#drawer{position:absolute!important;inset:0!important;width:100%;max-width:none}.docgrid{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}.detail-card.full{grid-column:auto}}
+@media(max-width:760px){#dash{height:38%;max-height:390px;min-height:220px}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 6}#job-map-card{grid-column:1/-1;grid-row:auto;min-height:210px}#worksplit{height:62%}#drawer{position:absolute!important;inset:0!important;width:100%;max-width:none}.doc-workspace{grid-template-columns:1fr;height:auto;min-height:0}.doc-library{border-right:0;border-bottom:1px solid var(--line);max-height:46vh}.docgrid{grid-template-columns:1fr}.doc-preview-pane{height:54vh}.detail-grid{grid-template-columns:1fr}.detail-card.full{grid-column:auto}}
 </style>
 </head>
 <body>
@@ -165,7 +172,7 @@ function keyGroup(k){if(TIM_KEYS.indexOf(k)>=0)return 'tim';if(/^(CLAUDE_|ANALYS
 var PHONE_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DATE_ADDED','SALARY_BASE_EST','LOCATION'];
 var DATE_KEYS={DATE_ADDED:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
-var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),mapMode:LS.get('mapMode','selected'),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,events:{},interview:{}};
+var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),mapMode:LS.get('mapMode','selected'),docSelection:LS.get('docSelection',null),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,events:{},interview:{}};
 S.cols=S.cols||{desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};
 if(S.cols.bucketOrder.indexOf('SCOUT_INTAKE')<0){S.cols.bucketOrder=['SCOUT_INTAKE','DISCOVERY_LEAD'].concat(S.cols.bucketOrder.filter(function(b){return b!=='SCOUT_INTAKE'&&b!=='DISCOVERY_LEAD'})).concat(['INVALID_DISCOVERY']).filter(function(b,i,a){return a.indexOf(b)===i});LS.set('cols',S.cols)}
 S.runs=[];S.rules=null;
@@ -526,7 +533,70 @@ function renderJobMap(){
     $('map-loc-status').textContent=approx?(approx+' APPROX'):(found.length+' PIN'+(found.length===1?'':'S'));
   });
 }
-function renderDocuments(){var v=$('view-documents');if(!hasWriter()){v.innerHTML='<div class="panel"><h3>Job Documents</h3><div class="tip">Configure the writer to load the Drive-backed document library.</div></div>';return}if(!S.docs){v.innerHTML='<div class="panel">Loading documents…</div>';gsGet('documents').then(function(j){if(j.ok){S.docs=j;renderDocuments()}});return}var cfg=S.docs.config||{},q='';function box(title,arr,type){return '<div class="docbox"><h3>'+title+' · '+arr.length+'</h3><input class="doc-search" data-type="'+type+'" placeholder="filter…" style="width:100%;margin-bottom:6px">'+arr.map(function(f){var ap=cfg.latest_approved_resume_file_id===f.id;return '<div class="docitem" data-doc="'+esc(f.name.toLowerCase())+'"><div class="nm"><a href="'+esc(f.url)+'" target="_blank">'+esc(f.name)+'</a><div class="tip">'+esc((f.modifiedTime||'').slice(0,10))+' · '+esc(f.mimeType||'')+'</div></div>'+(ap?'<span class="approved">APPROVED</span>':'')+(type==='resume'&&!ap?'<button data-approve="'+esc(f.id)+'">Approve</button>':'')+'</div>'}).join('')+'</div>'}v.innerHTML='<div class="docgrid">'+box('Resumes',S.docs.resumes||[],'resume')+box('Cover Letters',S.docs.coverLetters||[],'cover')+box('Supporting Documents',S.docs.supporting||[],'support')+box("Tim's Voice",S.docs.timVoice||[],'voice')+'</div>';v.querySelectorAll('[data-approve]').forEach(function(b){b.onclick=function(){gsPost({action:'approve_resume',selection:{fileId:b.getAttribute('data-approve')}}).then(function(j){if(j.ok)gsGet('documents').then(function(d){S.docs=d;renderDocuments();renderDashboard()})})}});v.querySelectorAll('.doc-search').forEach(function(inp){inp.oninput=function(){var q=inp.value.toLowerCase();inp.parentNode.querySelectorAll('.docitem').forEach(function(it){it.style.display=it.getAttribute('data-doc').indexOf(q)>=0?'flex':'none'})}})}
+function allJobDocs_(){
+  if(!S.docs)return[];
+  var out=[];
+  [['resume',S.docs.resumes||[]],['cover',S.docs.coverLetters||[]],['support',S.docs.supporting||[]],['voice',S.docs.timVoice||[]]].forEach(function(g){
+    g[1].forEach(function(f){out.push(Object.assign({docType:g[0]},f))});
+  });
+  return out;
+}
+function selectedJobDoc_(){
+  var docs=allJobDocs_(),id=S.docSelection&&S.docSelection.id;
+  var hit=id&&docs.filter(function(f){return f.id===id})[0];
+  if(hit)return hit;
+  var approved=S.docs&&S.docs.config&&S.docs.config.latest_approved_resume_file_id;
+  hit=approved&&docs.filter(function(f){return f.id===approved})[0];
+  return hit||docs[0]||null;
+}
+function docPreviewUrl_(f){
+  if(!f||!f.id)return'';
+  var m=String(f.mimeType||'');
+  if(m==='application/vnd.google-apps.document')return'https://docs.google.com/document/d/'+encodeURIComponent(f.id)+'/preview';
+  if(m==='application/vnd.google-apps.spreadsheet')return'https://docs.google.com/spreadsheets/d/'+encodeURIComponent(f.id)+'/preview';
+  if(m==='application/vnd.google-apps.presentation')return'https://docs.google.com/presentation/d/'+encodeURIComponent(f.id)+'/preview';
+  return'https://drive.google.com/file/d/'+encodeURIComponent(f.id)+'/preview';
+}
+function docTypeLabel_(f){
+  var m=String(f&&f.mimeType||'');
+  if(m==='application/pdf')return'PDF';
+  if(m==='application/vnd.google-apps.document')return'GOOGLE DOC';
+  if(m==='application/vnd.openxmlformats-officedocument.wordprocessingml.document')return'DOCX';
+  if(m.indexOf('text/')===0)return'TEXT';
+  if(m==='application/vnd.google-apps.spreadsheet')return'SHEET';
+  if(m==='application/vnd.google-apps.presentation')return'SLIDES';
+  return(f&&f.docType||'FILE').toUpperCase();
+}
+function renderDocumentPreview_(){
+  var f=selectedJobDoc_(),head=$('doc-preview-head'),body=$('doc-preview-body');if(!head||!body)return;
+  if(!f){head.innerHTML='<div class="meta"><h3>Preview / Reader</h3><div class="tip">Select a file from the library.</div></div>';body.innerHTML='<div class="doc-preview-empty">Select a resume, cover letter, supporting document, or Tim’s Voice sample to preview it here.</div>';return}
+  var approved=S.docs&&S.docs.config&&S.docs.config.latest_approved_resume_file_id===f.id;
+  head.innerHTML='<div class="meta"><h3>'+esc(f.name)+' <span class="doc-type">'+esc(docTypeLabel_(f))+'</span>'+(approved?' <span class="approved">APPROVED RESUME</span>':'')+'</h3><div class="tip">'+esc((f.modifiedTime||'').replace('T',' ').slice(0,19))+' · '+esc(f.docType||'document')+'</div></div><div class="doc-preview-actions"><a class="btn" href="'+esc(f.url)+'" target="_blank" rel="noopener">Open in Drive</a></div>';
+  var src=docPreviewUrl_(f);
+  if(src)body.innerHTML='<iframe title="'+esc(f.name)+' preview" src="'+esc(src)+'" loading="lazy" referrerpolicy="no-referrer"></iframe>';
+  else body.innerHTML='<div class="doc-preview-empty">Preview is not available for this file type.<br>Use Open in Drive.</div>';
+}
+function renderDocuments(){
+  var v=$('view-documents');
+  if(!hasWriter()){v.innerHTML='<div class="panel"><h3>Job Documents</h3><div class="tip">Configure the writer to load the Drive-backed document library.</div></div>';return}
+  if(!S.docs){v.innerHTML='<div class="panel">Loading documents…</div>';gsGet('documents').then(function(j){if(j.ok){S.docs=j;renderDocuments()}});return}
+  var cfg=S.docs.config||{};
+  function box(title,arr,type){
+    return '<div class="docbox"><h3>'+title+' · '+arr.length+'</h3><input class="doc-search" data-type="'+type+'" placeholder="filter…" style="width:100%;margin-bottom:6px">'+arr.map(function(f){
+      var ap=cfg.latest_approved_resume_file_id===f.id,sel=S.docSelection&&S.docSelection.id===f.id;
+      return '<div class="docitem '+(sel?'selected':'')+'" data-doc="'+esc(f.name.toLowerCase())+'" data-file-id="'+esc(f.id)+'" data-doc-type="'+type+'"><div class="nm"><div class="docname">'+esc(f.name)+'</div><div class="tip">'+esc((f.modifiedTime||'').slice(0,10))+' · '+esc(docTypeLabel_(f))+'</div></div>'+(ap?'<span class="approved">APPROVED</span>':'')+(type==='resume'&&!ap?'<button data-approve="'+esc(f.id)+'">Approve</button>':'')+'</div>'
+    }).join('')+'</div>'
+  }
+  v.innerHTML='<div class="doc-workspace"><section class="doc-library"><div class="docgrid">'+box('Resumes',S.docs.resumes||[],'resume')+box('Cover Letters',S.docs.coverLetters||[],'cover')+box('Supporting Documents',S.docs.supporting||[],'support')+box("Tim's Voice",S.docs.timVoice||[],'voice')+'</div></section><aside class="doc-preview-pane"><div class="doc-preview-head" id="doc-preview-head"></div><div class="doc-preview-body" id="doc-preview-body"></div></aside></div>';
+  if(!selectedJobDoc_()){S.docSelection=null}else if(!S.docSelection){var d=selectedJobDoc_();S.docSelection=d?{id:d.id,type:d.docType}:null;LS.set('docSelection',S.docSelection)}
+  v.querySelectorAll('.docitem').forEach(function(it){it.onclick=function(e){
+    if(e.target&&e.target.hasAttribute('data-approve'))return;
+    S.docSelection={id:it.getAttribute('data-file-id'),type:it.getAttribute('data-doc-type')};LS.set('docSelection',S.docSelection);renderDocuments()
+  }});
+  v.querySelectorAll('[data-approve]').forEach(function(b){b.onclick=function(e){e.stopPropagation();var id=b.getAttribute('data-approve');S.docSelection={id:id,type:'resume'};LS.set('docSelection',S.docSelection);gsPost({action:'approve_resume',selection:{fileId:id}}).then(function(j){if(j.ok)gsGet('documents').then(function(d){S.docs=d;renderDocuments();renderDashboard()})})}});
+  v.querySelectorAll('.doc-search').forEach(function(inp){inp.oninput=function(){var q=inp.value.toLowerCase();inp.parentNode.querySelectorAll('.docitem').forEach(function(it){it.style.display=it.getAttribute('data-doc').indexOf(q)>=0?'flex':'none'})}});
+  renderDocumentPreview_();
+}
 function renderRules(){var v=$('view-rules');if(!hasWriter()){v.innerHTML='<div class="panel"><h3>Canonical Tim Rules</h3><div class="tip">Writer must be configured to edit canonical rules.</div></div>';return}if(!S.canonicalRules){v.innerHTML='<div class="panel">Loading canonical rules…</div>';gsGet('canonical_rules').then(function(j){S.canonicalRules=j;renderRules()});return}v.innerHTML='<div class="panel active"><h3>Canonical Tim Rules · Save makes this live</h3><div class="tip">Latest successfully saved Tim rules override conflicting older prompts/directives. AI may propose changes; only Tim Save activates them.</div><textarea id="rules-edit" class="cfg" style="height:62vh;margin-top:8px">'+esc(S.canonicalRules.text||'')+'</textarea><div class="row"><button id="rules-save" class="neon">Save canonical rules</button><button id="rules-reload">Discard / reload</button><span id="rules-status" class="tip"></span></div></div>';$('rules-save').onclick=function(){$('rules-status').textContent='Saving…';gsPost({action:'save_rules',rules:{text:$('rules-edit').value,actor:'TIM'}}).then(function(j){if(j.ok){$('rules-status').textContent='Saved and verified.';gsGet('canonical_rules').then(function(r){S.canonicalRules=r})}else $('rules-status').textContent=j.error||'Save failed'})};$('rules-reload').onclick=function(){gsGet('canonical_rules').then(function(j){S.canonicalRules=j;renderRules()})}}
 /* ---------- reports ---------- */
 function tbl(head,rows){return '<table><thead><tr>'+head.map(function(h){return '<th>'+esc(h)+'</th>'}).join('')+'</tr></thead><tbody>'+(rows.length?rows.map(function(r){return '<tr>'+r.map(function(c){return '<td>'+c+'</td>'}).join('')+'</tr>'}).join(''):'<tr><td colspan="'+head.length+'" class="faint">none</td></tr>')+'</tbody></table>'}
