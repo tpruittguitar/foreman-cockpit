@@ -78,7 +78,7 @@ ok(A.parseQueueContent_('```json\n{"action":"intake","records":[]}\n```').ok, 'c
 ok(A.parseQueueContent_('﻿Here you go:\n{“action”: “ruling”, “ruling”: {}}').body.action === 'ruling', 'BOM, prose and smart quotes from Docs tolerated');
 ok(!A.parseQueueContent_('no json here').ok, 'non-JSON rejected');
 ok(!A.parseQueueContent_('[1,2]').ok, 'non-object rejected');
-ok(W.WRITE_ACTIONS.join(',') === 'intake,ruling,upsert_application,batch', 'write actions are exactly the governed set');
+ok(W.WRITE_ACTIONS.join(',') === 'intake,ruling,upsert_application,interview_note,approve_resume,save_rules,undo_ruling,install_automation,batch', 'write actions are exactly the governed set');
 
 console.log(fails ? '\n' + fails + ' FAILED' : '\nALL PASS');
 process.exit(fails ? 1 : 0);
