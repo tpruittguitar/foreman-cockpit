@@ -381,7 +381,7 @@ var PRESETS={
   RULED:{label:'My rulings',text:'rows with a Tim ruling (pending, canonical, or master changed)',fn:function(r){return !!ruling(r)}},
   DECLINED:{label:'Declined',text:'BUCKET=DECLINED_BY_TIM',fn:function(r){return r.BUCKET==='DECLINED_BY_TIM'}},
   APPLIED:{label:'Applied',text:'BUCKET=APPLIED, grouped by DISPOSITION (interview/offer states live in DISPOSITION today)',fn:function(r){return r.BUCKET==='APPLIED'}},
-  NEEDS_TIM:{label:'Needs Tim',hot:true,text:'rows requiring Tim decision or unresolved active review',fn:function(r){return ['TIM_DECISION_REQUIRED','READY_TO_PURSUE','MANUAL_RESEARCH','BLOCKED'].indexOf(r.BUCKET)>=0}},
+  NEEDS_TIM:{label:'Review queue',hot:true,text:'rows requiring Tim decision or unresolved active review',fn:function(r){return ['TIM_DECISION_REQUIRED','READY_TO_PURSUE','MANUAL_RESEARCH','BLOCKED'].indexOf(r.BUCKET)>=0}},
   HIGH_PAY:{label:'High Pay',text:'known/estimated compensation midpoint >= $200k',fn:function(r){return r.compMid!=null&&r.compMid>=200000}},
   LOCAL:{label:'Local',text:'Tennessee / Chattanooga-Cleveland regional roles',fn:function(r){return /(TN|Tennessee|Chattanooga|Cleveland|Knoxville)/i.test(r.LOCATION||'')}},
   REMOTE:{label:'Remote',text:'location or payload indicates remote',fn:function(r){return /remote/i.test((r.LOCATION||'')+' '+r.raw)}},
