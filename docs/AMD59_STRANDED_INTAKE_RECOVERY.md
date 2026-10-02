@@ -109,3 +109,17 @@ Master baseline before any recovery (`19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8Ytp
 `COUNTS: TOTAL=569 … SCOUT_INTAKE=0 DISCOVERY_LEAD=2`, `END V2_CURRENT_POPULATION_MASTER (569 rows)`, 569 data rows, 3 pre-existing repeated PRIMARY_IDs (V2L-SKYWAYS INV469/510, V2S-KAPTA-DIR-MFG-RADAR INV419/507, V2S-VULCAN-DIR-MFG-ENG INV420/508, each a DUPLICATE row self-pointing at the surviving row; predates this recovery and is the no-new-duplicates baseline), 0 rows carrying the E1/E2 run IDs or `RECOVERY-AMD59-20261001-E3`. No `MASTER_CHANGE_APPLIED_` or `MASTER_WRITER_FAILURE_` AMD59 receipt exists in AI_Coordination.
 
 The only remaining execution path is the manual "How to run" above, performed by Tim inside the existing project.
+
+## Execution — 2026-10-02 (Authorized State Writer HTTP path)
+
+On Tim's authorization the recovery was executed through the existing writer deployment's `action=intake` POST, not through `Amd59RecoveryWorker.gs` (which remains undeployed). Same envelopes and run IDs as the worker: E1 `GROK07-20261001-0612ET-07089bfe`, E2 `GROK07-20261001-1707ET-07089bfe`, E3 `RECOVERY-AMD59-20261001-E3` (original E3 run ID recorded as NOT PROVIDED; original return Drive ID preserved in run metadata). Each envelope was sent once.
+
+| Envelope | Intake | Lead | Existing | Never-consider | Failed | Status |
+|---|---|---|---|---|---|---|
+| E1 | 8 | 4 | 1 | 2 (NC-002) | 0 | COMPLETE |
+| E2 | 5 | 10 | 1 | 0 | 0 | COMPLETE |
+| E3 | 3 | 1 | 3 | 0 | 0 | COMPLETE |
+
+Master 569 → 600 rows. Independent Drive readback: header COUNTS equal actual row buckets, END marker matches, 0 pre-existing rows altered, 31 new rows each present once with intake metadata, no new repeated PRIMARY_IDs, no rows for the deferred U-01..U-04 or H-01. Receipt: `MASTER_CHANGE_APPLIED_AMD59_STRANDED_INTAKE_RECOVERY_2026-10-01_214542.txt` (Drive `1nEJzgET3_AEg7wX7fYPcvUcJM1McK2co`).
+
+Open defect found: GET requests to the live writer (`action=ping`, `action=master`) fail with `ReferenceError: req is not defined (line 37, file Code)`. POST is unaffected. The live Code.gs differs from `main` at that line and needs correcting in the Apps Script editor.
