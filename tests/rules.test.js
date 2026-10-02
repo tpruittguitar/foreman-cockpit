@@ -1,9 +1,20 @@
-// Never-consider rules: parsed from the canonical TIM_NEVER_CONSIDER_RULES Doc text (fixture is a copy of the Doc), never invented here.
+// Never-consider rules: legacy parser remains regression-tested; runtime authority is TIM_PIPELINE_RULES_CANONICAL.
 const fs = require('fs'), path = require('path');
 const W = require('../apps-script/Code.gs');
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 const text = fs.readFileSync(path.join(__dirname, 'fixtures', 'TIM_NEVER_CONSIDER_RULES.sample.txt'), 'utf8');
 const R = W.parseRulesText(text);
+const canonicalText = fs.readFileSync(path.join(__dirname, 'fixtures', 'TIM_PIPELINE_RULES_CANONICAL.sample.txt'), 'utf8');
+const CR = W.parseCanonicalNeverConsiderRules(canonicalText);
+ok(W.RULES_DOC_ID === '1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE', 'runtime RULES_DOC_ID compatibility alias points at TIM_PIPELINE_RULES_CANONICAL');
+ok(CR.source === 'TIM_PIPELINE_RULES_CANONICAL' && CR.status === 'ACTIVE' && CR.defaultAction === 'ALLOW_INTAKE', 'active canonical rules parse as runtime Never-Consider authority');
+ok(CR.header.RULESET_VERSION === '2' && CR.header.OWNER === 'Tim Pruitt', 'canonical rules header/version preserved');
+ok(CR.rules.length === 4 && CR.activeIds.join(',') === 'NC-001,NC-002,NC-003,NC-004', 'canonical NEVER_CONSIDER section yields NC-001..NC-004');
+ok(CR.rules.every(r => r.active && r.STATUS === 'ACTIVE' && r.ACTION === 'DO_NOT_ADD' && r.CATEGORY && r.REASON), 'canonical NC rules are active DO_NOT_ADD rules with categories/reasons');
+ok(W.classifyNeverConsider({ COMPANY:'Pfizer', NEVER_CONSIDER_RULE_ID:'NC-001', EXCLUSION_CONFIDENCE:'HIGH' }, CR).outcome === 'EXCLUDE', 'runtime canonical parser supports high-confidence NC exclusion');
+ok(W.classifyNeverConsider({ COMPANY:'Automation Partners', NEVER_CONSIDER_RULE_ID:'NC-001', EXCLUSION_CONFIDENCE:'HIGH', EMPLOYER_DOMAIN_HINT:'industrial automation supplier serving pharmaceutical plants' }, CR).outcome === 'REVIEW', 'runtime canonical parser preserves protected supplier review behavior');
+const inactiveCanonical = W.parseCanonicalNeverConsiderRules(canonicalText.replace('STATUS=ACTIVE','STATUS=DRAFT_MIGRATION'));
+ok(inactiveCanonical.status === 'UNAVAILABLE' && inactiveCanonical.activeIds.length === 0, 'non-ACTIVE canonical rules cannot authorize exclusions');
 ok(R.status === 'ACTIVE' && R.defaultAction === 'ALLOW_INTAKE' && R.header.OWNER === 'Tim Pruitt', 'canonical Doc parses: STATUS=ACTIVE, DEFAULT_ACTION=ALLOW_INTAKE, header kept');
 ok(R.rules.length === 4 && R.activeIds.join(',') === 'NC-001,NC-002,NC-003,NC-004', 'four ACTIVE rules NC-001..NC-004 with their ids preserved');
 ok(R.rules.every(r => r.CATEGORY && r.ACTION === 'DO_NOT_ADD' && r.MATCH && r.DO_NOT_MATCH && r.REASON && r.EXCEPTION && r.STATUS === 'ACTIVE'), 'each rule carries CATEGORY, ACTION, MATCH, DO_NOT_MATCH, REASON, EXCEPTION, STATUS');
