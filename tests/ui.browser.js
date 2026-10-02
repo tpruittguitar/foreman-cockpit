@@ -18,4 +18,29 @@ await page.locator('[data-tab="reports"]').click();assert.equal(await page.locat
 await page.locator('[data-tab="quality"]').click();assert.equal(await page.locator('#view-quality .chart-svg').count(),4);await page.screenshot({path:artifacts+'/scout-desktop.png'});
 await page.locator('[data-tab="rules"]').click();assert.equal(await page.locator('.rule-section').count(),3);await page.locator('#rules-search').fill('HOME_PIN');assert.equal(await page.locator('.rule-section:visible').count(),1);await page.locator('#rules-search').fill('');await page.locator('#rules-mode').click();assert.equal(await page.locator('#rules-edit').inputValue(),rules);await page.locator('#rules-edit').fill(rules+'\nTEST_DRAFT=unsaved');await page.locator('[data-tab="pipeline"]').click();await page.locator('[data-tab="rules"]').click();assert((await page.locator('#rules-edit').inputValue()).includes('TEST_DRAFT'));await page.locator('#rules-mode').click();await page.screenshot({path:artifacts+'/rules-desktop.png'});
 for(const vp of [{width:1366,height:768},{width:1024,height:600},{width:390,height:844},{width:844,height:390}]){await page.setViewportSize(vp);await page.locator('[data-tab="pipeline"]').click();await page.waitForTimeout(100);const split=await checkSplit();console.log('split',vp,split);assert(Math.abs(split.ratio-.35)<.006);assert(split.overflow<=1);assert(split.cards.every(c=>c.sh<=c.h+1), 'Dashboard card content should not clip');assert(Math.abs(split.workEnd)<2);await page.screenshot({path:artifacts+'/pipeline-'+vp.width+'.png'});}
+// Touch context checks: target labels stay visible, mobile tracks are separate, landscape remains usable.
+const touch=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+const mobile=await touch.newPage();mobile.on('pageerror',e=>errors.push(e.message));
+await touch.addInitScript(()=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));localStorage.setItem('px.colWidths',JSON.stringify({COMPANY:400}))});
+await mobile.route('**/writer*',async r=>{const a=new URL(r.request().url()).searchParams.get('action');await r.fulfill({json:a==='master'?{ok:true,id:'test',text:fixture,fetchedAt:new Date().toISOString()}:a==='canonical_rules'?{ok:true,text:rules}:a==='state'?{ok:true,state:{}}:{ok:true}})});
+await mobile.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));
+await mobile.goto('http://127.0.0.1:'+server.address().port+'/pipeline.html');await mobile.waitForSelector('#grid tbody tr[data-id]');
+assert.equal(Math.round(await mobile.locator('th[data-c="COMPANY"]').evaluate(e=>e.getBoundingClientRect().width)),140);
+assert.equal(await mobile.locator('#job-map-card').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(0, 0, 0)');
+assert(await mobile.locator('.preset-list').evaluate(e=>e.scrollWidth>e.clientWidth));
+const touchDriver=await touch.newCDPSession(mobile);
+async function touchResize(col,delta){const th=mobile.locator('th[data-c="'+col+'"]'),grip=th.locator('.resize-handle'),b=await grip.boundingBox(),before=await th.evaluate(e=>e.getBoundingClientRect().width),x=b.x+b.width/2,y=b.y+b.height/2;await touchDriver.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});await touchDriver.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+delta,y}]});await touchDriver.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});return {before,after:await th.evaluate(e=>e.getBoundingClientRect().width)}}
+for(const col of ['NEW','COMPANY']){let size=await touchResize(col,32);assert(Math.abs(size.after-size.before-32)<2,col+' must resize with touch');size=await touchResize(col,-16);assert(Math.abs(size.after-size.before+16)<2,col+' must shrink with touch')}
+await mobile.reload();await mobile.waitForSelector('#grid tbody tr[data-id]');assert.equal(Math.round(await mobile.locator('th[data-c="NEW"]').evaluate(e=>e.getBoundingClientRect().width)),60);assert.equal(Math.round(await mobile.locator('th[data-c="COMPANY"]').evaluate(e=>e.getBoundingClientRect().width)),156);
+await mobile.locator('#grid tbody tr[data-id]').first().tap();await mobile.waitForSelector('.map-target-label');
+assert.equal(await mobile.locator('.map-target-label strong').innerText(),'Huntsville, AL');
+assert(await mobile.locator('.map-target').first().getAttribute('aria-label'));
+const labelBounds=await mobile.locator('.map-target-label').boundingBox(),mapBounds=await mobile.locator('#job-map').boundingBox();assert(labelBounds.x>=mapBounds.x && labelBounds.x+labelBounds.width<=mapBounds.x+mapBounds.width+1);
+const drawerBounds=await mobile.locator('#drawer').boundingBox(),workBounds=await mobile.locator('#worksplit').boundingBox();assert(Math.abs(drawerBounds.y-workBounds.y)<1,'Phone detail drawer must leave the dashboard visible');
+await mobile.screenshot({path:artifacts+'/mobile-map-target.png'});
+await mobile.locator('#edit-state').selectOption('REJECTED_BY_EMPLOYER');assert.equal(await mobile.locator('#edit-state').evaluate(e=>getComputedStyle(e).fontSize),'16px');await mobile.locator('#d-close').tap();
+await mobile.setViewportSize({width:844,height:390});await mobile.waitForTimeout(150);await mobile.locator('#grid tbody tr[data-id]').first().tap();await mobile.waitForSelector('.map-target-label');
+assert.equal(await mobile.locator('#drawer').evaluate(e=>getComputedStyle(e).position),'absolute');
+assert(await mobile.locator('#dash').evaluate(e=>e.scrollHeight<=e.clientHeight+1));
+await mobile.screenshot({path:artifacts+'/mobile-map-landscape.png'});await touch.close();
 assert.deepEqual(errors,[]);console.log('PASS: resize grow/shrink, persistence, keyboard, rejection submission, compensation, charts, Rules search/source/draft, four viewport splits; no browser errors.');await browser.close();server.close();})().catch(e=>{console.error(e);process.exit(1)});
