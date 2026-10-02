@@ -24,6 +24,16 @@ var RULES_DOC_ID = '1qLeVwmW76Cm_lHdleb342sE7_ej4dqTfODR1TcnF5os';
 /** Every gross Scout discovery ends in exactly one of these outcomes. */
 var INTAKE_OUTCOMES = ['NEVER_CONSIDER_EXCLUDED', 'SCOUT_INTAKE_WRITTEN', 'DISCOVERY_LEAD_WRITTEN', 'EXISTING_MATCH', 'WRITE_FAILED'];
 var RUNS_FILE_NAME = 'SCOUT_RUN_METRICS.jsonl';
+var EVENT_LOG_NAME = 'PIPELINE_EVENT_LOG.jsonl';
+var CANONICAL_RULES_DOC_ID = '1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
+var RULESET_HISTORY_NAME = 'PIPELINE_RULESET_HISTORY.jsonl';
+var DOCS_ROOT_ID = '1CTLDseAewX18aTsH9Iyeq4xQvVoktFdG';
+var RESUMES_FOLDER_ID = '1mzR0WY_tZUGIWNoAVBG9PTWCppoBFOUf';
+var COVER_LETTERS_FOLDER_ID = '1o-mX_2HwYGNLHENPfWnQoX1jS0qUKo2v';
+var SUPPORTING_DOCS_FOLDER_ID = '1DyXxGRwEw5aHWiBamS1bWD1myHkNmvLG';
+var TIM_VOICE_FOLDER_ID = '1E8yeO34MazfKY0KINhUbbd6d7RrGDcB_';
+var INTERVIEW_NOTES_FOLDER_ID = '1rrmZb-pW_THx-DZMcFVczYuouTlNTkKz';
+var JOB_DOCS_CONFIG_NAME = 'JOB_DOCUMENTS_CANONICAL.json';
 
 var FIXED_N = 9;
 var BUCKETS = ['SCOUT_INTAKE', 'DISCOVERY_LEAD', 'READY_TO_PURSUE', 'TIM_DECISION_REQUIRED', 'BLOCKED', 'MANUAL_RESEARCH', 'APPLIED', 'REJECTED_BY_EMPLOYER', 'DECLINED_BY_TIM', 'DUPLICATE', 'CLOSED_DEAD', 'INVALID_DISCOVERY'];
@@ -37,12 +47,16 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master', 'state', 'receipts', 'rules', 'runs', 'ruling', 'intake'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','ruling','intake','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
     if (a === 'rules') { var R = readRules_(); return out_({ ok: R.status !== 'UNAVAILABLE', rules: R }); }
     if (a === 'runs') return out_({ ok: true, runs: readRuns_() });
+    if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200)) });
+    if (a === 'interview_notes') return out_(readInterviewNotes_(p.primaryId || ''));
+    if (a === 'documents') return out_(readJobDocuments_());
+    if (a === 'canonical_rules') return out_(readCanonicalRules_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
     if (a === 'automation') return out_(automationStatus_());
     if (a === 'process_queue') return out_(processWriterQueue());
@@ -61,13 +75,18 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'upsert_application', 'batch'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'undo_ruling', 'install_automation', 'batch'];
 function dispatchWrite_(req) {
   req = req || {};
   var a = String(req.action || '');
   if (a === 'intake') return applyIntakeToMaster_(req);
   if (a === 'ruling') return applyRulingToMaster_(req.ruling || {});
   if (a === 'upsert_application') return applyUpsertToMaster_(req.event || req);
+  if (a === 'interview_note') return saveInterviewNote_(req.note || req);
+  if (a === 'approve_resume') return approveResume_(req.selection || req);
+  if (a === 'save_rules') return saveCanonicalRules_(req.rules || req);
+  if (a === 'undo_ruling') return undoLastRuling_(req.undo || req);
+  if (a === 'install_automation') { var ir = installAutomation(); return { ok:true, action:'install_automation', result:ir || null, installedAt:new Date().toISOString() }; }
   if (a === 'batch') {
     var list = Array.isArray(req.requests) ? req.requests : [];
     if (!list.length) return { ok: false, error: 'batch needs requests[]' };
@@ -133,6 +152,7 @@ function applyRulingToMaster_(ruling) {
       EXECUTED_AT: new Date().toISOString(), CHANGES: res.changes
     };
     appendReceipt_(receipt);
+    appendEvent_({ type: 'TIM_RULING', primaryId: pid, actor: ruling.actor || 'TIM', ts: receipt.EXECUTED_AT, requestId: ruling.requestId || '', kind: ruling.kind || '', code: ruling.code || '', note: ruling.note || '', before: before, after: res.after, verified: verified });
     return { ok: verified, receipt: receipt, before: before, after: res.after, counts: newCounts };
   } finally { lock.releaseLock(); }
 }
@@ -684,6 +704,117 @@ function applyPlanToLines(lines, plan) {
   var counts = recomputeCountsLine(out), end = recomputeEndLine(out);
   for (var k = 0; k < out.length; k++) { if (/^COUNTS:/.test(out[k])) out[k] = counts; else if (end && /^END V2_CURRENT_POPULATION_MASTER/.test(out[k])) out[k] = end; }
   return out;
+}
+
+
+/* ================= v5 shared history / Tim workspace ================= */
+function appendJsonLine_(file, rec) {
+  var cur = file.getBlob().getDataAsString();
+  file.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + JSON.stringify(rec) + '\n');
+}
+function appendEvent_(rec) {
+  rec = rec || {};
+  if (!rec.ts) rec.ts = new Date().toISOString();
+  appendJsonLine_(findOrCreate_(EVENT_LOG_NAME, 'text', '\n'), rec);
+}
+function readEvents_(primaryId, limit) {
+  var it = folder_().getFilesByName(EVENT_LOG_NAME);
+  if (!it.hasNext()) return [];
+  var rows = it.next().getBlob().getDataAsString().split('\n').filter(Boolean).map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);
+  if (primaryId) rows = rows.filter(function (r) { return String(r.primaryId || '') === String(primaryId); });
+  rows.sort(function (a,b) { return String(b.ts||'').localeCompare(String(a.ts||'')); });
+  return rows.slice(0, Math.max(1, Math.min(limit || 200, 1000)));
+}
+function safeName_(s) { return String(s || '').replace(/[\\\/:*?"<>|#%{}~]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 140); }
+function interviewFile_(primaryId, createIfMissing) {
+  var folder = DriveApp.getFolderById(INTERVIEW_NOTES_FOLDER_ID);
+  var name = safeName_(primaryId) + '__INTERVIEW_NOTES.txt';
+  var it = folder.getFilesByName(name);
+  if (it.hasNext()) return it.next();
+  return createIfMissing ? folder.createFile(name, '', MimeType.PLAIN_TEXT) : null;
+}
+function saveInterviewNote_(n) {
+  var pid = String(n.primaryId || '').trim(), text = String(n.text || '').trim();
+  if (!pid) return { ok:false, error:'primaryId required' };
+  if (!text) return { ok:false, error:'note text required' };
+  var ts = n.ts || new Date().toISOString(), actor = String(n.actor || 'TIM').trim() || 'TIM';
+  var f = interviewFile_(pid, true);
+  var entry = ['---','TIMESTAMP='+ts,'ACTOR='+actor,'PRIMARY_ID='+pid,'NOTE='+text.replace(/[\r\n]+/g,' ').trim(),''].join('\n');
+  var cur = f.getBlob().getDataAsString();
+  f.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + entry);
+  appendEvent_({ type:'INTERVIEW_NOTE', primaryId:pid, actor:actor, ts:ts, note:text, fileId:f.getId(), fileName:f.getName() });
+  return { ok:true, primaryId:pid, ts:ts, fileId:f.getId(), fileName:f.getName(), text:text };
+}
+function readInterviewNotes_(primaryId) {
+  var pid = String(primaryId || '').trim();
+  if (!pid) return { ok:false, error:'primaryId required' };
+  var f = interviewFile_(pid, false);
+  return { ok:true, primaryId:pid, fileId:f ? f.getId() : '', fileName:f ? f.getName() : '', text:f ? f.getBlob().getDataAsString() : '' };
+}
+function listFolderFiles_(id) {
+  var out=[], it=DriveApp.getFolderById(id).getFiles();
+  while(it.hasNext()) {
+    var f=it.next();
+    out.push({ id:f.getId(), name:f.getName(), mimeType:f.getMimeType(), modifiedTime:f.getLastUpdated().toISOString(), url:f.getUrl(), size:f.getSize() });
+  }
+  out.sort(function(a,b){ return String(b.modifiedTime).localeCompare(String(a.modifiedTime)); });
+  return out;
+}
+function docsConfigFile_() {
+  var folder=DriveApp.getFolderById(DOCS_ROOT_ID), it=folder.getFilesByName(JOB_DOCS_CONFIG_NAME);
+  if (it.hasNext()) return it.next();
+  return folder.createFile(JOB_DOCS_CONFIG_NAME, JSON.stringify({ resume_folder_id:RESUMES_FOLDER_ID, cover_letter_folder_id:COVER_LETTERS_FOLDER_ID, supporting_docs_folder_id:SUPPORTING_DOCS_FOLDER_ID, tim_voice_folder_id:TIM_VOICE_FOLDER_ID, interview_notes_folder_id:INTERVIEW_NOTES_FOLDER_ID, latest_approved_resume_file_id:'', latest_approved_resume_name:'', approved_at_et:'', approved_by:'TIM' }, null, 2), MimeType.PLAIN_TEXT);
+}
+function readDocsConfig_() { try { return JSON.parse(docsConfigFile_().getBlob().getDataAsString() || '{}'); } catch(e) { return {}; } }
+function readJobDocuments_() {
+  return { ok:true, config:readDocsConfig_(), resumes:listFolderFiles_(RESUMES_FOLDER_ID), coverLetters:listFolderFiles_(COVER_LETTERS_FOLDER_ID), supporting:listFolderFiles_(SUPPORTING_DOCS_FOLDER_ID), timVoice:listFolderFiles_(TIM_VOICE_FOLDER_ID), interviewNotes:listFolderFiles_(INTERVIEW_NOTES_FOLDER_ID) };
+}
+function approveResume_(sel) {
+  var id=String(sel.fileId||'').trim(); if(!id) return {ok:false,error:'fileId required'};
+  var file; try { file=DriveApp.getFileById(id); } catch(e){ return {ok:false,error:'resume file not found'}; }
+  var okParent=false, ps=file.getParents(); while(ps.hasNext()) if(ps.next().getId()===RESUMES_FOLDER_ID) okParent=true;
+  if(!okParent) return {ok:false,error:'selected file is not in canonical Resumes folder'};
+  var cfg=readDocsConfig_(), ts=sel.ts||new Date().toISOString();
+  cfg.resume_folder_id=RESUMES_FOLDER_ID; cfg.cover_letter_folder_id=COVER_LETTERS_FOLDER_ID; cfg.supporting_docs_folder_id=SUPPORTING_DOCS_FOLDER_ID; cfg.tim_voice_folder_id=TIM_VOICE_FOLDER_ID; cfg.interview_notes_folder_id=INTERVIEW_NOTES_FOLDER_ID;
+  cfg.latest_approved_resume_file_id=id; cfg.latest_approved_resume_name=file.getName(); cfg.approved_at_et=ts; cfg.approved_by='TIM';
+  docsConfigFile_().setContent(JSON.stringify(cfg,null,2));
+  appendEvent_({type:'APPROVED_RESUME_CHANGED',actor:'TIM',ts:ts,fileId:id,fileName:file.getName()});
+  return {ok:true,config:cfg};
+}
+function readCanonicalRules_() {
+  try {
+    var file=DriveApp.getFileById(CANONICAL_RULES_DOC_ID), text=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
+    return {ok:true,id:CANONICAL_RULES_DOC_ID,title:file.getName(),modifiedTime:file.getLastUpdated().toISOString(),text:text};
+  } catch(e){ return {ok:false,error:String(e&&e.message||e)}; }
+}
+function saveCanonicalRules_(r) {
+  var text=String(r.text||'').trim(); if(!text) return {ok:false,error:'rules text required'};
+  if(text.indexOf('TIM_PIPELINE_RULES_CANONICAL')<0) return {ok:false,error:'missing TIM_PIPELINE_RULES_CANONICAL header'};
+  var doc=DocumentApp.openById(CANONICAL_RULES_DOC_ID), body=doc.getBody(), before=body.getText(), ts=r.ts||new Date().toISOString();
+  body.clear(); body.setText(text); doc.saveAndClose();
+  var after=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
+  var ok=after===text;
+  var hist={type:'RULESET_SAVED',actor:'TIM',ts:ts,verified:ok,priorHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,before)).slice(0,16),newHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,after)).slice(0,16),note:String(r.note||'')};
+  appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text','\n'),hist); appendEvent_(hist);
+  return {ok:ok,id:CANONICAL_RULES_DOC_ID,modifiedTime:DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(),history:hist};
+}
+function undoLastRuling_(u) {
+  var pid=String(u.primaryId||'').trim(); if(!pid) return {ok:false,error:'primaryId required'};
+  var ev=readEvents_(pid,200).filter(function(e){return e.type==='TIM_RULING' && e.before && e.after && e.verified;})[0];
+  if(!ev) return {ok:false,error:'no verified Tim ruling to undo'};
+  var lock=LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var doc=DocumentApp.openById(MASTER_ID), body=doc.getBody(), paras=body.getParagraphs(), hit=-1;
+    for(var i=0;i<paras.length;i++) if(paras[i].getText()===ev.after) { hit=i; break; }
+    if(hit<0) return {ok:false,error:'current row no longer matches last Tim ruling; fail closed'};
+    paras[hit].setText(ev.before);
+    var all=[]; for(var j=0;j<paras.length;j++) all.push(paras[j].getText());
+    var counts=recomputeCountsLine(all), end=recomputeEndLine(all);
+    for(var k=0;k<paras.length;k++){var t=paras[k].getText(); if(/^COUNTS:/.test(t)) paras[k].setText(counts); else if(end && /^END V2_CURRENT_POPULATION_MASTER/.test(t)) paras[k].setText(end);}
+    doc.saveAndClose();
+    appendEvent_({type:'TIM_RULING_UNDO',primaryId:pid,actor:'TIM',ts:new Date().toISOString(),undoneEventTs:ev.ts,before:ev.after,after:ev.before});
+    return {ok:true,primaryId:pid,restored:ev.before,counts:counts};
+  } finally { lock.releaseLock(); }
 }
 
 /* ================= files beside the master ================= */

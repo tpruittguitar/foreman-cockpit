@@ -59,6 +59,32 @@ td.b-SCOUT_INTAKE{color:var(--ng);font-weight:600}td.b-DISCOVERY_LEAD{color:var(
 textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
 @media (max-width:760px){body{font-size:10.5px}header{padding:3px 6px;gap:6px}.brand{font-size:10px;letter-spacing:2px}.brand small{display:none}nav button,#refresh{padding:2px 6px;font-size:9px}th,td{padding:2px 5px;height:20px;max-width:200px}#readout{font-size:9px;order:5;flex-basis:100%}#drawer{width:100%}.kv{grid-template-columns:110px 1fr}#autobar{font-size:9px;gap:10px;padding:3px 6px}.bar{padding:3px 6px;gap:4px}.chip{padding:1px 5px;font-size:9.5px}#predicate{display:none}#search{width:120px!important}#markseen{padding:2px 6px;font-size:9px}}
 @media (max-height:520px){header{padding:3px 6px;gap:6px}.brand{font-size:10px}.brand small{display:none}nav button,#refresh{padding:2px 6px;font-size:9px}#readout{font-size:9px}#predicate{display:none}.bar{padding:3px 6px;gap:4px}.chip{padding:1px 5px;font-size:9.5px}#autobar{padding:2px 6px;font-size:9px}th,td{height:20px;padding:2px 5px}}
+
+/* v5 workspace */
+#view-pipeline{overflow:hidden!important}
+#dash{height:30%;min-height:150px;max-height:270px;border-bottom:1px solid var(--line);padding:10px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;background:#050505;overflow:auto}
+.dash-card{border:1px solid var(--line);background:#0a0a0a;border-radius:6px;padding:10px;min-width:0}
+.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 4}.dash-card h4{margin:0 0 5px;font-size:9px;letter-spacing:1.2px;text-transform:uppercase;color:var(--dim)}.dash-card b{font:700 20px var(--mono);color:#fff}.dash-card .barline{height:5px;background:#181818;margin-top:6px;border-radius:8px;overflow:hidden}.dash-card .barline i{display:block;height:100%;background:#d8d8d8}
+#worksplit{height:70%;min-height:0;display:flex;overflow:hidden}
+#gridpane{flex:1;min-width:38%;position:relative;overflow:hidden}
+#gridwrap{position:absolute;inset:0;overflow:auto!important;overscroll-behavior:contain}
+#drawer{position:relative!important;top:auto!important;right:auto!important;bottom:auto!important;width:46%;min-width:380px;max-width:680px;background:#070707;border-left:1px solid var(--line2);z-index:2;display:none;flex-direction:column}
+#drawer.on{display:flex}
+#detail-tabs{display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid var(--line);background:#090909;flex:none}
+#detail-tabs button{border-color:transparent;color:var(--dim);text-transform:none}
+#detail-tabs button.on{border-color:var(--line2);color:#fff}
+#drawer .db{padding:10px}
+.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.detail-card{border:1px solid var(--line);border-radius:6px;background:#0a0a0a;padding:9px;min-width:0}.detail-card.full{grid-column:1/-1}.detail-card h3{margin:0 0 7px;font-size:9px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim)}
+.edit-grid{display:grid;grid-template-columns:140px 1fr;gap:6px 8px;align-items:center}.edit-grid label{color:var(--dim);font-size:10px}.edit-grid textarea{min-height:78px;resize:vertical}
+.conf{display:inline-block;margin-left:5px;padding:1px 5px;border:1px solid var(--line2);border-radius:8px;font:9px var(--mono)}.conf.VERIFIED,.conf.HIGH{color:var(--ng);border-color:var(--ng)}.conf.ESTIMATED,.conf.MED,.conf.MEDIUM{color:var(--nc);border-color:var(--nc)}.conf.UNKNOWN,.conf.LOW{color:var(--nm);border-color:var(--nm)}
+.changed{color:var(--nc);font-size:9px;margin-left:4px}.pin{font-size:14px;color:var(--faint)}.pin.on{color:#fff}
+.timeline{border-left:1px solid var(--line2);margin-left:6px;padding-left:12px}.event{margin:0 0 12px;position:relative}.event:before{content:"";position:absolute;left:-16px;top:4px;width:7px;height:7px;border-radius:50%;background:#aaa}.event .ts{font:9px var(--mono);color:var(--faint)}.event .ev{font-size:10.5px}
+.docgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:10px}.docbox{border:1px solid var(--line);border-radius:7px;background:#090909;padding:10px;min-height:220px}.docbox h3{margin:0 0 8px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase}.docitem{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #171717}.docitem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.approved{color:var(--ng);font:9px var(--mono)}
+.bulkbar{display:inline-flex;gap:4px;align-items:center}.bulkbar b{font:10px var(--mono);color:#fff}
+.resize-handle{position:absolute;right:-2px;top:0;width:5px;height:100%;cursor:col-resize;z-index:5}
+th{position:sticky} th{min-width:70px} td,th{max-width:none}
+@media(max-width:980px){#dash{height:24%;grid-template-columns:repeat(6,minmax(0,1fr))}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 3}#worksplit{height:76%}#drawer{width:52%;min-width:330px}}
+@media(max-width:760px){#dash{height:22%;min-height:120px}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 6}#worksplit{height:78%}#drawer{position:absolute!important;inset:0!important;width:100%;max-width:none}.docgrid{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}.detail-card.full{grid-column:auto}}
 </style>
 </head>
 <body>
@@ -67,7 +93,7 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
   <div class="brand">PIPELINE EXPLORER<small id="brandsub">canonical master · viewer + Tim rulings</small></div>
   <div id="readout">no data</div>
   <nav>
-    <button data-tab="pipeline" class="on">Pipeline</button><button data-tab="reports">Reports</button><button data-tab="quality">Scout quality</button><button data-tab="rules">Rules</button><button data-tab="automations">Automations</button><button data-tab="columns">Columns</button>
+    <button data-tab="pipeline" class="on">Pipeline</button><button data-tab="reports">Reports</button><button data-tab="quality">Scout Analysis</button><button data-tab="rules">Rules</button><button data-tab="documents">Job Documents</button>
   </nav>
   <button id="refresh" class="neon">Refresh</button>
   <button id="settings" title="Writer setup">⚙</button>
@@ -75,14 +101,20 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
 <div class="bar" id="presets"></div>
 <div class="bar" id="filters" style="display:none"></div>
 <main>
-  <div class="view on" id="view-pipeline"><div id="gridwrap"><table id="grid"><thead></thead><tbody></tbody></table></div></div>
+  <div class="view on" id="view-pipeline">
+    <div id="dash"></div>
+    <div id="worksplit">
+      <section id="gridpane"><div id="gridwrap"><table id="grid"><thead></thead><tbody></tbody></table></div></section>
+      <aside id="drawer"><div class="dh"><div style="flex:1"><h2 id="d-title">Select a job</h2><div class="sub" id="d-sub">Details and Tim controls appear here.</div></div><button id="d-close">✕</button></div><div id="detail-tabs"></div><div class="db" id="d-body"></div></aside>
+    </div>
+  </div>
   <div class="view" id="view-reports"></div>
   <div class="view" id="view-automations"></div>
   <div class="view" id="view-columns"></div>
   <div class="view" id="view-settings"></div>
   <div class="view" id="view-quality"></div>
   <div class="view" id="view-rules"></div>
-  <aside id="drawer"><div class="dh"><div style="flex:1"><h2 id="d-title"></h2><div class="sub" id="d-sub"></div></div><button id="d-close">✕</button></div><div class="db" id="d-body"></div></aside>
+  <div class="view" id="view-documents"></div>
 </main>
 <div id="autobar" title="Automation timers · click to expand"></div>
 </div>
@@ -107,7 +139,7 @@ function keyGroup(k){if(TIM_KEYS.indexOf(k)>=0)return 'tim';if(/^(CLAUDE_|ANALYS
 var PHONE_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DATE_ADDED','SALARY_BASE_EST','LOCATION'];
 var DATE_KEYS={DATE_ADDED:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
-var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,tab:'pipeline',newDays:1,search:''};
+var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,events:{},interview:{}};
 S.cols=S.cols||{desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};
 if(S.cols.bucketOrder.indexOf('SCOUT_INTAKE')<0){S.cols.bucketOrder=['SCOUT_INTAKE','DISCOVERY_LEAD'].concat(S.cols.bucketOrder.filter(function(b){return b!=='SCOUT_INTAKE'&&b!=='DISCOVERY_LEAD'})).concat(['INVALID_DISCOVERY']).filter(function(b,i,a){return a.indexOf(b)===i});LS.set('cols',S.cols)}
 S.runs=[];S.rules=null;
@@ -125,7 +157,7 @@ function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
   readout('<b>fetching…</b>');
   var p=src?Source.url(src):(hasWriter()?Source.script():Source.netlify());
-  if(hasWriter()&&!src){syncStateDown();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality()}}).catch(function(){});gsGet('rules').then(function(j){if(j.ok){S.rules=j.rules;if(S.tab==='rules')renderRules()}}).catch(function(){})}
+  if(hasWriter()&&!src){syncStateDown();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality()}}).catch(function(){});gsGet('rules').then(function(j){if(j.ok){S.rules=j.rules}}).catch(function(){});gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
   p.then(function(res){
     if(!res.ok){readout('<span class="bad">FETCH FAILED</span> '+esc(res.hint||res.error||('status '+res.status)));var c=LS.get('cache',null);if(c){apply(c.text,c.meta,true)}return}
     var meta={id:res.id,fetchedAt:res.fetchedAt,bytes:res.bytes,modifiedTime:res.modifiedTime||''};LS.set('cache',{text:res.text,meta:meta});apply(res.text,meta,false);
@@ -195,22 +227,29 @@ var PRESETS={
   RULED:{label:'My rulings',text:'rows with a Tim ruling (pending, canonical, or master changed)',fn:function(r){return !!ruling(r)}},
   DECLINED:{label:'Declined',text:'BUCKET=DECLINED_BY_TIM',fn:function(r){return r.BUCKET==='DECLINED_BY_TIM'}},
   APPLIED:{label:'Applied',text:'BUCKET=APPLIED, grouped by DISPOSITION (interview/offer states live in DISPOSITION today)',fn:function(r){return r.BUCKET==='APPLIED'}},
+  NEEDS_TIM:{label:'Needs Tim',hot:true,text:'rows requiring Tim decision or unresolved active review',fn:function(r){return ['TIM_DECISION_REQUIRED','READY_TO_PURSUE','MANUAL_RESEARCH','BLOCKED'].indexOf(r.BUCKET)>=0}},
+  HIGH_PAY:{label:'High Pay',text:'known/estimated compensation midpoint >= $200k',fn:function(r){return r.compMid!=null&&r.compMid>=200000}},
+  LOCAL:{label:'Local',text:'Tennessee / Chattanooga-Cleveland regional roles',fn:function(r){return /(TN|Tennessee|Chattanooga|Cleveland|Knoxville)/i.test(r.LOCATION||'')}},
+  REMOTE:{label:'Remote',text:'location or payload indicates remote',fn:function(r){return /remote/i.test((r.LOCATION||'')+' '+r.raw)}},
+  PINNED:{label:'Pinned',text:'Tim pinned rows',fn:function(r){return !!S.pins[r.id]}},
   TERMINAL:{label:'Terminal / archive',text:'BUCKET in (REJECTED_BY_EMPLOYER, DUPLICATE, CLOSED_DEAD, INVALID_DISCOVERY); nothing here is deleted',fn:function(r){return ['REJECTED_BY_EMPLOYER','DUPLICATE','CLOSED_DEAD','INVALID_DISCOVERY'].indexOf(r.BUCKET)>=0}}
 };
 function renderPresets(){
   var h='';Object.keys(PRESETS).forEach(function(k){var n=S.rows.filter(PRESETS[k].fn).length;h+='<span class="chip'+(S.preset===k?' on':'')+(PRESETS[k].hot&&n?' hot':'')+'" data-p="'+k+'">'+PRESETS[k].label+' <span class="mono'+(PRESETS[k].hot&&n?'':' faint')+'">'+n+'</span></span>'});
-  h+='<span style="flex:1"></span><input type="text" id="search" placeholder="search all columns…" value="'+esc(S.search)+'" style="width:180px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
+  var nsel=Object.keys(S.checked).filter(function(k){return S.checked[k]}).length;
+  h+='<span style="flex:1"></span><span class="bulkbar">'+(nsel?'<b>'+nsel+' selected</b><button data-bulk="DECLINE">Decline</button><button data-bulk="MANUAL_RESEARCH">Research</button><button data-bulk="INVALID_DISCOVERY">Invalid</button>':'')+'</span><input type="text" id="search" placeholder="global search…" value="'+esc(S.search)+'" style="width:190px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
   h+='<div id="predicate"></div>';
   $('presets').innerHTML=h;
   $('presets').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){S.preset=el.getAttribute('data-p');pushHash();render()}});
   $('search').oninput=function(){S.search=this.value;render()};
   $('markseen').onclick=function(){filteredRows().forEach(function(r){S.seen[r.id]=Date.now()});LS.set('seen',S.seen);syncStateUp();render()};
+  $('presets').querySelectorAll('[data-bulk]').forEach(function(b){b.onclick=function(){bulkAction(b.getAttribute('data-bulk'))}});
 }
 /* ---------- filtering / sorting ---------- */
 function cmp(a,b){if(a===b)return 0;if(a===''||a==null)return 1;if(b===''||b==null)return -1;var na=parseFloat(a),nb=parseFloat(b);if(!isNaN(na)&&!isNaN(nb)&&/^[\d.\-]+$/.test(a)&&/^[\d.\-]+$/.test(b))return na-nb;return a<b?-1:1}
 function passes(r){
   if(!PRESETS[S.preset].fn(r))return false;
-  if(S.search){var q=S.search.toLowerCase();if(r.raw.toLowerCase().indexOf(q)<0)return false}
+  if(S.search){var q=S.search.toLowerCase(),blob=(r.raw+' '+((S.interview[r.id]&&S.interview[r.id].text)||'')).toLowerCase();if(blob.indexOf(q)<0)return false}
   for(var c in S.filters){var f=S.filters[c],v=val(r,c);
     if(f.type==='enum'){if(f.values&&f.values.length&&f.values.indexOf(v||'(blank)')<0)return false}
     else if(f.type==='text'){if(f.contains&&v.toLowerCase().indexOf(f.contains.toLowerCase())<0)return false;if(f.not&&v.toLowerCase().indexOf(f.not.toLowerCase())>=0)return false}
@@ -219,7 +258,7 @@ function passes(r){
   }
   return true;
 }
-function defaultSort(a,b){
+function defaultSort(a,b){var pa=S.pins[a.id]?0:1,pb=S.pins[b.id]?0:1;if(pa!==pb)return pa-pb;
   var bo=S.cols.bucketOrder;var ia=bo.indexOf(a.BUCKET),ib=bo.indexOf(b.BUCKET);if(ia<0)ia=99;if(ib<0)ib=99;if(ia!==ib)return ia-ib;
   if(S.preset==='APPLIED'){var d=cmp(a.DISPOSITION,b.DISPOSITION);if(d)return d}
   var na=isNew(a)?0:1,nb=isNew(b)?0:1;if(na!==nb)return na-nb;
@@ -236,32 +275,36 @@ function renderReadout(){
   readout('<b>'+esc(t)+'</b> · '+m.rows.length+' rows · '+(si?'<span class="good">'+si+' SCOUT NEW</span> · ':'')+ck+' · '+(m.parseErrors.length?'<span class="bad">'+m.parseErrors.length+' parse err</span>':'0 parse err')+' · '+m.sectionMismatches.length+' heading≠bucket · fetched '+esc((S.meta.fetchedAt||'').replace('T',' ').slice(0,16))+'Z'+(S.meta.fromCache?' <span class="bad">(CACHED)</span>':'')+' · schema '+esc(m.schema.MASTER_SCHEMA_VERSION||'?')+(hasWriter()?' · <span class="good">WRITER ON</span>':' · <span class="bad">WRITER OFF</span>')+(S.meta.modifiedTime?' · master modified '+esc(S.meta.modifiedTime.replace('T',' ').slice(0,16))+'Z':''));
 }
 function render(){
-  if(!S.master)return;renderReadout();
+  if(!S.master)return;renderReadout();renderDashboard();
   $('presets').querySelectorAll('.chip').forEach(function(el){el.classList.toggle('on',el.getAttribute('data-p')===S.preset)});
   var fchips='';Object.keys(S.filters).forEach(function(c){var f=S.filters[c],d=f.type==='enum'?(f.values||[]).join('|'):f.type==='text'?[f.contains&&'~'+f.contains,f.not&&'!'+f.not].filter(Boolean).join(' '):f.type==='date'?[f.from,f.to].filter(Boolean).join('→'):[f.min,f.max].filter(Boolean).join('–');fchips+='<span class="chip on" data-c="'+esc(c)+'">'+esc(c)+' <span class="mono">'+esc(d.slice(0,40))+'</span><span class="x">✕</span></span>'});
   $('filters').style.display=fchips?'flex':'none';$('filters').innerHTML=fchips+(fchips?'<button id="clearf">Clear all</button>':'');
   $('filters').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){delete S.filters[el.getAttribute('data-c')];pushHash();render()}});
   if($('clearf'))$('clearf').onclick=function(){S.filters={};pushHash();render()};
   var rows=filteredRows();
-  $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
+  $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
   var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
   var tb='';rows.forEach(function(r){
     var cls=(S.seen[r.id]?'seen ':'')+(S.focus===r.id?'focus':'');
     tb+='<tr data-id="'+esc(r.id)+'" class="'+cls+'">'+cols.map(function(c,i){var v=val(r,c),extra='';
-      if(c==='NEW')v=isNew(r)?'<span class="g new">◆</span>':'';
+      if(c==='NEW'){var changed=isChanged(r);v='<input type="checkbox" class="row-select" data-id="'+esc(r.id)+'" '+(S.checked[r.id]?'checked':'')+' onclick="event.stopPropagation()"> '+(S.pins[r.id]?'<span class="pin on">★</span> ':'')+(isNew(r)?'<span class="g new">◆</span>':'')+(changed?'<span class="changed">CHANGED</span>':'')}
       else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.s==='CANONICAL'?'rule':'pend')+'">'+(st.s==='CANONICAL'?'◈':'◇')+'</span>'+esc(v):''}
       else if(c==='COMPANY')v=(r.parseError?'<span class="g err" title="'+esc(r.parseError)+'">!</span>':'')+esc(v);
       else if(c==='BUCKET'){extra=' b-'+esc(r.BUCKET);v=esc(v)+(r.mismatch?' <span class="faint" title="heading says '+esc(r.section)+'">§</span>':'')}
       else if(c==='COMP_MID'&&r.compMid!=null)v='$'+Math.round(r.compMid/1000)+'k';
       else v=esc(v);
+      if(c==='SALARY_BASE_EST'||c==='COMP_MID'){var cf=r.payload.SALARY_CONF||((r.payload.SALARY_BASE_EST||'').indexOf('EST')>=0?'ESTIMATED':(v?'VERIFIED':'UNKNOWN'));v+='<span class="conf '+esc(cf)+'">'+esc(cf)+'</span>'}
+      if(c==='IDENTITY_CONFIDENCE'){var ic=(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN').toUpperCase();v+='<span class="conf '+esc(ic)+'">'+esc(ic)+'</span>'}
+      if(c==='FLEX'){var fc=r.payload.FLEX_CONF||(!v?'UNKNOWN':(r.payload.FLEX_BASIS&&/estimate/i.test(r.payload.FLEX_BASIS)?'ESTIMATED':'VERIFIED'));v+='<span class="conf '+esc(fc)+'">'+esc(fc)+'</span>'}
       var mono=/^(INV|PRIMARY_ID|REQ|DATE_|SALARY_|COMP_|APP_DATE|FLEX_ASOF|CELLS)/.test(c)?' mono':'';
       return '<td class="'+(i<2?'sticky':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>'});
   $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
   fixSticky();
-  $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){openPop(th.getAttribute('data-c'),th)}});
-  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(){openRow(tr.getAttribute('data-id'))}});
-  if(S.tab==='reports')renderReports();if(S.tab==='columns')renderColumns();if(S.tab==='automations')renderAutomations();
+  $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
+  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();return}openRow(tr.getAttribute('data-id'))}});
+  applyColumnWidths();enableColumnResize();
+  if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();
 }
 function fixSticky(){var ths=$('grid').querySelectorAll('thead th.sticky');var left=0;ths.forEach(function(th,i){th.style.left=left+'px';var w=th.getBoundingClientRect().width;$('grid').querySelectorAll('tbody tr').forEach(function(tr){var td=tr.children[i];if(td)td.style.left=left+'px'});left+=w})}
 /* ---------- header popover: sort + filter ---------- */
@@ -289,56 +332,69 @@ function openPop(c,anchor){
 function closePop(){$('pop').style.display='none'}
 document.addEventListener('click',function(e){if($('pop').style.display==='block'&&!$('pop').contains(e.target)&&!(e.target.closest&&e.target.closest('th')))closePop()});
 /* ---------- row drawer + Tim rulings ---------- */
-function openRow(id){var r=S.rows.filter(function(x){return x.id===id})[0];if(!r)return;S.focus=id;if(!S.seen[id]){S.seen[id]=Date.now();LS.set('seen',S.seen);syncStateUp()}
-  $('d-title').textContent=r.COMPANY+' — '+r.TITLE;$('d-sub').innerHTML='<span class="mono">'+esc(r.PRIMARY_ID)+' · INV '+esc(r.INV)+'</span> · '+esc(r.BUCKET)+' · '+esc(r.DISPOSITION)+(r.mismatch?' · <span style="color:var(--nm)">heading says '+esc(r.section)+'</span>':'');
-  var st=rulingState(r),ru=st&&st.ru;var codes={};S.rows.forEach(function(x){if(x.payload.DECLINE_REASON_CODE)codes[x.payload.DECLINE_REASON_CODE]=1});
-  var h='<div class="rul"><h3>Tim ruling · overrides display; becomes canonical via STATE_CHANGE_REQUEST</h3>';
-  if(ru)h+='<div class="mono" style="margin-bottom:6px;color:'+(st.s==='CANONICAL'?'var(--nc)':'var(--nm)')+'">'+esc(st.s)+' · '+esc(ru.kind)+(ru.value?' '+esc(ru.value):'')+(ru.code?' · '+esc(ru.code):'')+' · '+esc((ru.ts||'').slice(0,16))+(ru.note?'<br>'+esc(ru.note):'')+(ru.error?'<br>error: '+esc(ru.error):'')+(ru.receipt?'<br>receipt '+esc(ru.receipt.REQUEST_ID)+' · '+esc(ru.receipt.COMPLETION_STATUS)+' · readback '+esc(ru.receipt.READBACK_VERIFIED):'')+(st.s==='MASTER CHANGED'?'<br>master now: '+esc(r.BUCKET)+' / '+esc(r.DISPOSITION)+' (ruled at '+esc(ru.snap.BUCKET)+' / '+esc(ru.snap.DISPOSITION)+')':'')+'</div>';
-  h+='<div class="tip" style="margin-bottom:6px">'+(hasWriter()?'<span class="pill ok">WRITER ON</span> rulings are written into the master row immediately':'<span class="pill bad">WRITER OFF</span> rulings stay on this device until the writer is set up (⚙). Use "Copy request text" to hand them to ChatGPT meanwhile.')+'</div>';
-  var prot=PROTECTED.indexOf(r.BUCKET)>=0;
-  if(prot)h+='<div class="tip" style="margin-bottom:6px;color:var(--nc)">'+esc(r.BUCKET)+' is protected applicant state: notes only, no downgrade.</div>';
-  else{
-    h+='<div class="row"><span class="u">pursue</span><button data-r="APPLY_NOW:YES" class="neon">'+(r.BUCKET==='READY_TO_PURSUE'?'Confirm pursue':'Pursue → READY_TO_PURSUE')+'</button><button data-r="APPLY_NOW:NO" class="danger">Do not pursue</button></div>';
-    h+='<div class="row"><span class="u">decline</span><select id="r-code"><option value="TIM_EXPLICIT_DECLINE">TIM_EXPLICIT_DECLINE</option>'+Object.keys(codes).sort().map(function(k){return k==='TIM_EXPLICIT_DECLINE'?'':'<option>'+esc(k)+'</option>'}).join('')+'</select><button data-r="DECLINE" class="danger">Decline</button></div>';
-    h+='<div class="row"><span class="u">state</span><button data-r="APPLIED">I applied</button><button data-r="MANUAL_RESEARCH">Manual research</button><button data-r="CLOSED_DEAD">Closed / dead</button>'+(['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED'].indexOf(r.BUCKET)>=0?'<button data-r="INVALID_DISCOVERY" class="danger">Invalid discovery</button>':'')+'</div>';
-    h+='<div class="row"><span class="u">duplicate of</span><input type="text" id="r-dupof" placeholder="PRIMARY_ID of the row it duplicates" style="width:260px" value="'+esc((r.payload.POSSIBLE_MATCHES||'').split(',')[0]||'')+'"><button data-r="DUPLICATE">Mark duplicate</button></div>';
-  }
-  h+='<div class="row"><span class="u">note</span></div><textarea id="r-note" placeholder="note or reason (goes into the master row)" style="width:100%;height:48px">'+esc(ru&&ru.note||'')+'</textarea>';
-  h+='<div class="row"><button data-r="NOTE">Save note only</button><button data-r="CLEAR">Clear my ruling</button><button id="r-copy">Copy request text</button></div>';
-  h+='<div id="r-status" class="tip"></div></div>';
-  h+='<div class="kv">';FIXED.forEach(function(c){h+='<div>'+esc(c)+'</div><div>'+linkify(r[c])+'</div>'});
-  h+='<div>SECTION</div><div>'+esc(r.section||'')+'</div><div>CELLS</div><div>'+r.cellCount+(r.parseError?' · <span style="color:var(--nm)">'+esc(r.parseError)+'</span>':'')+'</div></div>';
-  var groups={scout:[],claude:[],forge:[],tim:[]};r.payloadOrder.forEach(function(k){groups[keyGroup(k)].push(k)});
-  [['scout','Scout discovery facts'],['claude','Claude proposed analysis'],['forge','Forge verified / canonical facts'],['tim','Tim rulings']].forEach(function(g){
-    h+='<div class="sec '+g[0]+'"><h4>'+g[1]+(groups[g[0]].length?'':' · none')+'</h4>'+(groups[g[0]].length?'<div class="kv">'+groups[g[0]].map(function(k){return '<div>'+esc(k)+'</div><div>'+linkify(r.payload[k])+'</div>'}).join('')+'</div>':'')+'</div>'});
-  h+='<div class="tip" style="margin-top:8px">raw line '+r.line+'</div>';
-  $('d-body').innerHTML=h;$('drawer').classList.add('on');
-  $('d-body').querySelectorAll('[data-r]').forEach(function(b){b.onclick=function(){var a=b.getAttribute('data-r').split(':');var note=$('r-note').value.trim();
-    if(a[0]==='CLEAR'){delete S.rulings[r.id];LS.set('rulings',S.rulings);syncStateUp();render();openRow(r.id);return}
-    if(a[0]==='NOTE'&&!note){alert('Type a note first.');return}
-    var dupOf=$('r-dupof')?$('r-dupof').value.trim():'';if(a[0]==='DUPLICATE'&&!dupOf){alert('Enter the PRIMARY_ID this row duplicates.');return}
-    var ts=new Date().toISOString();var ru={kind:a[0],value:a[1]||'',code:a[0]==='DECLINE'&&$('r-code')?$('r-code').value:'',dupOf:dupOf,note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
-    S.rulings[r.id]=ru;LS.set('rulings',S.rulings);render();openRow(r.id);
-    if(hasWriter()){var st=$('r-status');if(st)st.innerHTML='<span class="pill">WRITING…</span> sending to the master';
-      gsPost({action:'ruling',ruling:ru}).then(function(j){ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');S.rulings[r.id]=ru;LS.set('rulings',S.rulings);syncStateUp();if(j.ok){load()}else{render();openRow(r.id)}})
-      .catch(function(e){ru.error='network: '+e.message;S.rulings[r.id]=ru;LS.set('rulings',S.rulings);render();openRow(r.id)})}
-    else syncStateUp()}});
-  $('r-copy').onclick=function(){var t=scrText([r.id]);navigator.clipboard&&navigator.clipboard.writeText(t);alert('Copied:\n\n'+t)};
-  render();
+
+function rowById(id){return S.rows.filter(function(x){return x.id===id})[0]||null}
+function isChanged(r){var ts=PipelineParser.parseDate(r.payload.STATE_UPDATED_AT||r.payload.DISCOVERED_AT_ET||'');var seen=S.seen[r.id]||0;return !!(ts&&seen&&ts.getTime()>seen)}
+function confidence(v){v=String(v||'UNKNOWN').toUpperCase();return '<span class="conf '+esc(v)+'">'+esc(v)+'</span>'}
+function duplicateCandidates(r){var out=[];S.rows.forEach(function(x){if(x.id===r.id)return;var req=r.REQ&&r.REQ!=='-'&&x.REQ===r.REQ;var co=(x.COMPANY||'').toLowerCase()===(r.COMPANY||'').toLowerCase();var ta=(x.TITLE||'').toLowerCase(),tb=(r.TITLE||'').toLowerCase();var title=co&&(ta===tb||ta.indexOf(tb)>=0||tb.indexOf(ta)>=0);if(req||title)out.push(x)});return out.slice(0,8)}
+function compStrip(r){var base=r.payload.SALARY_BASE_POSTED||r.payload.SALARY_BASE_EST||r.payload.PAY_POSTED||'UNKNOWN',bonus=r.payload.BONUS||r.payload.BONUS_EST||'—',eq=r.payload.EQUITY||r.payload.EQUITY_EST||'—',rel=r.payload.RELOCATION||r.payload.RELOCATION_EST||'—';return '<div class="detail-card full"><h3>Compensation</h3><div class="kv"><div>Base</div><div>'+esc(base)+' '+confidence(r.payload.SALARY_CONF||(base==='UNKNOWN'?'UNKNOWN':'VERIFIED'))+'</div><div>Bonus</div><div>'+esc(bonus)+'</div><div>Equity</div><div>'+esc(eq)+'</div><div>Relocation</div><div>'+esc(rel)+'</div><div>VW benefit replacement</div><div>$17,900/yr baseline; include two-vehicle bad-credit impact when applicable</div><div>Current floor/status</div><div>'+esc(r.payload.FLOOR_STATUS||r.payload.FLOOR||'Rule-driven')+'</div></div></div>'}
+function renderDetail(r){
+  $('d-title').textContent=r.COMPANY+' — '+r.TITLE;
+  $('d-sub').innerHTML='<span class="mono">'+esc(r.PRIMARY_ID)+' · INV '+esc(r.INV)+'</span> · '+esc(r.BUCKET)+' · '+esc(r.DISPOSITION);
+  var tabs=['overview','interview','timeline','compensation'];$('detail-tabs').innerHTML=tabs.map(function(t){return '<button data-dtab="'+t+'" class="'+(S.detailTab===t?'on':'')+'">'+t.charAt(0).toUpperCase()+t.slice(1)+'</button>'}).join('');
+  $('detail-tabs').querySelectorAll('button').forEach(function(b){b.onclick=function(){S.detailTab=b.getAttribute('data-dtab');renderDetail(r)}});
+  if(S.detailTab==='overview')renderOverview(r);else if(S.detailTab==='interview')renderInterview(r);else if(S.detailTab==='timeline')renderTimeline(r);else $('d-body').innerHTML='<div class="detail-grid">'+compStrip(r)+'</div>';
 }
+function renderOverview(r){
+  var dups=duplicateCandidates(r),codes={TIM_EXPLICIT_DECLINE:1,PAY_BELOW_FLOOR:1,GEOGRAPHY_GATE_FAIL:1,FLEX_STRICT_NO:1,SCOPE_BELOW_TARGET:1,FIT_TOO_WEAK:1,DOMAIN_MISMATCH:1,LOCATION_NOT_ACCEPTABLE:1,MULTIPLE_RULE_FAILURES:1};S.rows.forEach(function(x){if(x.payload.DECLINE_REASON_CODE)codes[x.payload.DECLINE_REASON_CODE]=1});
+  var h='<div class="detail-grid"><div class="detail-card full"><h3>Tim decision</h3><div class="edit-grid"><label>State</label><select id="edit-state"><option value="">No state change</option><option value="READY_TO_PURSUE">READY_TO_PURSUE</option><option value="APPLIED">APPLIED</option><option value="MANUAL_RESEARCH">MANUAL_RESEARCH</option><option value="DECLINED_BY_TIM">DECLINED_BY_TIM</option><option value="CLOSED_DEAD">CLOSED_DEAD</option><option value="INVALID_DISCOVERY">INVALID_DISCOVERY</option><option value="DUPLICATE">DUPLICATE</option></select><label>Reason code</label><select id="edit-reason"><option value="">—</option>'+Object.keys(codes).sort().map(function(x){return '<option>'+esc(x)+'</option>'}).join('')+'</select><label>Duplicate of</label><input id="edit-dup" type="text" value="'+esc((r.payload.POSSIBLE_MATCHES||'').split(',')[0]||'')+'"><label>My note</label><textarea id="edit-note" placeholder="What I decided, why, or what an AI should do next…"></textarea></div><div class="row"><button id="save-decision" class="neon">Save decision</button><button id="undo-decision">Undo last Tim decision</button><button id="pin-row" class="'+(S.pins[r.id]?'on':'')+'">'+(S.pins[r.id]?'★ Pinned':'☆ Pin')+'</button><span id="edit-status" class="tip"></span></div></div>';
+  h+='<div class="detail-card"><h3>Current state</h3><div class="kv"><div>Bucket</div><div>'+esc(r.BUCKET)+'</div><div>Disposition</div><div>'+esc(r.DISPOSITION)+'</div><div>Location</div><div>'+esc(r.LOCATION)+'</div><div>Req</div><div>'+esc(r.REQ)+'</div><div>FLEX</div><div>'+esc(r.payload.FLEX||r.payload.FLEX_HINT||'UNKNOWN')+' '+confidence(r.payload.FLEX_CONF||((r.payload.FLEX||r.payload.FLEX_HINT)?'VERIFIED':'UNKNOWN'))+'</div><div>Identity</div><div>'+esc(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN')+' '+confidence(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN')+'</div></div></div>';
+  h+='<div class="detail-card"><h3>Duplicate warning</h3>'+(dups.length?dups.map(function(x){return '<div class="tip" style="margin-bottom:5px"><b>'+esc(x.COMPANY)+'</b> · '+esc(x.TITLE)+'<br><span class="mono">'+esc(x.PRIMARY_ID)+' · '+esc(x.REQ)+'</span></div>'}).join(''):'<div class="tip">No close canonical match detected.</div>')+'</div>';
+  h+=compStrip(r);
+  h+='<div class="detail-card full"><h3>AI context</h3><div class="sec scout"><h4>Scout</h4>'+esc(r.payload.SCOUT_NOTES||r.payload.DISCOVERY_SOURCE||'—')+'</div><div class="sec forge"><h4>Forge</h4>'+esc(r.payload.FORGE_STATUS||r.payload.BLOCKER||r.payload.SALARY_BASIS||'—')+'</div><div class="sec claude"><h4>Claude</h4>'+esc(r.payload.CLAUDE_NOTE||r.payload.ANALYSIS_NOTE||r.payload.FIT||'—')+'</div></div></div>';
+  $('d-body').innerHTML=h;
+  $('pin-row').onclick=function(){S.pins[r.id]=!S.pins[r.id];LS.set('pins',S.pins);render();renderDetail(r)};
+  $('save-decision').onclick=function(){saveTimDecision(r)};
+  $('undo-decision').onclick=function(){if(!hasWriter()){alert('Writer required for undo.');return} $('edit-status').textContent='Undoing…';gsPost({action:'undo_ruling',undo:{primaryId:r.PRIMARY_ID}}).then(function(j){if(j.ok)load();else $('edit-status').textContent=j.error||'Undo failed'})};
+}
+function saveTimDecision(r){
+  var state=$('edit-state').value,reason=$('edit-reason').value,note=$('edit-note').value.trim(),dup=$('edit-dup').value.trim();
+  if(!state&&!note){$('edit-status').textContent='Choose a state or write a note.';return}
+  var kind='NOTE',value='',code=reason;
+  if(state==='READY_TO_PURSUE'){kind='APPLY_NOW';value='YES'}else if(state==='DECLINED_BY_TIM'){kind='DECLINE'}else if(state){kind=state}
+  if(kind==='DUPLICATE'&&!dup){$('edit-status').textContent='Duplicate target required.';return}
+  var ts=new Date().toISOString(),ru={kind:kind,value:value,code:code,dupOf:dup,note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,actor:'TIM',requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
+  S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
+  if(!hasWriter()){$('edit-status').textContent='Saved locally; writer is off.';syncStateUp();return}
+  $('edit-status').textContent='Saving…';gsPost({action:'ruling',ruling:ru}).then(function(j){ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');S.rulings[r.id]=ru;LS.set('rulings',S.rulings);if(j.ok)load();else $('edit-status').textContent=ru.error}).catch(function(e){$('edit-status').textContent=e.message});
+}
+function renderInterview(r){
+  var h='<div class="detail-grid"><div class="detail-card full"><h3>Interview mode</h3><div class="kv"><div>Date / status</div><div>'+esc(r.payload.INTERVIEW_DATE||r.payload.INTERVIEW_STATUS||r.DISPOSITION||'Not recorded')+'</div><div>Contacts</div><div>'+esc(r.payload.INTERVIEW_CONTACTS||r.payload.RECRUITER||r.payload.HIRING_MANAGER||'—')+'</div><div>Job description</div><div>'+linkify(r.payload.SOURCE_URL||r.raw.match(/https?:\/\/[^; ]+/)?.[0]||'—')+'</div></div></div><div class="detail-card full"><h3>Add triage note</h3><textarea id="interview-note" style="width:100%;min-height:110px" placeholder="What happened, signals, concerns, follow-up, questions, names, commitments…"></textarea><div class="row"><button id="save-interview" class="neon">Save timestamped note</button><span id="interview-status" class="tip"></span></div></div><div class="detail-card full"><h3>Interview history</h3><div id="interview-history" class="mono tip">Loading…</div></div></div>';
+  $('d-body').innerHTML=h;
+  if(hasWriter())gsGet('interview_notes','&primaryId='+encodeURIComponent(r.PRIMARY_ID)).then(function(j){S.interview[r.id]=j;$('interview-history').textContent=j.text||'No interview notes yet.'}).catch(function(e){$('interview-history').textContent=e.message});else $('interview-history').textContent='Writer not configured on this device.';
+  $('save-interview').onclick=function(){var txt=$('interview-note').value.trim();if(!txt){$('interview-status').textContent='Write a note first.';return}if(!hasWriter()){$('interview-status').textContent='Writer required.';return}$('interview-status').textContent='Saving…';gsPost({action:'interview_note',note:{primaryId:r.PRIMARY_ID,text:txt,actor:'TIM'}}).then(function(j){if(j.ok){$('interview-note').value='';renderInterview(r)}else $('interview-status').textContent=j.error||'Save failed'})};
+}
+function renderTimeline(r){
+  $('d-body').innerHTML='<div class="detail-card"><h3>Activity timeline</h3><div id="timeline" class="timeline"><div class="tip">Loading…</div></div></div>';
+  if(!hasWriter()){$('timeline').innerHTML='<div class="tip">Writer not configured.</div>';return}
+  gsGet('events','&primaryId='+encodeURIComponent(r.PRIMARY_ID)+'&limit=200').then(function(j){var ev=j.events||[];S.events[r.id]=ev;$('timeline').innerHTML=ev.length?ev.map(function(e){return '<div class="event"><div class="ts">'+esc((e.ts||'').replace('T',' ').slice(0,19))+' · '+esc(e.actor||'SYSTEM')+'</div><div class="ev"><b>'+esc(e.type||'EVENT')+'</b>'+(e.kind?' · '+esc(e.kind):'')+(e.code?' · '+esc(e.code):'')+(e.note?'<br>'+esc(e.note):'')+'</div></div>'}).join(''):'<div class="tip">No v5 event history yet. Existing master history remains in the row payload.</div>'});
+}
+function openRow(id){var r=rowById(id);if(!r)return;S.focus=id;S.detailTab=S.detailTab||'overview';S.seen[id]=Date.now();LS.set('seen',S.seen);syncStateUp();$('drawer').classList.add('on');renderDetail(r);render()}
 function linkify(s){s=esc(s);return s.replace(/(https?:\/\/[^\s"<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')}
 $('d-close').onclick=function(){$('drawer').classList.remove('on');S.focus=null;render()};
-document.addEventListener('keydown',function(e){if(e.key==='Escape'){$('drawer').classList.remove('on');closePop()}});
-function scrText(ids){ // Amendment 58 section 7 minimum fields, one record per ruling
-  var out=[];(ids||Object.keys(S.rulings)).forEach(function(id){var ru=S.rulings[id];if(!ru)return;var r=S.rows.filter(function(x){return x.id===id})[0]||{};
-    var reqState=ru.kind==='APPLIED'?'APPLIED':ru.kind==='DECLINE'?'DECLINED_BY_TIM':ru.kind==='APPLY_NOW'?(ru.value==='YES'?'READY_TO_PURSUE (Tim: pursue)':'DECLINED_BY_TIM (Tim: do not pursue)'):ru.kind==='DUPLICATE'?'DUPLICATE (DUP_OF '+(ru.dupOf||'?')+')':EXPECT_BUCKET[ru.kind]||'(no state change; note only)';
-    out.push(['STATE_CHANGE_REQUEST','REQUEST_ID=PX-'+(ru.ts||'').replace(/[-:.TZ]/g,'').slice(0,14)+'-'+id.slice(-6),'TIMESTAMP='+ru.ts,'REQUESTED_BY=Tim (direct statement via Pipeline Explorer)','TARGET_SYSTEM=V2_CURRENT_POPULATION_MASTER.txt','TARGET_CANONICAL_ID='+(ru.primaryId||id),'COMPANY='+(ru.company||r.COMPANY||''),'TITLE='+(ru.title||r.TITLE||''),'REQ_ID='+(ru.req||r.REQ||''),'CURRENT_APPLICATION_STATE='+(ru.snap?ru.snap.BUCKET+' / '+ru.snap.DISPOSITION:''),'REQUIRED_APPLICATION_STATE='+reqState+(ru.code?' ; DECLINE_REASON_CODE='+ru.code:''),'CURRENT_POSTING_STATE=n/a','REQUIRED_POSTING_STATE=n/a','SOURCE_OF_CHANGE=Tim ruling in Pipeline Explorer'+(ru.note?' ; NOTE='+ru.note.replace(/\n/g,' '):''),'TARGET_CANONICAL_ARTIFACT=Drive ID '+MASTER_FILE_ID,'AUTHORIZED_WRITER=per Amendment 58 (capable writer)','VERIFICATION_REQUIREMENTS=Amendment 58 sections 8-9: read-before-write, identity check, read-back, STATE_CHANGE_RECEIPT','END STATE_CHANGE_REQUEST'].join('\n'))});
-  return out.join('\n\n');
-}
+document.addEventListener('keydown',function(e){if(e.target&&/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))return;if(e.key==='Escape'){$('drawer').classList.remove('on');closePop();return}var rows=filteredRows();if(!rows.length)return;var idx=Math.max(0,rows.findIndex(function(x){return x.id===S.focus}));if(e.key==='ArrowDown'){e.preventDefault();openRow(rows[Math.min(rows.length-1,idx+1)].id)}else if(e.key==='ArrowUp'){e.preventDefault();openRow(rows[Math.max(0,idx-1)].id)}else if(e.key==='Enter'&&S.focus){openRow(S.focus)}else if((e.key==='d'||e.key==='D')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-state'))$('edit-state').value='DECLINED_BY_TIM'},0)}else if((e.key==='a'||e.key==='A')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-state'))$('edit-state').value='APPLIED'},0)}else if((e.key==='n'||e.key==='N')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-note'))$('edit-note').focus()},0)}});
+function bulkAction(kind){var ids=Object.keys(S.checked).filter(function(k){return S.checked[k]});if(!ids.length)return;if(!hasWriter()){alert('Writer required for bulk changes.');return}var code=kind==='DECLINE'?prompt('Decline reason code','TIM_EXPLICIT_DECLINE'):'';var note=prompt('Bulk note / reason','')||'';var chain=Promise.resolve();ids.forEach(function(id){chain=chain.then(function(){var r=rowById(id);if(!r)return;var ruling={primaryId:r.PRIMARY_ID,kind:kind,code:code,note:note,actor:'TIM',requestId:'PX-BULK-'+Date.now()+'-'+r.id.slice(-6)};return gsPost({action:'ruling',ruling:ruling})})});chain.then(function(){S.checked={};load()})}
+function applyColumnWidths(){$('grid').querySelectorAll('thead th').forEach(function(th){var c=th.getAttribute('data-c');if(c&&S.colWidths[c])th.style.width=S.colWidths[c]+'px'});$('grid').querySelectorAll('tbody tr').forEach(function(tr){visibleCols().forEach(function(c,i){if(S.colWidths[c]&&tr.children[i])tr.children[i].style.width=S.colWidths[c]+'px'})})}
+function enableColumnResize(){$('grid').querySelectorAll('thead th').forEach(function(th){var c=th.getAttribute('data-c');if(!c||th.querySelector('.resize-handle'))return;var h=document.createElement('span');h.className='resize-handle';th.appendChild(h);h.onmousedown=function(e){e.preventDefault();e.stopPropagation();var x=e.clientX,w=th.getBoundingClientRect().width;function mv(ev){S.colWidths[c]=Math.max(60,w+(ev.clientX-x));applyColumnWidths();fixSticky()}function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);LS.set('colWidths',S.colWidths)}document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)}})}
+function renderDashboard(){var m=S.master;if(!m)return;var applied=m.byBucket.APPLIED||0,ready=m.byBucket.READY_TO_PURSUE||0,intake=(m.byBucket.SCOUT_INTAKE||0)+(m.byBucket.DISCOVERY_LEAD||0),manual=(m.byBucket.MANUAL_RESEARCH||0)+(m.byBucket.BLOCKED||0)+(m.byBucket.TIM_DECISION_REQUIRED||0),total=m.rows.length;function card(t,v,sub,span){return '<div class="dash-card '+(span||'k')+'"><h4>'+t+'</h4><b>'+v+'</b><div class="tip">'+sub+'</div></div>'}var h=card('Master',total,'canonical rows')+card('Applied',applied,'protected applicant state')+card('Ready',ready,'pursuit candidates')+card('New intake',intake,'Scout intake + leads')+card('Needs work',manual,'manual / blocked / Tim');var states=[['Applied',applied],['Ready',ready],['Intake',intake],['Declined',m.byBucket.DECLINED_BY_TIM||0],['Closed',m.byBucket.CLOSED_DEAD||0]];h+='<div class="dash-card w"><h4>Pipeline state</h4>'+states.map(function(x){var pct=total?Math.round(x[1]/total*100):0;return '<div class="tip">'+x[0]+' · '+x[1]+'<div class="barline"><i style="width:'+pct+'%"></i></div></div>'}).join('')+'</div>';h+='<div class="dash-card w"><h4>System status</h4><div class="kv"><div>Writer</div><div>'+(hasWriter()?'<span class="good">ONLINE</span>':'<span class="bad">NOT CONFIGURED</span>')+'</div><div>Master</div><div>'+esc((S.meta.modifiedTime||'').replace('T',' ').slice(0,19))+'</div><div>Approved resume</div><div>'+esc(S.docs&&S.docs.config&&S.docs.config.latest_approved_resume_name||'Not selected')+'</div><div>Pinned jobs</div><div>'+Object.keys(S.pins).filter(function(k){return S.pins[k]}).length+'</div></div></div>';$('dash').innerHTML=h}
+function renderDocuments(){var v=$('view-documents');if(!hasWriter()){v.innerHTML='<div class="panel"><h3>Job Documents</h3><div class="tip">Configure the writer to load the Drive-backed document library.</div></div>';return}if(!S.docs){v.innerHTML='<div class="panel">Loading documents…</div>';gsGet('documents').then(function(j){if(j.ok){S.docs=j;renderDocuments()}});return}var cfg=S.docs.config||{},q='';function box(title,arr,type){return '<div class="docbox"><h3>'+title+' · '+arr.length+'</h3><input class="doc-search" data-type="'+type+'" placeholder="filter…" style="width:100%;margin-bottom:6px">'+arr.map(function(f){var ap=cfg.latest_approved_resume_file_id===f.id;return '<div class="docitem" data-doc="'+esc(f.name.toLowerCase())+'"><div class="nm"><a href="'+esc(f.url)+'" target="_blank">'+esc(f.name)+'</a><div class="tip">'+esc((f.modifiedTime||'').slice(0,10))+' · '+esc(f.mimeType||'')+'</div></div>'+(ap?'<span class="approved">APPROVED</span>':'')+(type==='resume'&&!ap?'<button data-approve="'+esc(f.id)+'">Approve</button>':'')+'</div>'}).join('')+'</div>'}v.innerHTML='<div class="docgrid">'+box('Resumes',S.docs.resumes||[],'resume')+box('Cover Letters',S.docs.coverLetters||[],'cover')+box('Supporting Documents',S.docs.supporting||[],'support')+box("Tim's Voice",S.docs.timVoice||[],'voice')+'</div>';v.querySelectorAll('[data-approve]').forEach(function(b){b.onclick=function(){gsPost({action:'approve_resume',selection:{fileId:b.getAttribute('data-approve')}}).then(function(j){if(j.ok)gsGet('documents').then(function(d){S.docs=d;renderDocuments();renderDashboard()})})}});v.querySelectorAll('.doc-search').forEach(function(inp){inp.oninput=function(){var q=inp.value.toLowerCase();inp.parentNode.querySelectorAll('.docitem').forEach(function(it){it.style.display=it.getAttribute('data-doc').indexOf(q)>=0?'flex':'none'})}})}
+function renderRules(){var v=$('view-rules');if(!hasWriter()){v.innerHTML='<div class="panel"><h3>Canonical Tim Rules</h3><div class="tip">Writer must be configured to edit canonical rules.</div></div>';return}if(!S.canonicalRules){v.innerHTML='<div class="panel">Loading canonical rules…</div>';gsGet('canonical_rules').then(function(j){S.canonicalRules=j;renderRules()});return}v.innerHTML='<div class="panel active"><h3>Canonical Tim Rules · Save makes this live</h3><div class="tip">Latest successfully saved Tim rules override conflicting older prompts/directives. AI may propose changes; only Tim Save activates them.</div><textarea id="rules-edit" class="cfg" style="height:62vh;margin-top:8px">'+esc(S.canonicalRules.text||'')+'</textarea><div class="row"><button id="rules-save" class="neon">Save canonical rules</button><button id="rules-reload">Discard / reload</button><span id="rules-status" class="tip"></span></div></div>';$('rules-save').onclick=function(){$('rules-status').textContent='Saving…';gsPost({action:'save_rules',rules:{text:$('rules-edit').value,actor:'TIM'}}).then(function(j){if(j.ok){$('rules-status').textContent='Saved and verified.';gsGet('canonical_rules').then(function(r){S.canonicalRules=r})}else $('rules-status').textContent=j.error||'Save failed'})};$('rules-reload').onclick=function(){gsGet('canonical_rules').then(function(j){S.canonicalRules=j;renderRules()})}}
 /* ---------- reports ---------- */
 function tbl(head,rows){return '<table><thead><tr>'+head.map(function(h){return '<th>'+esc(h)+'</th>'}).join('')+'</tr></thead><tbody>'+(rows.length?rows.map(function(r){return '<tr>'+r.map(function(c){return '<td>'+c+'</td>'}).join('')+'</tr>'}).join(''):'<tr><td colspan="'+head.length+'" class="faint">none</td></tr>')+'</tbody></table>'}
 function renderReports(){
   var m=S.master,h='';var rl=function(r){return '<a href="#" data-open="'+esc(r.id)+'">'+esc(r.COMPANY)+'</a> · '+esc(r.TITLE)};
+  var total=m.rows.length||1, chartBuckets=['APPLIED','READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','DECLINED_BY_TIM','REJECTED_BY_EMPLOYER','CLOSED_DEAD'];
+  h+='<div class="panel active"><h3>Pipeline visual summary</h3><div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px">'+chartBuckets.map(function(b){var n=m.byBucket[b]||0,pct=Math.round(n/total*100);return '<div><div class="tip">'+esc(b)+' · '+n+'</div><div class="barline"><i style="width:'+pct+'%"></i></div></div>'}).join('')+'</div></div>';
   h+='<div class="panel active rep"><h3>Integrity</h3>'+tbl(['check','result'],[['COUNTS line vs row BUCKET tally',m.checksum.ok?'<span style="color:var(--ng)">OK</span>':'<span style="color:var(--nm)">'+esc(JSON.stringify(m.checksum.diffs))+'</span>'],['rows / declared TOTAL',m.rows.length+' / '+(m.counts&&m.counts.TOTAL)],['heading ≠ BUCKET',m.sectionMismatches.length+' (headings are presentation only)'],['parse errors',m.parseErrors.length],['11-cell rows (pipe inside payload)',m.rows.filter(function(r){return r.cellCount===11}).length],['schema',esc(JSON.stringify(m.schema))],['source',esc(S.meta.id||'')+' · fetched '+esc(S.meta.fetchedAt||'')+(S.meta.fromCache?' (cached)':'')]])+'</div>';
   var byB=Object.keys(m.byBucket).map(function(b){return [esc(b),m.byBucket[b],m.counts&&m.counts[b]!==undefined?m.counts[b]:'—']});h+='<div class="panel rep"><h3>Buckets</h3>'+tbl(['bucket','rows','declared'],byB)+'</div>';
   h+='<div class="panel rep"><h3>My rulings'+(hasWriter()?' · writer on':' · writer off, held on this device')+'</h3>'+tbl(['company','ruling','state','when'],S.rows.filter(function(r){return ruling(r)}).map(function(r){var st=rulingState(r);return [rl(r),esc(st.ru.kind+' '+(st.ru.value||'')+' '+(st.ru.code||'')),esc(st.s),esc((st.ru.ts||'').slice(0,16))]}))+'<div class="row"><button id="copy-all">Copy all pending as STATE_CHANGE_REQUESTs</button><button id="export-rul">Export rulings JSON</button><button id="import-rul">Import rulings JSON</button></div></div>';
@@ -402,7 +458,7 @@ function renderColumns(){var v=$('view-columns');var h='<div class="panel active
 function pct(v){return v==null?'—':(Math.round(v*1000)/10)+'%'}
 function hrs(v){return v==null?'—':(v<48?Math.round(v*10)/10+'h':Math.round(v/24*10)/10+'d')}
 function renderQuality(){var v=$('view-quality');var cs=PipelineQuality.cohorts(S.rows,S.runs,{});var now=Date.now();
-  var h='';
+  var h='';var seven=PipelineQuality.window(cs,7,now);if(seven&&seven.cohorts){var bars=[['Admission',seven.ADMISSION_RATE],['Validity',seven.VALIDITY_RATE],['Actionable yield',seven.ACTIONABLE_YIELD],['Duplicate',seven.DUPLICATE_RATE],['Unresolved',seven.UNRESOLVED_RATE]];h+='<div class="panel active"><h3>Scout analysis · rolling 7 days</h3><div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px">'+bars.map(function(x){var pct=x[1]==null?0:Math.max(0,Math.min(100,Math.round(x[1]*100)));return '<div><div class="u">'+x[0]+'</div><b style="font:700 18px var(--mono)">'+pct+'%</b><div class="barline"><i style="width:'+pct+'%"></i></div></div>'}).join('')+'</div></div>'}
   if(!cs.length){h+='<div class="panel active"><h3>Scout quality</h3><div class="tip">No cohort data yet. Cohorts appear once Scout submits discoveries through the intake endpoint (rows carry SCOUT_RUN_ID) and the writer logs run metrics'+(hasWriter()?'':'; the writer is not configured on this device, so run metrics (GROSS_FOUND, never-consider exclusions) cannot be loaded')+'.</div></div>';$('view-quality').innerHTML=h;return}
   var wins=[['Today',1],['Rolling 7 days',7],['Rolling 30 days',30]];
   h+='<div class="panel active"><h3>Scout quality · windows</h3>'+wins.map(function(w){var a=PipelineQuality.window(cs,w[1],now);if(!a.cohorts)return '<div class="tip">'+w[0]+': no cohorts</div>';
@@ -414,7 +470,7 @@ function renderQuality(){var v=$('view-quality');var cs=PipelineQuality.cohorts(
 }
 /* ---------- never-consider rules: canonical Doc TIM_NEVER_CONSIDER_RULES (AI_Coordination, fixed ID). Read-only here; the file is the only authority ---------- */
 var RULES_DOC_ID='1qLeVwmW76Cm_lHdleb342sE7_ej4dqTfODR1TcnF5os';
-function renderRules(){var v=$('view-rules');var R=S.rules;var link='<a href="https://docs.google.com/document/d/'+RULES_DOC_ID+'/edit" target="_blank" rel="noopener">TIM_NEVER_CONSIDER_RULES</a>';
+function renderNeverConsiderLegacy(){var v=$('view-rules');var R=S.rules;var link='<a href="https://docs.google.com/document/d/'+RULES_DOC_ID+'/edit" target="_blank" rel="noopener">TIM_NEVER_CONSIDER_RULES</a>';
   var h='<div class="panel active"><h3>Never-consider rules · canonical Doc '+link+' · read-only here</h3><div class="tip" style="margin-bottom:6px">Hard exclusions apply to the employer\'s core operating business only, never to job-title keywords, suppliers, vendors, integrators or unknown information. Unknown is a research state. Scout classifies with a rule id and HIGH/MED/LOW confidence; the writer excludes only on an ACTIVE rule at HIGH, admits everything else (MED/LOW as NEVER_CONSIDER_REVIEW_NEEDED), counts every exclusion by rule id, and never invents a category. Edit the rules in the Doc itself (Tim only); retire a rule with STATUS=INACTIVE, never reuse an id.</div>';
   if(!R){h+='<div class="tip">'+(hasWriter()?'Rules not loaded yet (the writer reads the Doc on refresh).':'Writer not configured on this device, so the canonical file cannot be read here. Open the Doc directly: '+link+'.')+'</div></div>';v.innerHTML=h;return}
   if(R.status==='UNAVAILABLE'){h+='<div class="tip"><span class="bad">RULES UNAVAILABLE</span> '+esc(R.error||'')+' · intake default is ALLOW_INTAKE with review flags; nothing is excluded until the Doc is readable.</div></div>';v.innerHTML=h;return}
@@ -436,7 +492,7 @@ function renderSettings(){var v=$('view-settings');v.innerHTML='<div class="pane
 }
 $('settings').onclick=function(){switchTab('settings')};
 /* ---------- tabs, hash, boot ---------- */
-function switchTab(t){S.tab=t;document.querySelectorAll('nav button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t)});$('settings').classList.toggle('on',t==='settings');document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+t)});$('presets').style.display=t==='pipeline'?'flex':'none';$('filters').style.display=(t==='pipeline'&&Object.keys(S.filters).length)?'flex':'none';if(t==='settings')renderSettings();if(t==='quality')renderQuality();if(t==='rules')renderRules();if(S.master)render()}
+function switchTab(t){S.tab=t;document.querySelectorAll('nav button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-tab')===t)});$('settings').classList.toggle('on',t==='settings');document.querySelectorAll('.view').forEach(function(v){v.classList.toggle('on',v.id==='view-'+t)});$('presets').style.display=t==='pipeline'?'flex':'none';$('filters').style.display=(t==='pipeline'&&Object.keys(S.filters).length)?'flex':'none';if(t==='settings')renderSettings();if(t==='quality')renderQuality();if(t==='rules')renderRules();if(t==='documents')renderDocuments();if(S.master)render()}
 document.querySelectorAll('nav button').forEach(function(b){b.onclick=function(){switchTab(b.getAttribute('data-tab'))}});
 $('refresh').onclick=function(){load()};
 function pushHash(){var o={p:S.preset,s:S.sort,f:S.filters};try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(o)))}catch(e){}}
