@@ -73,7 +73,7 @@ function doPost(e) {
     return out_(dispatchWrite_(req));
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err) }); }
 }
-function auth_(k) { var secret = PropertiesService.getScriptProperties().getProperty('PIPELINE_WRITER_SECRET') || PASSPHRASE; return secret && k === secret; }
+function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
 var WRITE_ACTIONS = ['intake', 'ruling', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'undo_ruling', 'install_automation', 'batch'];
