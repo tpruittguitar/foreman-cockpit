@@ -25,3 +25,8 @@ That is all. With the script configured, the page reads the master through it (t
 Claude Code cannot touch the live Apps Script deployment. The whole of `Code.gs` on `main` after the merge must be pasted over the script in the Apps Script editor (keep your own `PASSPHRASE`), then **Deploy → Manage deployments → pencil → Version: New version → Deploy**. The URL stays the same. On the first request after redeploy, Google will ask you to re-approve Docs and Drive access, because the script now reads a second Doc (`TIM_NEVER_CONSIDER_RULES`). Until this is done the live Explorer keeps working exactly as PR #3 left it: rulings write, but `action=intake`, `action=rules` and `action=runs` do not exist, so the Scout quality and Rules tabs show "not loaded".
 
 Files the script creates beside the master on first use (no action needed): `SCOUT_RUN_METRICS.jsonl` (telemetry). Existing: `PIPELINE_EXPLORER_STATE.json`, `PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS`.
+
+## Automated deploys and AI access (2026-10-02)
+Nobody needs to paste code into the editor any more. `apps-script/deploy.sh` sets the live project to exactly this folder's `.gs` files, keeps the live passphrase, publishes a new version and points the existing web app at it, so the URL never changes. It needs a clasp login (`clasp login --no-localhost`) and the Apps Script API switched on at script.google.com/home/usersettings. `apps-script/deploy.sh --head` updates the code without touching the live web app.
+
+`Automation.gs` adds the Drive write queue (AI_Coordination/WRITER_QUEUE, applied every 5 minutes). Run `installAutomation` once from the editor to approve the trigger permission and install the trigger. How the AIs write is described in `docs/WRITER_ACCESS.md`.
