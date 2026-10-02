@@ -3,8 +3,9 @@
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
  * single fixed master, with read-back verification (FORGE_AMENDMENT_58 Authorized State Writer contract).
  *
- * Actions (GET):  ping | master | state | receipts | rules | runs
- * Actions (POST): state | ruling | intake
+ * Actions (GET):  ping | master | state | receipts | rules | runs | automation | process_queue | submit (payload=<JSON write body>)
+ * Actions (POST): state | ruling | intake | upsert_application | batch
+ * Drive queue:    any AI may drop a JSON write body into AI_Coordination/WRITER_QUEUE; Automation.gs applies it every 5 min.
  *
  * ruling  = Tim disposition on one existing row by exact PRIMARY_ID (PR #3).
  * intake  = Scout discovery intake: one or a batch of proposed records -> dedupe -> append canonical rows in
@@ -42,6 +43,9 @@ function doGet(e) {
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
     if (a === 'rules') { var R = readRules_(); return out_({ ok: R.status !== 'UNAVAILABLE', rules: R }); }
     if (a === 'runs') return out_({ ok: true, runs: readRuns_() });
+    if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
+    if (a === 'automation') return out_(automationStatus_());
+    if (a === 'process_queue') return out_(processWriterQueue());
     return out_({ ok: false, error: 'unknown action ' + a });
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err) }); }
 }
@@ -51,13 +55,33 @@ function doPost(e) {
   if (!auth_(req.key)) return out_({ ok: false, error: 'bad key' });
   try {
     if (req.action === 'state') { writeState_(req.state || {}); return out_({ ok: true }); }
-    if (req.action === 'ruling') return out_(applyRulingToMaster_(req.ruling || {}));
-    if (req.action === 'intake') return out_(applyIntakeToMaster_(req));
-    return out_({ ok: false, error: 'unknown action ' + req.action });
+    return out_(dispatchWrite_(req));
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err) }); }
 }
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+/** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
+var WRITE_ACTIONS = ['intake', 'ruling', 'upsert_application', 'batch'];
+function dispatchWrite_(req) {
+  req = req || {};
+  var a = String(req.action || '');
+  if (a === 'intake') return applyIntakeToMaster_(req);
+  if (a === 'ruling') return applyRulingToMaster_(req.ruling || {});
+  if (a === 'upsert_application') return applyUpsertToMaster_(req.event || req);
+  if (a === 'batch') {
+    var list = Array.isArray(req.requests) ? req.requests : [];
+    if (!list.length) return { ok: false, error: 'batch needs requests[]' };
+    if (list.length > 25) return { ok: false, error: 'batch too large (max 25 requests)' };
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var sub = list[i] || {};
+      if (sub.action === 'batch' || WRITE_ACTIONS.indexOf(sub.action) < 0) { out.push({ index: i, ok: false, error: 'unsupported action in batch: ' + sub.action }); continue; }
+      try { var r = dispatchWrite_(sub); r.index = i; out.push(r); } catch (e) { out.push({ index: i, ok: false, error: String(e && e.message || e) }); }
+    }
+    return { ok: out.every(function (r) { return r.ok; }), results: out };
+  }
+  return { ok: false, error: 'unknown action ' + a + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
+}
 
 /* ================= master read ================= */
 function readMaster_() {
@@ -116,6 +140,39 @@ function fail_(msg, ruling) {
   var receipt = { RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: (ruling && ruling.requestId) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script', TARGET_CANONICAL_ID: (ruling && ruling.primaryId) || '', COMPLETION_STATUS: 'STATE_CHANGE_NEEDS_RESOLUTION', REASON: msg, EXECUTED_AT: new Date().toISOString() };
   try { appendReceipt_(receipt); } catch (e) {}
   return { ok: false, error: msg, receipt: receipt };
+}
+
+/* ================= email-confirmed application/rejection upsert ================= */
+function applyUpsertToMaster_(ev) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var modBefore = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
+    var doc = DocumentApp.openById(MASTER_ID), body = doc.getBody(), paras = body.getParagraphs(), lines = [];
+    for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
+    var now = new Date().toISOString();
+    var plan = planUpsertApplication(lines, ev, { now: now });
+    var base = { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: (ev && ev.requestId) || plan.upsertKey || '', EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: (ev && ev.COMPANY) || '', TITLE: (ev && ev.TITLE) || '', STATE: (ev && (ev.STATE || ev.state)) || '', MODE: plan.mode, TARGET_FILE_ID: MASTER_ID, MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: now };
+    if (!plan.ok) { base.COMPLETION_STATUS = plan.mode === 'HOLD' ? 'HOLD' : 'FAILED'; base.REASON = plan.error; base.POSSIBLE_MATCHES = plan.possibleMatches || []; try { appendReceipt_(base); } catch (e) {} return { ok: false, mode: plan.mode, error: plan.error, possibleMatches: plan.possibleMatches || [], receipt: base }; }
+    if (plan.mode === 'ALREADY_APPLIED') { base.COMPLETION_STATUS = 'NO_CHANGE_REQUIRED'; base.PRIMARY_ID = plan.primaryId; return { ok: true, mode: plan.mode, primaryId: plan.primaryId, receipt: base }; }
+    if (DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString() !== modBefore) return { ok: false, mode: 'RETRY', error: 'master changed during request; retry' };
+    var expect;
+    if (plan.mode === 'UPDATE') { paras[plan.index].setText(plan.after); expect = plan.after; }
+    else {
+      var endIdx = -1; for (var e2 = paras.length - 1; e2 >= 0; e2--) if (/^END V2_CURRENT_POPULATION_MASTER/.test(paras[e2].getText())) { endIdx = e2; break; }
+      body.insertParagraph(endIdx >= 0 ? endIdx : paras.length, plan.newLine); expect = plan.newLine;
+    }
+    var p1 = body.getParagraphs(), all = []; for (var q = 0; q < p1.length; q++) all.push(p1[q].getText());
+    var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
+    for (var k = 0; k < p1.length; k++) { var tk = p1[k].getText(); if (/^COUNTS:/.test(tk)) p1[k].setText(newCounts); else if (newEnd && /^END V2_CURRENT_POPULATION_MASTER/.test(tk)) p1[k].setText(newEnd); }
+    doc.saveAndClose();
+    var p2 = DocumentApp.openById(MASTER_ID).getBody().getParagraphs(), found = 0, countsBack = null;
+    for (var m = 0; m < p2.length; m++) { var tt = p2[m].getText(); if (tt === expect) found++; if (/^COUNTS:/.test(tt)) countsBack = tt; }
+    var verified = found === 1 && countsBack === newCounts;
+    base.PRIMARY_ID = plan.primaryId; base.MATCHED_BY = plan.matchedBy || ''; base.UPSERT_KEY = plan.upsertKey; base.READBACK_VERIFIED = verified ? 'YES' : 'NO'; base.COUNTS_AFTER = newCounts; base.COMPLETION_STATUS = verified ? 'COMPLETE' : 'FAILED';
+    appendReceipt_(base);
+    return { ok: verified, mode: plan.mode, primaryId: plan.primaryId, matchedBy: plan.matchedBy || '', row: expect, counts: newCounts, endLine: newEnd, receipt: base };
+  } finally { lock.releaseLock(); }
 }
 
 /* ================= intake (Scout discovery -> canonical rows) ================= */
@@ -233,6 +290,8 @@ function mutateRow(line, ruling) {
   function set(k, v) { if (O.indexOf(k) < 0) O.push(k); P[k] = clean_(v); }
   var ts = ruling.ts || new Date().toISOString(), d = today_(ts), kind = String(ruling.kind || '').toUpperCase(), val = String(ruling.value || '').toUpperCase();
   var note = clean_(ruling.note || '');
+  var evDate = /^\d{4}-\d{2}-\d{2}/.test(String(ruling.eventDate || '')) ? String(ruling.eventDate).slice(0, 10) : d;
+  var evidence = clean_(ruling.evidence || '');
   var beforeState = fixed[4] + ' / ' + fixed[5];
   var changes = [];
   var tags = fixed[6] === '-' ? [] : fixed[6].split(';').map(function (s) { return s.trim(); }).filter(Boolean);
@@ -258,10 +317,21 @@ function mutateRow(line, ruling) {
     set('TIM_DISPOSITION', 'TIM_PASS_' + d + '_EXPLORER');
     tags.push('TIM_DECLINE_' + d); changes.push('BUCKET', 'DISPOSITION', 'DECLINE_REASON_CODE', 'DECLINE_REASON_TEXT', 'REOPEN_TRIGGER', 'TIM_DISPOSITION');
   } else if (kind === 'APPLIED') {
+    if (fixed[4] === 'REJECTED_BY_EMPLOYER' && !ruling.force) return { ok: false, error: 'row is REJECTED_BY_EMPLOYER; APPLIED would regress it (send force:true only with new-application evidence)' };
     fixed[4] = 'APPLIED'; fixed[5] = 'RESOLVED/APPLIED_CONFIRMED';
-    set('APP_DATE', d); set('APP_STATUS_EVIDENCE', 'Tim direct statement via Pipeline Explorer ' + d + (note ? ': ' + note : ''));
-    set('ANTI_RESURRECTION', 'YES'); set('TIM_RULING', 'APPLIED'); tags.push('TIM_APPLIED_' + d);
+    set('APP_DATE', evDate); set('APP_STATUS_EVIDENCE', evidence || ('Tim direct statement via Pipeline Explorer ' + d + (note ? ': ' + note : '')));
+    set('ANTI_RESURRECTION', 'YES'); set('TIM_RULING', 'APPLIED'); tags.push((evidence ? 'APPLIED_' : 'TIM_APPLIED_') + evDate);
     changes.push('BUCKET', 'DISPOSITION', 'APP_DATE', 'APP_STATUS_EVIDENCE', 'ANTI_RESURRECTION');
+  } else if (kind === 'REJECTED_BY_EMPLOYER') {
+    if (!evidence && !note) return { ok: false, error: 'REJECTED_BY_EMPLOYER requires evidence (e.g. Gmail id + sender + subject)' };
+    fixed[4] = 'REJECTED_BY_EMPLOYER'; fixed[5] = 'RESOLVED/REJECTED_BY_EMPLOYER';
+    set('REJECTION_DATE', evDate); set('REJECTION_EVIDENCE', evidence || note);
+    set('STATE_SEMANTICS', 'Employer rejected Tim/application; distinct from DECLINED_BY_TIM'); set('ANTI_RESURRECTION', 'YES');
+    tags.push('EMPLOYER_REJECTION_' + evDate);
+    changes.push('BUCKET', 'DISPOSITION', 'REJECTION_DATE', 'REJECTION_EVIDENCE', 'ANTI_RESURRECTION');
+  } else if (kind === 'ENRICH') {
+    if (!ruling.fields || typeof ruling.fields !== 'object' || !Object.keys(ruling.fields).length) return { ok: false, error: 'ENRICH requires fields {KEY: value}' };
+    if (note) { set('ENRICH_NOTE', note); changes.push('ENRICH_NOTE'); }
   } else if (kind === 'MANUAL_RESEARCH') {
     if ((g = guardProtected('send to research'))) return g;
     fixed[4] = 'MANUAL_RESEARCH'; fixed[5] = 'RESOLVED/NEEDS_RESOLUTION';
@@ -284,11 +354,94 @@ function mutateRow(line, ruling) {
     set('TIM_RULING', 'INVALID_DISCOVERY'); set('INVALID_REASON', note || 'Not a distinct usable job record (Tim ' + d + ')'); tags.push('TIM_INVALID_' + d);
     changes.push('BUCKET', 'DISPOSITION', 'INVALID_REASON');
   } else return { ok: false, error: 'unknown ruling kind ' + kind + ' ' + val };
-  set('STATE_SOURCE', 'TIM_EXPLORER:' + (ruling.requestId || 'no-id'));
+  var fr = applyFields_(ruling.fields, P, O, set);
+  if (!fr.ok) return fr;
+  changes = changes.concat(fr.changed);
+  var actor = String(ruling.actor || '').toUpperCase().replace(/[^A-Z0-9_]/g, '');
+  set('STATE_SOURCE', (actor || 'TIM_EXPLORER') + ':' + (ruling.requestId || 'no-id'));
   set('STATE_UPDATED_AT', ts);
   fixed[6] = tags.length ? tags.filter(function (t, i) { return tags.indexOf(t) === i; }).join('; ') : '-';
   var after = fixed.join(' | ') + ' | ' + buildPayload(pp.lead, P, O);
   return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7] };
+}
+/** Payload keys a write may never set directly (writer-owned) and intake keys whose prior value is kept as INTAKE_<KEY> when changed. */
+var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION'];
+var INTAKE_PRESERVE = ['INTAKE_KEY', 'SCOUT_RUN_ID', 'DISCOVERED_AT_ET', 'DISCOVERY_SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'REQ_ID', 'IDENTITY_CONFIDENCE', 'INITIAL_UNKNOWN_FIELDS', 'POSSIBLE_MATCHES', 'DATE_ADDED', 'NOTIFICATION_SOURCE'];
+/** Merge {KEY: value} into a parsed payload. Empty values are ignored (nothing is deleted); changed intake keys keep their old value under INTAKE_<KEY>. */
+function applyFields_(fields, P, O, set) {
+  var changed = [];
+  if (!fields) return { ok: true, changed: changed };
+  if (typeof fields !== 'object' || Array.isArray(fields)) return { ok: false, error: 'fields must be an object {KEY: value}' };
+  var keys = Object.keys(fields);
+  if (keys.length > 60) return { ok: false, error: 'too many fields (max 60)' };
+  for (var i = 0; i < keys.length; i++) {
+    var k = String(keys[i]).trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9_]{1,60}$/.test(k)) return { ok: false, error: 'bad field name ' + keys[i] };
+    if (FIELD_DENY.indexOf(k) >= 0) return { ok: false, error: 'field ' + k + ' is writer-owned and cannot be set' };
+    var v = fields[keys[i]]; if (v === undefined || v === null) continue;
+    v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v)).slice(0, 1500);
+    if (v === '') continue;
+    if (P[k] === v) continue;
+    if (INTAKE_PRESERVE.indexOf(k) >= 0 && P[k] && P['INTAKE_' + k] === undefined) set('INTAKE_' + k, P[k]);
+    set(k, v); changed.push(k);
+  }
+  return { ok: true, changed: changed };
+}
+/**
+ * Email-confirmed application/rejection upsert (Tim directive DIRECTIVE_EMAIL_CONFIRMED_UPSERT_2026-09-29).
+ * ev = { COMPANY, TITLE, STATE: APPLIED|REJECTED_BY_EMPLOYER, EVENT_DATE (YYYY-MM-DD), EVIDENCE, REQ_ID?, LOCATION?, SOURCE_URL?, TARGET_PRIMARY_ID?, NOTE?, actor?, requestId? }
+ * Exactly one existing row (TARGET_PRIMARY_ID, else req/URL/employer+title+location identity) -> that row is ruled in place.
+ * No match -> one new row in the target bucket. Ambiguous -> HOLD (nothing written; resend with TARGET_PRIMARY_ID).
+ * Replays are no-ops: the UPSERT_KEY is stored on the row.
+ */
+function planUpsertApplication(lines, ev, ctx) {
+  ctx = ctx || {}; ev = ev || {};
+  var state = String(ev.STATE || ev.state || '').toUpperCase();
+  if (state === 'REJECTED') state = 'REJECTED_BY_EMPLOYER';
+  if (state !== 'APPLIED' && state !== 'REJECTED_BY_EMPLOYER') return { ok: false, mode: 'INVALID', error: 'STATE must be APPLIED or REJECTED_BY_EMPLOYER' };
+  var company = clean_(ev.COMPANY || ''), title = clean_(ev.TITLE || ''), evidence = clean_(ev.EVIDENCE || '');
+  if (!evidence) return { ok: false, mode: 'INVALID', error: 'EVIDENCE is required (e.g. Gmail id, sender, subject, date)' };
+  var now = ctx.now || new Date().toISOString();
+  var evDate = /^\d{4}-\d{2}-\d{2}/.test(String(ev.EVENT_DATE || '')) ? String(ev.EVENT_DATE).slice(0, 10) : today_(now);
+  var upsertKey = 'UK-' + hashHex([state, normEmployer(company), normTitle(title), reqCore(ev.REQ_ID), evidence].join('|')).slice(0, 16);
+  var ruling = { kind: state, eventDate: evDate, evidence: evidence, note: ev.NOTE || '', ts: now, actor: ev.actor || ev.ACTOR || 'EMAIL_UPSERT', requestId: ev.requestId || upsertKey, fields: { UPSERT_KEY: upsertKey } };
+  var target = String(ev.TARGET_PRIMARY_ID || '').trim(), hits = [];
+  for (var i = 0; i < lines.length; i++) {
+    var t = lines[i]; if (!/^\d+ \| /.test(t)) continue;
+    if (t.indexOf('UPSERT_KEY=' + upsertKey) >= 0) return { ok: true, mode: 'ALREADY_APPLIED', index: i, primaryId: t.split(' | ')[1], upsertKey: upsertKey };
+    if (target && t.split(' | ')[1].trim() === target) hits.push(i);
+  }
+  if (target) {
+    if (hits.length !== 1) return { ok: false, mode: 'HOLD', error: 'TARGET_PRIMARY_ID ' + target + ' matches ' + hits.length + ' rows (fail closed)' };
+    var mt = mutateRow(lines[hits[0]], ruling); if (!mt.ok) return { ok: false, mode: 'HOLD', error: mt.error };
+    return { ok: true, mode: 'UPDATE', index: hits[0], primaryId: target, matchedBy: 'TARGET_PRIMARY_ID', after: mt.after, mutation: mt, upsertKey: upsertKey };
+  }
+  if (!company || !title) return { ok: false, mode: 'INVALID', error: 'COMPANY and TITLE are required (or TARGET_PRIMARY_ID)' };
+  var idx = indexExisting(lines);
+  var m = matchExisting({ COMPANY: company, TITLE: title, LOCATION: ev.LOCATION || '', REQ_ID: ev.REQ_ID || '', SOURCE_URL: ev.SOURCE_URL || '' }, idx);
+  if (m.kind === 'ambiguous') return { ok: false, mode: 'HOLD', error: 'identity ambiguous (' + m.by + '); resend with TARGET_PRIMARY_ID', possibleMatches: m.rows.map(function (r) { return r.id + ' [' + r.bucket + '] ' + r.location; }) };
+  if (m.kind === 'exact') {
+    var row = m.rows[0], li = -1;
+    for (var j = 0; j < lines.length; j++) if (/^\d+ \| /.test(lines[j]) && lines[j].split(' | ')[1].trim() === row.id) { if (li >= 0) return { ok: false, mode: 'HOLD', error: 'PRIMARY_ID ' + row.id + ' is not unique (fail closed)' }; li = j; }
+    var mu = mutateRow(lines[li], ruling); if (!mu.ok) return { ok: false, mode: 'HOLD', error: mu.error };
+    return { ok: true, mode: 'UPDATE', index: li, primaryId: row.id, matchedBy: m.by, after: mu.after, mutation: mu, upsertKey: upsertKey };
+  }
+  var maxInv = 0, seen = {}; idx.forEach(function (r) { if (r.inv > maxInv) maxInv = r.inv; seen[r.id] = true; });
+  var inv = maxInv + 1, pid = 'V2E-' + hashHex(upsertKey + '|' + inv).slice(0, 12).toUpperCase();
+  while (seen[pid]) pid = 'V2E-' + hashHex(pid + '|x').slice(0, 12).toUpperCase();
+  var P = {}, O = [];
+  function set(k, v) { if (v === undefined || v === null || v === '') return; if (O.indexOf(k) < 0) O.push(k); P[k] = clean_(v); }
+  set('UPSERT_KEY', upsertKey);
+  if (state === 'APPLIED') { set('APP_DATE', evDate); set('APP_STATUS_EVIDENCE', evidence); }
+  else { set('REJECTION_DATE', evDate); set('REJECTION_EVIDENCE', evidence); set('STATE_SEMANTICS', 'Employer rejected Tim/application; distinct from DECLINED_BY_TIM'); }
+  set('SOURCE_URL', /^https?:\/\//i.test(ev.SOURCE_URL || '') ? ev.SOURCE_URL : ''); set('REQ_ID', ev.REQ_ID); set('ANTI_RESURRECTION', 'YES');
+  if (ev.NOTE) set('NOTE', ev.NOTE);
+  var fr = applyFields_(ev.fields, P, O, set); if (!fr.ok) return { ok: false, mode: 'INVALID', error: fr.error };
+  set('DATE_ADDED', today_(now)); set('NOTIFICATION_SOURCE', 'EMAIL'); set('STATE_SOURCE', String(ruling.actor).toUpperCase().replace(/[^A-Z0-9_]/g, '') + ':' + ruling.requestId); set('STATE_UPDATED_AT', now);
+  var disp = state === 'APPLIED' ? 'RESOLVED/APPLIED_CONFIRMED' : 'RESOLVED/REJECTED_BY_EMPLOYER';
+  var tag = (state === 'APPLIED' ? 'APPLIED_' : 'EMPLOYER_REJECTION_') + evDate;
+  var line = [String(inv), pid, company, title, state, disp, 'EMAIL_UPSERT_' + today_(now) + '; ' + tag + '; ANTI_RESURRECTION', clean_(ev.REQ_ID || '') || 'UNCAPTURED', clean_(ev.LOCATION || '') || 'NOT_STATED'].join(' | ') + ' | ' + buildPayload('EMAIL_CONFIRMED_UPSERT', P, O);
+  return { ok: true, mode: 'CREATE', primaryId: pid, inv: inv, newLine: line, upsertKey: upsertKey };
 }
 /** COUNTS: line from row BUCKET cells, preserving existing key order, adding new buckets. */
 function recomputeCountsLine(lines) {
@@ -564,4 +717,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, WRITE_ACTIONS: WRITE_ACTIONS };
