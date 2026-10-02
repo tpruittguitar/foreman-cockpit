@@ -83,8 +83,34 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
 .bulkbar{display:inline-flex;gap:4px;align-items:center}.bulkbar b{font:10px var(--mono);color:#fff}
 .resize-handle{position:absolute;right:-2px;top:0;width:5px;height:100%;cursor:col-resize;z-index:5}
 th{position:sticky} th{min-width:70px} td,th{max-width:none}
-@media(max-width:980px){#dash{height:24%;grid-template-columns:repeat(6,minmax(0,1fr))}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 3}#worksplit{height:76%}#drawer{width:52%;min-width:330px}}
-@media(max-width:760px){#dash{height:22%;min-height:120px}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 6}#worksplit{height:78%}#drawer{position:absolute!important;inset:0!important;width:100%;max-width:none}.docgrid{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}.detail-card.full{grid-column:auto}}
+
+/* selected-job US map */
+#job-map-card{grid-column:9/13;grid-row:1/3;padding:0;overflow:hidden;position:relative;min-height:212px;background:radial-gradient(circle at 50% 45%,#111 0,#090909 58%,#070707 100%)}
+.map-head{position:absolute;left:10px;right:10px;top:8px;z-index:3;display:flex;align-items:flex-start;gap:8px;pointer-events:none}
+.map-head .map-title{flex:1;min-width:0}.map-head .map-title h4{margin-bottom:2px}.map-head .map-title .tip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.map-mode{pointer-events:auto;display:flex;border:1px solid #292929;border-radius:6px;overflow:hidden;background:#080808}
+.map-mode button{border:0;border-radius:0;padding:4px 7px;font-size:8px;letter-spacing:.4px;color:var(--faint);background:transparent}
+.map-mode button.on{background:#efefef;color:#090909}
+.job-map{position:absolute;inset:38px 7px 24px;overflow:hidden}
+.job-map svg{width:100%;height:100%;display:block}
+.map-empty{height:100%;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--faint);font:10px var(--mono);padding:20px}
+.map-outline{fill:url(#usDots);stroke:#686868;stroke-width:1.2;opacity:.88}
+.map-grid{stroke:#202020;stroke-width:.7;opacity:.7}
+.map-coast-glow{fill:none;stroke:#a7a7a7;stroke-width:4;opacity:.05;filter:url(#mapGlow)}
+.map-pin{cursor:pointer}
+.map-pin .halo{opacity:.25;filter:url(#pinGlow)}
+.map-pin.primary .core{fill:#f2f2f2}.map-pin.primary .halo{fill:#f2f2f2}
+.map-pin.secondary .core{fill:#a8a8a8}.map-pin.secondary .halo{fill:#a8a8a8}
+.map-pin.home .core{fill:#fff}.map-pin.home .halo{fill:#fff;opacity:.42}
+.map-pin.approx .core{stroke:#777;stroke-width:2;stroke-dasharray:2 2}
+.map-pin.home .halo,.map-pin.primary.pulse .halo{animation:mapPulse 1.8s ease-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes mapPulse{0%{transform:scale(.75);opacity:.42}70%{transform:scale(1.6);opacity:.05}100%{transform:scale(1.7);opacity:0}}
+.map-tip-bg,.map-tip-text{opacity:0;transition:opacity .12s ease}.map-pin:hover .map-tip-bg,.map-pin:hover .map-tip-text{opacity:1}
+.map-tip-bg{fill:#080808;stroke:#444;stroke-width:1}.map-tip-text{fill:#f4f4f4;font:10px var(--mono);pointer-events:none}.map-tip-sub{fill:#a0a0a0;font-size:8.5px}
+.map-legend{position:absolute;left:10px;bottom:7px;z-index:3;display:flex;gap:10px;align-items:center;color:#8d8d8d;font:8px var(--mono);pointer-events:none}.map-legend span{display:flex;gap:4px;align-items:center}.map-dot{width:6px;height:6px;border-radius:50%;background:#eee;box-shadow:0 0 7px rgba(255,255,255,.55)}.map-dot.secondary{background:#999;box-shadow:none}.map-dot.home{background:#fff;border:1px solid #777;box-shadow:0 0 8px rgba(255,255,255,.8)}
+.map-loc-status{position:absolute;right:10px;bottom:7px;color:#666;font:8px var(--mono);z-index:3}
+@media(max-width:980px){#dash{height:32%;max-height:330px;grid-template-columns:repeat(6,minmax(0,1fr))}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 3}#job-map-card{grid-column:4/7;grid-row:1/3}#worksplit{height:68%}#drawer{width:52%;min-width:330px}}
+@media(max-width:760px){#dash{height:38%;max-height:390px;min-height:220px}.dash-card.k{grid-column:span 2}.dash-card.w{grid-column:span 6}#job-map-card{grid-column:1/-1;grid-row:auto;min-height:210px}#worksplit{height:62%}#drawer{position:absolute!important;inset:0!important;width:100%;max-width:none}.docgrid{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}.detail-card.full{grid-column:auto}}
 </style>
 </head>
 <body>
@@ -139,7 +165,7 @@ function keyGroup(k){if(TIM_KEYS.indexOf(k)>=0)return 'tim';if(/^(CLAUDE_|ANALYS
 var PHONE_DEFAULT=['NEW','COMPANY','TITLE','BUCKET','TIM_RULING','DATE_ADDED','SALARY_BASE_EST','LOCATION'];
 var DATE_KEYS={DATE_ADDED:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
-var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,events:{},interview:{}};
+var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),mapMode:LS.get('mapMode','selected'),cols:LS.get('cols',null),autos:LS.get('autos',null),focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,events:{},interview:{}};
 S.cols=S.cols||{desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};
 if(S.cols.bucketOrder.indexOf('SCOUT_INTAKE')<0){S.cols.bucketOrder=['SCOUT_INTAKE','DISCOVERY_LEAD'].concat(S.cols.bucketOrder.filter(function(b){return b!=='SCOUT_INTAKE'&&b!=='DISCOVERY_LEAD'})).concat(['INVALID_DISCOVERY']).filter(function(b,i,a){return a.indexOf(b)===i});LS.set('cols',S.cols)}
 S.runs=[];S.rules=null;
@@ -386,7 +412,120 @@ document.addEventListener('keydown',function(e){if(e.target&&/^(INPUT|TEXTAREA|S
 function bulkAction(kind){var ids=Object.keys(S.checked).filter(function(k){return S.checked[k]});if(!ids.length)return;if(!hasWriter()){alert('Writer required for bulk changes.');return}var code=kind==='DECLINE'?prompt('Decline reason code','TIM_EXPLICIT_DECLINE'):'';var note=prompt('Bulk note / reason','')||'';var chain=Promise.resolve();ids.forEach(function(id){chain=chain.then(function(){var r=rowById(id);if(!r)return;var ruling={primaryId:r.PRIMARY_ID,kind:kind,code:code,note:note,actor:'TIM',requestId:'PX-BULK-'+Date.now()+'-'+r.id.slice(-6)};return gsPost({action:'ruling',ruling:ruling})})});chain.then(function(){S.checked={};load()})}
 function applyColumnWidths(){$('grid').querySelectorAll('thead th').forEach(function(th){var c=th.getAttribute('data-c');if(c&&S.colWidths[c])th.style.width=S.colWidths[c]+'px'});$('grid').querySelectorAll('tbody tr').forEach(function(tr){visibleCols().forEach(function(c,i){if(S.colWidths[c]&&tr.children[i])tr.children[i].style.width=S.colWidths[c]+'px'})})}
 function enableColumnResize(){$('grid').querySelectorAll('thead th').forEach(function(th){var c=th.getAttribute('data-c');if(!c||th.querySelector('.resize-handle'))return;var h=document.createElement('span');h.className='resize-handle';th.appendChild(h);h.onmousedown=function(e){e.preventDefault();e.stopPropagation();var x=e.clientX,w=th.getBoundingClientRect().width;function mv(ev){S.colWidths[c]=Math.max(60,w+(ev.clientX-x));applyColumnWidths();fixSticky()}function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);LS.set('colWidths',S.colWidths)}document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)}})}
-function renderDashboard(){var m=S.master;if(!m)return;var applied=m.byBucket.APPLIED||0,ready=m.byBucket.READY_TO_PURSUE||0,intake=(m.byBucket.SCOUT_INTAKE||0)+(m.byBucket.DISCOVERY_LEAD||0),manual=(m.byBucket.MANUAL_RESEARCH||0)+(m.byBucket.BLOCKED||0)+(m.byBucket.TIM_DECISION_REQUIRED||0),total=m.rows.length;function card(t,v,sub,span){return '<div class="dash-card '+(span||'k')+'"><h4>'+t+'</h4><b>'+v+'</b><div class="tip">'+sub+'</div></div>'}var h=card('Master',total,'canonical rows')+card('Applied',applied,'protected applicant state')+card('Ready',ready,'pursuit candidates')+card('New intake',intake,'Scout intake + leads')+card('Needs work',manual,'manual / blocked / Tim');var states=[['Applied',applied],['Ready',ready],['Intake',intake],['Declined',m.byBucket.DECLINED_BY_TIM||0],['Closed',m.byBucket.CLOSED_DEAD||0]];h+='<div class="dash-card w"><h4>Pipeline state</h4>'+states.map(function(x){var pct=total?Math.round(x[1]/total*100):0;return '<div class="tip">'+x[0]+' · '+x[1]+'<div class="barline"><i style="width:'+pct+'%"></i></div></div>'}).join('')+'</div>';h+='<div class="dash-card w"><h4>System status</h4><div class="kv"><div>Writer</div><div>'+(hasWriter()?'<span class="good">ONLINE</span>':'<span class="bad">NOT CONFIGURED</span>')+'</div><div>Master</div><div>'+esc((S.meta.modifiedTime||'').replace('T',' ').slice(0,19))+'</div><div>Approved resume</div><div>'+esc(S.docs&&S.docs.config&&S.docs.config.latest_approved_resume_name||'Not selected')+'</div><div>Pinned jobs</div><div>'+Object.keys(S.pins).filter(function(k){return S.pins[k]}).length+'</div></div></div>';$('dash').innerHTML=h}
+function renderDashboard(){
+  var m=S.master;if(!m)return;
+  var applied=m.byBucket.APPLIED||0,ready=m.byBucket.READY_TO_PURSUE||0,intake=(m.byBucket.SCOUT_INTAKE||0)+(m.byBucket.DISCOVERY_LEAD||0),manual=(m.byBucket.MANUAL_RESEARCH||0)+(m.byBucket.BLOCKED||0)+(m.byBucket.TIM_DECISION_REQUIRED||0),total=m.rows.length;
+  function card(t,v,sub,span){return '<div class="dash-card '+(span||'k')+'"><h4>'+t+'</h4><b>'+v+'</b><div class="tip">'+sub+'</div></div>'}
+  var h=card('Master',total,'canonical rows')+card('Applied',applied,'protected applicant state')+card('Ready',ready,'pursuit candidates')+card('New intake',intake,'Scout intake + leads');
+  h+='<div class="dash-card" id="job-map-card"><div class="map-head"><div class="map-title"><h4>Job Location Map</h4><div class="tip" id="map-sub">Select a job to view location</div></div><div class="map-mode"><button data-mapmode="selected" class="'+(S.mapMode==='selected'?'on':'')+'">Selected</button><button data-mapmode="visible" class="'+(S.mapMode==='visible'?'on':'')+'">Visible</button></div></div><div class="job-map" id="job-map"><div class="map-empty">Select a job to view location</div></div><div class="map-legend"><span><i class="map-dot"></i>Primary</span><span><i class="map-dot secondary"></i>Additional</span><span><i class="map-dot home"></i>Home</span></div><div class="map-loc-status" id="map-loc-status"></div></div>';
+  var states=[['Applied',applied],['Ready',ready],['Intake',intake],['Needs work',manual],['Declined',m.byBucket.DECLINED_BY_TIM||0],['Closed',m.byBucket.CLOSED_DEAD||0]];
+  h+='<div class="dash-card w"><h4>Pipeline state</h4>'+states.map(function(x){var pct=total?Math.round(x[1]/total*100):0;return '<div class="tip">'+x[0]+' · '+x[1]+'<div class="barline"><i style="width:'+pct+'%"></i></div></div>'}).join('')+'</div>';
+  h+='<div class="dash-card w"><h4>System status</h4><div class="kv"><div>Writer</div><div>'+(hasWriter()?'<span class="good">ONLINE</span>':'<span class="bad">NOT CONFIGURED</span>')+'</div><div>Master</div><div>'+esc((S.meta.modifiedTime||'').replace('T',' ').slice(0,19))+'</div><div>Approved resume</div><div>'+esc(S.docs&&S.docs.config&&S.docs.config.latest_approved_resume_name||'Not selected')+'</div><div>Pinned jobs</div><div>'+Object.keys(S.pins).filter(function(k){return S.pins[k]}).length+'</div></div></div>';
+  $('dash').innerHTML=h;
+  $('dash').querySelectorAll('[data-mapmode]').forEach(function(b){b.onclick=function(){S.mapMode=b.getAttribute('data-mapmode');LS.set('mapMode',S.mapMode);renderDashboard()}});
+  renderJobMap();
+}
+var US_STATE_NAMES={AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',DC:'District of Columbia'};
+var US_STATE_CENTERS={AL:[32.8,-86.8],AK:[64.2,-152],AZ:[34.3,-111.7],AR:[34.9,-92.4],CA:[36.8,-119.4],CO:[39,-105.5],CT:[41.6,-72.7],DE:[39,-75.5],FL:[27.8,-81.7],GA:[32.7,-83.3],HI:[20.8,-156.3],ID:[44.1,-114.7],IL:[40,-89.2],IN:[40,-86.1],IA:[42,-93.5],KS:[38.5,-98],KY:[37.8,-85.8],LA:[31,-92],ME:[45.3,-69],MD:[39,-76.7],MA:[42.3,-71.8],MI:[44.3,-85.6],MN:[46.3,-94.2],MS:[32.7,-89.7],MO:[38.5,-92.5],MT:[46.9,-110.4],NE:[41.5,-99.8],NV:[39.3,-116.6],NH:[43.7,-71.6],NJ:[40.1,-74.7],NM:[34.5,-106],NY:[42.9,-75.5],NC:[35.5,-79.4],ND:[47.4,-100.5],OH:[40.4,-82.8],OK:[35.6,-97.5],OR:[44,-120.5],PA:[40.9,-77.8],RI:[41.7,-71.5],SC:[33.8,-80.9],SD:[44.4,-100.2],TN:[35.8,-86.4],TX:[31.5,-99.3],UT:[39.3,-111.7],VT:[44,-72.7],VA:[37.5,-78.7],WA:[47.4,-120.7],WV:[38.6,-80.6],WI:[44.6,-89.6],WY:[43,-107.6],DC:[38.9,-77]};
+var GEO_CITY_OVERRIDES={
+  'cleveland, tn':[35.1595,-84.8766],'chattanooga, tn':[35.0456,-85.3097],'austin, tx':[30.2672,-97.7431],'dallas, tx':[32.7767,-96.797],
+  'fort worth, tx':[32.7555,-97.3308],'huntsville, al':[34.7304,-86.5861],'oak ridge, tn':[36.0104,-84.2696],'nashville, tn':[36.1627,-86.7816],
+  'knoxville, tn':[35.9606,-83.9207],'lansing, mi':[42.7325,-84.5555],'spring hill, tn':[35.7512,-86.93],'bastrop, tx':[30.1105,-97.3153],
+  'phoenix, az':[33.4484,-112.074],'jacksonville, fl':[30.3322,-81.6557],'waltham, ma':[42.3765,-71.2356],'long beach, ca':[33.7701,-118.1937],
+  'chicago, il':[41.8781,-87.6298],'pittsburgh, pa':[40.4406,-79.9959],'denver, co':[39.7392,-104.9903],'charlotte, nc':[35.2271,-80.8431],
+  'atlanta, ga':[33.749,-84.388],'louisville, ky':[38.2527,-85.7585],'tampa, fl':[27.9506,-82.4572],'orlando, fl':[28.5383,-81.3792],
+  'cleveland, oh':[41.4993,-81.6944],'columbus, oh':[39.9612,-82.9988],'detroit, mi':[42.3314,-83.0458],'new york, ny':[40.7128,-74.006],
+  'boston, ma':[42.3601,-71.0589],'seattle, wa':[47.6062,-122.3321],'portland, or':[45.5152,-122.6784],'san francisco, ca':[37.7749,-122.4194],
+  'los angeles, ca':[34.0522,-118.2437],'san diego, ca':[32.7157,-117.1611],'salt lake city, ut':[40.7608,-111.891],'minneapolis, mn':[44.9778,-93.265]
+};
+function stateCodeFromText_(txt){
+  txt=String(txt||'').trim();
+  var m=txt.match(/(?:,|\s)\s*([A-Z]{2})(?:\b|$)/);if(m&&US_STATE_NAMES[m[1]])return m[1];
+  var low=txt.toLowerCase(),keys=Object.keys(US_STATE_NAMES);for(var i=0;i<keys.length;i++)if(low.indexOf(US_STATE_NAMES[keys[i]].toLowerCase())>=0)return keys[i];
+  return '';
+}
+function cleanLocation_(x){
+  return String(x||'').replace(/\b(USA|United States|United States of America)\b/ig,'').replace(/\(.*?\)/g,'').replace(/^[-–—\s]+|[-–—\s]+$/g,'').replace(/\s+,/g,',').replace(/\s{2,}/g,' ').trim();
+}
+function splitLocations_(txt){
+  txt=String(txt||'').trim();if(!txt)return[];
+  return txt.split(/\s*(?:;|\||\/|\bor\b)\s*/i).map(cleanLocation_).filter(function(x){return x&&!/^remote\b/i.test(x)&&!/^hybrid\b/i.test(x)&&!/^(multiple|various) locations?$/i.test(x)});
+}
+function remoteRow_(r){
+  var t=[r.LOCATION,r.payload.REMOTE_STATUS,r.payload.WORK_ARRANGEMENT,r.payload.REMOTE,r.payload.WORK_MODE].join(' ');
+  return /\bremote\b/i.test(t);
+}
+function mapLocationsForRow_(r){
+  if(!r)return[];
+  var remote=remoteRow_(r),out=[],seen={};
+  function add(text,type){
+    splitLocations_(text).forEach(function(x){var k=x.toLowerCase();if(!seen[k]){seen[k]=1;out.push({label:x,type:type})}});
+  }
+  if(remote)out.push({label:'Cleveland, TN',type:'home',home:true,lat:35.1595,lon:-84.8766});
+  else add(r.LOCATION||r.payload.LOCATION||'','primary');
+  if(!remote&&out.length>1)for(var i=1;i<out.length;i++)out[i].type='secondary';
+  ['ALT_LOCATIONS','ALTERNATE_LOCATIONS','ADDITIONAL_LOCATIONS','WORK_LOCATIONS','OTHER_LOCATIONS','TRAVEL_LOCATIONS','TRAVEL_SITES','TRAVEL'].forEach(function(k){if(r.payload[k])add(r.payload[k],'secondary')});
+  if(!out.length&&!remote)add(r.LOCATION||r.payload.LOCATION||'','primary');
+  return out.slice(0,12);
+}
+function stateFallback_(label){
+  var sc=stateCodeFromText_(label),c=sc&&US_STATE_CENTERS[sc];return c?{lat:c[0],lon:c[1],approx:true,source:'state centroid'}:null;
+}
+function geocodePlace_(loc){
+  if(loc.lat!=null&&loc.lon!=null)return Promise.resolve(loc);
+  var key=String(loc.label||'').toLowerCase().trim(),cache=LS.get('geoCache',{}),cached=cache[key];
+  if(cached)return Promise.resolve(Object.assign({},loc,cached));
+  if(GEO_CITY_OVERRIDES[key]){var o=GEO_CITY_OVERRIDES[key],hit={lat:o[0],lon:o[1],approx:false,source:'local city cache'};cache[key]=hit;LS.set('geoCache',cache);return Promise.resolve(Object.assign({},loc,hit))}
+  var sc=stateCodeFromText_(loc.label),city=String(loc.label||'').split(',')[0].trim();
+  if(!city||city.length<2){var fb=stateFallback_(loc.label);return Promise.resolve(Object.assign({},loc,fb||{}))}
+  var url='https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=10&language=en&format=json&countryCode=US';
+  return fetch(url,{cache:'force-cache'}).then(function(r){if(!r.ok)throw new Error('geocode '+r.status);return r.json()}).then(function(j){
+    var rs=(j&&j.results)||[],want=sc?US_STATE_NAMES[sc]:'',hit=null;
+    for(var i=0;i<rs.length;i++){if(!want||String(rs[i].admin1||'').toLowerCase()===want.toLowerCase()){hit=rs[i];break}}
+    if(!hit)hit=rs[0];
+    if(!hit)throw new Error('no geocode');
+    var val={lat:+hit.latitude,lon:+hit.longitude,approx:false,source:'city geocode'};cache[key]=val;LS.set('geoCache',cache);return Object.assign({},loc,val);
+  }).catch(function(){var fb=stateFallback_(loc.label);return Object.assign({},loc,fb||{})});
+}
+function projectUS_(lat,lon,state){
+  if(state==='AK')return{x:90,y:440};if(state==='HI')return{x:205,y:465};
+  var x=40+((lon+125)/59)*880,y=35+((50-lat)/26)*405;return{x:Math.max(35,Math.min(925,x)),y:Math.max(30,Math.min(470,y))};
+}
+function usOutlinePath_(){
+  var pts=[[-124.7,48.4],[-123.2,46],[-124,43],[-124.2,40],[-122.5,37.5],[-118.5,34],[-117.1,32.5],[-114.7,32.7],[-111,31.3],[-108,31.3],[-106.5,31.8],[-104,29.8],[-101,29],[-97.5,25.8],[-94,29],[-90,29],[-88,30.4],[-85,29.8],[-82.3,26],[-80,25.2],[-80.2,28.5],[-81,31],[-80.5,32.5],[-79,33.8],[-77,35],[-75.5,36.5],[-75.3,38.5],[-74.2,40.5],[-71,41.4],[-70,43],[-69,45],[-72,45],[-75,45],[-79,43.5],[-82,42.5],[-83,46],[-88,47.5],[-95,49],[-105,49],[-115,49],[-124.7,48.4]];
+  return pts.map(function(p,i){var q=projectUS_(p[1],p[0],'');return(i?'L':'M')+q.x.toFixed(1)+' '+q.y.toFixed(1)}).join(' ')+' Z';
+}
+function mapBaseSvg_(pins){
+  var grid='';for(var x=80;x<960;x+=80)grid+='<line class="map-grid" x1="'+x+'" y1="25" x2="'+x+'" y2="485"/>';for(var y=60;y<500;y+=60)grid+='<line class="map-grid" x1="20" y1="'+y+'" x2="940" y2="'+y+'"/>';
+  var path=usOutlinePath_();
+  return '<svg viewBox="0 0 960 510" role="img" aria-label="United States job location map"><defs><pattern id="usDots" width="9" height="9" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.25" fill="#696969"/></pattern><filter id="pinGlow" x="-200%" y="-200%" width="400%" height="400%"><feGaussianBlur stdDeviation="6"/></filter><filter id="mapGlow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5"/></filter></defs>'+grid+'<path class="map-coast-glow" d="'+path+'"/><path class="map-outline" d="'+path+'"/><rect x="55" y="410" width="75" height="58" rx="8" fill="none" stroke="#333"/><text x="65" y="428" fill="#555" font-size="10">AK</text><rect x="160" y="438" width="86" height="42" rx="8" fill="none" stroke="#333"/><text x="170" y="455" fill="#555" font-size="10">HI</text>'+pins+'</svg>';
+}
+function pinSvg_(p,index){
+  var sc=stateCodeFromText_(p.label),q=projectUS_(+p.lat,+p.lon,sc),type=p.type||'secondary',pulse=(type==='home'||(type==='primary'&&index===0))?' pulse':'',approx=p.approx?' approx':'';
+  var label=esc(p.label||'Unknown'),sub=type==='home'?'Home base · Remote':(type==='primary'?'Primary site':'Additional / travel site')+(p.approx?' · approximate':'');
+  var bx=Math.max(6,Math.min(794,q.x+12)),by=Math.max(8,q.y-45);
+  return '<g class="map-pin '+type+pulse+approx+'"><title>'+label+' — '+esc(sub)+'</title><circle class="halo" cx="'+q.x+'" cy="'+q.y+'" r="11"/><circle class="core" cx="'+q.x+'" cy="'+q.y+'" r="'+(type==='home'?5.5:type==='primary'?5:4)+'"/><rect class="map-tip-bg" x="'+bx+'" y="'+by+'" width="158" height="34" rx="5"/><text class="map-tip-text" x="'+(bx+7)+'" y="'+(by+13)+'">'+label.slice(0,25)+'</text><text class="map-tip-text map-tip-sub" x="'+(bx+7)+'" y="'+(by+26)+'">'+esc(sub).slice(0,31)+'</text></g>';
+}
+function visibleMapLocations_(){
+  var out=[],seen={};filteredRows().slice(0,80).forEach(function(r){mapLocationsForRow_(r).forEach(function(x){var k=(x.label+'|'+x.type).toLowerCase();if(!seen[k]){seen[k]=1;out.push(x)}})});return out.slice(0,25);
+}
+function renderJobMap(){
+  var box=$('job-map'),sub=$('map-sub'),stat=$('map-loc-status');if(!box)return;
+  var r=S.focus?rowById(S.focus):null,locs=S.mapMode==='visible'?visibleMapLocations_():mapLocationsForRow_(r);
+  if(S.mapMode==='selected'&&!r){box.innerHTML='<div class="map-empty">Select a job to view location</div>';sub.textContent='Selected role geography';stat.textContent='';return}
+  if(!locs.length){box.innerHTML='<div class="map-empty">Location not yet verified</div>';sub.textContent=r?(r.COMPANY+' · '+r.TITLE):'Visible jobs';stat.textContent='NO LOCATION';return}
+  sub.textContent=S.mapMode==='visible'?(filteredRows().length+' visible rows'):(r.COMPANY+' · '+r.TITLE);
+  box.innerHTML='<div class="map-empty">Locating '+locs.length+' point'+(locs.length===1?'':'s')+'…</div>';stat.textContent='';
+  var focusId=S.focus,mode=S.mapMode;
+  Promise.all(locs.map(geocodePlace_)).then(function(found){
+    if(!$('job-map')||S.mapMode!==mode||(mode==='selected'&&S.focus!==focusId))return;
+    found=found.filter(function(x){return isFinite(x.lat)&&isFinite(x.lon)});
+    if(!found.length){$('job-map').innerHTML='<div class="map-empty">Location not yet verified</div>';$('map-loc-status').textContent='GEOCODE NEEDED';return}
+    var approx=found.filter(function(x){return x.approx}).length;
+    $('job-map').innerHTML=mapBaseSvg_(found.map(pinSvg_).join(''));
+    $('map-loc-status').textContent=approx?(approx+' APPROX'):(found.length+' PIN'+(found.length===1?'':'S'));
+  });
+}
 function renderDocuments(){var v=$('view-documents');if(!hasWriter()){v.innerHTML='<div class="panel"><h3>Job Documents</h3><div class="tip">Configure the writer to load the Drive-backed document library.</div></div>';return}if(!S.docs){v.innerHTML='<div class="panel">Loading documents…</div>';gsGet('documents').then(function(j){if(j.ok){S.docs=j;renderDocuments()}});return}var cfg=S.docs.config||{},q='';function box(title,arr,type){return '<div class="docbox"><h3>'+title+' · '+arr.length+'</h3><input class="doc-search" data-type="'+type+'" placeholder="filter…" style="width:100%;margin-bottom:6px">'+arr.map(function(f){var ap=cfg.latest_approved_resume_file_id===f.id;return '<div class="docitem" data-doc="'+esc(f.name.toLowerCase())+'"><div class="nm"><a href="'+esc(f.url)+'" target="_blank">'+esc(f.name)+'</a><div class="tip">'+esc((f.modifiedTime||'').slice(0,10))+' · '+esc(f.mimeType||'')+'</div></div>'+(ap?'<span class="approved">APPROVED</span>':'')+(type==='resume'&&!ap?'<button data-approve="'+esc(f.id)+'">Approve</button>':'')+'</div>'}).join('')+'</div>'}v.innerHTML='<div class="docgrid">'+box('Resumes',S.docs.resumes||[],'resume')+box('Cover Letters',S.docs.coverLetters||[],'cover')+box('Supporting Documents',S.docs.supporting||[],'support')+box("Tim's Voice",S.docs.timVoice||[],'voice')+'</div>';v.querySelectorAll('[data-approve]').forEach(function(b){b.onclick=function(){gsPost({action:'approve_resume',selection:{fileId:b.getAttribute('data-approve')}}).then(function(j){if(j.ok)gsGet('documents').then(function(d){S.docs=d;renderDocuments();renderDashboard()})})}});v.querySelectorAll('.doc-search').forEach(function(inp){inp.oninput=function(){var q=inp.value.toLowerCase();inp.parentNode.querySelectorAll('.docitem').forEach(function(it){it.style.display=it.getAttribute('data-doc').indexOf(q)>=0?'flex':'none'})}})}
 function renderRules(){var v=$('view-rules');if(!hasWriter()){v.innerHTML='<div class="panel"><h3>Canonical Tim Rules</h3><div class="tip">Writer must be configured to edit canonical rules.</div></div>';return}if(!S.canonicalRules){v.innerHTML='<div class="panel">Loading canonical rules…</div>';gsGet('canonical_rules').then(function(j){S.canonicalRules=j;renderRules()});return}v.innerHTML='<div class="panel active"><h3>Canonical Tim Rules · Save makes this live</h3><div class="tip">Latest successfully saved Tim rules override conflicting older prompts/directives. AI may propose changes; only Tim Save activates them.</div><textarea id="rules-edit" class="cfg" style="height:62vh;margin-top:8px">'+esc(S.canonicalRules.text||'')+'</textarea><div class="row"><button id="rules-save" class="neon">Save canonical rules</button><button id="rules-reload">Discard / reload</button><span id="rules-status" class="tip"></span></div></div>';$('rules-save').onclick=function(){$('rules-status').textContent='Saving…';gsPost({action:'save_rules',rules:{text:$('rules-edit').value,actor:'TIM'}}).then(function(j){if(j.ok){$('rules-status').textContent='Saved and verified.';gsGet('canonical_rules').then(function(r){S.canonicalRules=r})}else $('rules-status').textContent=j.error||'Save failed'})};$('rules-reload').onclick=function(){gsGet('canonical_rules').then(function(j){S.canonicalRules=j;renderRules()})}}
 /* ---------- reports ---------- */
