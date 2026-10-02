@@ -89,3 +89,23 @@ Do not replace your live `PASSPHRASE` with the repository's `CHANGE-ME` placehol
 Do not wire this recovery function to a recurring trigger.
 
 The architectural follow-up should be a generic server-side authenticated queue consumer, but that is separate from this one-time recovery.
+
+## Deployment-path assessment — 2026-10-02 (Claude Code, cloud session)
+
+Checked, in order, whether an authenticated automated Apps Script path existed from the cloud session:
+
+1. Local checkout of `main`: present and byte-identical to PR #7 (`Amd59RecoveryWorker.gs` SHA `6267eae`).
+2. `clasp`: not installed; no `~/.clasprc.json`; `gcloud` has no credentialed account.
+3. `.clasp.json` / script ID / deployment linkage in the repo: none. The live project is identifiable by title only via Drive metadata: **Pipeline Explorer Writer** (script ID `1vsVq0tFs_EvKSxahpCR8TNCaXkkZ-iObA9b_wd7GJGkcmNcgNc_1gLGr`, modified 2026-10-01 01:02 UTC). The older "Untitled project" (2026-08-10) is not the writer.
+4. Drive connector (runs as Tim): read-only for existing content plus create-new-file. It cannot add a file to an Apps Script project and cannot run a function.
+5. Establishing `clasp` would need Tim to enable the Apps Script API in his user settings and to paste an OAuth code/redirect URL into chat (a secret in chat, not allowed), and `clasp run` additionally needs a standard GCP project plus an **API Executable** deployment (a new deployment, not allowed for this recovery).
+
+Result: **no automated path; the worker was not pushed and `recoverAmd59StrandedIntake20261001` was not run (RUN_COUNT=0).**
+
+Independent pre-execution validation performed against the real Drive request (`1CvCnuEiZAg2tR1A-9R29DK8jyc8L8rUb`, 51,294 bytes, SHA-256 `6c56cecf…45ca2`) using the parser functions from the merged worker under Node:
+E1=15, E2=16, E3=7, total=38, unique=38, missing COMPANY/TITLE=0; never-consider candidates E1-13, E1-14, E1-15, E3-06, E3-07; U-01..U-04 and H-01 sections present and untouched by the parser.
+
+Master baseline before any recovery (`19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`, modified 2026-10-01T05:29:21.969Z):
+`COUNTS: TOTAL=569 … SCOUT_INTAKE=0 DISCOVERY_LEAD=2`, `END V2_CURRENT_POPULATION_MASTER (569 rows)`, 569 data rows, 0 duplicate PRIMARY_IDs, 0 rows carrying the E1/E2 run IDs or `RECOVERY-AMD59-20261001-E3`. No `MASTER_CHANGE_APPLIED_` or `MASTER_WRITER_FAILURE_` AMD59 receipt exists in AI_Coordination.
+
+The only remaining execution path is the manual "How to run" above, performed by Tim inside the existing project.
