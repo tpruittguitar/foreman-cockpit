@@ -282,7 +282,7 @@ function render(){
   $('filters').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){delete S.filters[el.getAttribute('data-c')];pushHash();render()}});
   if($('clearf'))$('clearf').onclick=function(){S.filters={};pushHash();render()};
   var rows=filteredRows();
-  $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
+  $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
   var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
   var tb='';rows.forEach(function(r){
@@ -292,12 +292,16 @@ function render(){
       else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.s==='CANONICAL'?'rule':'pend')+'">'+(st.s==='CANONICAL'?'◈':'◇')+'</span>'+esc(v):''}
       else if(c==='COMPANY')v=(r.parseError?'<span class="g err" title="'+esc(r.parseError)+'">!</span>':'')+esc(v);
       else if(c==='BUCKET'){extra=' b-'+esc(r.BUCKET);v=esc(v)+(r.mismatch?' <span class="faint" title="heading says '+esc(r.section)+'">§</span>':'')}
-      else if(c==='COMP_MID'&&r.compMid!=null)v='
+      else if(c==='COMP_MID'&&r.compMid!=null)v='$'+Math.round(r.compMid/1000)+'k';
+      else v=esc(v);
+      if(c==='SALARY_BASE_EST'||c==='COMP_MID'){var cf=r.payload.SALARY_CONF||((r.payload.SALARY_BASE_EST||'').indexOf('EST')>=0?'ESTIMATED':(v?'VERIFIED':'UNKNOWN'));v+='<span class="conf '+esc(cf)+'">'+esc(cf)+'</span>'}
+      if(c==='IDENTITY_CONFIDENCE'){var ic=(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN').toUpperCase();v+='<span class="conf '+esc(ic)+'">'+esc(ic)+'</span>'}
+      if(c==='FLEX'){var fc=r.payload.FLEX_CONF||(!v?'UNKNOWN':(r.payload.FLEX_BASIS&&/estimate/i.test(r.payload.FLEX_BASIS)?'ESTIMATED':'VERIFIED'));v+='<span class="conf '+esc(fc)+'">'+esc(fc)+'</span>'}
       var mono=/^(INV|PRIMARY_ID|REQ|DATE_|SALARY_|COMP_|APP_DATE|FLEX_ASOF|CELLS)/.test(c)?' mono':'';
       return '<td class="'+(i<2?'sticky':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>'});
   $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
   fixSticky();
-  $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){openPop(th.getAttribute('data-c'),th)}});
+  $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
   $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();return}openRow(tr.getAttribute('data-id'))}});
   applyColumnWidths();enableColumnResize();
   if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();
