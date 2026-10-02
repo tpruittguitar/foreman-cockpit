@@ -35,7 +35,7 @@ const mapRect=await page.locator('#job-map').boundingBox();await page.mouse.move
 await page.locator('[data-mapaction="reset"]').click();await page.waitForTimeout(750);assert.equal(await page.locator('#map-zoom-level').innerText(),'100%');assert.equal(await page.locator('#job-map').getAttribute('data-center-x'),'480.000');
 const initialPins=await page.locator('.map-target').evaluateAll(es=>es.map(e=>e.getAttribute('aria-label')).sort());
 await page.locator('#gridwrap').evaluate(e=>e.scrollTop=e.scrollHeight);await page.waitForTimeout(300);
-const scrolledPins=await page.locator('.map-target').evaluateAll(es=>es.map(e=>e.getAttribute('aria-label')).sort());assert.notDeepEqual(scrolledPins,initialPins,'Visible pins must update as the table scrolls');
+const scrolledPins=await page.locator('.map-target').evaluateAll(es=>es.map(e=>e.getAttribute('aria-label')).sort());assert.deepEqual(scrolledPins,initialPins,'Current View pins must include the full filtered table, not only the viewport');assert.match(await page.locator('#map-sub').innerText(),/20 rows in current view/);
 await page.locator('#gridwrap').evaluate(e=>e.scrollTop=0);await page.waitForTimeout(300);assert.deepEqual(await page.locator('.map-target').evaluateAll(es=>es.map(e=>e.getAttribute('aria-label')).sort()),initialPins);
 await page.locator('[data-mapmode="selected"]').click();await page.screenshot({path:artifacts+'/map-zoom-desktop.png'});
 // Group map filters use all matching master rows, independently of the table preset.

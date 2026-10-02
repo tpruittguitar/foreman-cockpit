@@ -203,7 +203,7 @@ tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-targ
 </header>
 <div class="bar" id="presets"></div>
 <div class="bar" id="filters" style="display:none"></div>
-<div class="bar" id="mapfilters" aria-label="Map point filters"><span>MAP POINTS</span><button data-mapfilter="selected">Selected</button><button data-mapfilter="visible">Visible</button><button data-mapfilter="applied">All Applied</button><button data-mapfilter="active">Active Work</button><button data-mapfilter="scout">Scout Intake</button><button data-mapfilter="ready">Ready</button></div>
+<div class="bar" id="mapfilters" aria-label="Map point filters"><span>MAP POINTS</span><button data-mapfilter="selected">Selected</button><button data-mapfilter="visible">Current View</button><button data-mapfilter="applied">All Applied</button><button data-mapfilter="active">Active Work</button><button data-mapfilter="scout">Scout Intake</button><button data-mapfilter="ready">Ready</button></div>
 <main>
   <div class="view" id="view-today"></div>
   <div class="view on" id="view-pipeline">
@@ -575,7 +575,7 @@ function renderDashboard(){
   var applied=m.byBucket.APPLIED||0,ready=m.byBucket.READY_TO_PURSUE||0,intake=(m.byBucket.SCOUT_INTAKE||0)+(m.byBucket.DISCOVERY_LEAD||0),manual=(m.byBucket.MANUAL_RESEARCH||0)+(m.byBucket.BLOCKED||0)+(m.byBucket.TIM_DECISION_REQUIRED||0),total=m.rows.length;
   function card(t,v,sub,span){return '<div class="dash-card '+(span||'k')+'"><h4>'+t+'</h4><b>'+v+'</b><div class="tip">'+sub+'</div></div>'}
   var h=card('Master',total,'canonical rows')+card('Applied',applied,'protected applicant state')+card('Ready',ready,'pursuit candidates')+card('Awaiting AI',intake,'Scout intake + discovery leads');
-  h+='<div class="dash-card" id="job-map-card"><div class="map-head"><div class="map-title"><h4>Job Location Map</h4><div class="tip" id="map-sub">Select a job to view location</div></div><div class="map-mode"><button data-mapmode="selected" class="'+(S.mapMode==='selected'?'on':'')+'">Selected</button><button data-mapmode="visible" class="'+(S.mapMode==='visible'?'on':'')+'">Visible</button></div></div><div class="job-map" id="job-map"><div class="map-empty">Select a job to view location</div></div><div class="map-legend"><span><i class="map-dot"></i>Primary</span><span><i class="map-dot secondary"></i>Additional</span><span><i class="map-dot home"></i>Home</span></div><div class="map-loc-status" id="map-loc-status"></div><div class="map-actions"><button data-mapaction="recenter" title="Center the selected job at the current zoom">Recenter</button><button data-mapaction="reset" title="Show the full map at 100%">Reset</button></div><div class="map-zoom" aria-label="Map zoom controls"><button data-mapzoom="out" aria-label="Zoom map out">−</button><button id="map-zoom-level" data-mapzoom="reset" title="Reset map to 100%">100%</button><button data-mapzoom="in" aria-label="Zoom map in">+</button></div></div>';
+  h+='<div class="dash-card" id="job-map-card"><div class="map-head"><div class="map-title"><h4>Job Location Map</h4><div class="tip" id="map-sub">Select a job to view location</div></div><div class="map-mode"><button data-mapmode="selected" class="'+(S.mapMode==='selected'?'on':'')+'">Selected</button><button data-mapmode="visible" class="'+(S.mapMode==='visible'?'on':'')+'">Current View</button></div></div><div class="job-map" id="job-map"><div class="map-empty">Select a job to view location</div></div><div class="map-legend"><span><i class="map-dot"></i>Primary</span><span><i class="map-dot secondary"></i>Additional</span><span><i class="map-dot home"></i>Home</span></div><div class="map-loc-status" id="map-loc-status"></div><div class="map-actions"><button data-mapaction="recenter" title="Center the selected job at the current zoom">Recenter</button><button data-mapaction="reset" title="Show the full map at 100%">Reset</button></div><div class="map-zoom" aria-label="Map zoom controls"><button data-mapzoom="out" aria-label="Zoom map out">−</button><button id="map-zoom-level" data-mapzoom="reset" title="Reset map to 100%">100%</button><button data-mapzoom="in" aria-label="Zoom map in">+</button></div></div>';
   var compact=phoneLayout()||window.innerHeight<=620;
   h+='<div class="dash-card w attention-card"><h4 title="Active roles only. Gaps overlap: a role can lack several measurements. These are research gaps, not a fit score. Click a bar to inspect those roles.">Research bottlenecks · overlapping gaps</h4>'+attentionChart_(compact)+'</div>';
   h+='<div class="dash-card w"><h4>Next actions</h4>'+PipelineCharts.bars('Next actions',workloadData().filter(function(x){return !compact||x.value>0}).slice(0,compact?3:6),{compact:compact})+'</div>';
@@ -709,9 +709,11 @@ function bindMapWheel_(){
 }
 var visibleMapTimer=0;
 function tableViewportRows_(){var wrap=$('gridwrap'),bounds=wrap.getBoundingClientRect(),head=$('grid').querySelector('thead').getBoundingClientRect(),top=Math.max(bounds.top,head.bottom);return Array.from($('grid').querySelectorAll('tbody tr[data-id]')).filter(function(tr){var b=tr.getBoundingClientRect();return b.bottom>top&&b.top<bounds.bottom}).map(function(tr){return rowById(tr.dataset.id)}).filter(Boolean)}
-function scheduleVisibleMap_(){clearTimeout(visibleMapTimer);if(S.mapMode==='visible')visibleMapTimer=setTimeout(renderJobMap,80)}
+// Current View follows the full filtered table result. Scrolling the table no
+// longer changes the map point set, so the map remains stable while triaging.
+function scheduleVisibleMap_(){clearTimeout(visibleMapTimer)}
 $('gridwrap').addEventListener('scroll',scheduleVisibleMap_,{passive:true});
-function mapRows_(){if(S.mapMode==='visible')return tableViewportRows_();return S.rows.filter(function(r){if(S.mapMode==='applied')return r.BUCKET==='APPLIED';if(S.mapMode==='ready')return r.BUCKET==='READY_TO_PURSUE';if(S.mapMode==='scout')return r.BUCKET==='SCOUT_INTAKE';if(S.mapMode==='active')return ['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED'].indexOf(r.BUCKET)>=0;return false})}
+function mapRows_(){if(S.mapMode==='visible')return filteredRows();return S.rows.filter(function(r){if(S.mapMode==='applied')return r.BUCKET==='APPLIED';if(S.mapMode==='ready')return r.BUCKET==='READY_TO_PURSUE';if(S.mapMode==='scout')return r.BUCKET==='SCOUT_INTAKE';if(S.mapMode==='active')return ['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED'].indexOf(r.BUCKET)>=0;return false})}
 function visibleMapLocations_(){
   var out=[],seen={};mapRows_().forEach(function(r){mapLocationsForRow_(r).forEach(function(x){var k=x.label.toLowerCase();if(seen[k]){if(seen[k].rowIds.indexOf(r.id)<0)seen[k].rowIds.push(r.id)}else{seen[k]=x;out.push(x)}})});return out;
 }
@@ -721,7 +723,7 @@ function renderJobMap(){
   var r=S.focus?rowById(S.focus):null,locs=S.mapMode==='selected'?mapLocationsForRow_(r):visibleMapLocations_();
   if(S.mapMode==='selected'&&!r){mapView.found=[];mapView.active=null;box.innerHTML=mapBaseSvg_('');applyMapView_();sub.textContent='Select a job to place its location';stat.textContent='';return}
   if(!locs.length){mapView.found=[];mapView.active=null;box.innerHTML='<div class="map-empty">'+(S.mapMode==='selected'?'Location not yet verified':'No mapped jobs in this group')+'</div>';sub.textContent=S.mapMode==='selected'&&r?(r.COMPANY+' · '+r.TITLE):mapRows_().length+' jobs';stat.textContent='NO LOCATION';return}
-  sub.textContent=S.mapMode==='selected'?(r.COMPANY+' · '+r.TITLE):mapRows_().length+(S.mapMode==='visible'?' rows on screen':' jobs · '+({applied:'Applied',active:'Active work',scout:'Scout intake',ready:'Ready'}[S.mapMode]||''));
+  sub.textContent=S.mapMode==='selected'?(r.COMPANY+' · '+r.TITLE):mapRows_().length+(S.mapMode==='visible'?' rows in current view':' jobs · '+({applied:'Applied',active:'Active work',scout:'Scout intake',ready:'Ready'}[S.mapMode]||''));
   if(!box.querySelector('svg'))box.innerHTML=mapBaseSvg_('');stat.textContent='LOCATING…';
   var focusId=S.focus,mode=S.mapMode;
   Promise.all(locs.map(geocodePlace_)).then(function(found){
