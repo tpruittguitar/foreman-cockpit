@@ -180,7 +180,41 @@ S.runs=[];S.rules=null;
 /* ---------- data source adapters (read-only; manual refresh only; no polling) ---------- */
 function hasWriter(){return !!(S.cfg.url&&S.cfg.key)}
 function gsGet(action,extra){var u=S.cfg.url+(S.cfg.url.indexOf('?')<0?'?':'&')+'action='+encodeURIComponent(action)+'&key='+encodeURIComponent(S.cfg.key)+(extra||'');return fetch(u,{redirect:'follow',cache:'no-store'}).then(function(r){return r.json()})}
-function gsPost(body){body.key=S.cfg.key;return fetch(S.cfg.url,{method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)}).then(function(r){return r.json()})}
+function requestIdForBody_(body){
+  if(!body||body.action==='state')return'';
+  var nestedKey={ruling:'ruling',upsert_application:'event',interview_note:'note',approve_resume:'selection',save_rules:'rules',undo_ruling:'undo'}[body.action];
+  var nested=nestedKey&&body[nestedKey];
+  var rid=String(body.requestId||(nested&&nested.requestId)||'').trim();
+  if(!rid)rid='PX-'+Date.now()+'-'+Math.random().toString(36).slice(2,9).toUpperCase();
+  body.requestId=rid;
+  if(nested&&typeof nested==='object'&&!nested.requestId)nested.requestId=rid;
+  return rid;
+}
+function recoverWriteResult_(rid,attempt){
+  attempt=attempt||0;
+  return gsGet('request_result','&requestId='+encodeURIComponent(rid)).then(function(j){
+    if(j&&j.ok&&j.found)return{ok:true,recovered:true,requestId:rid,recovery:j};
+    if(attempt>=3)return{ok:false,recovered:false,requestId:rid,error:'writer result could not be verified'};
+    return new Promise(function(resolve){setTimeout(resolve,350*(attempt+1))}).then(function(){return recoverWriteResult_(rid,attempt+1)});
+  });
+}
+function gsPost(body){
+  body=JSON.parse(JSON.stringify(body||{}));
+  var rid=requestIdForBody_(body);
+  body.key=S.cfg.key;
+  return fetch(S.cfg.url,{method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)})
+    .then(function(r){return r.text()})
+    .then(function(t){
+      var j=null;try{j=JSON.parse(t)}catch(e){}
+      if(j&&j.ok)return j;
+      if(!rid)return j||{ok:false,error:'writer returned unreadable response'};
+      return recoverWriteResult_(rid,0).then(function(v){return v.ok?v:(j||v)});
+    })
+    .catch(function(err){
+      if(!rid)throw err;
+      return recoverWriteResult_(rid,0).then(function(v){if(v.ok)return v;throw err});
+    });
+}
 var Source={
   script:function(){return gsGet('master').then(function(j){if(j.ok){j.id=j.id+' via writer script'}return j})},
   netlify:function(){return fetch('/api/master',{cache:'no-store'}).then(function(r){return r.json()})},

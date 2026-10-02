@@ -47,7 +47,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','ruling','intake','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','request_result','ruling','intake','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
@@ -56,6 +56,7 @@ function doGet(e) {
     if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200)) });
     if (a === 'interview_notes') return out_(readInterviewNotes_(p.primaryId || ''));
     if (a === 'documents') return out_(readJobDocuments_());
+    if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'canonical_rules') return out_(readCanonicalRules_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
     if (a === 'automation') return out_(automationStatus_());
@@ -100,6 +101,25 @@ function dispatchWrite_(req) {
     return { ok: out.every(function (r) { return r.ok; }), results: out };
   }
   return { ok: false, error: 'unknown action ' + a + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
+}
+
+/* ================= request-result recovery ================= */
+function findRequestResult_(requestId) {
+  var rid = String(requestId || '').trim();
+  if (!rid) return { ok:false, found:false, error:'requestId required' };
+
+  var receipts = readReceipts_();
+  if (receipts && receipts.indexOf('REQUEST_ID=' + rid) >= 0) {
+    return { ok:true, found:true, requestId:rid, source:'receipts' };
+  }
+
+  var events = readEvents_('', 1000);
+  for (var i = 0; i < events.length; i++) {
+    if (String(events[i].requestId || '') === rid) {
+      return { ok:true, found:true, requestId:rid, source:'events', event:events[i] };
+    }
+  }
+  return { ok:true, found:false, requestId:rid };
 }
 
 /* ================= master read ================= */
@@ -742,7 +762,7 @@ function saveInterviewNote_(n) {
   var entry = ['---','TIMESTAMP='+ts,'ACTOR='+actor,'PRIMARY_ID='+pid,'NOTE='+text.replace(/[\r\n]+/g,' ').trim(),''].join('\n');
   var cur = f.getBlob().getDataAsString();
   f.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + entry);
-  appendEvent_({ type:'INTERVIEW_NOTE', primaryId:pid, actor:actor, ts:ts, note:text, fileId:f.getId(), fileName:f.getName() });
+  appendEvent_({ type:'INTERVIEW_NOTE', primaryId:pid, actor:actor, ts:ts, requestId:String(n.requestId||''), note:text, fileId:f.getId(), fileName:f.getName() });
   return { ok:true, primaryId:pid, ts:ts, fileId:f.getId(), fileName:f.getName(), text:text };
 }
 function readInterviewNotes_(primaryId) {
@@ -778,7 +798,7 @@ function approveResume_(sel) {
   cfg.resume_folder_id=RESUMES_FOLDER_ID; cfg.cover_letter_folder_id=COVER_LETTERS_FOLDER_ID; cfg.supporting_docs_folder_id=SUPPORTING_DOCS_FOLDER_ID; cfg.tim_voice_folder_id=TIM_VOICE_FOLDER_ID; cfg.interview_notes_folder_id=INTERVIEW_NOTES_FOLDER_ID;
   cfg.latest_approved_resume_file_id=id; cfg.latest_approved_resume_name=file.getName(); cfg.approved_at_et=ts; cfg.approved_by='TIM';
   docsConfigFile_().setContent(JSON.stringify(cfg,null,2));
-  appendEvent_({type:'APPROVED_RESUME_CHANGED',actor:'TIM',ts:ts,fileId:id,fileName:file.getName()});
+  appendEvent_({type:'APPROVED_RESUME_CHANGED',actor:'TIM',ts:ts,requestId:String(sel.requestId||''),fileId:id,fileName:file.getName()});
   return {ok:true,config:cfg};
 }
 function readCanonicalRules_() {
@@ -794,7 +814,7 @@ function saveCanonicalRules_(r) {
   body.clear(); body.setText(text); doc.saveAndClose();
   var after=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
   var ok=after===text;
-  var hist={type:'RULESET_SAVED',actor:'TIM',ts:ts,verified:ok,priorHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,before)).slice(0,16),newHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,after)).slice(0,16),note:String(r.note||'')};
+  var hist={type:'RULESET_SAVED',actor:'TIM',ts:ts,requestId:String(r.requestId||''),verified:ok,priorHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,before)).slice(0,16),newHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,after)).slice(0,16),note:String(r.note||'')};
   appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text','\n'),hist); appendEvent_(hist);
   return {ok:ok,id:CANONICAL_RULES_DOC_ID,modifiedTime:DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(),history:hist};
 }
@@ -812,7 +832,7 @@ function undoLastRuling_(u) {
     var counts=recomputeCountsLine(all), end=recomputeEndLine(all);
     for(var k=0;k<paras.length;k++){var t=paras[k].getText(); if(/^COUNTS:/.test(t)) paras[k].setText(counts); else if(end && /^END V2_CURRENT_POPULATION_MASTER/.test(t)) paras[k].setText(end);}
     doc.saveAndClose();
-    appendEvent_({type:'TIM_RULING_UNDO',primaryId:pid,actor:'TIM',ts:new Date().toISOString(),undoneEventTs:ev.ts,before:ev.after,after:ev.before});
+    appendEvent_({type:'TIM_RULING_UNDO',primaryId:pid,actor:'TIM',ts:new Date().toISOString(),requestId:String(u.requestId||''),undoneEventTs:ev.ts,before:ev.after,after:ev.before});
     return {ok:true,primaryId:pid,restored:ev.before,counts:counts};
   } finally { lock.releaseLock(); }
 }

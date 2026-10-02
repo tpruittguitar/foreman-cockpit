@@ -39,7 +39,7 @@ import json,sys
 j=json.loads(sys.argv[1])
 assert j.get('ok') is True, j
 actions=j.get('actions',[])
-need={'canonical_rules','events','interview_notes','documents','interview_note','approve_resume','save_rules','undo_ruling','install_automation'}
+need={'canonical_rules','events','interview_notes','documents','request_result','interview_note','approve_resume','save_rules','undo_ruling','install_automation'}
 missing=sorted(need-set(actions))
 assert not missing, f'missing v5 actions: {missing}'
 print('PING_OK actions=',len(actions))
@@ -65,14 +65,18 @@ PY
 RULES="$(get_json canonical_rules)"
 DOCS="$(get_json documents)"
 EVENTS="$(get_json events "&primaryId=__V5_SMOKE_NONEXISTENT__&limit=1")"
-python3 - "$RULES" "$DOCS" "$EVENTS" <<'PY'
+REQ_RESULT="$(get_json request_result "&requestId=__V5_SMOKE_NONEXISTENT__")"
+python3 - "$RULES" "$DOCS" "$EVENTS" "$REQ_RESULT" <<'PY'
 import json,sys
-rules,docs,events=map(json.loads,sys.argv[1:4])
+rules,docs,events,request_result=map(json.loads,sys.argv[1:5])
 assert rules.get('ok') is True, rules
 assert docs.get('ok') is True, docs
 assert events.get('ok') is True, events
+assert request_result.get('ok') is True, request_result
+assert request_result.get('found') is False, request_result
 for k in ('resumes','coverLetters','supporting','timVoice'): assert isinstance(docs.get(k),list), (k,docs)
 print('READ_ROUTES_OK')
+print('REQUEST_RESULT_ROUTE_OK')
 print('RULES_ID=',rules.get('id'))
 print('RESUMES=',len(docs.get('resumes',[])),'COVER_LETTERS=',len(docs.get('coverLetters',[])),'SUPPORTING=',len(docs.get('supporting',[])),'TIM_VOICE=',len(docs.get('timVoice',[])))
 PY
@@ -87,3 +91,4 @@ print('BAD_KEY_REJECTED')
 PY
 
 echo "V5_BACKEND_ACTIVATED_AND_VERIFIED=YES"
+echo "WRITER_REQUEST_RESULT_RECOVERY=YES"
