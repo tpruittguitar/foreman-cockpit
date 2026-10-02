@@ -714,7 +714,7 @@ function appendJsonLine_(file, rec) {
 function appendEvent_(rec) {
   rec = rec || {};
   if (!rec.ts) rec.ts = new Date().toISOString();
-  appendJsonLine_(findOrCreate_(EVENT_LOG_NAME, 'text', ''), rec);
+  appendJsonLine_(findOrCreate_(EVENT_LOG_NAME, 'text', '\n'), rec);
 }
 function readEvents_(primaryId, limit) {
   var it = folder_().getFilesByName(EVENT_LOG_NAME);
@@ -794,7 +794,7 @@ function saveCanonicalRules_(r) {
   var after=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
   var ok=after===text;
   var hist={type:'RULESET_SAVED',actor:'TIM',ts:ts,verified:ok,priorHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,before)).slice(0,16),newHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,after)).slice(0,16),note:String(r.note||'')};
-  appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text',''),hist); appendEvent_(hist);
+  appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text','\n'),hist); appendEvent_(hist);
   return {ok:ok,id:CANONICAL_RULES_DOC_ID,modifiedTime:DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(),history:hist};
 }
 function undoLastRuling_(u) {
