@@ -1,0 +1,22 @@
+TIM_PIPELINE_RULES_CANONICAL
+OWNER=Tim Pruitt
+STATUS=ACTIVE
+RULESET_VERSION=2
+PURPOSE=Single canonical human-owned decision and operating guidance for the job-search pipeline.
+
+SECTION=NEVER_CONSIDER
+DEFAULT_ACTION=ALLOW_INTAKE
+UNKNOWN_RULE=Ambiguous classification is admitted for review; uncertainty is never a hard exclusion.
+- NC-001 PHARMACEUTICAL_MANUFACTURER: exclude before intake only when the employer's core business is pharmaceutical drug development/manufacturing/commercial pharmaceutical production.
+- NC-002 MEDICAL_DEVICE_MANUFACTURER: exclude before intake only when the employer's core business is manufacturing/commercializing medical devices, medical equipment, surgical/diagnostic devices, or comparable regulated healthcare hardware.
+- NC-003 FOOD_OR_BEVERAGE_MANUFACTURER: exclude before intake only when the employer's core business is manufacturing, processing, packaging, or commercially producing food or beverage products.
+- NC-004 RESTAURANT_OR_FOOD_SERVICE: exclude before intake only when the employer's core business is restaurant, fast-food, quick-service, catering, food-service, or comparable consumer meal-service operations.
+- Do not apply NC rules merely because an industrial supplier, equipment maker, automation/integration firm, software vendor, logistics provider, component supplier, consulting firm, or engineering firm serves one of those industries.
+- Every Never-Consider exclusion must be logged in Scout run metrics with RULE_ID, company, title, location, source, source URL, confidence, and reason.
+- MED/LOW-confidence category matches are admitted as SCOUT_INTAKE or DISCOVERY_LEAD with NEVER_CONSIDER_REVIEW_NEEDED, not excluded.
+- Existing master rows are never deleted merely because an NC rule later applies.
+- Only Tim may activate, retire, edit, or override a Never-Consider category. Preserve retired RULE_IDs for historical metrics.
+
+SECTION=COMPENSATION_GEOGRAPHY
+HOME_PIN=Cleveland, Tennessee
+END TIM_PIPELINE_RULES_CANONICAL
