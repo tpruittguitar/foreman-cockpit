@@ -7,3 +7,9 @@ Foreman Cockpit — operations dashboard
 - Scout intake contract: `docs/SCOUT_INTAKE_CONTRACT.md`.
 - Writer setup (Apps Script, one time, Tim only): `apps-script/README.md`.
 - Tests (plain node, no dependencies): `for t in parser writer intake rules quality; do node tests/$t.test.js; done`. `tests/intake.test.js <path-to-master-export>` also dry-runs intake against a real export without writing anything.
+
+Pipeline UI feedback update: explicit drag/keyboard column tracks, fixed 35% dashboard / 65% work area, real bundled state boundaries, employer-rejection controls, SVG report and cohort charts, and a searchable Rules outline with lossless source editing.
+
+- Visualization regression checks: `node tests/visualization.test.js`.
+- Browser interaction/layout checks (Playwright installed): `node tests/ui.browser.js`. Set `PIPELINE_CHROMIUM` for a custom Chromium executable and `PIPELINE_UI_ARTIFACTS` for screenshot output. All writer requests in this test are intercepted locally; it does not change canonical data.
+- Basemap attribution: [us-atlas license](licenses/us-atlas-LICENSE.txt).
