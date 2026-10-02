@@ -56,6 +56,7 @@ function doGet(e) {
     if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200)) });
     if (a === 'interview_notes') return out_(readInterviewNotes_(p.primaryId || ''));
     if (a === 'documents') return out_(readJobDocuments_());
+    if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'canonical_rules') return out_(readCanonicalRules_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
     if (a === 'automation') return out_(automationStatus_());
@@ -100,6 +101,25 @@ function dispatchWrite_(req) {
     return { ok: out.every(function (r) { return r.ok; }), results: out };
   }
   return { ok: false, error: 'unknown action ' + a + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
+}
+
+/* ================= request-result lookup ================= */
+function findRequestResult_(requestId) {
+  var rid = String(requestId || '').trim();
+  if (!rid) return { ok:false, found:false, error:'requestId required' };
+
+  var receipts = readReceipts_();
+  if (receipts && receipts.indexOf('REQUEST_ID=' + rid) >= 0) {
+    return { ok:true, found:true, requestId:rid, source:'receipts' };
+  }
+
+  var events = readEvents_('', 1000);
+  for (var i = 0; i < events.length; i++) {
+    if (String(events[i].requestId || '') === rid) {
+      return { ok:true, found:true, requestId:rid, source:'events', event:events[i] };
+    }
+  }
+  return { ok:true, found:false, requestId:rid };
 }
 
 /* ================= master read ================= */
