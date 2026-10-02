@@ -3,14 +3,14 @@
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
  * single fixed master, with read-back verification (FORGE_AMENDMENT_58 Authorized State Writer contract).
  *
- * Actions (GET):  ping | master | state | receipts | rules | runs | automation | process_queue | submit (payload=<JSON write body>)
- * Actions (POST): state | ruling | intake | upsert_application | batch
- * Drive queue:    any AI may drop a JSON write body into AI_Coordination/WRITER_QUEUE; Automation.gs applies it every 5 min.
+ * Actions (GET):  ping | master | state | receipts | rules | runs | canonical_rules | events | interview_notes | documents | request_result | automation | process_queue | submit (payload=<JSON write body>)
+ * Actions (POST): state | ruling | intake | upsert_application | interview_note | approve_resume | save_rules | undo_ruling | install_automation | batch
+ * Drive queue:    any AI may drop a JSON write body into AI_Coordination/WRITER_QUEUE; Automation.gs applies it about every 1 minute.
  *
  * ruling  = Tim disposition on one existing row by exact PRIMARY_ID (PR #3).
  * intake  = Scout discovery intake: one or a batch of proposed records -> dedupe -> append canonical rows in
  *           SCOUT_INTAKE or DISCOVERY_LEAD only; idempotent by INTAKE_KEY; never touches existing rows.
- * rules   = the canonical Google Doc TIM_NEVER_CONSIDER_RULES in AI_Coordination (fixed ID), read-only here.
+ * rules   = the NEVER_CONSIDER section extracted from active TIM_PIPELINE_RULES_CANONICAL; no standalone rule file is authoritative.
  * runs    = SCOUT_RUN_METRICS.jsonl beside the master (per-run cohort metrics, not a job store).
  *
  * DEPLOY: apps-script/README.md.  Pure functions below are unit-tested in tests/*.test.js via CommonJS export.
@@ -19,8 +19,8 @@ var MASTER_ID = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI'; // fixed per Tim
 var PASSPHRASE = 'CHANGE-ME';                                   // set your own; the page asks for it once
 var STATE_FILE_NAME = 'PIPELINE_EXPLORER_STATE.json';
 var RECEIPTS_DOC_NAME = 'PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS';
-/** Canonical never-consider configuration: the Google Doc TIM_NEVER_CONSIDER_RULES in AI_Coordination (fixed ID, read-only here). Configuration only; never a job store. */
-var RULES_DOC_ID = '1qLeVwmW76Cm_lHdleb342sE7_ej4dqTfODR1TcnF5os';
+/** Runtime Never-Consider authority is the active TIM_PIPELINE_RULES_CANONICAL document. RULES_DOC_ID is retained as a compatibility alias for receipts/tests. */
+var RULES_DOC_ID = '1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
 /** Every gross Scout discovery ends in exactly one of these outcomes. */
 var INTAKE_OUTCOMES = ['NEVER_CONSIDER_EXCLUDED', 'SCOUT_INTAKE_WRITTEN', 'DISCOVERY_LEAD_WRITTEN', 'EXISTING_MATCH', 'WRITE_FAILED'];
 var RUNS_FILE_NAME = 'SCOUT_RUN_METRICS.jsonl';
@@ -258,7 +258,7 @@ function applyIntakeToMaster_(req) {
     var counters = runCounters_(req.run || {}, plan, rules, verified);
     var receipt = {
       RECEIPT: 'INTAKE_RECEIPT', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
-      RECORDS_RECEIVED: (req.records || []).length, COUNTERS: counters, RULES_STATUS: rules.status, RULES_DOC_ID: RULES_DOC_ID,
+      RECORDS_RECEIVED: (req.records || []).length, COUNTERS: counters, RULES_STATUS: rules.status, RULES_DOC_ID: CANONICAL_RULES_DOC_ID,
       DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, NEVER_CONSIDER_REVIEW_NEEDED: plan.summary.NEVER_CONSIDER_REVIEW_NEEDED,
       NEW_PRIMARY_IDS: plan.newLines.map(function (l) { return l.split(' | ')[1]; }),
       COUNTS_UPDATED: 'YES', END_UPDATED: newEnd ? 'YES' : 'NO_END_LINE', READBACK_VERIFIED: verified ? 'YES' : 'NO',
@@ -603,6 +603,45 @@ function parseRulesText(text) {
   if (!out.rules.length) out.error = 'no RULE_ID blocks found';
   return out;
 }
+function parseCanonicalNeverConsiderRules(text) {
+  var out = { source: 'TIM_PIPELINE_RULES_CANONICAL', status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: '' };
+  if (!text || typeof text !== 'string') { out.error = 'empty canonical rules text'; return out; }
+  var lines = text.replace(/\\_/g, '_').split(/\r?\n/), inSection = false;
+  for (var i = 0; i < lines.length; i++) {
+    var l = lines[i].trim(); if (!l) continue;
+    var hm = l.match(/^([A-Z][A-Z0-9_\-]*)=(.*)$/);
+    if (hm && !inSection) out.header[hm[1]] = hm[2].trim();
+    if (/^SECTION=NEVER_CONSIDER$/i.test(l)) { inSection = true; continue; }
+    if (inSection && /^SECTION=/i.test(l)) break;
+    if (!inSection) continue;
+    if (/^DEFAULT_ACTION=/i.test(l)) { out.defaultAction = l.split('=').slice(1).join('=').trim() || 'ALLOW_INTAKE'; continue; }
+    var m = l.match(/^[-*]\s+(NC-\d+)\s+([A-Z0-9_\-]+):\s*(.+)$/i);
+    if (!m) continue;
+    var rule = {
+      RULE_ID: String(m[1]).toUpperCase(),
+      CATEGORY: String(m[2]).toUpperCase(),
+      ACTION: 'DO_NOT_ADD',
+      MATCH: m[3].trim(),
+      DO_NOT_MATCH: 'Industrial suppliers, equipment makers, automation/integration firms, software vendors, logistics providers, component suppliers, consulting firms, and engineering firms are not excluded merely because they serve this industry.',
+      REASON: m[3].trim(),
+      EXCEPTION: 'Tim may override explicitly.',
+      STATUS: 'ACTIVE',
+      active: true
+    };
+    out.rules.push(rule); out.activeIds.push(rule.RULE_ID);
+  }
+  var status = String(out.header.STATUS || '').toUpperCase();
+  if (status !== 'ACTIVE') {
+    out.status = 'UNAVAILABLE';
+    out.error = 'canonical rules STATUS is not ACTIVE';
+    out.rules.forEach(function(r){ r.active = false; r.STATUS = 'INACTIVE'; });
+    out.activeIds = [];
+    return out;
+  }
+  out.status = out.rules.length ? 'ACTIVE' : 'UNAVAILABLE';
+  if (!out.rules.length) out.error = 'no NC rule lines found in SECTION=NEVER_CONSIDER';
+  return out;
+}
 function ruleById(R, id) { id = String(id || '').trim().toUpperCase(); for (var i = 0; i < (R.rules || []).length; i++) if (String(R.rules[i].RULE_ID).toUpperCase() === id) return R.rules[i]; return null; }
 /** Words of a CATEGORY (e.g. FOOD_OR_BEVERAGE_MANUFACTURER) that may hint at the domain. Used only to flag a review, never to exclude. */
 function categoryTerms(cat) { var stop = { OR: 1, AND: 1, MANUFACTURER: 1, SERVICE: 1, OF: 1, THE: 1 }; return String(cat || '').toUpperCase().split(/[^A-Z]+/).filter(function (w) { return w && !stop[w] && w.length > 3; }).map(function (w) { return w.toLowerCase(); }); }
@@ -847,14 +886,16 @@ function findOrCreate_(name, mime, initial) {
 }
 function readState_() { var f = findOrCreate_(STATE_FILE_NAME, 'text', '{"seen":{},"rulings":{}}'); try { return JSON.parse(f.getBlob().getDataAsString() || '{}'); } catch (e) { return { seen: {}, rulings: {} }; } }
 function writeState_(state) { var f = findOrCreate_(STATE_FILE_NAME, 'text', '{}'); f.setContent(JSON.stringify(state)); }
-/** Read the canonical never-consider Doc (fixed ID). Read-only: the Doc is opened and never saved, so its modifiedTime is untouched. Edits are Tim's, in the Doc. */
+/** Extract the runtime Never-Consider rules from active TIM_PIPELINE_RULES_CANONICAL.
+ * The historical standalone TIM_NEVER_CONSIDER_RULES file is no longer consulted at runtime.
+ */
 function readRules_() {
   try {
-    var text = DocumentApp.openById(RULES_DOC_ID).getBody().getText();
-    var R = parseRulesText(text); R.id = RULES_DOC_ID; R.raw = text;
-    try { R.modifiedTime = DriveApp.getFileById(RULES_DOC_ID).getLastUpdated().toISOString(); } catch (e2) { R.modifiedTime = ''; }
+    var text = DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
+    var R = parseCanonicalNeverConsiderRules(text); R.id = CANONICAL_RULES_DOC_ID; R.raw = text;
+    try { R.modifiedTime = DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(); } catch (e2) { R.modifiedTime = ''; }
     return R;
-  } catch (e) { return { source: 'TIM_NEVER_CONSIDER_RULES', id: RULES_DOC_ID, status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: String(e && e.message || e) }; }
+  } catch (e) { return { source: 'TIM_PIPELINE_RULES_CANONICAL', id: CANONICAL_RULES_DOC_ID, status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: String(e && e.message || e) }; }
 }
 function readRuns_() { var it = folder_().getFilesByName(RUNS_FILE_NAME); if (!it.hasNext()) return []; var txt = it.next().getBlob().getDataAsString(); return txt.split('\n').filter(Boolean).map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean); }
 function appendRun_(rec) { var f = findOrCreate_(RUNS_FILE_NAME, 'text', ''); var cur = f.getBlob().getDataAsString(); f.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + JSON.stringify(rec) + '\n'); }
@@ -868,4 +909,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, WRITE_ACTIONS: WRITE_ACTIONS };
