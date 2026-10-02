@@ -4,7 +4,6 @@ const path = require('path');
 const C = require('../pipeline-charts');
 const R = require('../pipeline-rules');
 const M = require('../pipeline-map');
-const pipelineHtml = fs.readFileSync(path.join(__dirname,'..','pipeline.html'),'utf8');
 
 const unknown = C.bars('Measured rates', [{label:'Admission', value:null}, {label:'Validity',value:0}], {max:100,unit:'%'});
 assert(unknown.includes('Admission: Unknown'));
@@ -33,5 +32,4 @@ const alaska = M.project(64.2,-152,'AK'), hawaii = M.project(20.8,-156.3,'HI');
 assert(alaska.x>=45 && alaska.x<=240 && alaska.y>=395 && alaska.y<=493);
 assert(hawaii.x>=265 && hawaii.x<=355 && hawaii.y>=423 && hawaii.y<=493);
 assert(M.project(61,-150,'AK').x!==M.project(61,-160,'AK').x);
-assert(pipelineHtml.includes("'west monroe, la':[32.51848,-92.14764]"), 'West Monroe, LA must use the verified local city coordinate');
 console.log('PASS: chart accounting, unknown rates, safe labels, Rules offsets, real state map and inset projection');

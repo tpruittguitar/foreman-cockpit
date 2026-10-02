@@ -40,6 +40,8 @@ ok(!hadUrl || /INTAKE_SOURCE_URL=/.test(r.after), 'changed intake key keeps its 
 ok(W.mutateRow(intakeRow, { kind: 'ENRICH', ts }).ok === false, 'ENRICH requires fields');
 ok(W.mutateRow(intakeRow, { kind: 'ENRICH', ts, fields: { STATE_SOURCE: 'x' } }).ok === false, 'writer-owned fields are refused');
 ok(W.mutateRow(intakeRow, { kind: 'ENRICH', ts, fields: { 'bad key': 'x' } }).ok === false, 'malformed field names are refused');
+ok(W.mutateRow(intakeRow, { kind: 'ENRICH', ts, fields: { SOURCE_URL: 'javascript:alert(1)' } }).ok === false, 'enrichment refuses non-http posting links');
+ok(W.mutateRow(intakeRow, { kind: 'ENRICH', ts, fields: { FLEX: 'MAYBE' } }).ok === false, 'enrichment refuses unnormalized FLEX values');
 r = W.mutateRow(pick('DECLINED_BY_TIM'), { kind: 'DECLINE', code: 'PAY_BELOW_FLOOR', note: 'midpoint 180k < 250k', ts, actor: 'FORGE', fields: { REOPEN_TRIGGER: 'Verified midpoint >= 250k' } });
 ok(r.ok && /REOPEN_TRIGGER=Verified midpoint >= 250k/.test(r.after), 'fields override defaults on other kinds (Forge decline with custom reopen trigger)');
 const cells = declined.split(' | ').length;

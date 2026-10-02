@@ -421,6 +421,8 @@ function applyFields_(fields, P, O, set) {
     var v = fields[keys[i]]; if (v === undefined || v === null) continue;
     v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v)).slice(0, 1500);
     if (v === '') continue;
+    if (k === 'SOURCE_URL' && !/^https?:\/\/[^\s]+$/i.test(v)) return { ok: false, error: 'SOURCE_URL must be the exact http(s) employer or ATS URL' };
+    if ((k === 'FLEX' || k === 'FLEX_HINT') && !/^(YES|SOFT|NO|STRICT_NO|UNKNOWN)$/i.test(v)) return { ok: false, error: k + ' must be YES, SOFT, NO, STRICT_NO, or UNKNOWN' };
     if (P[k] === v) continue;
     if (INTAKE_PRESERVE.indexOf(k) >= 0 && P[k] && P['INTAKE_' + k] === undefined) set('INTAKE_' + k, P[k]);
     set(k, v); changed.push(k);
