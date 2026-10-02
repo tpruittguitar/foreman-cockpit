@@ -47,7 +47,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','ruling','intake','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','request_result','ruling','intake','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
