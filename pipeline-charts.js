@@ -1,7 +1,7 @@
 /* Dependency-free SVG charts. Null measurements remain unknown. */
 (function(root){
   'use strict';
-  var colors=['#e3e6e4','#a6ada9','#747c77','#c9ceca','#8e9690','#59625c','#d6dad6','#b3bab4','#676f69','#959d96','#c1c7c0','#7f8780'];
+  var colors=['#61cdbb','#91b8d1','#b8c49a','#c9aa77','#97a7bb','#749b90','#c1ccc4','#ac97af','#84998a','#c09c89','#90a8a7','#a3afbe'];
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function number(v){return Number(v).toLocaleString('en-US',{maximumFractionDigits:1})}
   function data(items){return items.map(function(x,i){return {label:String(x.label),value:x.value==null||!Number.isFinite(Number(x.value))?null:Math.max(0,Number(x.value)),color:x.color||colors[i%colors.length],filter:x.filter}})}
