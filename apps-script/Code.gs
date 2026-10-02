@@ -47,7 +47,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','ruling','intake','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','batch'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','ruling','intake','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
@@ -75,7 +75,7 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'undo_ruling', 'batch'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'undo_ruling', 'install_automation', 'batch'];
 function dispatchWrite_(req) {
   req = req || {};
   var a = String(req.action || '');
@@ -86,6 +86,7 @@ function dispatchWrite_(req) {
   if (a === 'approve_resume') return approveResume_(req.selection || req);
   if (a === 'save_rules') return saveCanonicalRules_(req.rules || req);
   if (a === 'undo_ruling') return undoLastRuling_(req.undo || req);
+  if (a === 'install_automation') { var ir = installAutomation(); return { ok:true, action:'install_automation', result:ir || null, installedAt:new Date().toISOString() }; }
   if (a === 'batch') {
     var list = Array.isArray(req.requests) ? req.requests : [];
     if (!list.length) return { ok: false, error: 'batch needs requests[]' };
