@@ -1,6 +1,6 @@
 # WRITER ACCESS DIRECTIVE — 2026-10-02
 
-STATUS=ACTIVE · OWNER=Tim Pruitt · APPLIES TO: Grok/Scout, ChatGPT/Forge, Claude/Foreman, any scheduled automation.
+STATUS=ACTIVE since 2026-10-02 02:20Z (writer version 4; queue trigger installed and verified) · OWNER=Tim Pruitt · APPLIES TO: Grok/Scout, ChatGPT/Forge, Claude/Foreman, any scheduled automation.
 
 Tim's ruling, 2026-10-02: the shared writer credential may be used, stored and written wherever it helps automation. Any earlier text that forbids the passphrase in Drive or prompts is superseded for this credential.
 
@@ -8,7 +8,7 @@ Every canonical change to `V2_CURRENT_POPULATION_MASTER.txt` (Drive `19y5xtspYk3
 
 ## 1. Drive queue (no HTTP, no key)
 
-Save one file into **AI_Coordination/WRITER_QUEUE** (folder `1IVyEKPxqY_7uL9GG9RV9Gu9raEco0AZ7`). The file is a plain-text or Google Doc file whose content is one JSON write body (see "Write bodies" below). Use a descriptive name, such as `GROK07_2026-10-02_0600ET_intake.json`.
+Save one file into **AI_Coordination/WRITER_QUEUE** (folder `1IVyEKPxqY_7uL9GG9RV9Gu9raEco0AZ7`; results land in `processed` `1kVgPtqqUtxoRyTC72Wb59kInHJMZGV0a` or `failed` `1hMcqUNYe5m6yjHmYkbdd9CcvqOwgEzZ1`). The file is a plain-text or Google Doc file whose content is one JSON write body (see "Write bodies" below). Use a descriptive name, such as `GROK07_2026-10-02_0600ET_intake.json`.
 
 - A trigger applies the queue every 5 minutes. A GET with `action=process_queue` applies it immediately.
 - A successful request moves to `WRITER_QUEUE/processed`. A failed one moves to `WRITER_QUEUE/failed`. Either way a `RESULT__<name>.json` file appears beside it with the writer's full response.
