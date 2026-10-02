@@ -3,7 +3,7 @@
  *
  * Any AI (Grok/Scout, ChatGPT/Forge, Claude/Foreman) that can create a file in AI_Coordination can submit a canonical write
  * without HTTP and without the passphrase: save the exact JSON write body into AI_Coordination/WRITER_QUEUE.
- * A time trigger (every 5 minutes, installed once by installAutomation) applies each file through the same writer functions
+ * A time trigger (every 1 minutes, installed once by installAutomation) applies each file through the same writer functions
  * the HTTP endpoint uses (dispatchWrite_ in Code.gs: intake | ruling | upsert_application | batch), then moves the request to
  * WRITER_QUEUE/processed (ok) or WRITER_QUEUE/failed (not ok) with a RESULT__<name>.json beside it, and appends one line to
  * WRITER_QUEUE_LOG.jsonl beside the master. Every write keeps the writer's identity, dedupe, protected-state and readback rules.
@@ -21,10 +21,10 @@ var QUEUE_TRIGGER_FN = 'processWriterQueue';
 var QUEUE_STALE_MS = 30 * 60 * 1000;
 var QUEUE_BUDGET_MS = 4.5 * 60 * 1000;
 
-/** Run once from the Apps Script editor (Run > installAutomation). Authorizes the trigger scope and installs the 5-minute queue trigger. Safe to re-run. */
+/** Run once from the Apps Script editor (Run > installAutomation). Authorizes the trigger scope and installs the 1-minute queue trigger. Safe to re-run. */
 function installAutomation() {
   ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === QUEUE_TRIGGER_FN) ScriptApp.deleteTrigger(t); });
-  ScriptApp.newTrigger(QUEUE_TRIGGER_FN).timeBased().everyMinutes(5).create();
+  ScriptApp.newTrigger(QUEUE_TRIGGER_FN).timeBased().everyMinutes(1).create();
   queueFolders_();
   var s = automationStatus_();
   Logger.log(JSON.stringify(s));
