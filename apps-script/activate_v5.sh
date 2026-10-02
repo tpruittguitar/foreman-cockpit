@@ -9,9 +9,9 @@ WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
 # Capture current live passphrase before deployment.
 $API get-content "$SCRIPT_ID" "$WORK/live"
-PASS_LINE="$(grep -hE "^var PASSPHRASE *= *\x27" "$WORK/live/Code.js" | head -1)"
+PASS_LINE="$(grep -hE "^var PASSPHRASE *= *'" "$WORK/live/Code.js" | head -1 || true)"
 [ -n "$PASS_LINE" ] || { echo "could not read live passphrase; aborting" >&2; exit 1; }
-PASS="$(printf "%s" "$PASS_LINE" | sed -E "s/^[^\x27]*\x27([^\x27]+)\x27.*/\1/")"
+PASS="$(printf "%s" "$PASS_LINE" | sed -E "s/^[^']*'([^']+)'.*/\1/")"
 [ -n "$PASS" ] || { echo "empty passphrase; aborting" >&2; exit 1; }
 [ "$PASS" != "CHANGE-ME" ] || { echo "placeholder passphrase; aborting" >&2; exit 1; }
 
@@ -20,7 +20,18 @@ PASS="$(printf "%s" "$PASS_LINE" | sed -E "s/^[^\x27]*\x27([^\x27]+)\x27.*/\1/")
 
 quote() { python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$1"; }
 get_json() { curl -fsSL --retry 2 --connect-timeout 10 "$ENDPOINT?action=$1&key=$(quote "$PASS")${2:-}"; }
-post_json() { curl -fsSL --retry 2 --connect-timeout 10 -H "Content-Type: text/plain;charset=utf-8" --data "$1" "$ENDPOINT"; }
+# Apps Script answers a POST with a 302 to a one-shot result URL; that URL intermittently bounces back to /exec
+# (curl then GETs /exec without the key -> "bad key") or 404s, even though the POST itself ran. The only POST here
+# (install_automation) is idempotent, so retry until a real JSON result comes back.
+post_json() {
+  local out i
+  for i in 1 2 3 4 5 6; do
+    out="$(curl -sSL --connect-timeout 10 -H "Content-Type: text/plain;charset=utf-8" --data "$1" "$ENDPOINT" || true)"
+    if printf '%s' "$out" | python3 -c 'import json,sys; j=json.load(sys.stdin); sys.exit(0 if j.get("error")!="bad key" else 1)' 2>/dev/null; then printf '%s' "$out"; return 0; fi
+    echo "post attempt $i: result page lost (redirect bounce); retrying" >&2; sleep 3
+  done
+  printf '%s' "$out"
+}
 
 PING="$(get_json ping)"
 python3 - "$PING" <<'PY'
