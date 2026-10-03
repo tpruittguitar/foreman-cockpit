@@ -408,6 +408,8 @@ function mutateRow(line, ruling) {
     changes.push('BUCKET', 'DISPOSITION', 'REJECTION_DATE', 'REJECTION_EVIDENCE', 'ANTI_RESURRECTION');
   } else if (kind === 'ENRICH') {
     if (!ruling.fields || typeof ruling.fields !== 'object' || !Object.keys(ruling.fields).length) return { ok: false, error: 'ENRICH requires fields {KEY: value}' };
+    var deniedKeys = Object.keys(ruling.fields).filter(function (k) { return isEnrichDenied_(k); });
+    if (deniedKeys.length) return { ok: false, error: 'ENRICH cannot set state, application or Tim ruling fields: ' + deniedKeys.join(', ') + ' (use the matching ruling kind or upsert_application)' };
     if (note) { set('ENRICH_NOTE', note); changes.push('ENRICH_NOTE'); }
   } else if (kind === 'MANUAL_RESEARCH') {
     if ((g = guardProtected('send to research'))) return g;
@@ -435,14 +437,20 @@ function mutateRow(line, ruling) {
   if (!fr.ok) return fr;
   changes = changes.concat(fr.changed);
   var actor = String(ruling.actor || '').toUpperCase().replace(/[^A-Z0-9_]/g, '');
-  set('STATE_SOURCE', (actor || 'TIM_EXPLORER') + ':' + (ruling.requestId || 'no-id'));
-  set('STATE_UPDATED_AT', ts);
+  var source = (actor || 'TIM_EXPLORER') + ':' + (ruling.requestId || 'no-id');
+  // ENRICH is data-only: keep the row's state provenance exactly as it was (absent stays absent) and record the enrichment separately.
+  if (kind === 'ENRICH') { set('ENRICH_SOURCE', source); set('ENRICH_UPDATED_AT', ts); }
+  else { set('STATE_SOURCE', source); set('STATE_UPDATED_AT', ts); }
   fixed[6] = tags.length ? tags.filter(function (t, i) { return tags.indexOf(t) === i; }).join('; ') : '-';
   var after = fixed.join(' | ') + ' | ' + buildPayload(pp.lead, P, O);
   return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7] };
 }
 /** Payload keys a write may never set directly (writer-owned) and intake keys whose prior value is kept as INTAKE_<KEY> when changed. */
-var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION'];
+var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT'];
+/** Keys an ENRICH may never set: bucket/disposition reasons, application/rejection state, and anything Tim-ruled (TIM_*). Those change only through ruling kinds or upsert_application. */
+var ENRICH_DENY = ['DECLINE_REASON_CODE', 'DECLINE_REASON_CODE_PRIOR', 'DECLINE_REASON_TEXT', 'REOPEN_TRIGGER', 'DUP_OF', 'INVALID_REASON', 'RESEARCH_REQUEST', 'POSTING_STATE',
+  'APP_DATE', 'APP_STATUS_EVIDENCE', 'APPLICATION_STATUS', 'APPLICATION_RECEIPT_GMAIL_ID', 'REJECTION_DATE', 'REJECTION_EVIDENCE', 'STATE_SEMANTICS', 'ANTI_RESURRECTION', 'UPSERT_KEY'];
+function isEnrichDenied_(k) { k = String(k).trim().toUpperCase(); return /^TIM_/.test(k) || ENRICH_DENY.indexOf(k) >= 0; }
 var INTAKE_PRESERVE = ['INTAKE_KEY', 'SCOUT_RUN_ID', 'DISCOVERED_AT_ET', 'DISCOVERY_SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'REQ_ID', 'IDENTITY_CONFIDENCE', 'INITIAL_UNKNOWN_FIELDS', 'POSSIBLE_MATCHES', 'DATE_ADDED', 'NOTIFICATION_SOURCE'];
 /** Merge {KEY: value} into a parsed payload. Empty values are ignored (nothing is deleted); changed intake keys keep their old value under INTAKE_<KEY>. */
 function applyFields_(fields, P, O, set) {
