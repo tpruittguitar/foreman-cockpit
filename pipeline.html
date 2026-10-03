@@ -302,9 +302,12 @@ var DATE_KEYS={DATE_ADDED:1,MASTER_LOADED_AT:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
 var mapView={zoom:1,x:480,y:255,focus:null,hasFocused:false,animation:0,request:0,found:[],active:null,overview:null,returnView:null};
 var scoreCache={};
-var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,events:{},interview:{}};
+var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,events:{},interview:{}};
 S.scoring=PipelineScoring.normalize(S.scoring||PipelineScoring.defaults());
-if(!LS.get('flexWeightV2',false)){var legacyWeights=S.scoring.weights||{};if(legacyWeights.flex===undefined){legacyWeights.flex=10;legacyWeights.experience=Math.max(0,(+legacyWeights.experience||25)-10)}S.scoring=PipelineScoring.normalize(S.scoring);LS.set('scoring',S.scoring);LS.set('flexWeightV2',true)}
+var oldDefaultWeights={experience:15,flex:10,compensation:20,geo:20,ats:15,title:10,culture:5,ownership:5},existingWeights=S.scoring.weights||{};
+var looksLegacy=Object.keys(oldDefaultWeights).every(function(k){return +existingWeights[k]===oldDefaultWeights[k]})||(!LS.get('flexWeightV2',false)&&existingWeights.flex===undefined);
+if(looksLegacy){S.scoring=PipelineScoring.defaults();LS.set('scoring',S.scoring)}
+LS.set('flexWeightV2',true)
 S.cols=S.cols||{desktop:DESK_DEFAULT.slice(),phone:PHONE_DEFAULT.slice(),bucketOrder:BUCKET_ORDER_DEFAULT.slice()};
 if(!LS.get('flexColumnsV1',false)){['FLEX_CLASS','RAW_FIT','FLEX_MODIFIER','FLEX_RATING_IMPACT','ADJUSTED_FIT','PURSUIT_STATUS','SOURCE_URL'].forEach(function(c){if(S.cols.desktop.indexOf(c)<0)S.cols.desktop.push(c)});LS.set('cols',S.cols);LS.set('flexColumnsV1',true)}
 if(!LS.get('scoreColumnsV1',false)){['OVERALL_RATING','EXPERIENCE_FIT','GEO_SCORE','NET_COMP_SCORE','ATS_MATCH_SCORE'].slice().reverse().forEach(function(c){if(S.cols.desktop.indexOf(c)<0)S.cols.desktop.splice(4,0,c)});LS.set('cols',S.cols);LS.set('scoreColumnsV1',true)}
@@ -317,7 +320,7 @@ function hasWriter(){return !!(S.cfg.url&&S.cfg.key)}
 function gsGet(action,extra){var requestKey=S.cfg.key;var u=S.cfg.url+(S.cfg.url.indexOf('?')<0?'?':'&')+'action='+encodeURIComponent(action)+'&key='+encodeURIComponent(S.cfg.key)+(extra||'');return fetch(u,{redirect:'follow',cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(S.cfg.key!==requestKey)throw new Error('Writer credentials changed during request');return j})}
 function requestIdForBody_(body){
   if(!body||body.action==='state')return'';
-  var nestedKey={ruling:'ruling',upsert_application:'event',interview_note:'note',approve_resume:'selection',save_rules:'rules',undo_ruling:'undo'}[body.action];
+  var nestedKey={ruling:'ruling',upsert_application:'event',interview_note:'note',approve_resume:'selection',save_rules:'rules',save_scoring_model:'model',undo_ruling:'undo'}[body.action];
   var nested=nestedKey&&body[nestedKey];
   var rid=String(body.requestId||(nested&&nested.requestId)||'').trim();
   if(!rid)rid='PX-'+Date.now()+'-'+Math.random().toString(36).slice(2,9).toUpperCase();
@@ -355,13 +358,23 @@ var Source={
   netlify:function(){return fetch('/api/master',{cache:'no-store'}).then(function(r){return r.json()})},
   url:function(u){return fetch(u,{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text()}).then(function(t){return{ok:true,id:'(url) '+u,fetchedAt:new Date().toISOString(),bytes:t.length,text:t}})}
 };
+function loadCanonicalScoring_(){
+  if(!hasWriter())return Promise.resolve(null);
+  return gsGet('scoring').then(function(j){
+    if(!j||!j.ok||!j.exists){S.scoringCanonical=null;S.scoringCanonicalMeta=j||null;return j}
+    S.scoringCanonical=PipelineScoring.normalize(j.model||{});S.scoringCanonicalMeta=j;
+    if(!LS.get('scoringLocalEdited',false)){S.scoring=S.scoringCanonical;LS.set('scoring',S.scoring);scoreCache={}}
+    if(S.tab==='scoring')renderScoring();
+    return j;
+  }).catch(function(e){S.scoringCanonicalMeta={ok:false,error:e.message};return null});
+}
 function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
   readout('<b>fetching…</b>');
   if(!hasWriter()){S.connection.state='Not configured';readout('Protected master · configure your writer to connect');switchTab('settings');return}
   S.connection.state='Checking';S.connection.error='';
   var p=Source.script();
-  if(hasWriter()&&!src){syncStateDown();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality();if(S.tab==='today')renderToday()}}).catch(function(){});gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
+  if(hasWriter()&&!src){syncStateDown();loadCanonicalScoring_();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality();if(S.tab==='today')renderToday()}}).catch(function(){});gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
   p.then(function(res){
     if(!res.ok){S.connection.state='Read failed';S.connection.error=res.hint||res.error||'Writer rejected read';readout('<span class="bad">FETCH FAILED</span> '+esc(res.hint||res.error||('status '+res.status)));var c=LS.get('cache',null);if(c){apply(c.text,c.meta,true)}return}
     S.connection.state='Connected';S.connection.lastRead=new Date().toISOString();S.connection.error='';
@@ -756,10 +769,11 @@ function stateFallback_(label){
 }
 function geocodePlace_(loc){
   if(loc.lat!=null&&loc.lon!=null)return Promise.resolve(loc);
-  var key=String(loc.label||'').toLowerCase().trim(),cache=LS.get('geoCache',{}),cached=cache[key];
-  if(cached)return Promise.resolve(Object.assign({},loc,cached));
-  if(GEO_CITY_OVERRIDES[key]){var o=GEO_CITY_OVERRIDES[key],hit={lat:o[0],lon:o[1],approx:false,source:'local city cache'};cache[key]=hit;LS.set('geoCache',cache);return Promise.resolve(Object.assign({},loc,hit))}
-  var sc=stateCodeFromText_(loc.label),city=String(loc.label||'').split(',')[0].trim();
+  var key=String(loc.label||'').toLowerCase().trim(),cache=LS.get('geoCache',{}),cached=cache[key],sc=stateCodeFromText_(loc.label),city=String(loc.label||'').split(',')[0].trim();
+  /* A cached city result is usable only when it agrees with the row's state. This prevents an old ambiguous-city hit (for example Kingston, NY) from moving Kingston, GA to the wrong map region. */
+  if(cached&&cached.lat!=null&&cached.lon!=null&&(!sc||!cached.state||String(cached.state).toUpperCase()===sc))return Promise.resolve(Object.assign({},loc,cached));
+  if(cached&&sc&&cached.state&&String(cached.state).toUpperCase()!==sc){delete cache[key];LS.set('geoCache',cache)}
+  if(GEO_CITY_OVERRIDES[key]){var o=GEO_CITY_OVERRIDES[key],hit={lat:o[0],lon:o[1],state:sc,approx:false,source:'local city cache'};cache[key]=hit;LS.set('geoCache',cache);return Promise.resolve(Object.assign({},loc,hit))}
   if(!city||city.length<2){var fb=stateFallback_(loc.label);return Promise.resolve(Object.assign({},loc,fb||{}))}
   var url='https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=10&language=en&format=json&countryCode=US';
   return fetch(url,{cache:'force-cache'}).then(function(r){if(!r.ok)throw new Error('geocode '+r.status);return r.json()}).then(function(j){
@@ -767,7 +781,7 @@ function geocodePlace_(loc){
     for(var i=0;i<rs.length;i++){if(!want||String(rs[i].admin1||'').toLowerCase()===want.toLowerCase()){hit=rs[i];break}}
     if(!hit)hit=rs[0];
     if(!hit)throw new Error('no geocode');
-    var val={lat:+hit.latitude,lon:+hit.longitude,approx:false,source:'city geocode'};cache[key]=val;LS.set('geoCache',cache);return Object.assign({},loc,val);
+    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,approx:false,source:'city geocode'};cache[key]=val;LS.set('geoCache',cache);return Object.assign({},loc,val);
   }).catch(function(){var fb=stateFallback_(loc.label);return Object.assign({},loc,fb||{})});
 }
 function projectUS_(lat,lon,state){return PipelineMap.project(lat,lon,state)}
@@ -1094,6 +1108,26 @@ function renderScoring(){var v=$('view-scoring'),c=PipelineScoring.normalize(S.s
   $('score-save').onclick=function(){Object.keys(w).forEach(function(k){var e=v.querySelector('[data-score-weight="'+k+'"]');c.weights[k]=Math.max(0,Math.min(100,+e.value||0))});['floor','target','ceiling'].forEach(function(k){c.salary[k]=Math.max(0,+v.querySelector('[data-salary="'+k+'"]').value||0)});c.geo.power=Math.max(1,Math.min(6,+v.querySelector('[data-geo="power"]').value||2));c.resumeKeywords=$('score-keywords').value.trim();v.querySelectorAll('[data-point]').forEach(function(e){var i=+e.dataset.i,p=c.geo.controlPoints[i];if(!p)return;if(e.dataset.point==='hard')p.hard=e.checked;else if(e.dataset.point==='name')p.name=e.value;else p[e.dataset.point]=+e.value||0});S.scoring=PipelineScoring.normalize(c);LS.set('scoring',S.scoring);scoreCache={};$('score-msg').textContent='Saved locally. Table ratings recalculated.';render()};
   $('score-reset').onclick=function(){S.scoring=PipelineScoring.defaults();LS.set('scoring',S.scoring);scoreCache={};renderScoring();render()};
 }
+function scoringDraftFromView_(v,c,w){
+  Object.keys(w).forEach(function(k){var e=v.querySelector('[data-score-weight="'+k+'"]');c.weights[k]=Math.max(0,Math.min(100,+e.value||0))});
+  ['floor','target','ceiling'].forEach(function(k){c.salary[k]=Math.max(0,+v.querySelector('[data-salary="'+k+'"]').value||0)});
+  c.geo.power=Math.max(1,Math.min(6,+v.querySelector('[data-geo="power"]').value||2));c.resumeKeywords=$('score-keywords').value.trim();
+  v.querySelectorAll('[data-point]').forEach(function(e){var i=+e.dataset.i,p=c.geo.controlPoints[i];if(!p)return;if(e.dataset.point==='hard')p.hard=e.checked;else if(e.dataset.point==='name')p.name=e.value;else p[e.dataset.point]=+e.value||0});
+  return PipelineScoring.normalize(c);
+}
+function enhanceScoringControls_(){
+  var v=$('view-scoring'),save=v&&$('score-save');if(!v||!save||save.dataset.scoreEnhanced)return;
+  save.dataset.scoreEnhanced='1';save.textContent='Save local draft';
+  var panel=v.querySelector('.panel');
+  if(panel){panel.insertAdjacentHTML('afterbegin','<div class="row" style="margin-bottom:10px"><span class="pill">Shared model</span><span id="score-canonical-status" class="tip"></span><a id="score-model-doc" class="tip" href="SCORING_MODEL.md" target="_blank" rel="noopener">SCORING_MODEL.md</a><button id="score-publish" class="neon">Publish current model</button><button id="score-load-canonical">Load published</button></div>')}
+  function status(msg){var e=$('score-canonical-status');if(e)e.textContent=msg}
+  var canonical=S.scoringCanonical,meta=S.scoringCanonicalMeta,dirty=!!LS.get('scoringLocalEdited',false);
+  status(canonical?(dirty?'Published v'+esc(canonical.modelVersion||'')+' · local draft active':'Published v'+esc(canonical.modelVersion||'')):(hasWriter()?'No published model yet · local draft':'Local-only · writer not configured'));
+  $('score-save').onclick=function(){var draft=scoringDraftFromView_(v,PipelineScoring.normalize(S.scoring),S.scoring.weights||{});if(!PipelineScoring.weightsValid(draft)){$('score-msg').textContent='Weights must total 100 (currently '+PipelineScoring.weightTotal(draft)+').';return}S.scoring=draft;LS.set('scoring',draft);LS.set('scoringLocalEdited',true);scoreCache={};$('score-msg').textContent='Saved local draft. Publish it to share with every AI.';render()};
+  $('score-publish').onclick=function(){if(!hasWriter()){status('Writer required to publish');return}var draft=scoringDraftFromView_(v,PipelineScoring.normalize(S.scoring),S.scoring.weights||{});if(!PipelineScoring.weightsValid(draft)){status('Weights must total 100 (currently '+PipelineScoring.weightTotal(draft)+')');return}draft.modelId=PipelineScoring.modelId;draft.modelVersion=PipelineScoring.modelVersion;draft.publishedBy='TIM';status('Publishing and verifying…');gsPost({action:'save_scoring_model',model:draft}).then(function(j){if(!j.ok)throw new Error(j.error||'publish failed');S.scoringCanonical=PipelineScoring.normalize(j.model||draft);S.scoringCanonicalMeta=j;S.scoring=S.scoringCanonical;LS.set('scoring',S.scoring);LS.set('scoringLocalEdited',false);scoreCache={};$('score-msg').textContent='Published and read back. All agents should use model v'+esc(S.scoring.modelVersion)+'.';renderScoring()}).catch(function(e){status('Publish failed · '+e.message)})};
+  $('score-load-canonical').onclick=function(){var use=function(){if(!S.scoringCanonical){status('No published model exists');return}S.scoring=S.scoringCanonical;LS.set('scoring',S.scoring);LS.set('scoringLocalEdited',false);scoreCache={};renderScoring();status('Loaded published model v'+esc(S.scoring.modelVersion||''))};if(S.scoringCanonical)use();else loadCanonicalScoring_().then(use)};
+}
+if(typeof MutationObserver!=='undefined'&&$('view-scoring'))new MutationObserver(function(){enhanceScoringControls_()}).observe($('view-scoring'),{childList:true,subtree:true});
 /* ---------- Scout quality (cohorts by SCOUT_RUN_ID) ---------- */
 function pct(v){return v==null?'—':(Math.round(v*1000)/10)+'%'}
 function hrs(v){return v==null?'—':(v<48?Math.round(v*10)/10+'h':Math.round(v/24*10)/10+'d')}

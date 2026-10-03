@@ -4,8 +4,8 @@ if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipel
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
  * single fixed master, with read-back verification (FORGE_AMENDMENT_58 Authorized State Writer contract).
  *
- * Actions (GET):  ping | master | state | receipts | rules | runs | canonical_rules | events | interview_notes | documents | request_result | automation | process_queue | submit (payload=<JSON write body>)
- * Actions (POST): state | ruling | intake | upsert_application | interview_note | approve_resume | save_rules | undo_ruling | install_automation | batch
+ * Actions (GET):  ping | master | state | receipts | rules | runs | canonical_rules | scoring | events | interview_notes | documents | request_result | automation | process_queue | submit (payload=<JSON write body>)
+ * Actions (POST): state | ruling | intake | upsert_application | interview_note | approve_resume | save_rules | save_scoring_model | undo_ruling | install_automation | batch
  * Drive queue:    any AI may drop a JSON write body into AI_Coordination/WRITER_QUEUE; Automation.gs applies it about every 1 minute.
  *
  * ruling  = Tim disposition on one existing row by exact PRIMARY_ID (PR #3).
@@ -36,6 +36,10 @@ var SUPPORTING_DOCS_FOLDER_ID = '1DyXxGRwEw5aHWiBamS1bWD1myHkNmvLG';
 var TIM_VOICE_FOLDER_ID = '1E8yeO34MazfKY0KINhUbbd6d7RrGDcB_';
 var INTERVIEW_NOTES_FOLDER_ID = '1rrmZb-pW_THx-DZMcFVczYuouTlNTkKz';
 var JOB_DOCS_CONFIG_NAME = 'JOB_DOCUMENTS_CANONICAL.json';
+var SCORING_MODEL_NAME = 'PIPELINE_SCORING_MODEL.json';
+var SCORING_MODEL_HISTORY_NAME = 'PIPELINE_SCORING_MODEL_HISTORY.jsonl';
+var SCORING_MODEL_ID = 'TIM_WEIGHTED_JOB_RATING';
+var SCORING_WEIGHT_KEYS = ['experience','flex','compensation','geo','ats','title','culture','ownership'];
 
 var FIXED_N = 9;
 var BUCKETS = ['SCOUT_INTAKE', 'DISCOVERY_LEAD', 'READY_TO_PURSUE', 'TIM_DECISION_REQUIRED', 'BLOCKED', 'MANUAL_RESEARCH', 'APPLIED', 'REJECTED_BY_EMPLOYER', 'DECLINED_BY_TIM', 'DUPLICATE', 'CLOSED_DEAD', 'INVALID_DISCOVERY'];
@@ -49,7 +53,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
@@ -62,6 +66,7 @@ function doGet(e) {
     if (a === 'discovery_requests') return out_(readDiscoveryRequests_(p.primaryId || '', +(p.limit || 100)));
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'canonical_rules') return out_(readCanonicalRules_());
+    if (a === 'scoring') return out_(readScoringModel_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
     if (a === 'automation') return out_(automationStatus_());
     if (a === 'process_queue') return out_(processWriterQueue());
@@ -80,7 +85,7 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'undo_ruling', 'install_automation', 'batch'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch'];
 function dispatchWrite_(req) {
   req = req || {};
   var a = String(req.action || '');
@@ -91,6 +96,7 @@ function dispatchWrite_(req) {
   if (a === 'interview_note') return saveInterviewNote_(req.note || req);
   if (a === 'approve_resume') return approveResume_(req.selection || req);
   if (a === 'save_rules') return saveCanonicalRules_(req.rules || req);
+  if (a === 'save_scoring_model') return saveScoringModel_(req.model || req);
   if (a === 'undo_ruling') return undoLastRuling_(req.undo || req);
   if (a === 'install_automation') { var ir = installAutomation(); return { ok:true, action:'install_automation', result:ir || null, installedAt:new Date().toISOString() }; }
   if (a === 'batch') {
@@ -931,6 +937,60 @@ function saveCanonicalRules_(r) {
   appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text','\n'),hist); appendEvent_(hist);
   return {ok:ok,id:CANONICAL_RULES_DOC_ID,modifiedTime:DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(),history:hist};
 }
+/* ================= shared weighted scoring model ================= */
+function validateScoringModel_(m) {
+  m = m || {};
+  var w = m.weights || {}, missing = [], bad = [];
+  for (var i = 0; i < SCORING_WEIGHT_KEYS.length; i++) {
+    var k = SCORING_WEIGHT_KEYS[i];
+    if (w[k] === undefined || w[k] === null || w[k] === '') missing.push(k);
+    else if (!isFinite(+w[k]) || +w[k] < 0 || +w[k] > 100) bad.push(k);
+  }
+  var total = 0;
+  for (var j = 0; j < SCORING_WEIGHT_KEYS.length; j++) total += +(w[SCORING_WEIGHT_KEYS[j]] || 0);
+  if (missing.length) return {ok:false,error:'weights missing: '+missing.join(', '),weightTotal:total};
+  if (bad.length) return {ok:false,error:'weights must be numbers from 0 to 100: '+bad.join(', '),weightTotal:total};
+  if (Math.abs(total - 100) > 0.01) return {ok:false,error:'weights must total 100 (received '+total+')',weightTotal:total};
+  if (m.modelId && String(m.modelId) !== SCORING_MODEL_ID) return {ok:false,error:'unsupported scoring model '+m.modelId,weightTotal:total};
+  return {ok:true,weightTotal:total};
+}
+function scoringModelFile_() {
+  var it = folder_().getFilesByName(SCORING_MODEL_NAME);
+  return it.hasNext() ? it.next() : null;
+}
+function readScoringModel_() {
+  try {
+    var file = scoringModelFile_();
+    if (!file) return {ok:true,exists:false,modelId:SCORING_MODEL_ID};
+    var raw = file.getBlob().getDataAsString() || '{}', model = JSON.parse(raw), check = validateScoringModel_(model);
+    if (!check.ok) return {ok:false,exists:true,error:'published scoring model is invalid: '+check.error,id:file.getId(),fileName:file.getName()};
+    return {ok:true,exists:true,id:file.getId(),fileName:file.getName(),url:file.getUrl(),modifiedTime:file.getLastUpdated().toISOString(),model:model,weightTotal:check.weightTotal};
+  } catch (e) { return {ok:false,error:String(e && e.message || e)}; }
+}
+function saveScoringModel_(input) {
+  var candidate = input || {}, check = validateScoringModel_(candidate);
+  if (!check.ok) return {ok:false,error:check.error,weightTotal:check.weightTotal};
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var oldFile = scoringModelFile_(), old = null, revision = 0;
+    if (oldFile) { try { old = JSON.parse(oldFile.getBlob().getDataAsString() || '{}'); revision = +(old.publishedRevision || 0) || 0; } catch (e) {} }
+    var now = new Date().toISOString(), model = JSON.parse(JSON.stringify(candidate));
+    model.modelId = SCORING_MODEL_ID;
+    model.modelVersion = String(model.modelVersion || '2026-10-03.1');
+    model.publishedRevision = revision + 1;
+    model.publishedAt = now;
+    model.publishedBy = String(model.publishedBy || 'TIM').toUpperCase();
+    model.updatedAt = now;
+    model.weightTotal = check.weightTotal;
+    var file = oldFile || folder_().createFile(SCORING_MODEL_NAME, '{}', MimeType.PLAIN_TEXT);
+    file.setContent(JSON.stringify(model, null, 2));
+    var readback = JSON.parse(file.getBlob().getDataAsString() || '{}'), rb = validateScoringModel_(readback);
+    var verified = rb.ok && JSON.stringify(readback) === JSON.stringify(model);
+    var hist = {type:'SCORING_MODEL_PUBLISHED',modelId:SCORING_MODEL_ID,modelVersion:model.modelVersion,publishedRevision:model.publishedRevision,actor:model.publishedBy,ts:now,requestId:String(candidate.requestId || ''),verified:verified,weightTotal:check.weightTotal};
+    appendJsonLine_(findOrCreate_(SCORING_MODEL_HISTORY_NAME, 'text', '\n'), hist); appendEvent_(hist);
+    return {ok:verified,id:file.getId(),fileName:file.getName(),url:file.getUrl(),model:model,history:hist};
+  } finally { lock.releaseLock(); }
+}
 function undoLastRuling_(u) {
   var pid=String(u.primaryId||'').trim(); if(!pid) return {ok:false,error:'primaryId required'};
   var ev=readEvents_(pid,200).filter(function(e){return e.type==='TIM_RULING' && e.before && e.after && e.verified;})[0];
@@ -983,4 +1043,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
