@@ -88,7 +88,7 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:10px}
 .doc-preview-pane{min-width:0;display:flex;flex-direction:column;background:#050505}
 .doc-preview-head{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);background:#090909;min-height:56px}.doc-preview-head .meta{flex:1;min-width:0}.doc-preview-head h3{margin:0 0 3px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.doc-preview-head .tip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .doc-preview-actions{display:flex;gap:6px;flex:none}.doc-preview-body{position:relative;flex:1;min-height:0;background:#111}.doc-preview-body iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}.doc-preview-empty{height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px;color:var(--faint);font:11px var(--mono);line-height:1.6}.doc-preview-fallback{padding:18px}.doc-type{display:inline-block;border:1px solid #333;border-radius:10px;padding:2px 6px;font:8px var(--mono);color:#aaa;margin-left:6px}
-.doc-score-panel{border-top:1px solid var(--line2);padding:12px;background:#070707}.doc-score-panel h2{margin:0 0 4px;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#fff}.doc-score-panel h3{margin:0 0 5px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}.doc-score-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}.doc-score-card{border:1px solid var(--line2);border-radius:6px;background:#0b0b0b;padding:9px;min-width:0}.doc-score-card .doc-score-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#dfe7df;font-size:10px;margin-bottom:7px}.doc-score-metrics{display:grid;grid-template-columns:1fr 1fr;gap:6px}.doc-score-metric{border:1px solid #28332d;padding:7px;background:#080b09}.doc-score-metric b{display:block;font:700 22px var(--mono);color:#d9e6d9}.doc-score-metric span{display:block;margin-top:2px;color:var(--faint);font:9px var(--mono);text-transform:uppercase}.doc-score-card .good{color:var(--ng)}.doc-score-card .warn{color:#e4c66d}.doc-score-card .unknown{color:var(--faint);font-size:18px}.doc-score-hits{margin-top:7px;color:#9fb1a2;font:9px var(--mono);line-height:1.35;word-break:break-word}.doc-score-profile{border-top:1px solid var(--line);padding-top:10px}.doc-score-profile textarea{width:100%;min-height:70px;resize:vertical}.doc-score-profile .tip{max-width:920px}
+.doc-score-panel{border-top:1px solid var(--line2);padding:12px;background:#070707}.doc-score-panel h2{margin:0 0 4px;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#fff}.doc-score-panel h3{margin:0 0 5px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}.doc-score-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}.doc-score-card{border:1px solid var(--line2);border-radius:6px;background:#0b0b0b;padding:9px;min-width:0}.doc-score-card .doc-score-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#dfe7df;font-size:10px;margin-bottom:7px}.doc-score-metrics{display:grid;grid-template-columns:1fr 1fr;gap:6px}.doc-score-metric{border:1px solid #28332d;padding:7px;background:#080b09}.doc-score-metric b{display:block;font:700 22px var(--mono);color:#d9e6d9}.doc-score-metric span{display:block;margin-top:2px;color:var(--faint);font:9px var(--mono);text-transform:uppercase}.doc-score-card .good{color:var(--ng)}.doc-score-card .warn{color:#e4c66d}.doc-score-card .unknown{color:var(--faint);font-size:18px}.doc-score-hits{margin-top:7px;color:#9fb1a2;font:9px var(--mono);line-height:1.35;word-break:break-word}.doc-score-profile{border-top:1px solid var(--line);padding-top:10px}.doc-score-profile textarea{width:100%;min-height:70px;resize:vertical}.doc-score-profile .tip{max-width:920px}.doc-paste{margin-top:8px}.doc-paste-msg{color:#e4c66d;margin-bottom:5px}.doc-paste-text{width:100%;min-height:110px;resize:vertical;box-sizing:border-box;font:11px/1.4 var(--mono)}.doc-paste .row{margin-top:5px}
 .bulkbar{display:inline-flex;gap:4px;align-items:center}.bulkbar b{font:10px var(--mono);color:#fff}
 .resize-handle{position:absolute;right:-2px;top:0;width:5px;height:100%;cursor:col-resize;z-index:5}
 th{position:sticky} th{min-width:70px} td,th{max-width:none}
@@ -923,24 +923,51 @@ function documentProxyScore_(f){
   return{known:true,ats:ats,ai:ai,hits:hits,words:words,structure:structure,evidence:evidence};
 }
 function docScoreValue_(value){return value==null?'—':String(value)}
+var DOC_PASTE_MSG='Automatic text extraction unavailable for this file type. Paste document text to score.';
+function docPasted_(id){var m=LS.get('docPasted',{});return id&&m&&typeof m[id]==='string'?m[id]:''}
+function setDocPasted_(id,text){var m=LS.get('docPasted',{})||{};text=String(text||'');if(text.trim())m[id]=text;else delete m[id];LS.set('docPasted',m)}
+function docScoreInputs_(f){
+  var st=S.docScores[f.id]||{loading:true},extracted=st.loading?'':String(st.text||'').trim(),pasted=docPasted_(f.id);
+  return{st:st,extracted:extracted,pasted:pasted,text:extracted||pasted.trim(),source:extracted?'extracted':(pasted.trim()?'pasted':'')};
+}
+function docScoreMetricsHtml_(score,loading){
+  function cls(v){return score&&score.known?(v>=75?'good':v>=55?'warn':''):'unknown'}
+  return '<div class="doc-score-metric"><b class="'+cls(score&&score.ats)+'">'+(loading?'…':docScoreValue_(score&&score.known?score.ats:null))+'</b><span>ATS proxy score</span></div><div class="doc-score-metric"><b class="'+cls(score&&score.ai)+'">'+(loading?'…':docScoreValue_(score&&score.known?score.ai:null))+'</b><span>AI proxy score</span></div>';
+}
+function docScoreDetailHtml_(score,source){
+  if(!score||!score.known)return '';
+  return '<div class="doc-score-hits">'+(source==='pasted'?'Scored from pasted text stored on this device · ':'Scored from extracted document text · ')+'Keyword hits: '+esc(score.hits.slice(0,12).join(', ')||'none')+' · '+score.words+' words · '+score.evidence+' quantified signals</div>';
+}
 function documentScoreCard_(label,f){
   if(!f)return '<article class="doc-score-card"><h3>'+esc(label)+'</h3><div class="tip">No document selected in this category.</div></article>';
-  var st=S.docScores[f.id]||{loading:true},score=st.loading?null:documentProxyScore_(Object.assign({},f,st));
-  var status=st.loading?'Reading document text…':(score&&score.known?'Proxy score from extracted text':'No extracted text yet');
-  return '<article class="doc-score-card"><h3>'+esc(label)+'</h3><div class="doc-score-name" title="'+esc(f.name)+'">'+esc(f.name)+'</div><div class="doc-score-metrics"><div class="doc-score-metric"><b class="'+(score&&score.known?(score.ats>=75?'good':score.ats>=55?'warn':''):'unknown')+'">'+(st.loading?'…':docScoreValue_(score&&score.ats))+'</b><span>ATS score</span></div><div class="doc-score-metric"><b class="'+(score&&score.known?(score.ai>=75?'good':score.ai>=55?'warn':''):'unknown')+'">'+(st.loading?'…':docScoreValue_(score&&score.ai))+'</b><span>AI score</span></div></div><div class="tip" style="margin-top:6px">'+esc(status)+'</div>'+(score&&score.known?'<div class="doc-score-hits">Keyword hits: '+esc(score.hits.slice(0,12).join(', ')||'none')+' · '+score.words+' words · '+score.evidence+' quantified signals</div>':'')+'</article>';
+  var x=docScoreInputs_(f),loading=!!x.st.loading,score=loading?null:documentProxyScore_({text:x.text,_reason:x.st._reason});
+  var paste='';
+  if(!loading&&!x.extracted){
+    var msg=x.st._unsupported?DOC_PASTE_MSG:((x.st._reason?x.st._reason+'. ':'')+'Paste document text to score.');
+    paste='<div class="doc-paste"><div class="tip doc-paste-msg">'+esc(msg)+'</div><textarea class="doc-paste-text" data-paste-id="'+esc(f.id)+'" placeholder="Paste the full text of this document. It is stored only in this browser.">'+esc(x.pasted)+'</textarea><div class="row"><button data-paste-clear="'+esc(f.id)+'">Clear pasted text</button></div></div>';
+  }
+  return '<article class="doc-score-card" data-doc-card="'+esc(f.id)+'"><h3>'+esc(label)+'</h3><div class="doc-score-name" title="'+esc(f.name)+'">'+esc(f.name)+'</div><div class="doc-score-metrics">'+docScoreMetricsHtml_(score,loading)+'</div><div class="doc-score-detail">'+(loading?'<div class="tip" style="margin-top:6px">Reading document text…</div>':docScoreDetailHtml_(score,x.source))+'</div>'+paste+'</article>';
+}
+function refreshDocScoreCard_(id){
+  var card=document.querySelector('[data-doc-card="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');if(!card)return;
+  var x=docScoreInputs_({id:id}),score=documentProxyScore_({text:x.text,_reason:x.st._reason});
+  card.querySelector('.doc-score-metrics').innerHTML=docScoreMetricsHtml_(score,false);
+  card.querySelector('.doc-score-detail').innerHTML=docScoreDetailHtml_(score,x.source);
 }
 function renderDocumentScores_(){
   var host=$('doc-score-panel');if(!host)return;
   var resume=selectedDocumentOfType_('resume'),cover=selectedDocumentOfType_('cover'),c=PipelineScoring.normalize(S.scoring);
-  host.innerHTML='<h2>ATS profile &amp; document screening</h2><p class="tip">Scores are calculated from the selected document text and your saved profile. ATS score measures keyword and structure coverage; AI score is a transparent evidence/readability proxy, not a live vendor ATS or model verdict.</p><div class="doc-score-grid">'+documentScoreCard_('Selected resume',resume)+documentScoreCard_('Selected cover letter',cover)+'</div><div class="doc-score-profile"><h3>ATS profile keywords</h3><textarea id="doc-ats-keywords" placeholder="manufacturing, torque, fastening, EV launch, plant startup, quality systems">'+esc(c.resumeKeywords||'')+'</textarea><div class="row"><button id="doc-ats-save" class="neon">Save ATS profile</button><button id="doc-ats-reset">Reset defaults</button><span id="doc-ats-status" class="tip"></span></div></div>';
+  host.innerHTML='<h2>ATS profile &amp; document screening</h2><p class="tip">Both scores are local proxies calculated in this browser from the selected document text and your saved ATS profile. ATS proxy score measures keyword and section coverage; AI proxy score is a transparent evidence/readability heuristic. Neither is a live ATS or AI model verdict, and nothing is written to the master.</p><div class="doc-score-grid">'+documentScoreCard_('Selected resume',resume)+documentScoreCard_('Selected cover letter',cover)+'</div><div class="doc-score-profile"><h3>ATS profile keywords</h3><textarea id="doc-ats-keywords" placeholder="manufacturing, torque, fastening, EV launch, plant startup, quality systems">'+esc(c.resumeKeywords||'')+'</textarea><div class="row"><button id="doc-ats-save" class="neon">Save ATS profile</button><button id="doc-ats-reset">Reset defaults</button><span id="doc-ats-status" class="tip"></span></div></div>';
   $('doc-ats-save').onclick=function(){c.resumeKeywords=$('doc-ats-keywords').value.trim();S.scoring=PipelineScoring.normalize(c);LS.set('scoring',S.scoring);scoreCache={};renderDocumentScores_();$('doc-ats-status').textContent='Saved locally. Document and role ratings recalculated.'};
   $('doc-ats-reset').onclick=function(){S.scoring=PipelineScoring.defaults();LS.set('scoring',S.scoring);scoreCache={};renderDocumentScores_()};
+  host.querySelectorAll('[data-paste-id]').forEach(function(t){t.oninput=function(){var id=t.getAttribute('data-paste-id');setDocPasted_(id,t.value);refreshDocScoreCard_(id)}});
+  host.querySelectorAll('[data-paste-clear]').forEach(function(b){b.onclick=function(){setDocPasted_(b.getAttribute('data-paste-clear'),'');renderDocumentScores_()}});
 }
 function loadDocumentText_(f){
   if(!f||S.docScores[f.id])return;
   var inline=documentText_(f);if(inline){S.docScores[f.id]={text:inline};renderDocumentScores_();return;}
   S.docScores[f.id]={loading:true};renderDocumentScores_();
-  gsGet('document_text','&fileId='+encodeURIComponent(f.id)).then(function(j){if(j&&j.ok&&j.available&&j.text)S.docScores[f.id]={text:j.text};else S.docScores[f.id]={text:'',_reason:(j&&j.reason)||'Text extraction is not available for this file type'};renderDocumentScores_()}).catch(function(e){S.docScores[f.id]={text:'',_reason:'Could not read document text'};renderDocumentScores_()});
+  gsGet('document_text','&fileId='+encodeURIComponent(f.id)).then(function(j){if(j&&j.ok&&j.available&&j.text)S.docScores[f.id]={text:j.text};else if(j&&j.ok&&j.available===false)S.docScores[f.id]={text:'',_unsupported:true,_reason:j.reason||''};else if(j&&j.ok)S.docScores[f.id]={text:'',_reason:'The document has no text'};else S.docScores[f.id]={text:'',_reason:'Could not read document text'+((j&&j.error)?' ('+j.error+')':'')};renderDocumentScores_()}).catch(function(e){S.docScores[f.id]={text:'',_reason:'Could not read document text'};renderDocumentScores_()});
 }
 function renderDocuments(){
   var v=$('view-documents');
