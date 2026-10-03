@@ -7,6 +7,9 @@ assert.equal(S.scoreRow({LOCATION:'Cleveland, TN',TITLE:'Director of Manufacturi
 assert.equal(S.scoreRow({LOCATION:'New York, NY',TITLE:'Director of Manufacturing',payload:{}},cfg).parts.geo.score,0);
 assert.equal(S.scoreRow({LOCATION:'Tampa, FL',TITLE:'Director of Manufacturing',payload:{}},cfg).parts.geo.score,70);
 assert.equal(S.scoreRow({LOCATION:'Detroit, MI',TITLE:'Director of Manufacturing',payload:{}},cfg).parts.geo.score,5);
+assert.equal(S.geoScoreAt(35.1595,-84.8766,cfg).score,100);
+assert.equal(S.geoScoreAt(40.7128,-74.006,cfg).score,0);
+assert(S.geoScoreAt(39.5,-90,cfg).score > 0 && S.geoScoreAt(39.5,-90,cfg).score < 100);
 
 const row = {LOCATION:'Cleveland, TN',TITLE:'Director of Manufacturing Quality',COMPANY:'Industrial Systems',compMid:240000,payload:{FIT_SCORE:'90',DEGREE_REQ:'not stated'}};
 const scored = S.scoreRow(row,cfg);

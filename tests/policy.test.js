@@ -8,6 +8,8 @@ assert.equal(P.assess({FLEX:'STRICT_NO'},99).decision,'STRICT_HOLD');
 assert.equal(P.flex({FLEX:'STRICT_NO',TIM_FLEX_OVERRIDE:'YES'}).blocked,false);
 assert.equal(P.flex({}).class,'UNKNOWN');
 assert.equal(P.flex({DEGREE_TEXT:'NOT STATED'}).class,'HIGH_FLEX');
+assert.equal(P.flex({FLEX:'SOFT',DEGREE_REQ:'NOT_STATED in verified/retrieved role evidence'}).class,'HIGH_FLEX');
+assert.equal(P.flex({FLEX:'NO',DEGREE_REQ:"Bachelor's degree or equivalent work experience"}).class,'SOFT_FLEX');
 assert.equal(P.flex({REQUIREMENTS_REVIEWED:'YES',DEGREE_TEXT:'Bachelors degree or equivalent experience'}).class,'SOFT_FLEX');
 const url='https://www.linkedin.com/jobs/view/123?tracking=original';
 assert.equal(P.links({payload:{SOURCE:'LinkedIn '+url}}).preferred,url);
@@ -17,5 +19,5 @@ assert(out.ok);assert(out.after.includes('INITIATING_URL='+url));assert(out.afte
 assert.equal(W.mutateRow(out.after,{kind:'ENRICH',fields:{INITIATING_URL:'https://other.test'}}).ok,false);
 const high=S.scoreRow({TITLE:'Director',payload:{FIT_SCORE:70,FLEX:'YES'}},S.defaults());
 const no=S.scoreRow({TITLE:'Director',payload:{FIT_SCORE:70,FLEX:'NO'}},S.defaults());
-assert(high.overall>no.overall);assert.equal(high.parts.experience.rawScore,70);
+assert(high.overall>no.overall);assert(high.flexInfluence>no.flexInfluence);assert.equal(high.parts.experience.rawScore,70);assert.equal(high.parts.experience.adjustedScore,85);assert.equal(no.parts.experience.adjustedScore,60);
 console.log('PASS FLEX modifiers, strict override, unknown evidence, URL preservation and shared writer policy');

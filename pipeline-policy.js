@@ -15,7 +15,10 @@ var PipelinePolicy = (function () {
     var degree=String(p.DEGREE_TEXT||p.DEGREE_REQ||p.DEGREE||'').trim();
     var aliases={YES:'HIGH_FLEX',HIGH:'HIGH_FLEX',SOFT:'SOFT_FLEX',NO:'NO_FLEX',STRICT_NO:'STRICT',NOT_STATED:'HIGH_FLEX'};
     cls=aliases[cls]||cls;
-    if(/^(NOT[_ ]STATED|NONE|NO DEGREE (MENTIONED|REQUIRED))$/i.test(degree))cls='HIGH_FLEX';
+    var degreeNotStated=/not[_ ]stated|not mentioned|no degree(?: requirement)?|degree not (?:mentioned|required)/i.test(degree);
+    var degreeEquiv=/equivalent experience|equivalent combination|experience in lieu|degree[^.]{0,120}\bor\b[^.]{0,120}experience|or extensive .*experience/i.test(degree);
+    if(degreeNotStated)cls='HIGH_FLEX';
+    else if(degreeEquiv)cls='SOFT_FLEX';
     if(!/^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(cls)){
       cls='UNKNOWN';
       if(/^YES$/i.test(p.REQUIREMENTS_REVIEWED||'')&&degree){
