@@ -49,7 +49,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','undo_ruling','install_automation','batch'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
@@ -58,6 +58,7 @@ function doGet(e) {
     if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200)) });
     if (a === 'interview_notes') return out_(readInterviewNotes_(p.primaryId || ''));
     if (a === 'documents') return out_(readJobDocuments_());
+    if (a === 'document_text') return out_(readDocumentText_(p.fileId || ''));
     if (a === 'discovery_requests') return out_(readDiscoveryRequests_(p.primaryId || '', +(p.limit || 100)));
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'canonical_rules') return out_(readCanonicalRules_());
@@ -881,6 +882,17 @@ function docsConfigFile_() {
 function readDocsConfig_() { try { return JSON.parse(docsConfigFile_().getBlob().getDataAsString() || '{}'); } catch(e) { return {}; } }
 function readJobDocuments_() {
   return { ok:true, config:readDocsConfig_(), resumes:listFolderFiles_(RESUMES_FOLDER_ID), coverLetters:listFolderFiles_(COVER_LETTERS_FOLDER_ID), supporting:listFolderFiles_(SUPPORTING_DOCS_FOLDER_ID), timVoice:listFolderFiles_(TIM_VOICE_FOLDER_ID), interviewNotes:listFolderFiles_(INTERVIEW_NOTES_FOLDER_ID) };
+}
+function readDocumentText_(fileId) {
+  var id=String(fileId||'').trim(); if(!id) return {ok:false,error:'fileId required'};
+  var f; try { f=DriveApp.getFileById(id); } catch(e) { return {ok:false,error:'document not found'}; }
+  var mime=String(f.getMimeType()||''), text='', method='';
+  try {
+    if(mime==='application/vnd.google-apps.document') { text=DocumentApp.openById(id).getBody().getText(); method='google-doc'; }
+    else if(mime.indexOf('text/')===0 || mime==='application/json') { text=f.getBlob().getDataAsString(); method='text'; }
+    else return {ok:true,fileId:id,name:f.getName(),mimeType:mime,text:'',available:false,reason:'Text extraction is not available for '+mime};
+  } catch(e2) { return {ok:false,error:'document text unavailable: '+String(e2&&e2.message||e2)}; }
+  return {ok:true,fileId:id,name:f.getName(),mimeType:mime,text:String(text||''),available:true,method:method};
 }
 function approveResume_(sel) {
   var id=String(sel.fileId||'').trim(); if(!id) return {ok:false,error:'fileId required'};

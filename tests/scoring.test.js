@@ -20,7 +20,7 @@ assert(scored.parts.ats.score != null);
 assert(['PASS','RISK','FAIL','UNKNOWN'].includes(scored.screenGate));
 assert(scored.confidence < 100, 'missing component evidence should reduce confidence');
 
-const custom = S.normalize({weights:{experience:100,compensation:0,geo:0,ats:0,title:0,culture:0,ownership:0},resumeKeywords:'torque, fastening'});
+const custom = S.normalize({weights:{experience:100,flex:0,compensation:0,geo:0,ats:0,title:0,culture:0,ownership:0},resumeKeywords:'torque, fastening'});
 const customScore = S.scoreRow({LOCATION:'Cleveland, TN',TITLE:'Torque Engineer',payload:{FIT_SCORE:'88'}},custom);
 assert.equal(customScore.overall,88);
 console.log('PASS: configurable opportunity scoring, geographic anchors, compensation, ATS proxy, and confidence');
