@@ -57,13 +57,49 @@ function listPending_(folder) {
   return out;
 }
 
-/** Trigger handler (also callable via GET action=process_queue). Applies pending queue files oldest first. */
+/**
+ * Claims the oldest pending request by renaming it PROCESSING__<original> while holding the script lock, so two
+ * overlapping trigger runs can never pick the same file. The lock covers only list + rename and is released before the
+ * request is applied: dispatchWrite_ takes the same script lock for the actual master write.
+ * Folder listings can lag behind renames/moves, so each candidate is re-read by ID and must still be a pending file in
+ * this folder before it is claimed. skipIds holds files this run already handled.
+ * Returns { busy:true } if another execution holds the lock, { file:null } if nothing is pending, else { file, original }.
+ */
+function claimNextQueueFile_(folder, skipIds) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(0)) return { busy: true, file: null };
+  try {
+    var pending = listPending_(folder), folderId = folder.getId();
+    for (var i = 0; i < pending.length; i++) {
+      var id = pending[i].getId();
+      if (skipIds && skipIds[id]) continue;
+      var file = DriveApp.getFileById(id);
+      if (!isPendingQueueFile_(file, folderId, Date.now())) continue;
+      var original = file.getName().replace(/^PROCESSING__/, '');
+      file.setName('PROCESSING__' + original);
+      return { busy: false, file: file, original: original };
+    }
+    return { busy: false, file: null };
+  } finally {
+    lock.releaseLock();
+  }
+}
+function isPendingQueueFile_(file, folderId, now) {
+  var n = file.getName(), inFolder = false, parents = file.getParents();
+  while (parents.hasNext()) if (parents.next().getId() === folderId) inFolder = true;
+  if (!inFolder || /^RESULT__/.test(n)) return false;
+  return !/^PROCESSING__/.test(n) || now - file.getLastUpdated().getTime() >= QUEUE_STALE_MS;
+}
+
+/** Trigger handler (also callable via GET action=process_queue). Applies pending queue files oldest first, one claim at a time. */
 function processWriterQueue() {
-  var started = Date.now(), f = queueFolders_(), files = listPending_(f.queue), done = [];
-  for (var i = 0; i < files.length; i++) {
-    if (Date.now() - started > QUEUE_BUDGET_MS) break;
-    var file = files[i], original = file.getName().replace(/^PROCESSING__/, '');
-    file.setName('PROCESSING__' + original);
+  var started = Date.now(), f = queueFolders_(), done = [], busy = false, handled = {};
+  while (Date.now() - started <= QUEUE_BUDGET_MS) {
+    var claim = claimNextQueueFile_(f.queue, handled);
+    if (claim.busy) { busy = true; break; }
+    if (!claim.file) break;
+    var file = claim.file, original = claim.original;
+    handled[file.getId()] = true;
     var entry = { file: original, fileId: file.getId(), startedAt: new Date().toISOString() };
     var result;
     try {
@@ -80,7 +116,7 @@ function processWriterQueue() {
     appendQueueLog_(entry);
     done.push(entry);
   }
-  return { ok: true, processed: done.length, remaining: Math.max(0, files.length - done.length), results: done };
+  return { ok: true, processed: done.length, remaining: listPending_(f.queue).length, busy: busy, results: done };
 }
 
 function readQueueFile_(file) {
@@ -100,4 +136,4 @@ function parseQueueContent_(text) {
   return { ok: true, body: body };
 }
 
-if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_ };
+if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_ };
