@@ -1,3 +1,4 @@
+if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipeline-policy');
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -376,6 +377,8 @@ function mutateRow(line, ruling) {
     set('TIM_NOTE', note + ' [Tim ' + d + ']'); changes.push('TIM_NOTE');
   } else if (kind === 'APPLY_NOW' && val === 'YES') {
     if ((g = guardProtected('mark pursue on'))) return g;
+    if(PipelinePolicy.flex(P).blocked&&String(ruling.actor||'').toUpperCase()!=='TIM')return {ok:false,error:'STRICT requires explicit Tim override'};
+    if(PipelinePolicy.flex(P).blocked)set('TIM_FLEX_OVERRIDE','YES');
     fixed[4] = 'READY_TO_PURSUE'; fixed[5] = 'RESOLVED/PURSUE_CANDIDATE';
     set('TIM_RULING', 'PURSUE'); tags.push('TIM_OVERRIDE_PURSUE_' + d); changes.push('BUCKET', 'DISPOSITION', 'TIM_RULING');
     if (P.DECLINE_REASON_CODE) { set('DECLINE_REASON_CODE_PRIOR', P.DECLINE_REASON_CODE); delete P.DECLINE_REASON_CODE; O.splice(O.indexOf('DECLINE_REASON_CODE'), 1); }
@@ -454,12 +457,16 @@ function applyFields_(fields, P, O, set) {
     var v = fields[keys[i]]; if (v === undefined || v === null) continue;
     v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v)).slice(0, 1500);
     if (v === '') continue;
-    if (k === 'SOURCE_URL' && !/^https?:\/\/[^\s]+$/i.test(v)) return { ok: false, error: 'SOURCE_URL must be the exact http(s) employer or ATS URL' };
-    if ((k === 'FLEX' || k === 'FLEX_HINT') && !/^(YES|SOFT|NO|STRICT_NO|UNKNOWN)$/i.test(v)) return { ok: false, error: k + ' must be YES, SOFT, NO, STRICT_NO, or UNKNOWN' };
+    if (['SOURCE_URL','INITIATING_URL','COMPANY_SOURCE_URL'].indexOf(k)>=0 && !/^https?:\/\/[^\s]+$/i.test(v)) return { ok: false, error: 'URL must be a usable http(s) initiating or company source link' };
+    if ((k === 'FLEX' || k === 'FLEX_HINT') && !/^(YES|HIGH_FLEX|SOFT|SOFT_FLEX|NO|NO_FLEX|STRICT_NO|STRICT|UNKNOWN)$/i.test(v)) return { ok: false, error: k + ' must be YES, SOFT, NO, STRICT_NO, or UNKNOWN' };
+    if(k==='INITIATING_URL'&&P.INITIATING_URL&&P.INITIATING_URL!==v)return {ok:false,error:'INITIATING_URL is immutable; retain the original link'};
+    if(k==='SOURCE_URL'&&!P.INITIATING_URL)set('INITIATING_URL',PipelinePolicy.links(P).initiating||v);
     if (P[k] === v) continue;
     if (INTAKE_PRESERVE.indexOf(k) >= 0 && P[k] && P['INTAKE_' + k] === undefined) set('INTAKE_' + k, P[k]);
     set(k, v); changed.push(k);
   }
+  if(fields.FLEX||fields.FLEX_HINT)delete P.FLEX_CLASS;var f=PipelinePolicy.flex(P);set('FLEX_CLASS',f.class);set('FLEX_MODIFIER',String(f.modifier));
+  var raw=Number(P.SCOPE_FIT_RAW||P.RAW_FIT);if((P.SCOPE_FIT_RAW||P.RAW_FIT)!==undefined&&isFinite(raw)){var a=PipelinePolicy.assess(P,raw);set('ADJUSTED_FIT',String(a.adjustedFit));set('PURSUIT_STATUS',a.decision);}
   return { ok: true, changed: changed };
 }
 /**
@@ -501,6 +508,7 @@ function planUpsertApplication(lines, ev, ctx) {
     var mu = mutateRow(lines[li], ruling); if (!mu.ok) return { ok: false, mode: 'HOLD', error: mu.error };
     return { ok: true, mode: 'UPDATE', index: li, primaryId: row.id, matchedBy: m.by, after: mu.after, mutation: mu, upsertKey: upsertKey };
   }
+  var eventUrl=PipelinePolicy.links(ev).preferred;if(!eventUrl)return {ok:false,mode:'HOLD',error:'SOURCE_URL_REQUIRED: provide the initiating posting or email click-through URL for a new row'};
   var maxInv = 0, seen = {}; idx.forEach(function (r) { if (r.inv > maxInv) maxInv = r.inv; seen[r.id] = true; });
   var inv = maxInv + 1, pid = 'V2E-' + hashHex(upsertKey + '|' + inv).slice(0, 12).toUpperCase();
   while (seen[pid]) pid = 'V2E-' + hashHex(pid + '|x').slice(0, 12).toUpperCase();
@@ -509,7 +517,7 @@ function planUpsertApplication(lines, ev, ctx) {
   set('UPSERT_KEY', upsertKey);
   if (state === 'APPLIED') { set('APP_DATE', evDate); set('APP_STATUS_EVIDENCE', evidence); }
   else { set('REJECTION_DATE', evDate); set('REJECTION_EVIDENCE', evidence); set('STATE_SEMANTICS', 'Employer rejected Tim/application; distinct from DECLINED_BY_TIM'); }
-  set('SOURCE_URL', /^https?:\/\//i.test(ev.SOURCE_URL || '') ? ev.SOURCE_URL : ''); set('REQ_ID', ev.REQ_ID); set('ANTI_RESURRECTION', 'YES');
+  set('SOURCE_URL', eventUrl); set('INITIATING_URL',eventUrl); set('REQ_ID', ev.REQ_ID); set('ANTI_RESURRECTION', 'YES');
   if (ev.NOTE) set('NOTE', ev.NOTE);
   var fr = applyFields_(ev.fields, P, O, set); if (!fr.ok) return { ok: false, mode: 'INVALID', error: fr.error };
   set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', 'EMAIL'); set('STATE_SOURCE', String(ruling.actor).toUpperCase().replace(/[^A-Z0-9_]/g, '') + ':' + ruling.requestId); set('STATE_UPDATED_AT', now);
@@ -720,8 +728,9 @@ function classifyNeverConsider(rec, R) {
 var INTAKE_FACT_KEYS = ['PAY_POSTED', 'DEGREE_TEXT', 'FLEX_HINT', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
-  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0, 400); });
+  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0, 400); });
   var unk = rec.INITIAL_UNKNOWN_FIELDS; out.INITIAL_UNKNOWN_FIELDS = Array.isArray(unk) ? unk.map(clean_).filter(Boolean).join(',') : clean_(unk || '');
+  out.SOURCE_URL=PipelinePolicy.links(out).preferred;
   if (out.SOURCE_URL && !/^https?:\/\//i.test(out.SOURCE_URL)) out.SOURCE_URL = '';
   if (out.SOURCE && !out.DISCOVERY_SOURCE) out.DISCOVERY_SOURCE = out.SOURCE;
   return out;
@@ -756,6 +765,7 @@ function planIntake(lines, records, rulesObj, ctx) {
     if (nc.outcome === 'REVIEW') { res.NEVER_CONSIDER_REVIEW_NEEDED = nc.ruleId; summary.NEVER_CONSIDER_REVIEW_NEEDED++; }
     var m = matchExisting(rec, idx);
     if (m.kind === 'exact') { res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = m.rows[0].id; res.INV = m.rows[0].inv; res.BUCKET = m.rows[0].bucket; res.matchedBy = m.by; if (m.by === 'INTAKE_KEY') { res.detail = 'REPLAY'; summary.REPLAY++; } summary.EXISTING_MATCH++; results.push(res); continue; }
+    if(!PipelinePolicy.validUrl(rec.SOURCE_URL)){res.result='WRITE_FAILED';res.detail='SOURCE_URL_REQUIRED: retain initiating job-board, email click-through, or ATS link';summary.WRITE_FAILED++;results.push(res);continue;}
     var proposed = String(rec.PROPOSED_BUCKET || '').toUpperCase(); var conf = String(rec.IDENTITY_CONFIDENCE || '').toUpperCase() || (rec.REQ_ID || rec.SOURCE_URL ? 'MEDIUM' : 'LOW');
     var bucket;
     if (m.kind === 'ambiguous') { bucket = 'DISCOVERY_LEAD'; conf = 'LOW'; res.matchedBy = 'AMBIGUOUS:' + m.by; res.detail = 'possible matches ' + m.rows.map(function (r) { return r.id; }).join(','); summary.AMBIGUOUS_LEAD++; }
@@ -769,7 +779,7 @@ function planIntake(lines, records, rulesObj, ctx) {
     var P = {}, O = [];
     function set(k, v) { if (v === undefined || v === null || v === '') return; if (O.indexOf(k) < 0) O.push(k); P[k] = clean_(v); }
     set('INTAKE_KEY', rec.INTAKE_KEY); set('SCOUT_RUN_ID', runId || 'UNSPECIFIED'); set('DISCOVERED_AT_ET', rec.DISCOVERED_AT_ET || nowET); set('DISCOVERY_SOURCE', rec.DISCOVERY_SOURCE || 'Scout');
-    set('SOURCE_URL', rec.SOURCE_URL); set('SOURCE_PROVIDER', rec.SOURCE_PROVIDER); set('REQ_ID', rec.REQ_ID); set('IDENTITY_CONFIDENCE', conf);
+    set('SOURCE_URL', rec.SOURCE_URL); set('INITIATING_URL',rec.INITIATING_URL||rec.SOURCE_URL); set('COMPANY_SOURCE_URL',rec.COMPANY_SOURCE_URL); set('SOURCE_PROVIDER', rec.SOURCE_PROVIDER); set('REQ_ID', rec.REQ_ID); set('IDENTITY_CONFIDENCE', conf);
     set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED'); if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
     INTAKE_FACT_KEYS.forEach(function (k) { set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
     if (nc.outcome === 'REVIEW') { set('NEVER_CONSIDER_REVIEW_NEEDED', nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'); set('NEVER_CONSIDER_REASON', nc.reason); }

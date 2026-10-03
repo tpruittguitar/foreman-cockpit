@@ -49,16 +49,16 @@ ok(W.mutateRow(declined, { kind: 'ENRICH', ts, fields: { X_NOTE: 'a | b; c' } })
 
 // ---- upsert_application ----
 const now = '2026-10-02T03:10:00.000Z';
-let p = W.planUpsertApplication(lines, { COMPANY: 'Zyxwv Novel Aerostructures', TITLE: 'Director of Manufacturing', STATE: 'APPLIED', EVENT_DATE: '2026-10-01', EVIDENCE: 'Gmail 1zz "Thanks for applying"', LOCATION: 'Wichita, KS' }, { now });
+let p = W.planUpsertApplication(lines, { SOURCE_URL:'https://example.test/jobs/zyxwv', COMPANY: 'Zyxwv Novel Aerostructures', TITLE: 'Director of Manufacturing', STATE: 'APPLIED', EVENT_DATE: '2026-10-01', EVIDENCE: 'Gmail 1zz "Thanks for applying"', LOCATION: 'Wichita, KS' }, { now });
 ok(p.ok && p.mode === 'CREATE' && /^V2E-[0-9A-F]{12}$/.test(p.primaryId), 'no match -> CREATE with V2E id');
 const c = p.newLine.split(' | ');
 ok(c[4] === 'APPLIED' && c[5] === 'RESOLVED/APPLIED_CONFIRMED' && c.length >= 10 && /UPSERT_KEY=UK-/.test(p.newLine) && /APP_DATE=2026-10-01/.test(p.newLine) && /ANTI_RESURRECTION=YES/.test(p.newLine), 'created row is a well-formed APPLIED row with evidence and upsert key');
 const maxInv = Math.max(...rows.map(l => parseInt(l, 10)));
 ok(parseInt(c[0], 10) === maxInv + 1, 'created row takes the next INV');
 const withNew = lines.slice(); const endI = withNew.findIndex(l => /^END V2_CURRENT_POPULATION_MASTER/.test(l)); withNew.splice(endI >= 0 ? endI : withNew.length, 0, p.newLine);
-const replay = W.planUpsertApplication(withNew, { COMPANY: 'Zyxwv Novel Aerostructures', TITLE: 'Director of Manufacturing', STATE: 'APPLIED', EVENT_DATE: '2026-10-01', EVIDENCE: 'Gmail 1zz "Thanks for applying"', LOCATION: 'Wichita, KS' }, { now });
+const replay = W.planUpsertApplication(withNew, { SOURCE_URL:'https://example.test/jobs/zyxwv', COMPANY: 'Zyxwv Novel Aerostructures', TITLE: 'Director of Manufacturing', STATE: 'APPLIED', EVENT_DATE: '2026-10-01', EVIDENCE: 'Gmail 1zz "Thanks for applying"', LOCATION: 'Wichita, KS' }, { now });
 ok(replay.ok && replay.mode === 'ALREADY_APPLIED' && replay.primaryId === p.primaryId, 'replay of the same event is a no-op');
-const rej = W.planUpsertApplication(withNew, { COMPANY: 'Zyxwv Novel Aerostructures', TITLE: 'Director of Manufacturing', STATE: 'REJECTED_BY_EMPLOYER', EVIDENCE: 'Gmail 2zz "update"', LOCATION: 'Wichita, KS' }, { now });
+const rej = W.planUpsertApplication(withNew, { SOURCE_URL:'https://example.test/jobs/zyxwv', COMPANY: 'Zyxwv Novel Aerostructures', TITLE: 'Director of Manufacturing', STATE: 'REJECTED_BY_EMPLOYER', EVIDENCE: 'Gmail 2zz "update"', LOCATION: 'Wichita, KS' }, { now });
 ok(rej.ok && rej.mode === 'UPDATE' && rej.primaryId === p.primaryId && rej.after.split(' | ')[4] === 'REJECTED_BY_EMPLOYER', 'later rejection updates the same row in place (no second row)');
 ok(rej.after.split(' | ')[1] === p.primaryId, 'PRIMARY_ID preserved on update');
 const tgt = declined.split(' | ')[1].trim();
