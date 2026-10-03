@@ -123,7 +123,18 @@ function readQueueFile_(file) {
   if (file.getMimeType() === MimeType.GOOGLE_DOCS) return DocumentApp.openById(file.getId()).getBody().getText();
   return file.getBlob().getDataAsString('UTF-8');
 }
-function appendQueueLog_(entry) { var lf = findOrCreate_(QUEUE_LOG_NAME, 'text', ''); var cur = lf.getBlob().getDataAsString(); lf.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + JSON.stringify(entry) + '\n'); }
+/** Read + append + write under the script lock so two runs finishing together cannot overwrite each other's line.
+ *  Called after dispatchWrite_ has released its lock, so this never nests inside another script-lock hold. */
+function appendQueueLog_(entry) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    var lf = findOrCreate_(QUEUE_LOG_NAME, 'text', ''); var cur = lf.getBlob().getDataAsString();
+    lf.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + JSON.stringify(entry) + '\n');
+  } finally {
+    lock.releaseLock();
+  }
+}
 
 /** Pure: extract one JSON object from file text (tolerates BOM, code fences, smart quotes from Docs, leading prose). */
 function parseQueueContent_(text) {
@@ -136,4 +147,4 @@ function parseQueueContent_(text) {
   return { ok: true, body: body };
 }
 
-if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_ };
+if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_, appendQueueLog_: appendQueueLog_ };
