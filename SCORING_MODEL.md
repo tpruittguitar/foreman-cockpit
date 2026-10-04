@@ -11,7 +11,7 @@ The weighted rating is an assessment, not an automatic application decision. A h
 ## Authority and version
 
 - Model ID: `TIM_WEIGHTED_JOB_RATING`
-- Current default version: `2026-10-03.1`
+- Current default version: `2026-10-04.1`
 - The published model in `PIPELINE_SCORING_MODEL.json` (read through the Writer `scoring` action) is canonical when it exists.
 - A browser-local or agent-local model is a what-if draft only. Do not describe a local draft as Tim's current model.
 - Never write a score into the canonical master unless the requested writer action explicitly permits it. Preserve the evidence fields that support each score.
