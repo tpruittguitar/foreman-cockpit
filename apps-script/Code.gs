@@ -1143,7 +1143,7 @@ function readFlexPolicy_() {
     return policy;
   } catch (e) {
     defaults._SOURCE = 'DEFAULT_FALLBACK';
-    defaults._WARNING = 'Canonical FLEX policy read failed: ' + String(e && e.message || e);
+    defaults._WARNING = 'Canonical FLEX policy read failed: ' + String(e && e.message || e).replace(/\s+/g, ' ');
     return defaults;
   }
 }

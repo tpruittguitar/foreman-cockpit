@@ -28,6 +28,10 @@
       '- Hard degree requirement without equivalency => '+p.HARD_DEGREE_CLASS+'.',
       '- Confirmed single required degree path => '+p.SINGLE_PATH_CLASS+'.',
       '- FLEX modifiers: HIGH_FLEX '+signed(p.HIGH_FLEX_MODIFIER)+', SOFT_FLEX '+signed(p.SOFT_FLEX_MODIFIER)+', NO_FLEX '+signed(p.NO_FLEX_MODIFIER)+', STRICT '+signed(p.STRICT_MODIFIER)+'.',
+      '- Blank unresearched requirements remain UNKNOWN (modifier 0).',
+      '- NO_FLEX: still pursue if adjusted fit is 80+ and pay/title rules clear.',
+      '- STRICT: modifier is for reporting; do not pursue unless Tim overrides. Do not automatically convert NO_FLEX to STRICT.',
+      '- Adjusted fit = clamp(raw scope fit + FLEX modifier, 0, 100). Report class, modifier, raw fit, adjusted fit, exact degree wording, and evidence. Apply pay and title rules afterward. Store unadjusted fit in SCOPE_FIT_RAW; do not apply the modifier twice.',
       '- Fresh degree evidence overrides stale FLEX = '+p.FRESH_DEGREE_OVERRIDES_STALE_CLASS+'. When enabled, only conclusive fresh degree evidence may replace a known class; inconclusive evidence preserves the known class.',
       '- Compatibility: YES=HIGH_FLEX, SOFT=SOFT_FLEX, NO=NO_FLEX, STRICT_NO=STRICT. FLEX concerns degree eligibility, not remote/hybrid work.',
       'FLEX_POLICY_PROSE_END'
@@ -62,7 +66,7 @@
     ].join('\n');
     var sectionRe=/(^|\n)(SECTION=DEGREE_FLEX\s*\n)([\s\S]*?)(?=\nSECTION=|$)/;
     var m=text.match(sectionRe);
-    if(!m)return text.replace(/\s*$/,'\n\n')+'SECTION=DEGREE_FLEX\n'+block+'\n';
+    if(!m)return text.replace(/\s*$/,'\n\n')+'SECTION=DEGREE_FLEX\n'+block+'\n'+flexPolicyProse(p)+'\n';
     var body=m[3]
       .replace(/^\s*(?:FLEX_POLICY_VERSION|HIGH_FLEX_MODIFIER|SOFT_FLEX_MODIFIER|NO_FLEX_MODIFIER|STRICT_MODIFIER|NOT_STATED_CLASS|EQUIVALENCY_CLASS|HARD_DEGREE_CLASS|SINGLE_PATH_CLASS|FRESH_DEGREE_OVERRIDES_STALE_CLASS)\s*=.*(?:\r?\n|$)/gm,'')
       .replace(/(?:^|\n)FLEX_POLICY_PROSE_BEGIN[\s\S]*?FLEX_POLICY_PROSE_END\s*(?=\n|$)/g,'\n')
