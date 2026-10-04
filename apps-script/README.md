@@ -1,6 +1,6 @@
 # Pipeline Explorer state writer — one-time setup (about 5 minutes)
 
-This script runs in **your** Google account. It reads the canonical master and, when you make a ruling in the Explorer, writes that ruling into the master row in place, recounts, reads it back, and logs a STATE_CHANGE_RECEIPT. It also keeps the Explorer's seen-rows and rulings in a small JSON file next to the master so your phone and laptop agree. It never runs on its own.
+This script runs in **your** Google account. It reads the canonical master and, when an approved Explorer or AI request arrives, writes the requested change into the master row in place, recounts, reads it back, and logs a receipt. It also supports Scout intake, data-discovery requests, scoring-model saves, document-text reads and the Drive queue. The queue trigger is the only unattended execution path; direct requests are handled immediately when the runtime can reach the web app.
 
 1. Open https://script.google.com and click **New project**.
 2. Delete the placeholder code, paste the full contents of `Code.gs` from this folder.
@@ -21,12 +21,12 @@ That is all. With the script configured, the page reads the master through it (t
 
 **What it writes.** Only the row you ruled on, plus the `COUNTS:` line. Notes go into a `TIM_NOTE=` payload key. "Do not pursue" and "Decline" set `BUCKET=DECLINED_BY_TIM` with `DECLINE_REASON_CODE`, `DECLINE_REASON_TEXT`, `REOPEN_TRIGGER`, `TIM_DISPOSITION`. "Pursue" sets `BUCKET=READY_TO_PURSUE` with `TIM_RULING=PURSUE`. "I applied" sets `BUCKET=APPLIED` with `APP_DATE` and `ANTI_RESURRECTION=YES`. Every write adds `STATE_SOURCE=TIM_EXPLORER:<request id>` and `STATE_UPDATED_AT`. Rows already APPLIED or REJECTED_BY_EMPLOYER cannot be declined or set to pursue (protected applicant state, Amendment 58). Section headings are left where they are; the master's own rule says row BUCKET is authoritative.
 
-## After PR #4 merges: what must be copied/deployed by hand (Tim)
-Claude Code cannot touch the live Apps Script deployment. The whole of `Code.gs` on `main` after the merge must be pasted over the script in the Apps Script editor (keep your own `PASSPHRASE`), then **Deploy → Manage deployments → pencil → Version: New version → Deploy**. The URL stays the same. On the first request after redeploy, Google will ask you to re-approve Docs and Drive access, because the script now reads a second Doc (`TIM_NEVER_CONSIDER_RULES`). Until this is done the live Explorer keeps working exactly as PR #3 left it: rulings write, but `action=intake`, `action=rules` and `action=runs` do not exist, so the Scout quality and Rules tabs show "not loaded".
+## Historical manual deployment note
+The old paste-over instructions below are retained only as history. When `apps-script/deploy.sh` and clasp access are available, use that script so the existing web-app URL and passphrase are preserved. Do not infer live capabilities from this historical section; call `action=ping` and use the returned action list.
 
 Files the script creates beside the master on first use (no action needed): `SCOUT_RUN_METRICS.jsonl` (telemetry). Existing: `PIPELINE_EXPLORER_STATE.json`, `PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS`.
 
 ## Automated deploys and AI access (2026-10-02)
 Nobody needs to paste code into the editor any more. `apps-script/deploy.sh` sets the live project to exactly this folder's `.gs` files, keeps the live passphrase, publishes a new version and points the existing web app at it, so the URL never changes. It needs a clasp login (`clasp login --no-localhost`) and the Apps Script API switched on at script.google.com/home/usersettings. `apps-script/deploy.sh --head` updates the code without touching the live web app.
 
-`Automation.gs` adds the Drive write queue (AI_Coordination/WRITER_QUEUE, applied every 5 minutes). Run `installAutomation` once from the editor to approve the trigger permission and install the trigger. How the AIs write is described in `docs/WRITER_ACCESS.md`.
+`Automation.gs` adds the Drive write queue (AI_Coordination/WRITER_QUEUE, claimed by a one-minute trigger). Run `installAutomation` once from the editor to approve the trigger permission and install the trigger. Queue files are transport only, never a second population. How the AIs write is described in `docs/WRITER_ACCESS.md`.

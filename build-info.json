@@ -1,0 +1,13 @@
+{
+  "app": "Pipeline Explorer",
+  "release": "main",
+  "commit": "local",
+  "commitShort": "local",
+  "branch": "local",
+  "context": "local",
+  "deployId": "",
+  "deployUrl": "",
+  "siteUrl": "",
+  "builtAt": "",
+  "source": "source"
+}

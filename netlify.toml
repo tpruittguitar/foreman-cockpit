@@ -1,4 +1,6 @@
 [build]
+  command = "node scripts/write-build-info.cjs"
+  publish = "."
   functions = "netlify/functions"
 
 [[redirects]]

@@ -2,11 +2,11 @@
 
 **Date:** 2026-09-30 (v0.1–v0.3 on 2026-09-29; v0.4 second-round corrections; v0.5 non-interference rule; v0.6 Tim's rulings on the numbered questions; v0.8 state writer; v0.9 Scout intake architecture)
 **Author:** Claude (Foreman node), from Tim's spec in this session
-**Status:** Step 1 BUILT (2026-09-30) per Tim's answers to the numbered questions; see §9C. `pipeline.html` reads the fixed master through `netlify/functions/master.js` and holds Tim's rulings locally until the Authorized State Writer applies them. No Drive files changed by this project. The master must be shared "Anyone with the link, Viewer" by Tim for the live fetch to work.
+**Status:** HISTORICAL DESIGN NOTES. For current behavior use `docs/ACTIVE_PIPELINE_AUTHORITY.md`, `docs/WRITER_ACCESS.md`, the canonical rules Doc and `action=ping`. This file records earlier design decisions and must not be used as a live deployment or capability checklist.
 **Reviewers:** Tim (final authority), ChatGPT, Grok
 **Repo:** tpruittguitar/foreman-cockpit (`docs/PIPELINE_EXPLORER_DESIGN_BRIEF.md`)
 
-**What changed in v0.9 (Tim's architectural ruling, 2026-09-30: canonical job pipeline = one population).** Scout no longer keeps a separate discovery population. Every plausible discovery enters the single fixed master (ID `19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`) as a `SCOUT_INTAKE` or `DISCOVERY_LEAD` row through a new `action=intake` on the same Authorized State Writer that applies Tim's rulings (PR #3). Unknown pay, degree, FLEX, scope, reporting level, liveness or req ID is a **research state, not a rejection reason**; hard exclusions come only from the canonical Doc `TIM_NEVER_CONSIDER_RULES` (NC-001 pharma, NC-002 medical device, NC-003 food/beverage, NC-004 restaurant/food service; primary business only; see v0.9a). Three new buckets (`SCOUT_INTAKE`, `DISCOVERY_LEAD`, `INVALID_DISCOVERY`), a Scout Quality dashboard per `SCOUT_RUN_ID`, a Rules tab, new presets and a four-section row detail (Scout facts / Claude proposed analysis / Forge verified facts / Tim rulings). §2.1 item 5 and §5.4 are corrected: **the Explorer is never a second state store. All canonical mutations go through the Authorized State Writer against the single fixed master and require readback verification.** Full spec in §9E and `docs/SCOUT_INTAKE_CONTRACT.md`. Built as a PR for Tim's review; not merged, not deployed. Verified population at the time of writing is 562 rows; no size is hard-coded anywhere.
+**Current clarification for the historical v0.9 notes.** The one-population and unknown-is-research principles are active. The old "not merged, not deployed" sentence referred to the 2026-09-30 draft and is no longer a live status claim; the deployed writer and `action=ping` are authoritative.
 
 **What changed in v0.8 (Tim's ruling 2026-09-30: "it did not save my comments and decisions to the master job file").** Step 1 held rulings on the device by design; Tim wants them in the master. v0.8 adds a **state writer**: a Google Apps Script in Tim's account that applies Tim's rulings to the master row in place under the Amendment 58 writer contract, plus cross-device sync of seen-state and rulings. See §9D. The non-interference rule (§2.1) still holds: the writer only answers requests from the page, only touches the ruled row and the COUNTS line, never runs on a schedule, and never touches any other pipeline file.
 
@@ -389,4 +389,3 @@ Both reviewers accept the v0.3 architecture for Step 1 subject to small correcti
 - **Grok, two fixture cases:** added, with three more.
 
 Both reviewers say to stop iterating the document and build Step 1. **That is a recommendation. The authorization is Tim's.**
-

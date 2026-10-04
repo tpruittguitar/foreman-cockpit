@@ -1,6 +1,6 @@
 # Scout intake contract (canonical master, single population)
 
-**Status:** proposed in the scout-intake PR (amended 2026-09-30 per ChatGPT's *Canonical never-consider ruleset + Scout intake integration* amendment); not live until Tim merges and redeploys the Apps Script. Nothing in this document changes any node's schedule.
+**Status:** ACTIVE in the deployed Authorized State Writer (verified by `action=ping`; last repository deployment is version 14). Nothing in this document changes any node's schedule. Use the live writer action list as the final capability check.
 
 **Canonical never-consider configuration:** the Google Doc `TIM_NEVER_CONSIDER_RULES` in AI_Coordination, Drive ID `1qLeVwmW76Cm_lHdleb342sE7_ej4dqTfODR1TcnF5os`. Configuration only; never a job database. The fixed canonical master remains `V2_CURRENT_POPULATION_MASTER.txt`, Drive ID `19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`.
 
@@ -97,7 +97,7 @@ Every gross discovery ends in exactly one explicit outcome; nothing is omitted b
 Modify, overwrite or reclassify any existing row. Create `READY_TO_PURSUE`, `APPLIED`, `REJECTED_BY_EMPLOYER`, `DECLINED_BY_TIM`, `CLOSED_DEAD`, `DUPLICATE`, `INVALID_DISCOVERY` or any bucket other than the two intake buckets. Delete anything. Downgrade any row. Write to the rules Doc. Touch any file other than the master, the receipts Doc and the run-metrics file beside it.
 
 ## Downstream expectations (no schedule changes)
-- Claude analysis reads `SCOUT_INTAKE` rows and writes proposed enrichment as `CLAUDE_*` / `ANALYSIS_*` / `PROPOSED_*` keys through its own writer path or a STATE_CHANGE_REQUEST; it does not change BUCKET.
+- Claude analysis reads `SCOUT_INTAKE` rows and writes proposed enrichment as `CLAUDE_*` / `ANALYSIS_*` / `PROPOSED_*` keys through the Authorized State Writer's `ruling`/`ENRICH` path; it does not change BUCKET unless a separate supported ruling kind is explicitly submitted.
 - Forge verification writes canonical facts and moves the row to `READY_TO_PURSUE`, `MANUAL_RESEARCH`, `DECLINED_BY_TIM` (rule-based), `DUPLICATE`, `CLOSED_DEAD` or `INVALID_DISCOVERY` through the Authorized State Writer.
 - Tim dispositions in the Explorer are canonical immediately (`STATE_SOURCE=TIM_EXPLORER:*`).
 - `INVALID_DISCOVERY` rows are never deleted; the ruling preserves the row with `INVALID_REASON`, `TIM_RULING`, `STATE_UPDATED_AT` and `STATE_SOURCE`. They are Scout quality evidence.
