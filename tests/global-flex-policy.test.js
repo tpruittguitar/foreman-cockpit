@@ -13,7 +13,9 @@ test('FLEX policy defaults preserve current production behavior',()=>{
   assert.equal(p.EQUIVALENCY_CLASS,'SOFT_FLEX');
   assert.equal(p.HARD_DEGREE_CLASS,'NO_FLEX');
   assert.equal(p.SINGLE_PATH_CLASS,'STRICT');
-  assert.equal(p.FRESH_DEGREE_OVERRIDES_STALE_CLASS,'YES');
+  assert.equal(p.FRESH_DEGREE_OVERRIDES_STALE_CLASS,'NO');
+  assert.deepEqual(P.normalizeFlexPolicy({}),Object.assign({},P.FLEX_POLICY_DEFAULTS));
+  assert.deepEqual(R.FLEX_DEFAULTS,P.FLEX_POLICY_DEFAULTS);
 });
 
 test('Rules editor round-trips structured FLEX policy in canonical DEGREE_FLEX section',()=>{
@@ -84,4 +86,78 @@ test('Explicit FLEX in same write still wins over fresh degree precedence',()=>{
   const p=W.parsePayload(r.after.split(' | ').slice(9).join(' | ')).payload;
   assert.equal(p.FLEX_CLASS,'SOFT_FLEX');
   assert.equal(p.FLEX_MODIFIER,'6');
+});
+
+const pl=line=>W.parsePayload(line.split(' | ').slice(9).join(' | ')).payload;
+
+test('Absent policy keys reproduce production: conclusive fresh degree evidence keeps the stale class unless Tim turns precedence on',()=>{
+  const row='1 | TEST-5 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ5 | TN | TEST; FLEX_CLASS=SOFT_FLEX; FLEX_MODIFIER=6';
+  const fields={DEGREE_TEXT:"Bachelor's degree required",REQUIREMENTS_REVIEWED:'YES'};
+  const def=pl(W.mutateRow(row,{kind:'ENRICH',actor:'CLAUDE',requestId:'T5',fields},R.flexPolicy('SECTION=DEGREE_FLEX\n- prose only\n')).after);
+  assert.equal(def.FLEX_CLASS,'SOFT_FLEX');assert.equal(def.FLEX_MODIFIER,'6');
+  const on=pl(W.mutateRow(row,{kind:'ENRICH',actor:'CLAUDE',requestId:'T5Y',fields},{FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'}).after);
+  assert.equal(on.FLEX_CLASS,'NO_FLEX');assert.equal(on.FLEX_MODIFIER,'-10');
+});
+
+test('Fresh degree precedence never wipes a known class or STRICT hold with inconclusive evidence',()=>{
+  const yes={FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'};
+  const strict='1 | TEST-6 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ6 | TN | TEST; FLEX_CLASS=STRICT; FLEX_MODIFIER=-10';
+  const s=pl(W.mutateRow(strict,{kind:'ENRICH',actor:'CLAUDE',requestId:'T6',fields:{DEGREE_TEXT:'See posting'}},yes).after);
+  assert.equal(s.FLEX_CLASS,'STRICT');assert.equal(s.FLEX_MODIFIER,'-10');
+  const tim='1 | TEST-7 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ7 | TN | TEST; FLEX=NO; FLEX_CLASS=NO_FLEX; FLEX_MODIFIER=-10';
+  const n=pl(W.mutateRow(tim,{kind:'ENRICH',actor:'CLAUDE',requestId:'T7',fields:{DEGREE_TEXT:'Bachelor degree in engineering'}},yes).after);
+  assert.equal(n.FLEX_CLASS,'NO_FLEX');assert.equal(n.FLEX_MODIFIER,'-10');assert.equal(n.FLEX,'NO');
+});
+
+test('STRICT pursue gate uses the transaction FLEX policy',()=>{
+  const row='1 | TEST-8 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ8 | TN | TEST; REQUIREMENTS_REVIEWED=YES; DEGREE_SINGLE_PATH_CONFIRMED=YES; DEGREE_TEXT=Bachelor degree required';
+  assert.equal(W.mutateRow(row,{kind:'APPLY_NOW',value:'YES',actor:'CLAUDE',requestId:'T8'},{}).ok,false);
+  assert.equal(W.mutateRow(row,{kind:'APPLY_NOW',value:'YES',actor:'CLAUDE',requestId:'T8B'},{SINGLE_PATH_CLASS:'NO_FLEX'}).ok,true);
+});
+
+test('Load approved FLEX/URL update keeps saved structured FLEX keys',()=>{
+  const src=R.setFlexPolicy('TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- old prose\nSECTION=TITLE_SCOPE_FIT\nX=1',{HIGH_FLEX_MODIFIER:12,FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'});
+  const replaced=src.replace(/SECTION=DEGREE_FLEX[\s\S]*?(?=SECTION=TITLE_SCOPE_FIT)/,'SECTION=DEGREE_FLEX\n- new prose\n');
+  const out=R.setFlexPolicy(replaced,R.flexPolicy(src));
+  assert.equal(R.flexPolicy(out).HIGH_FLEX_MODIFIER,12);assert.equal(R.flexPolicy(out).FRESH_DEGREE_OVERRIDES_STALE_CLASS,'YES');
+  assert.match(out,/- new prose/);assert.doesNotMatch(out,/- old prose/);
+  assert.equal(R.setFlexPolicy(out,R.flexPolicy(out)),out,'saving the same policy twice is stable');
+});
+
+// ---- Writer end-to-end: policy comes from the canonical Rules document, read once per transaction ----
+const MASTER='19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI', RULES='1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
+function services(rowCount,rulesText){
+  const para=t=>{let s=t;return {getText:()=>s,setText:v=>{s=v}}};
+  const rows=[];for(let i=1;i<=rowCount;i++)rows.push(i+' | V2F-ROW'+String(i).padStart(8,'0')+' | Acme '+i+' | Director | SCOUT_INTAKE | ANALYSIS_PENDING | - | REQ-'+i+' | Austin, TX | SOURCE_URL=https://example.com/'+i);
+  const master=['COUNTS: TOTAL='+rowCount+' SCOUT_INTAKE='+rowCount+' UNACCOUNTED=0',...rows,'END V2_CURRENT_POPULATION_MASTER ('+rowCount+' rows)'].map(para);
+  const receipts=[];let events='',opens={};
+  const doc=(body)=>({getBody:()=>body,saveAndClose(){}});
+  const files={PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS:{getId:()=>'RECEIPTS'},'PIPELINE_EVENT_LOG.jsonl':{getId:()=>'EVENTS',getBlob:()=>({getDataAsString:()=>events}),setContent:v=>{events=v}}};
+  const iter=l=>{let i=0;return {hasNext:()=>i<l.length,next:()=>l[i++]}};
+  const folder={getFilesByName:n=>iter(files[n]?[files[n]]:[]),createFile:n=>{throw new Error('unexpected createFile '+n)}};
+  global.LockService={getScriptLock:()=>({waitLock(){},releaseLock(){}})};
+  global.DriveApp={getFileById:id=>({getLastUpdated:()=>new Date('2026-10-04T20:00:00Z'),getParents:()=>iter([folder]),getId:()=>id})};
+  global.DocumentApp={openById:id=>{opens[id]=(opens[id]||0)+1;
+    if(id===MASTER)return doc({getParagraphs:()=>master});
+    if(id===RULES)return doc({getText:()=>rulesText});
+    return doc({getText:()=>receipts.join('\n'),appendParagraph:t=>receipts.push(t)});}};
+  global.MimeType={PLAIN_TEXT:'text/plain'};
+  return {opens,row:id=>master.map(p=>p.getText()).find(l=>l.split(' | ')[1]===id)};
+}
+const rules='TIM_PIPELINE_RULES_CANONICAL\nSTATUS=ACTIVE\nSECTION=DEGREE_FLEX\nFLEX_POLICY_VERSION=1\nNO_FLEX_MODIFIER=-4\nHARD_DEGREE_CLASS=NO_FLEX\n- prose\nSECTION=TITLE_SCOPE_FIT\nX=1';
+const degree=(i,rid)=>({action:'ruling',ruling:{primaryId:'V2F-ROW'+String(i).padStart(8,'0'),kind:'ENRICH',actor:'CLAUDE',requestId:rid+i,fields:{DEGREE_TEXT:"Bachelor's degree required",REQUIREMENTS_REVIEWED:'YES'}}});
+
+test('A 30-row all-ruling batch reads the canonical Rules document once and applies its policy to every row',()=>{
+  const s=services(30,rules);
+  const r=W.dispatchWrite_({action:'batch',requests:Array.from({length:30},(_,i)=>degree(i+1,'BATCH-'))});
+  assert.equal(r.mode,'BATCH_RULING_SINGLE_COMMIT');assert.equal(r.ok,true);assert.equal(r.processed,30);
+  assert.equal(s.opens[RULES],1,'rules read once per batch');
+  for(let i=1;i<=30;i++){const p=pl(s.row('V2F-ROW'+String(i).padStart(8,'0')));assert.equal(p.FLEX_CLASS,'NO_FLEX');assert.equal(p.FLEX_MODIFIER,'-4')}
+});
+
+test('A single ruling reads the canonical Rules document once',()=>{
+  const s=services(2,rules);
+  const r=W.dispatchWrite_(degree(1,'SINGLE-'));
+  assert.equal(r.ok,true,r.error);assert.equal(s.opens[RULES],1);
+  assert.equal(pl(s.row('V2F-ROW00000001')).FLEX_MODIFIER,'-4');
 });

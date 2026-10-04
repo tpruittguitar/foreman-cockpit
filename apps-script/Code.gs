@@ -557,8 +557,8 @@ function mutateRow(line, ruling, flexPolicy) {
     set('TIM_NOTE', note + ' [Tim ' + d + ']'); changes.push('TIM_NOTE');
   } else if (kind === 'APPLY_NOW' && val === 'YES') {
     if ((g = guardProtected('mark pursue on'))) return g;
-    if(PipelinePolicy.flex(P).blocked&&String(ruling.actor||'').toUpperCase()!=='TIM')return {ok:false,error:'STRICT requires explicit Tim override'};
-    if(PipelinePolicy.flex(P).blocked)set('TIM_FLEX_OVERRIDE','YES');
+    if(PipelinePolicy.flex(P,flexPolicy).blocked&&String(ruling.actor||'').toUpperCase()!=='TIM')return {ok:false,error:'STRICT requires explicit Tim override'};
+    if(PipelinePolicy.flex(P,flexPolicy).blocked)set('TIM_FLEX_OVERRIDE','YES');
     fixed[4] = 'READY_TO_PURSUE'; fixed[5] = 'RESOLVED/PURSUE_CANDIDATE';
     set('TIM_RULING', 'PURSUE'); tags.push('TIM_OVERRIDE_PURSUE_' + d); changes.push('BUCKET', 'DISPOSITION', 'TIM_RULING');
     if (P.DECLINE_REASON_CODE) { set('DECLINE_REASON_CODE_PRIOR', P.DECLINE_REASON_CODE); delete P.DECLINE_REASON_CODE; O.splice(O.indexOf('DECLINE_REASON_CODE'), 1); }
@@ -665,15 +665,17 @@ function applyFields_(fields, P, O, set, flexPolicy) {
     var degreeEvidenceChanged = inputKeys.some(function (k) { return ['DEGREE_TEXT','DEGREE_REQ','DEGREE','REQUIREMENTS_REVIEWED','DEGREE_SINGLE_PATH_CONFIRMED'].indexOf(k) >= 0; });
     if (inputKeys.indexOf('FLEX') >= 0 || inputKeys.indexOf('FLEX_HINT') >= 0) delete P.FLEX_CLASS;
     var normalizedPolicy = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy(flexPolicy || {}) : (flexPolicy || {});
-    var flexInput = P;
+    var f = PipelinePolicy.flex(P, normalizedPolicy);
     if (normalizedPolicy.FRESH_DEGREE_OVERRIDES_STALE_CLASS === 'YES' && degreeEvidenceChanged && !directFlexChanged) {
-      flexInput = {};
+      // Fresh degree evidence replaces the stale class only when it is conclusive; inconclusive text never wipes a known class (or a STRICT hold) to UNKNOWN.
+      var flexInput = {};
       Object.keys(P).forEach(function (pk) { flexInput[pk] = P[pk]; });
       delete flexInput.FLEX_CLASS;
       delete flexInput.FLEX;
       delete flexInput.FLEX_HINT;
+      var fresh = PipelinePolicy.flex(flexInput, normalizedPolicy);
+      if (fresh.known) f = fresh;
     }
-    var f = PipelinePolicy.flex(flexInput, normalizedPolicy);
     set('FLEX_CLASS', f.class);
     set('FLEX_MODIFIER', String(f.modifier));
   }
@@ -1116,6 +1118,7 @@ function approveResume_(sel) {
   appendEvent_({type:'APPROVED_RESUME_CHANGED',actor:'TIM',ts:ts,requestId:String(sel.requestId||''),fileId:id,fileName:file.getName()});
   return {ok:true,config:cfg};
 }
+/** Global FLEX policy from the structured keys in SECTION=DEGREE_FLEX of TIM_PIPELINE_RULES_CANONICAL. Read once per Writer transaction; absent or unreadable keys fall back to the production defaults. */
 function readFlexPolicy_() {
   var defaults = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy({}) : {};
   try {
