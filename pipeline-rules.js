@@ -15,7 +15,8 @@
     NOT_STATED_CLASS:'HIGH_FLEX',
     EQUIVALENCY_CLASS:'SOFT_FLEX',
     HARD_DEGREE_CLASS:'NO_FLEX',
-    SINGLE_PATH_CLASS:'STRICT'
+    SINGLE_PATH_CLASS:'STRICT',
+    FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'
   };
   var FLEX_CLASSES=['HIGH_FLEX','SOFT_FLEX','NO_FLEX','STRICT','UNKNOWN'];
   function flexPolicy(text){
@@ -25,6 +26,7 @@
     sec[1].split(/\r?\n/).forEach(function(line){
       var m=line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);if(!m||out[m[1]]===undefined)return;
       if(/_MODIFIER$/.test(m[1])){var n=Number(m[2]);if(isFinite(n)&&n>=-100&&n<=100)out[m[1]]=n}
+      else if(m[1]==='FRESH_DEGREE_OVERRIDES_STALE_CLASS'){var b=String(m[2]||'').toUpperCase();if(/^(YES|NO)$/.test(b))out[m[1]]=b}
       else {var v=String(m[2]||'').toUpperCase();if(FLEX_CLASSES.indexOf(v)>=0)out[m[1]]=v}
     });
     return out;
@@ -41,12 +43,13 @@
       'NOT_STATED_CLASS='+String(p.NOT_STATED_CLASS).toUpperCase(),
       'EQUIVALENCY_CLASS='+String(p.EQUIVALENCY_CLASS).toUpperCase(),
       'HARD_DEGREE_CLASS='+String(p.HARD_DEGREE_CLASS).toUpperCase(),
-      'SINGLE_PATH_CLASS='+String(p.SINGLE_PATH_CLASS).toUpperCase()
+      'SINGLE_PATH_CLASS='+String(p.SINGLE_PATH_CLASS).toUpperCase(),
+      'FRESH_DEGREE_OVERRIDES_STALE_CLASS='+String(p.FRESH_DEGREE_OVERRIDES_STALE_CLASS||'YES').toUpperCase()
     ].join('\n');
     var sectionRe=/(^|\n)(SECTION=DEGREE_FLEX\s*\n)([\s\S]*?)(?=\nSECTION=|$)/;
     var m=text.match(sectionRe);
     if(!m)return text.replace(/\s*$/,'\n\n')+'SECTION=DEGREE_FLEX\n'+block+'\n';
-    var body=m[3].replace(/^\s*(?:FLEX_POLICY_VERSION|HIGH_FLEX_MODIFIER|SOFT_FLEX_MODIFIER|NO_FLEX_MODIFIER|STRICT_MODIFIER|NOT_STATED_CLASS|EQUIVALENCY_CLASS|HARD_DEGREE_CLASS|SINGLE_PATH_CLASS)\s*=.*(?:\r?\n|$)/gm,'').replace(/^\s+|\s+$/g,'');
+    var body=m[3].replace(/^\s*(?:FLEX_POLICY_VERSION|HIGH_FLEX_MODIFIER|SOFT_FLEX_MODIFIER|NO_FLEX_MODIFIER|STRICT_MODIFIER|NOT_STATED_CLASS|EQUIVALENCY_CLASS|HARD_DEGREE_CLASS|SINGLE_PATH_CLASS|FRESH_DEGREE_OVERRIDES_STALE_CLASS)\s*=.*(?:\r?\n|$)/gm,'').replace(/^\s+|\s+$/g,'');
     var replacement=m[1]+m[2]+block+'\n'+(body?body+'\n':'');
     return text.slice(0,m.index)+replacement+text.slice(m.index+m[0].length);
   }
