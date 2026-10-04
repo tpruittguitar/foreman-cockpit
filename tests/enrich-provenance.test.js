@@ -98,6 +98,42 @@ test('degree evidence changes still trigger FLEX derivation', () => {
   assert.equal(p.FLEX_MODIFIER, '-10');
 });
 
+test('fresh hard degree evidence replaces stale SOFT_FLEX', () => {
+  const row = timRow + '; FLEX=SOFT; FLEX_CLASS=SOFT_FLEX; FLEX_MODIFIER=6';
+  const r = enrich(row, { DEGREE_TEXT: "Bachelor's degree required", REQUIREMENTS_REVIEWED: 'YES' });
+  assert.equal(r.ok, true, r.error);
+  const p = payload(r.after);
+  assert.equal(p.FLEX_CLASS, 'NO_FLEX');
+  assert.equal(p.FLEX_MODIFIER, '-10');
+});
+
+test('fresh equivalency evidence replaces stale NO_FLEX', () => {
+  const row = timRow + '; FLEX=NO; FLEX_CLASS=NO_FLEX; FLEX_MODIFIER=-10';
+  const r = enrich(row, { DEGREE_TEXT: "Bachelor's degree or equivalent experience", REQUIREMENTS_REVIEWED: 'YES' });
+  assert.equal(r.ok, true, r.error);
+  const p = payload(r.after);
+  assert.equal(p.FLEX_CLASS, 'SOFT_FLEX');
+  assert.equal(p.FLEX_MODIFIER, '6');
+});
+
+test('fresh not-stated degree evidence replaces stale UNKNOWN', () => {
+  const row = timRow + '; FLEX_CLASS=UNKNOWN; FLEX_MODIFIER=0';
+  const r = enrich(row, { DEGREE_TEXT: 'Degree not stated', REQUIREMENTS_REVIEWED: 'YES' });
+  assert.equal(r.ok, true, r.error);
+  const p = payload(r.after);
+  assert.equal(p.FLEX_CLASS, 'HIGH_FLEX');
+  assert.equal(p.FLEX_MODIFIER, '15');
+});
+
+test('explicit FLEX supplied with degree evidence remains authoritative for the same write', () => {
+  const row = timRow + '; FLEX_CLASS=NO_FLEX; FLEX_MODIFIER=-10';
+  const r = enrich(row, { FLEX: 'SOFT', DEGREE_TEXT: "Bachelor's degree required", REQUIREMENTS_REVIEWED: 'YES' });
+  assert.equal(r.ok, true, r.error);
+  const p = payload(r.after);
+  assert.equal(p.FLEX_CLASS, 'SOFT_FLEX');
+  assert.equal(p.FLEX_MODIFIER, '6');
+});
+
 test('direct FLEX_CLASS/FLEX_MODIFIER writes are still normalized to a valid, consistent pair', () => {
   const bogus = enrich(bareRow, { FLEX_CLASS: 'BOGUS', FLEX_MODIFIER: '99' });
   assert.equal(payload(bogus.after).FLEX_CLASS, 'UNKNOWN');
