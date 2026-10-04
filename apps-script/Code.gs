@@ -655,7 +655,8 @@ function applyFields_(fields, P, O, set) {
   // FLEX is derived only when this write actually changes FLEX/degree evidence.
   // Unrelated ENRICH writes must preserve existing FLEX_CLASS/FLEX_MODIFIER byte-for-byte
   // and must not create UNKNOWN/0 placeholders.
-  var flexEvidenceKeys = ['FLEX','FLEX_HINT','DEGREE_TEXT','DEGREE_REQ','DEGREE','REQUIREMENTS_REVIEWED','DEGREE_SINGLE_PATH_CONFIRMED'];
+  // A direct FLEX_CLASS/FLEX_MODIFIER write is also FLEX evidence: derive it so the pair stays valid and consistent.
+  var flexEvidenceKeys = ['FLEX','FLEX_HINT','DEGREE_TEXT','DEGREE_REQ','DEGREE','REQUIREMENTS_REVIEWED','DEGREE_SINGLE_PATH_CONFIRMED','FLEX_CLASS','FLEX_MODIFIER'];
   var flexEvidenceChanged = keys.some(function (rawKey) { return flexEvidenceKeys.indexOf(String(rawKey).trim().toUpperCase()) >= 0; });
   if (flexEvidenceChanged) {
     if (fields.FLEX !== undefined || fields.FLEX_HINT !== undefined) delete P.FLEX_CLASS;

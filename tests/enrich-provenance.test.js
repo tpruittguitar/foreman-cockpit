@@ -98,6 +98,18 @@ test('degree evidence changes still trigger FLEX derivation', () => {
   assert.equal(p.FLEX_MODIFIER, '-10');
 });
 
+test('direct FLEX_CLASS/FLEX_MODIFIER writes are still normalized to a valid, consistent pair', () => {
+  const bogus = enrich(bareRow, { FLEX_CLASS: 'BOGUS', FLEX_MODIFIER: '99' });
+  assert.equal(payload(bogus.after).FLEX_CLASS, 'UNKNOWN');
+  assert.equal(payload(bogus.after).FLEX_MODIFIER, '0');
+  const mismatched = enrich(bareRow, { GROK_FLEX: 'HIGH_FLEX', FLEX_CLASS: 'HIGH_FLEX', FLEX_MODIFIER: '-10' });
+  assert.equal(payload(mismatched.after).FLEX_CLASS, 'HIGH_FLEX');
+  assert.equal(payload(mismatched.after).FLEX_MODIFIER, '15');
+  const strict = enrich(bareRow, { FLEX_CLASS: 'STRICT', FLEX_MODIFIER: '-10' });
+  assert.equal(payload(strict.after).FLEX_CLASS, 'STRICT');
+  assert.equal(payload(strict.after).FLEX_MODIFIER, '-10');
+});
+
 test('ENRICH refuses bucket, disposition, application-state and Tim ruling fields (whole request, nothing written)', () => {
   for (const k of ['BUCKET', 'DISPOSITION', 'STATE_SOURCE', 'STATE_UPDATED_AT', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT',
     'TIM_RULING', 'TIM_DISPOSITION', 'TIM_NOTE', 'TIM_FLEX_OVERRIDE', 'tim_ruling', 'DECLINE_REASON_CODE', 'REOPEN_TRIGGER', 'DUP_OF', 'RESEARCH_REQUEST',
