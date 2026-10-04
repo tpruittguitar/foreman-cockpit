@@ -1,0 +1,5 @@
+const test=require('node:test');const assert=require('node:assert/strict');const T=require('../pipeline-target-companies.js');
+test('manual priority vocabulary and cadence are stable',()=>{assert.deepEqual(T.PRIORITIES,['P1','P2','P3','WATCH','PAUSED']);assert.equal(T.cadence('P1'),'Every Scout run');assert.equal(T.cadence('PAUSED'),'No targeted search')});
+test('registry dedupes company names and preserves manual priority',()=>{const r=T.normalizeRegistry({companies:[{id:'1',company:'Shield AI',priority:'P1',priority_source:'TIM_MANUAL'},{id:'2',company:'shield ai',priority:'P3'}]});assert.equal(r.companies.length,1);assert.equal(r.companies[0].priority,'P1');assert.equal(r.companies[0].priority_source,'TIM_MANUAL')});
+test('paused priority forces paused status',()=>{const r=T.normalizeRegistry({companies:[{company:'X',priority:'PAUSED',status:'ACTIVE'}]});assert.equal(r.companies[0].status,'PAUSED')});
+test('priority sort is deterministic',()=>{const r=T.normalizeRegistry({companies:[{company:'C',priority:'WATCH'},{company:'B',priority:'P1'},{company:'A',priority:'P1'}]});assert.deepEqual(T.sortCompanies(r.companies).map(x=>x.company),['A','B','C'])});
