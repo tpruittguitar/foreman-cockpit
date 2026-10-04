@@ -46,3 +46,38 @@ test('notes column shows what they build with provenance, why here, notes and al
   assert.match(T.notesHtml({...full,builds_source:'TIM_MANUAL'},esc),/\[Tim 2026-10-04\]/);
   assert.match(T.notesHtml({company:'X'},esc),/not recorded/);
 });
+
+test('locations: comma-bearing city names survive; list splits on semicolons/new lines; round trip keeps provenance',()=>{
+  assert.deepEqual(T.splitLocations('Hayward, CA (factory); Austin, TX\nZurich, Switzerland'),['Hayward, CA (factory)','Austin, TX','Zurich, Switzerland']);
+  const c={...full,locations:['Torrance, CA (HQ)','Mesa, AZ (Factory 3)'],locations_source:'AUTO_SEARCH',locations_asof:'2026-10-04'};
+  const back=T.parseRules(T.setRules(RULES,{companies:[c]})).companies[0];
+  assert.deepEqual(back.locations,c.locations);assert.equal(back.locations_source,'AUTO_SEARCH');assert.equal(back.locations_asof,'2026-10-04');
+  const esc=s=>String(s).replace(/</g,'&lt;');assert.match(T.locationsHtml(back,esc),/Mesa, AZ \(Factory 3\)<\/div>.*auto-search · verify 2026-10-04/);
+  assert.match(T.locationsHtml({company:'X'},esc),/—/);
+});
+
+test('location edits mark locations TIM_MANUAL only when they change',()=>{
+  const seed={...full,locations:['Dallas, TX'],locations_source:'AUTO_SEARCH',locations_asof:'2026-10-04'};
+  const form=x=>({company:x.company,priority:x.priority,aliases:x.aliases.join(', '),careers_url:x.careers_url,locations:x.locations.join('; '),builds:x.builds,rationale:x.rationale,notes:x.notes});
+  assert.equal(T.applyEdit({...seed},form(seed),false).locations_source,'AUTO_SEARCH');
+  const e=T.applyEdit({...seed},{...form(seed),locations:'Dallas, TX; San Diego, CA (HQ)'},false);
+  assert.deepEqual(e.locations,['Dallas, TX','San Diego, CA (HQ)']);assert.equal(e.locations_source,'TIM_MANUAL');
+});
+
+test('column sorting is deterministic for every column, both directions, with blanks last',()=>{
+  const list=T.normalizeRegistry({companies:[
+    {company:'Bravo',priority:'P2',builds:'radars',locations:['Austin, TX'],careers_url:'',source_rank:3,jobs_found:4,qualified_hits:1,last_useful_hit_at:'2026-09-01'},
+    {company:'alpha',priority:'P1',builds:'',locations:[],careers_url:'https://a',source_rank:0,jobs_found:0,qualified_hits:0,last_useful_hit_at:''},
+    {company:'Charlie',priority:'PAUSED',builds:'drones',locations:['Boston, MA'],careers_url:'https://c',source_rank:1,jobs_found:2,qualified_hits:2,last_useful_hit_at:'2026-10-01'}]}).companies;
+  const names=(k,d)=>T.sortCompanies(list,k,d).map(c=>c.company).join(',');
+  assert.equal(names(),'alpha,Bravo,Charlie','default = priority');
+  assert.equal(names('priority','desc'),'Charlie,Bravo,alpha');
+  assert.equal(names('company'),'alpha,Bravo,Charlie');assert.equal(names('company','desc'),'Charlie,Bravo,alpha');
+  assert.equal(names('notes'),'Charlie,Bravo,alpha','blank builds last');assert.equal(names('notes','desc'),'Bravo,Charlie,alpha','blank builds still last');
+  assert.equal(names('locations'),'Bravo,Charlie,alpha');
+  assert.equal(names('source_rank'),'Charlie,Bravo,alpha','rank 0 = unranked, last');
+  assert.equal(names('yield'),'Charlie,Bravo,alpha','highest yield first');
+  assert.equal(names('last_hit'),'Charlie,Bravo,alpha','most recent first, never-hit last');
+  assert.equal(names('careers'),'alpha,Charlie,Bravo','with careers link first, then priority');
+  assert.equal(T.sortCompanies(list,'company').length,3);assert.equal(list.map(c=>c.company).join(','),'Bravo,alpha,Charlie','input not mutated');
+});
