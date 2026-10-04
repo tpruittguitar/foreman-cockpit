@@ -12,3 +12,7 @@ for(const BUCKET of ['APPLIED','REJECTED_BY_EMPLOYER','DECLINED_BY_TIM','CLOSED_
 assert.equal(A.grade('101'),0);assert.equal(A.grade('great manufacturing work'),0,'Prose must not invent numeric fit');
 assert.equal(A.ranked([{...row,id:'missing',payload:{}},row])[0].row.id,'one');
 console.log('PASS: attention signals preserve unknowns, gates, protected states, and recorded match evidence');
+
+const current={...row,payload:{FLOOR_STATUS:'CLEARS_200K',FLEX_CLASS:'HIGH_FLEX',SCOPE_FIT_RAW:'92',DOMAIN_FIT:'HIGH'}};
+assert(A.evaluate(current).strong,'Current FLEX_CLASS + SCOPE_FIT_RAW fields must drive attention');
+assert.equal(A.evaluate({...current,payload:{...current.payload,FLEX_CLASS:'NO_FLEX'}}).signals[1],-1);
