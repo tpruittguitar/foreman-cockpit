@@ -1,7 +1,8 @@
 /* Evidence labels and readback checks: neither a value nor a receipt implies verification. */
 (function(root){'use strict';
+var Evidence=typeof module==='object'&&module.exports?require('./pipeline-evidence'):root.PipelineEvidence;
 function missing(v){return !v||/^(UNKNOWN|NOT_STATED|NOT STATED|TBD|—|-)$/i.test(String(v).trim())}
-function salary(p){if(missing(p.SALARY_BASE_POSTED)&&missing(p.PAY_POSTED)&&missing(p.SALARY_BASE_EST))return 'UNKNOWN';if(!missing(p.SALARY_BASE_POSTED)||!missing(p.PAY_POSTED))return /^VERIFIED$/i.test(p.SALARY_CONF||'')?'VERIFIED':'POSTED · UNVERIFIED';return 'ESTIMATED'+(p.SALARY_CONF?' · '+String(p.SALARY_CONF).replace(/VERIFIED/gi,'CONFIDENCE UNCONFIRMED'):'')}
+function salary(p){p=p||{};var ev=Evidence&&Evidence.salary?Evidence.salary(p):{mid:null,source:''};if(ev.mid==null)return 'UNKNOWN';if(!missing(p.SALARY_BASE_POSTED)||!missing(p.PAY_POSTED)||ev.source==='GROK_SALARY'||ev.source==='SALARY_POSTED')return /^VERIFIED$/i.test(p.SALARY_CONF||'')?'VERIFIED':'POSTED · UNVERIFIED';return 'ESTIMATED'+(p.SALARY_CONF?' · '+String(p.SALARY_CONF).replace(/VERIFIED/gi,'CONFIDENCE UNCONFIRMED'):'')}
 function flex(p){
   p=p||{};var cls=String(p.FLEX_CLASS||'').toUpperCase(),classified=/^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(cls);
   if(/ESTIMAT/i.test(p.FLEX_BASIS||''))return 'ESTIMATED';
