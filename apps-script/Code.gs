@@ -657,10 +657,24 @@ function applyFields_(fields, P, O, set) {
   // and must not create UNKNOWN/0 placeholders.
   // A direct FLEX_CLASS/FLEX_MODIFIER write is also FLEX evidence: derive it so the pair stays valid and consistent.
   var flexEvidenceKeys = ['FLEX','FLEX_HINT','DEGREE_TEXT','DEGREE_REQ','DEGREE','REQUIREMENTS_REVIEWED','DEGREE_SINGLE_PATH_CONFIRMED','FLEX_CLASS','FLEX_MODIFIER'];
-  var flexEvidenceChanged = keys.some(function (rawKey) { return flexEvidenceKeys.indexOf(String(rawKey).trim().toUpperCase()) >= 0; });
+  var inputKeys = keys.map(function (rawKey) { return String(rawKey).trim().toUpperCase(); });
+  var flexEvidenceChanged = inputKeys.some(function (k) { return flexEvidenceKeys.indexOf(k) >= 0; });
   if (flexEvidenceChanged) {
-    if (fields.FLEX !== undefined || fields.FLEX_HINT !== undefined) delete P.FLEX_CLASS;
-    var f = PipelinePolicy.flex(P);
+    var directFlexChanged = inputKeys.some(function (k) { return ['FLEX','FLEX_HINT','FLEX_CLASS','FLEX_MODIFIER'].indexOf(k) >= 0; });
+    var degreeEvidenceChanged = inputKeys.some(function (k) { return ['DEGREE_TEXT','DEGREE_REQ','DEGREE','REQUIREMENTS_REVIEWED','DEGREE_SINGLE_PATH_CONFIRMED'].indexOf(k) >= 0; });
+    if (inputKeys.indexOf('FLEX') >= 0 || inputKeys.indexOf('FLEX_HINT') >= 0) delete P.FLEX_CLASS;
+    var flexInput = P;
+    if (degreeEvidenceChanged && !directFlexChanged) {
+      // Fresh degree evidence must be able to replace stale derived FLEX state.
+      // Preserve the stored evidence fields themselves, but derive this write from the fresh
+      // degree evidence instead of anchoring on older FLEX/FLEX_HINT/FLEX_CLASS values.
+      flexInput = {};
+      Object.keys(P).forEach(function (pk) { flexInput[pk] = P[pk]; });
+      delete flexInput.FLEX_CLASS;
+      delete flexInput.FLEX;
+      delete flexInput.FLEX_HINT;
+    }
+    var f = PipelinePolicy.flex(flexInput);
     set('FLEX_CLASS', f.class);
     set('FLEX_MODIFIER', String(f.modifier));
   }
