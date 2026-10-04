@@ -70,6 +70,46 @@ test('ENRICH still recalculates FLEX_CLASS and FLEX_MODIFIER when FLEX changes',
   assert.equal(payload(r2.after).FLEX_MODIFIER, '-10');
 });
 
+test('unrelated ENRICH preserves existing FLEX_CLASS and FLEX_MODIFIER exactly', () => {
+  const row = timRow + '; FLEX=YES; FLEX_CLASS=HIGH_FLEX; FLEX_MODIFIER=15';
+  const r = enrich(row, { SALARY_BASE_POSTED: '$200,000-$240,000', LIVENESS_NOTE: 'posting active' });
+  assert.equal(r.ok, true, r.error);
+  const p = payload(r.after);
+  assert.equal(p.FLEX_CLASS, 'HIGH_FLEX');
+  assert.equal(p.FLEX_MODIFIER, '15');
+  assert.equal((r.changes || []).includes('FLEX_CLASS'), false);
+  assert.equal((r.changes || []).includes('FLEX_MODIFIER'), false);
+});
+
+test('unrelated ENRICH does not create UNKNOWN FLEX placeholders when FLEX is absent', () => {
+  const r = enrich(bareRow, { SALARY_BASE_POSTED: '$200,000-$240,000', LIVENESS_NOTE: 'posting active' });
+  assert.equal(r.ok, true, r.error);
+  const p = payload(r.after);
+  assert.equal('FLEX_CLASS' in p, false);
+  assert.equal('FLEX_MODIFIER' in p, false);
+  assert.doesNotMatch(r.after, /FLEX_CLASS=UNKNOWN|FLEX_MODIFIER=0/);
+});
+
+test('degree evidence changes still trigger FLEX derivation', () => {
+  const r = enrich(bareRow, { DEGREE_TEXT: 'Bachelor degree required', REQUIREMENTS_REVIEWED: 'YES' });
+  assert.equal(r.ok, true, r.error);
+  const p = payload(r.after);
+  assert.equal(p.FLEX_CLASS, 'NO_FLEX');
+  assert.equal(p.FLEX_MODIFIER, '-10');
+});
+
+test('direct FLEX_CLASS/FLEX_MODIFIER writes are still normalized to a valid, consistent pair', () => {
+  const bogus = enrich(bareRow, { FLEX_CLASS: 'BOGUS', FLEX_MODIFIER: '99' });
+  assert.equal(payload(bogus.after).FLEX_CLASS, 'UNKNOWN');
+  assert.equal(payload(bogus.after).FLEX_MODIFIER, '0');
+  const mismatched = enrich(bareRow, { GROK_FLEX: 'HIGH_FLEX', FLEX_CLASS: 'HIGH_FLEX', FLEX_MODIFIER: '-10' });
+  assert.equal(payload(mismatched.after).FLEX_CLASS, 'HIGH_FLEX');
+  assert.equal(payload(mismatched.after).FLEX_MODIFIER, '15');
+  const strict = enrich(bareRow, { FLEX_CLASS: 'STRICT', FLEX_MODIFIER: '-10' });
+  assert.equal(payload(strict.after).FLEX_CLASS, 'STRICT');
+  assert.equal(payload(strict.after).FLEX_MODIFIER, '-10');
+});
+
 test('ENRICH refuses bucket, disposition, application-state and Tim ruling fields (whole request, nothing written)', () => {
   for (const k of ['BUCKET', 'DISPOSITION', 'STATE_SOURCE', 'STATE_UPDATED_AT', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT',
     'TIM_RULING', 'TIM_DISPOSITION', 'TIM_NOTE', 'TIM_FLEX_OVERRIDE', 'tim_ruling', 'DECLINE_REASON_CODE', 'REOPEN_TRIGGER', 'DUP_OF', 'RESEARCH_REQUEST',
