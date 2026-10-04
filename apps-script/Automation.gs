@@ -18,7 +18,7 @@
 var QUEUE_FOLDER_NAME = 'WRITER_QUEUE';
 var QUEUE_LOG_NAME = 'WRITER_QUEUE_LOG.jsonl';
 var QUEUE_TRIGGER_FN = 'processWriterQueue';
-var QUEUE_STALE_MS = 30 * 60 * 1000;
+var QUEUE_STALE_MS = 8 * 60 * 1000; // safely above normal Apps Script execution; recovers abandoned claims much faster than the old 30-minute window
 var QUEUE_BUDGET_MS = 4.5 * 60 * 1000;
 
 /** Run once from the Apps Script editor (Run > installAutomation). Authorizes the trigger scope and installs the 1-minute queue trigger. Safe to re-run. */
@@ -100,7 +100,7 @@ function processWriterQueue() {
     if (!claim.file) break;
     var file = claim.file, original = claim.original;
     handled[file.getId()] = true;
-    var entry = { file: original, fileId: file.getId(), startedAt: new Date().toISOString() };
+    var entry = { file: original, fileId: file.getId(), startedAt: new Date().toISOString(), queueWaitMs: Math.max(0, Date.now() - file.getDateCreated().getTime()) };
     var result;
     try {
       var parsed = parseQueueContent_(readQueueFile_(file));
@@ -110,6 +110,8 @@ function processWriterQueue() {
     } catch (e) { result = { ok: false, error: String(e && e.message || e) }; }
     var dest = result && result.ok ? f.processed : f.failed;
     entry.ok = !!(result && result.ok); entry.action = (result && result.mode) || ''; entry.finishedAt = new Date().toISOString(); entry.error = (result && result.error) || '';
+    entry.totalMs = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
+    if (result && result.timings) entry.writerTimings = result.timings;
     dest.createFile('RESULT__' + original.replace(/\.[A-Za-z]+$/, '') + '.json', JSON.stringify({ request_file: original, request_file_id: file.getId(), processed: entry, result: result }, null, 2), MimeType.PLAIN_TEXT);
     file.setName(original);
     file.moveTo(dest);
