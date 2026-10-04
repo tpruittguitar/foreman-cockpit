@@ -14,6 +14,7 @@ function normalizeCompany(x,i){
     priority:p,status:p==='PAUSED'?'PAUSED':'ACTIVE',
     priority_source:clean(x.priority_source)||'SEED_RECOMMENDATION',
     careers_url:clean(x.careers_url),rationale:clean(x.rationale),
+    builds:clean(x.builds),builds_source:clean(x.builds_source),builds_asof:clean(x.builds_asof),
     source_rank:Number(x.source_rank)||0,
     target_functions:Array.isArray(x.target_functions)?x.target_functions.map(clean).filter(Boolean):[],
     added_source:clean(x.added_source),last_searched_at:clean(x.last_searched_at),last_useful_hit_at:clean(x.last_useful_hit_at),
@@ -44,12 +45,27 @@ function sectionText(registry){
 function setRules(text,registry){
   text=String(text||'');var sec=sectionText(registry),re=/(^|\n)SECTION=TARGET_COMPANIES\s*\n[\s\S]*?(?=\nSECTION=|\nEND TIM_PIPELINE_RULES_CANONICAL|$)/;
   if(re.test(text))return text.replace(re,function(m,p){return p+sec.replace(/\n$/,'')});
-  var end='END TIM_PIPELINE_RULES_CANONICAL';if(text.indexOf(end)>=0)return text.replace(end,sec+'\n'+end);
+  var end='END TIM_PIPELINE_RULES_CANONICAL';if(text.indexOf(end)>=0)return text.replace(end,sec+end);
   return text.replace(/\s*$/,'\n\n')+sec;
 }
 function priorityRank(p){var i=PRIORITIES.indexOf(String(p||'').toUpperCase());return i<0?99:i}
 function sortCompanies(list){return list.slice().sort(function(a,b){return priorityRank(a.priority)-priorityRank(b.priority)||a.company.localeCompare(b.company)})}
 function cadence(p){return CADENCE[p]||CADENCE.WATCH}
+function today(){return new Date().toISOString().slice(0,10)}
+/* Apply an edit-form submission to a company. Priority provenance changes only when Tim sets or changes the priority; "what they build" provenance only when that text changes. */
+function applyEdit(c,f,isNew){
+  c=c||{};var p=PRIORITIES.indexOf(f.priority)>=0?f.priority:'WATCH',builds=clean(f.builds);
+  if(isNew||c.priority!==p)c.priority_source='TIM_MANUAL';
+  if(isNew||builds!==clean(c.builds)){c.builds_source=builds?'TIM_MANUAL':'';c.builds_asof=builds?today():''}
+  c.company=clean(f.company);c.priority=p;c.status=p==='PAUSED'?'PAUSED':'ACTIVE';c.builds=builds;
+  c.aliases=String(f.aliases||'').split(',').map(clean).filter(Boolean);c.careers_url=clean(f.careers_url);c.rationale=clean(f.rationale);c.notes=clean(f.notes);
+  return c
+}
+function notesHtml(c,esc){
+  var src=/^TIM/.test(c.builds_source||'')?'Tim':c.builds_source?'auto-search · verify':'';
+  return (c.builds?'<div>'+esc(c.builds)+(src?' <span class="tip">['+esc(src)+(c.builds_asof?' '+esc(c.builds_asof):'')+']</span>':'')+'</div>':'<div class="tip">What they build: not recorded</div>')+
+    (c.rationale?'<div class="tip">Why here: '+esc(c.rationale)+'</div>':'')+(c.notes?'<div class="tip">Notes: '+esc(c.notes)+'</div>':'')+((c.aliases||[]).length?'<div class="tip">Aliases: '+esc(c.aliases.join(', '))+'</div>':'')
+}
 function createTargetCompanies(deps){
   var $=deps.$,esc=deps.esc,gsGet=deps.gsGet,gsPost=deps.gsPost,S=deps.S;
   var draft=null,editingId='',dirty=false,baseRules='';
@@ -61,14 +77,14 @@ function createTargetCompanies(deps){
   }
   function options(cur){return PRIORITIES.map(function(p){return '<option value="'+p+'"'+(p===cur?' selected':'')+'>'+p+' · '+cadence(p)+'</option>'}).join('')}
   function summary(list){var c={P1:0,P2:0,P3:0,WATCH:0,PAUSED:0};list.forEach(function(x){if(c[x.priority]!==undefined)c[x.priority]++});return PRIORITIES.map(function(p){return '<span class="kpi"><b>'+c[p]+'</b><span>'+p+'</span></span>'}).join('')}
-  function clearForm(){editingId='';['tc-company','tc-aliases','tc-careers','tc-rationale','tc-notes'].forEach(function(id){if($(id))$(id).value=''});if($('tc-priority'))$('tc-priority').value='P2';if($('tc-form-title'))$('tc-form-title').textContent='Add company'}
-  function populateForm(c){editingId=c.id;$('tc-form-title').textContent='Edit company';$('tc-company').value=c.company;$('tc-priority').value=c.priority;$('tc-aliases').value=(c.aliases||[]).join(', ');$('tc-careers').value=c.careers_url||'';$('tc-rationale').value=c.rationale||'';$('tc-notes').value=c.notes||''}
+  function clearForm(){editingId='';['tc-company','tc-aliases','tc-careers','tc-builds','tc-rationale','tc-notes'].forEach(function(id){if($(id))$(id).value=''});if($('tc-priority'))$('tc-priority').value='P2';if($('tc-form-title'))$('tc-form-title').textContent='Add company'}
+  function populateForm(c){editingId=c.id;$('tc-form-title').textContent='Edit company';$('tc-company').value=c.company;$('tc-priority').value=c.priority;$('tc-aliases').value=(c.aliases||[]).join(', ');$('tc-careers').value=c.careers_url||'';$('tc-builds').value=c.builds||'';$('tc-rationale').value=c.rationale||'';$('tc-notes').value=c.notes||'';if($('tc-form-title').scrollIntoView)$('tc-form-title').scrollIntoView({block:'start'})}
   function upsertForm(){
     var name=clean($('tc-company').value);if(!name){setStatus('Company name is required.',true);return}
     var existing=editingId&&draft.companies.find(function(c){return c.id===editingId});
     var dupe=draft.companies.find(function(c){return c.company.toLowerCase()===name.toLowerCase()&&(!existing||c.id!==existing.id)});if(dupe){setStatus('That company already exists.',true);return}
     var p=$('tc-priority').value,c=existing||{id:'TC-'+Date.now(),source_rank:0,target_functions:['Manufacturing','Quality','Production','Operations','Industrialization'],added_source:'Tim manual add',jobs_found:0,qualified_hits:0,last_searched_at:'',last_useful_hit_at:''};
-    c.company=name;c.priority=p;c.status=p==='PAUSED'?'PAUSED':'ACTIVE';c.priority_source='TIM_MANUAL';c.aliases=$('tc-aliases').value.split(',').map(clean).filter(Boolean);c.careers_url=clean($('tc-careers').value);c.rationale=clean($('tc-rationale').value);c.notes=clean($('tc-notes').value);
+    applyEdit(c,{company:name,priority:p,aliases:$('tc-aliases').value,careers_url:$('tc-careers').value,builds:$('tc-builds').value,rationale:$('tc-rationale').value,notes:$('tc-notes').value},!existing);
     if(!existing)draft.companies.push(c);dirty=true;clearForm();render();setStatus('Unsaved changes. Click Save registry.')
   }
   function save(){
@@ -78,14 +94,14 @@ function createTargetCompanies(deps){
   function render(){
     var v=$('view-companies');if(!v)return;draft=normalizeRegistry(draft||{});var rows=sortCompanies(draft.companies);
     var h='<div class="panel active"><h3>Target Companies</h3><div class="tip">Manual priority is authoritative for discovery intensity only. It never overrides pay, FLEX, scope, fit, Never-Consider, or application-state rules.</div><div style="margin:8px 0">'+summary(rows)+'</div><div class="row"><button id="companies-save" class="neon">Save registry</button><button id="companies-reload">Discard / reload</button><span id="companies-status" class="tip">'+(dirty?'Unsaved changes':'Stored in canonical Rules · SECTION=TARGET_COMPANIES')+'</span></div></div>';
-    h+='<div class="panel"><h3 id="tc-form-title">Add company</h3><div class="edit-grid"><label>Company</label><input id="tc-company"><label>Priority</label><select id="tc-priority">'+options('P2')+'</select><label>Aliases</label><input id="tc-aliases" placeholder="comma separated"><label>Careers URL</label><input id="tc-careers" placeholder="https://…"><label>Why target</label><input id="tc-rationale"><label>Notes</label><textarea id="tc-notes"></textarea></div><div class="row"><button id="tc-upsert" class="neon">Add / update</button><button id="tc-cancel">Clear</button></div></div>';
-    h+='<div class="panel rep"><h3>Registry · '+rows.length+' companies</h3><table><thead><tr><th>Company</th><th>Priority</th><th>Scout cadence</th><th>Careers</th><th>Source rank</th><th>Yield</th><th>Last useful hit</th><th></th></tr></thead><tbody>'+rows.map(function(c){var y=c.jobs_found?Math.round(100*c.qualified_hits/c.jobs_found)+'%':'—';return '<tr><td><b>'+esc(c.company)+'</b><div class="tip">'+esc(c.rationale||'')+'</div></td><td><select data-priority="'+esc(c.id)+'">'+options(c.priority)+'</select><div class="tip">'+esc(c.priority_source||'')+'</div></td><td>'+esc(cadence(c.priority))+'</td><td>'+(c.careers_url?'<a href="'+esc(c.careers_url)+'" target="_blank" rel="noopener">careers ↗</a>':'—')+'</td><td>'+esc(c.source_rank||'—')+'</td><td>'+esc(y)+'</td><td>'+esc(c.last_useful_hit_at||'—')+'</td><td><button data-edit="'+esc(c.id)+'">Edit</button></td></tr>'}).join('')+'</tbody></table></div>';
+    h+='<div class="panel"><h3 id="tc-form-title">Add company</h3><div class="edit-grid"><label>Company</label><input id="tc-company"><label>Priority</label><select id="tc-priority">'+options('P2')+'</select><label>Aliases</label><input id="tc-aliases" placeholder="comma separated"><label>Careers URL</label><input id="tc-careers" placeholder="https://…"><label>What they build</label><textarea id="tc-builds" placeholder="Products and what they manufacture in-house"></textarea><label>Why they are on the list</label><input id="tc-rationale"><label>Notes</label><textarea id="tc-notes"></textarea></div><div class="row"><button id="tc-upsert" class="neon">Add / update</button><button id="tc-cancel">Clear</button></div></div>';
+    h+='<div class="panel rep"><h3>Registry · '+rows.length+' companies</h3><table><thead><tr><th>Company</th><th>Notes · what they build / why here</th><th>Priority</th><th>Scout cadence</th><th>Careers</th><th>Source rank</th><th>Yield</th><th>Last useful hit</th><th></th></tr></thead><tbody>'+rows.map(function(c){var y=c.jobs_found?Math.round(100*c.qualified_hits/c.jobs_found)+'%':'—';return '<tr><td><b>'+esc(c.company)+'</b></td><td class="tc-notes">'+notesHtml(c,esc)+'</td><td><select data-priority="'+esc(c.id)+'">'+options(c.priority)+'</select><div class="tip">'+esc(c.priority_source||'')+'</div></td><td>'+esc(cadence(c.priority))+'</td><td>'+(c.careers_url?'<a href="'+esc(c.careers_url)+'" target="_blank" rel="noopener">careers ↗</a>':'—')+'</td><td>'+esc(c.source_rank||'—')+'</td><td>'+esc(y)+'</td><td>'+esc(c.last_useful_hit_at||'—')+'</td><td><button data-edit="'+esc(c.id)+'">Edit</button></td></tr>'}).join('')+'</tbody></table></div>';
     v.innerHTML=h;$('companies-save').onclick=save;$('companies-reload').onclick=load;$('tc-upsert').onclick=upsertForm;$('tc-cancel').onclick=clearForm;
     v.querySelectorAll('[data-priority]').forEach(function(sel){sel.onchange=function(){var c=draft.companies.find(function(x){return x.id===sel.getAttribute('data-priority')});if(!c)return;c.priority=sel.value;c.status=c.priority==='PAUSED'?'PAUSED':'ACTIVE';c.priority_source='TIM_MANUAL';dirty=true;render();setStatus('Unsaved priority change. Click Save registry.')}});
     v.querySelectorAll('[data-edit]').forEach(function(b){b.onclick=function(){var c=draft.companies.find(function(x){return x.id===b.getAttribute('data-edit')});if(c)populateForm(c)}});
   }
   return {open:load,render:render};
 }
-var api={create:createTargetCompanies,normalizeRegistry:normalizeRegistry,parseRules:parseRules,setRules:setRules,sectionText:sectionText,sortCompanies:sortCompanies,cadence:cadence,PRIORITIES:PRIORITIES};
+var api={create:createTargetCompanies,applyEdit:applyEdit,notesHtml:notesHtml,normalizeRegistry:normalizeRegistry,parseRules:parseRules,setRules:setRules,sectionText:sectionText,sortCompanies:sortCompanies,cadence:cadence,PRIORITIES:PRIORITIES};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineTargetCompanies=api;
 })(typeof window!=='undefined'?window:globalThis);
