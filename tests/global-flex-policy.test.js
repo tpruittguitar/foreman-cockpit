@@ -294,3 +294,10 @@ test('Upsert reads the canonical Rules document once and its receipt carries pro
   assert.match(s.receipts(),/FLEX_POLICY_SOURCE=CANONICAL_DEFAULTS/);
   assert.match(pl(s.row('V2F-ROW00000001')).STATE_SOURCE,/^FORGE:UP-1$/);
 });
+
+
+test('Canonical decline reason codes are parsed from DECLINE_RULES without duplicating policy in the UI',()=>{
+  const text='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DECLINE_RULES\n- Allowed reason codes: PAY_BELOW_FLOOR, FLEX_STRICT_NO, SCOPE_BELOW_TARGET, TIM_EXPLICIT_DECLINE.\nSECTION=OTHER\nX=1';
+  assert.deepEqual(R.declineReasonCodes(text),['PAY_BELOW_FLOOR','FLEX_STRICT_NO','SCOPE_BELOW_TARGET','TIM_EXPLICIT_DECLINE']);
+  assert.deepEqual(R.declineReasonCodes('SECTION=DECLINE_RULES\n- no list here'),[]);
+});
