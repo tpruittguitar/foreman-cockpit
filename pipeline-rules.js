@@ -19,6 +19,24 @@
     FRESH_DEGREE_OVERRIDES_STALE_CLASS:'NO'
   };
   var FLEX_CLASSES=['HIGH_FLEX','SOFT_FLEX','NO_FLEX','STRICT','UNKNOWN'];
+  function signed(n){n=Number(n);return (n>0?'+':'')+String(n)}
+  function flexPolicyProse(p){
+    return [
+      'FLEX_POLICY_PROSE_BEGIN',
+      '- Degree not stated => '+p.NOT_STATED_CLASS+'.',
+      '- Equivalent experience => '+p.EQUIVALENCY_CLASS+'.',
+      '- Hard degree requirement without equivalency => '+p.HARD_DEGREE_CLASS+'.',
+      '- Confirmed single required degree path => '+p.SINGLE_PATH_CLASS+'.',
+      '- FLEX modifiers: HIGH_FLEX '+signed(p.HIGH_FLEX_MODIFIER)+', SOFT_FLEX '+signed(p.SOFT_FLEX_MODIFIER)+', NO_FLEX '+signed(p.NO_FLEX_MODIFIER)+', STRICT '+signed(p.STRICT_MODIFIER)+'.',
+      '- Blank unresearched requirements remain UNKNOWN (modifier 0).',
+      '- NO_FLEX: still pursue if adjusted fit is 80+ and pay/title rules clear.',
+      '- STRICT: modifier is for reporting; do not pursue unless Tim overrides. Do not automatically convert NO_FLEX to STRICT.',
+      '- Adjusted fit = clamp(raw scope fit + FLEX modifier, 0, 100). Report class, modifier, raw fit, adjusted fit, exact degree wording, and evidence. Apply pay and title rules afterward. Store unadjusted fit in SCOPE_FIT_RAW; do not apply the modifier twice.',
+      '- Fresh degree evidence overrides stale FLEX = '+p.FRESH_DEGREE_OVERRIDES_STALE_CLASS+'. When enabled, only conclusive fresh degree evidence may replace a known class; inconclusive evidence preserves the known class.',
+      '- Compatibility: YES=HIGH_FLEX, SOFT=SOFT_FLEX, NO=NO_FLEX, STRICT_NO=STRICT. FLEX concerns degree eligibility, not remote/hybrid work.',
+      'FLEX_POLICY_PROSE_END'
+    ].join('\n');
+  }
   function flexPolicy(text){
     var out={};Object.keys(FLEX_DEFAULTS).forEach(function(k){out[k]=FLEX_DEFAULTS[k]});
     var sec=String(text||'').match(/(?:^|\n)SECTION=DEGREE_FLEX\s*\n([\s\S]*?)(?=\nSECTION=|$)/);
@@ -48,11 +66,16 @@
     ].join('\n');
     var sectionRe=/(^|\n)(SECTION=DEGREE_FLEX\s*\n)([\s\S]*?)(?=\nSECTION=|$)/;
     var m=text.match(sectionRe);
-    if(!m)return text.replace(/\s*$/,'\n\n')+'SECTION=DEGREE_FLEX\n'+block+'\n';
-    var body=m[3].replace(/^\s*(?:FLEX_POLICY_VERSION|HIGH_FLEX_MODIFIER|SOFT_FLEX_MODIFIER|NO_FLEX_MODIFIER|STRICT_MODIFIER|NOT_STATED_CLASS|EQUIVALENCY_CLASS|HARD_DEGREE_CLASS|SINGLE_PATH_CLASS|FRESH_DEGREE_OVERRIDES_STALE_CLASS)\s*=.*(?:\r?\n|$)/gm,'').replace(/^\s+|\s+$/g,'');
-    var replacement=m[1]+m[2]+block+'\n'+(body?body+'\n':'');
+    if(!m)return text.replace(/\s*$/,'\n\n')+'SECTION=DEGREE_FLEX\n'+block+'\n'+flexPolicyProse(p)+'\n';
+    var body=m[3]
+      .replace(/^\s*(?:FLEX_POLICY_VERSION|HIGH_FLEX_MODIFIER|SOFT_FLEX_MODIFIER|NO_FLEX_MODIFIER|STRICT_MODIFIER|NOT_STATED_CLASS|EQUIVALENCY_CLASS|HARD_DEGREE_CLASS|SINGLE_PATH_CLASS|FRESH_DEGREE_OVERRIDES_STALE_CLASS)\s*=.*(?:\r?\n|$)/gm,'')
+      .replace(/(?:^|\n)FLEX_POLICY_PROSE_BEGIN[\s\S]*?FLEX_POLICY_PROSE_END\s*(?=\n|$)/g,'\n')
+      .replace(/^\s*-\s*(?:HIGH_FLEX:|SOFT_FLEX:|NO_FLEX:|STRICT:|Adjusted fit =|Compatibility:).*?(?:\r?\n|$)/gmi,'')
+      .replace(/^\s+|\s+$/g,'');
+    var generated=flexPolicyProse(p);
+    var replacement=m[1]+m[2]+block+'\n'+generated+'\n'+(body?body+'\n':'');
     return text.slice(0,m.index)+replacement+text.slice(m.index+m[0].length);
   }
-  var api={outline:outline,flexPolicy:flexPolicy,setFlexPolicy:setFlexPolicy,FLEX_DEFAULTS:FLEX_DEFAULTS};
+  var api={outline:outline,flexPolicy:flexPolicy,setFlexPolicy:setFlexPolicy,flexPolicyProse:flexPolicyProse,FLEX_DEFAULTS:FLEX_DEFAULTS};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineRules=api;
 })(typeof window!=='undefined'?window:globalThis);

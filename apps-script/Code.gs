@@ -172,7 +172,7 @@ function applyRulingBatchToMaster_(requests) {
     t.PLAN_MS = Date.now() - planStart;
     if (!changed.length) {
       t.TOTAL_MS = Date.now() - started;
-      return { ok: results.every(function (x) { return x.ok; }), mode: 'BATCH_RULING_NO_WRITE', results: results, timings: t };
+      return { ok: results.every(function (x) { return x.ok; }), mode: 'BATCH_RULING_NO_WRITE', results: results, timings: t, flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
     }
 
     var modCheck = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
@@ -214,11 +214,11 @@ function applyRulingBatchToMaster_(requests) {
         BEFORE_POSTING_STATE: 'n/a', AFTER_POSTING_STATE: 'n/a',
         CANONICAL_ID_PRESERVED: 'YES', HISTORY_PRESERVED: 'YES', COUNTS_UPDATED: 'YES', READBACK_VERIFIED: verified ? 'YES' : 'NO',
         TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: verified ? 'COMPLETE' : 'FAILED', MASTER_MODIFIED_BEFORE: modBefore,
-        EXECUTED_AT: executedAt, CHANGES: mm.changes, BATCH_MODE: 'MULTI_ROW_SINGLE_COMMIT'
+        EXECUTED_AT: executedAt, CHANGES: mm.changes, BATCH_MODE: 'MULTI_ROW_SINGLE_COMMIT', FLEX_POLICY_SOURCE: flexPolicy._SOURCE || 'UNKNOWN', FLEX_POLICY_WARNING: flexPolicy._WARNING || ''
       };
       receipts.push(receipt);
       events.push({ type: 'TIM_RULING', primaryId: String(rr.primaryId || '').trim(), actor: rr.actor || 'TIM', ts: executedAt, requestId: rr.requestId || '', kind: rr.kind || '', code: rr.code || '', note: rr.note || '', before: ch.before, after: ch.after, verified: verified, batchMode: 'MULTI_ROW_SINGLE_COMMIT' });
-      results[ch.index] = { index: ch.index, ok: verified, mode: 'BATCH_RULING', primaryId: String(rr.primaryId || '').trim(), requestId: rr.requestId || '', before: ch.before, after: ch.after, changes: mm.changes, verified: verified };
+      results[ch.index] = { index: ch.index, ok: verified, mode: 'BATCH_RULING', primaryId: String(rr.primaryId || '').trim(), requestId: rr.requestId || '', before: ch.before, after: ch.after, changes: mm.changes, verified: verified, flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
     }
 
     var receiptStart = Date.now();
@@ -228,7 +228,7 @@ function applyRulingBatchToMaster_(requests) {
     appendEvents_(events);
     t.EVENT_MS = Date.now() - eventStart;
     t.TOTAL_MS = Date.now() - started;
-    return { ok: results.every(function (x) { return x && x.ok; }), mode: 'BATCH_RULING_SINGLE_COMMIT', processed: changed.length, counts: newCounts, results: results, timings: t };
+    return { ok: results.every(function (x) { return x && x.ok; }), mode: 'BATCH_RULING_SINGLE_COMMIT', processed: changed.length, counts: newCounts, results: results, timings: t, flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
   } finally { lock.releaseLock(); }
 }
 
@@ -332,7 +332,8 @@ function applyRulingToMaster_(ruling) {
     }
     if (hits.length !== 1) return fail_('identity not unique: ' + hits.length + ' rows match ' + pid + ' (fail closed)', ruling);
     var before = paras[hits[0]].getText();
-    var res = mutateRow(before, ruling, readFlexPolicy_());
+    var flexPolicy = readFlexPolicy_();
+    var res = mutateRow(before, ruling, flexPolicy);
     if (!res.ok) return fail_(res.error, ruling);
     var modCheck = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
     if (modCheck !== modBefore) return fail_('master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', ruling);
@@ -353,11 +354,11 @@ function applyRulingToMaster_(ruling) {
       BEFORE_POSTING_STATE: 'n/a', AFTER_POSTING_STATE: 'n/a',
       CANONICAL_ID_PRESERVED: 'YES', HISTORY_PRESERVED: 'YES', COUNTS_UPDATED: 'YES', READBACK_VERIFIED: verified ? 'YES' : 'NO',
       TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: verified ? 'COMPLETE' : 'FAILED', MASTER_MODIFIED_BEFORE: modBefore,
-      EXECUTED_AT: new Date().toISOString(), CHANGES: res.changes
+      EXECUTED_AT: new Date().toISOString(), CHANGES: res.changes, FLEX_POLICY_SOURCE: flexPolicy._SOURCE || 'UNKNOWN', FLEX_POLICY_WARNING: flexPolicy._WARNING || ''
     };
     appendReceipt_(receipt);
     appendEvent_({ type: 'TIM_RULING', primaryId: pid, actor: ruling.actor || 'TIM', ts: receipt.EXECUTED_AT, requestId: ruling.requestId || '', kind: ruling.kind || '', code: ruling.code || '', note: ruling.note || '', before: before, after: res.after, verified: verified });
-    return { ok: verified, receipt: receipt, before: before, after: res.after, counts: newCounts };
+    return { ok: verified, receipt: receipt, before: before, after: res.after, counts: newCounts, flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
   } finally { lock.releaseLock(); }
 }
 /* ================= AI data-discovery request queue ================= */
@@ -405,8 +406,9 @@ function applyUpsertToMaster_(ev) {
     var doc = DocumentApp.openById(MASTER_ID), body = doc.getBody(), paras = body.getParagraphs(), lines = [];
     for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
     var now = new Date().toISOString();
-    var plan = planUpsertApplication(lines, ev, { now: now, flexPolicy: readFlexPolicy_() });
-    var base = { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: (ev && ev.requestId) || plan.upsertKey || '', EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: (ev && ev.COMPANY) || '', TITLE: (ev && ev.TITLE) || '', STATE: (ev && (ev.STATE || ev.state)) || '', MODE: plan.mode, TARGET_FILE_ID: MASTER_ID, MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: now };
+    var flexPolicy = readFlexPolicy_();
+    var plan = planUpsertApplication(lines, ev, { now: now, flexPolicy: flexPolicy });
+    var base = { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: (ev && ev.requestId) || plan.upsertKey || '', EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: (ev && ev.COMPANY) || '', TITLE: (ev && ev.TITLE) || '', STATE: (ev && (ev.STATE || ev.state)) || '', MODE: plan.mode, TARGET_FILE_ID: MASTER_ID, MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: now, FLEX_POLICY_SOURCE: flexPolicy._SOURCE || 'UNKNOWN', FLEX_POLICY_WARNING: flexPolicy._WARNING || '' };
     if (!plan.ok) { base.COMPLETION_STATUS = plan.mode === 'HOLD' ? 'HOLD' : 'FAILED'; base.REASON = plan.error; base.POSSIBLE_MATCHES = plan.possibleMatches || []; try { appendReceipt_(base); } catch (e) {} return { ok: false, mode: plan.mode, error: plan.error, possibleMatches: plan.possibleMatches || [], receipt: base }; }
     if (plan.mode === 'ALREADY_APPLIED') { base.COMPLETION_STATUS = 'NO_CHANGE_REQUIRED'; base.PRIMARY_ID = plan.primaryId; return { ok: true, mode: plan.mode, primaryId: plan.primaryId, receipt: base }; }
     if (DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString() !== modBefore) return { ok: false, mode: 'RETRY', error: 'master changed during request; retry' };
@@ -1124,15 +1126,24 @@ function readFlexPolicy_() {
   try {
     var text = DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
     var sec = String(text || '').match(/(?:^|\n)SECTION=DEGREE_FLEX\s*\n([\s\S]*?)(?=\nSECTION=|$)/);
-    if (!sec) return defaults;
-    var raw = {};
+    if (!sec) {
+      defaults._SOURCE = 'CANONICAL_DEFAULTS';
+      defaults._WARNING = 'SECTION=DEGREE_FLEX not found; production defaults used';
+      return defaults;
+    }
+    var raw = {}, structured = 0;
     sec[1].split(/\r?\n/).forEach(function (line) {
       var m = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
       if (!m) return;
-      if (defaults[m[1]] !== undefined) raw[m[1]] = m[2];
+      if (defaults[m[1]] !== undefined) { raw[m[1]] = m[2]; structured++; }
     });
-    return PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy(raw) : raw;
+    var policy = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy(raw) : raw;
+    policy._SOURCE = structured ? 'CANONICAL_STRUCTURED' : 'CANONICAL_DEFAULTS';
+    policy._WARNING = structured ? '' : 'No structured FLEX policy keys found; production defaults used';
+    return policy;
   } catch (e) {
+    defaults._SOURCE = 'DEFAULT_FALLBACK';
+    defaults._WARNING = 'Canonical FLEX policy read failed: ' + String(e && e.message || e).replace(/\s+/g, ' ');
     return defaults;
   }
 }

@@ -18,6 +18,33 @@ test('FLEX policy defaults preserve current production behavior',()=>{
   assert.deepEqual(R.FLEX_DEFAULTS,P.FLEX_POLICY_DEFAULTS);
 });
 
+test('Generated FLEX prose stays synchronized with structured policy values',()=>{
+  const src='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- HIGH_FLEX: old hard-coded prose. Modifier +15.\n- SOFT_FLEX: old prose. Modifier +6.\nSECTION=TITLE_SCOPE_FIT\nX=1\n';
+  const out=R.setFlexPolicy(src,{HIGH_FLEX_MODIFIER:12,SOFT_FLEX_MODIFIER:4,NO_FLEX_MODIFIER:-8,STRICT_MODIFIER:-20,NOT_STATED_CLASS:'SOFT_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'STRICT',SINGLE_PATH_CLASS:'NO_FLEX',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'});
+  assert.match(out,/FLEX_POLICY_PROSE_BEGIN/);
+  assert.match(out,/Degree not stated => SOFT_FLEX/);
+  assert.match(out,/Equivalent experience => HIGH_FLEX/);
+  assert.match(out,/Hard degree requirement without equivalency => STRICT/);
+  assert.match(out,/Confirmed single required degree path => NO_FLEX/);
+  assert.match(out,/HIGH_FLEX \+12, SOFT_FLEX \+4, NO_FLEX -8, STRICT -20/);
+  assert.match(out,/Fresh degree evidence overrides stale FLEX = YES/);
+  assert.doesNotMatch(out,/old hard-coded prose|old prose/);
+  assert.equal((out.match(/FLEX_POLICY_PROSE_BEGIN/g)||[]).length,1);
+  assert.equal(R.setFlexPolicy(out,R.flexPolicy(out)),out,'generated prose is stable on repeat save');
+});
+
+test('FLEX-only save transformation can use canonical text without committing unrelated raw-draft edits',()=>{
+  const canonical='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- canonical prose\nSECTION=OTHER\nCANONICAL_ONLY=YES\n';
+  const draft=canonical.replace('CANONICAL_ONLY=YES','CANONICAL_ONLY=YES\nUNSAVED_RAW_EDIT=DO_NOT_COMMIT');
+  const policy={HIGH_FLEX_MODIFIER:13};
+  const submitted=R.setFlexPolicy(canonical,policy);
+  const retainedLocalDraft=R.setFlexPolicy(draft,policy);
+  assert.doesNotMatch(submitted,/UNSAVED_RAW_EDIT/);
+  assert.match(retainedLocalDraft,/UNSAVED_RAW_EDIT=DO_NOT_COMMIT/);
+  assert.equal(R.flexPolicy(submitted).HIGH_FLEX_MODIFIER,13);
+  assert.equal(R.flexPolicy(retainedLocalDraft).HIGH_FLEX_MODIFIER,13);
+});
+
 test('Rules editor round-trips structured FLEX policy in canonical DEGREE_FLEX section',()=>{
   const src='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose stays here\nSECTION=TITLE_SCOPE_FIT\nX=1\n';
   const out=R.setFlexPolicy(src,{HIGH_FLEX_MODIFIER:12,SOFT_FLEX_MODIFIER:4,NO_FLEX_MODIFIER:-8,STRICT_MODIFIER:-20,NOT_STATED_CLASS:'SOFT_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'STRICT',SINGLE_PATH_CLASS:'STRICT',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'NO'});
@@ -139,10 +166,10 @@ function services(rowCount,rulesText){
   global.DriveApp={getFileById:id=>({getLastUpdated:()=>new Date('2026-10-04T20:00:00Z'),getParents:()=>iter([folder]),getId:()=>id})};
   global.DocumentApp={openById:id=>{opens[id]=(opens[id]||0)+1;
     if(id===MASTER)return doc({getParagraphs:()=>master});
-    if(id===RULES)return doc({getText:()=>rulesText});
+    if(id===RULES){if(rulesText===null)throw new Error('simulated canonical rules outage');return doc({getText:()=>rulesText});}
     return doc({getText:()=>receipts.join('\n'),appendParagraph:t=>receipts.push(t)});}};
   global.MimeType={PLAIN_TEXT:'text/plain'};
-  return {opens,row:id=>master.map(p=>p.getText()).find(l=>l.split(' | ')[1]===id)};
+  return {opens,receipts:()=>receipts.join('\n'),row:id=>master.map(p=>p.getText()).find(l=>l.split(' | ')[1]===id)};
 }
 const rules='TIM_PIPELINE_RULES_CANONICAL\nSTATUS=ACTIVE\nSECTION=DEGREE_FLEX\nFLEX_POLICY_VERSION=1\nNO_FLEX_MODIFIER=-4\nHARD_DEGREE_CLASS=NO_FLEX\n- prose\nSECTION=TITLE_SCOPE_FIT\nX=1';
 const degree=(i,rid)=>({action:'ruling',ruling:{primaryId:'V2F-ROW'+String(i).padStart(8,'0'),kind:'ENRICH',actor:'CLAUDE',requestId:rid+i,fields:{DEGREE_TEXT:"Bachelor's degree required",REQUIREMENTS_REVIEWED:'YES'}}});
@@ -160,4 +187,110 @@ test('A single ruling reads the canonical Rules document once',()=>{
   const r=W.dispatchWrite_(degree(1,'SINGLE-'));
   assert.equal(r.ok,true,r.error);assert.equal(s.opens[RULES],1);
   assert.equal(pl(s.row('V2F-ROW00000001')).FLEX_MODIFIER,'-4');
+});
+
+test('Writer surfaces CANONICAL_STRUCTURED policy provenance in batch result and receipts',()=>{
+  const s=services(1,rules);
+  const r=W.dispatchWrite_({action:'batch',requests:[degree(1,'PROV-')]});
+  assert.equal(r.ok,true);
+  assert.equal(r.flexPolicySource,'CANONICAL_STRUCTURED');
+  assert.equal(r.flexPolicyWarning,'');
+  assert.equal(r.results[0].flexPolicySource,'CANONICAL_STRUCTURED');
+});
+
+test('Writer surfaces DEFAULT_FALLBACK when canonical FLEX policy cannot be read',()=>{
+  const s=services(1,null);
+  const r=W.dispatchWrite_({action:'batch',requests:[degree(1,'FALLBACK-')]});
+  assert.equal(r.ok,true);
+  assert.equal(r.flexPolicySource,'DEFAULT_FALLBACK');
+  assert.match(r.flexPolicyWarning,/Canonical FLEX policy read failed/);
+  assert.equal(r.results[0].flexPolicySource,'DEFAULT_FALLBACK');
+  const p=pl(s.row('V2F-ROW00000001'));
+  assert.equal(p.FLEX_CLASS,'NO_FLEX');
+  assert.equal(p.FLEX_MODIFIER,'-10','production default still applies during explicit fallback');
+});
+
+test('Writer surfaces CANONICAL_DEFAULTS when canonical rules are readable but structured FLEX keys are absent',()=>{
+  const readable='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose only\nSECTION=OTHER\nX=1';
+  const s=services(1,readable);
+  const r=W.dispatchWrite_({action:'batch',requests:[degree(1,'DEFAULTS-')]});
+  assert.equal(r.ok,true);
+  assert.equal(r.flexPolicySource,'CANONICAL_DEFAULTS');
+  assert.match(r.flexPolicyWarning,/No structured FLEX policy keys found/);
+});
+
+// ---- PR #33 hardening: prose sync against the live-shaped section, and provenance on every write path ----
+const LIVE_FLEX='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n'+
+'- HIGH_FLEX: reviewed requirements mention no degree, or explicitly accept a non-degree experience route. Modifier +15. Blank unresearched requirements remain UNKNOWN.\n'+
+'- SOFT_FLEX: degree listed and the same requirements block offers multiple degree-or-experience paths. Modifier +6.\n'+
+'- NO_FLEX: degree required without recorded equivalency. Modifier -10. Still pursue if adjusted fit is 80+ and pay/title rules clear.\n'+
+'- STRICT: explicit strict classification or confirmed single required degree path without equivalency. Modifier -10 for reporting; do not pursue unless Tim overrides. Do not automatically convert NO_FLEX to STRICT.\n'+
+'- Adjusted fit = clamp(raw scope fit + FLEX modifier, 0, 100). Report class, modifier, raw fit, adjusted fit, exact degree wording, and evidence. Apply pay and title rules afterward. Store unadjusted fit in SCOPE_FIT_RAW; do not apply the modifier twice.\n'+
+'- Compatibility: YES=HIGH_FLEX, SOFT=SOFT_FLEX, NO=NO_FLEX, STRICT_NO=STRICT. FLEX concerns degree eligibility, not remote/hybrid work.\n'+
+'- Protected application and rejection states remain authoritative.\nSECTION=TITLE_SCOPE_FIT\nX=1\n';
+const NONDEFAULT={HIGH_FLEX_MODIFIER:12,SOFT_FLEX_MODIFIER:4,NO_FLEX_MODIFIER:-8,STRICT_MODIFIER:-20,NOT_STATED_CLASS:'SOFT_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'STRICT',SINGLE_PATH_CLASS:'NO_FLEX',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'};
+
+test('Live-shaped DEGREE_FLEX: keys and generated prose agree, governing rules survive, old modifier prose is gone, repeat saves are byte-stable',()=>{
+  const out=R.setFlexPolicy(LIVE_FLEX,NONDEFAULT);
+  assert.deepEqual(R.flexPolicy(out),NONDEFAULT,'structured keys carry the saved policy');
+  const sec=out.match(/SECTION=DEGREE_FLEX\n([\s\S]*?)(?=\nSECTION=)/)[1];
+  for(const k of Object.keys(NONDEFAULT))assert.match(sec,new RegExp('^'+k+'='+NONDEFAULT[k]+'$','m'));
+  assert.match(sec,/Degree not stated => SOFT_FLEX\./);
+  assert.match(sec,/Equivalent experience => HIGH_FLEX\./);
+  assert.match(sec,/Hard degree requirement without equivalency => STRICT\./);
+  assert.match(sec,/Confirmed single required degree path => NO_FLEX\./);
+  assert.match(sec,/FLEX modifiers: HIGH_FLEX \+12, SOFT_FLEX \+4, NO_FLEX -8, STRICT -20\./);
+  assert.match(sec,/Fresh degree evidence overrides stale FLEX = YES\./);
+  assert.doesNotMatch(sec,/Modifier [+-]\d+/,'no hard-coded modifier prose remains');
+  assert.doesNotMatch(sec,/[+-]15|[+-]6\b|-10/,'no stale default numbers remain in the section');
+  for(const keep of ['Adjusted fit = clamp(raw scope fit + FLEX modifier, 0, 100)','Store unadjusted fit in SCOPE_FIT_RAW; do not apply the modifier twice.',
+    'Blank unresearched requirements remain UNKNOWN','still pursue if adjusted fit is 80+ and pay/title rules clear','do not pursue unless Tim overrides','Do not automatically convert NO_FLEX to STRICT',
+    'Compatibility: YES=HIGH_FLEX, SOFT=SOFT_FLEX, NO=NO_FLEX, STRICT_NO=STRICT','Protected application and rejection states remain authoritative.'])
+    assert.ok(sec.includes(keep),'governing rule kept: '+keep);
+  assert.equal((out.match(/Adjusted fit =/g)||[]).length,1);
+  assert.match(out,/\nSECTION=TITLE_SCOPE_FIT\nX=1\n$/,'other sections untouched');
+  const again=R.setFlexPolicy(out,NONDEFAULT);
+  assert.equal(again,out,'repeat save with no changes is idempotent');
+  assert.equal(R.setFlexPolicy(again,R.flexPolicy(again)),out);
+  const back=R.setFlexPolicy(out,R.FLEX_DEFAULTS);
+  assert.match(back,/FLEX modifiers: HIGH_FLEX \+15, SOFT_FLEX \+6, NO_FLEX -10, STRICT -10\./);
+  assert.equal((back.match(/FLEX_POLICY_PROSE_BEGIN/g)||[]).length,1);
+});
+
+test('Section-less rules get keys and generated prose together',()=>{
+  const out=R.setFlexPolicy('TIM_PIPELINE_RULES_CANONICAL\nSECTION=OTHER\nX=1',NONDEFAULT);
+  assert.match(out,/FLEX modifiers: HIGH_FLEX \+12/);
+  assert.equal(R.setFlexPolicy(out,NONDEFAULT),out);
+});
+
+test('Batch receipts carry FLEX_POLICY_SOURCE for every row',()=>{
+  const s=services(2,rules);
+  const r=W.dispatchWrite_({action:'batch',requests:[degree(1,'RCPT-'),degree(2,'RCPT-')]});
+  assert.equal(r.mode,'BATCH_RULING_SINGLE_COMMIT');assert.equal(s.opens[RULES],1);
+  assert.equal((s.receipts().match(/FLEX_POLICY_SOURCE=CANONICAL_STRUCTURED/g)||[]).length,2);
+  assert.equal(Object.keys(W.completedReceiptRequestIds_(s.receipts())).sort().join(),'RCPT-1,RCPT-2','receipts still parse as COMPLETE');
+});
+
+test('Single ruling result and receipt carry provenance; fallback warning reaches the receipt',()=>{
+  let s=services(1,rules);
+  let r=W.dispatchWrite_(degree(1,'SP-'));
+  assert.equal(r.ok,true,r.error);assert.equal(r.flexPolicySource,'CANONICAL_STRUCTURED');assert.equal(r.receipt.FLEX_POLICY_SOURCE,'CANONICAL_STRUCTURED');
+  assert.match(s.receipts(),/FLEX_POLICY_SOURCE=CANONICAL_STRUCTURED/);
+  s=services(1,null);
+  r=W.dispatchWrite_(degree(1,'SF-'));
+  assert.equal(r.ok,true,r.error);assert.equal(r.flexPolicySource,'DEFAULT_FALLBACK');assert.equal(s.opens[RULES],1);
+  assert.match(s.receipts(),/FLEX_POLICY_SOURCE=DEFAULT_FALLBACK/);
+  assert.match(s.receipts(),/FLEX_POLICY_WARNING=Canonical FLEX policy read failed: simulated canonical rules outage/);
+  assert.equal(pl(s.row('V2F-ROW00000001')).FLEX_MODIFIER,'-10');
+});
+
+test('Upsert reads the canonical Rules document once and its receipt carries provenance',()=>{
+  const s=services(1,'TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose only\nSECTION=OTHER\nX=1');
+  const r=W.dispatchWrite_({action:'upsert_application',event:{TARGET_PRIMARY_ID:'V2F-ROW00000001',STATE:'APPLIED',EVENT_DATE:'2026-10-02',EVIDENCE:'Gmail 1cd "Thanks for applying"',actor:'FORGE',requestId:'UP-1'}});
+  assert.equal(r.ok,true,r.error);assert.equal(r.mode,'UPDATE');
+  assert.equal(s.opens[RULES],1,'rules read once per upsert');
+  assert.equal(r.receipt.FLEX_POLICY_SOURCE,'CANONICAL_DEFAULTS');
+  assert.match(r.receipt.FLEX_POLICY_WARNING,/No structured FLEX policy keys found/);
+  assert.match(s.receipts(),/FLEX_POLICY_SOURCE=CANONICAL_DEFAULTS/);
+  assert.match(pl(s.row('V2F-ROW00000001')).STATE_SOURCE,/^FORGE:UP-1$/);
 });
