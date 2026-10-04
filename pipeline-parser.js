@@ -118,5 +118,19 @@
     return { low: Math.min.apply(null, nums), high: Math.max.apply(null, nums), mid: (Math.min.apply(null, nums) + Math.max.apply(null, nums)) / 2 };
   }
   function parseDate(s) { if (!s) return null; var m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/); if (!m) return null; return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)); }
-  return { parse: parse, parseRow: parseRow, parsePayload: parsePayload, parseMoney: parseMoney, parseDate: parseDate, FIXED_COLUMNS: FIXED_COLUMNS, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, UNRESOLVED_BUCKETS: UNRESOLVED_BUCKETS };
+  function distinctRows(rows) {
+    var by = {}, order = [];
+    (rows || []).forEach(function (r) {
+      var id = String(r && r.PRIMARY_ID || '').trim() || ('INV:' + String(r && r.INV || ''));
+      if (!by[id]) { by[id] = r; order.push(id); return; }
+      var cur = by[id], curDup = cur && cur.BUCKET === 'DUPLICATE', newDup = r && r.BUCKET === 'DUPLICATE';
+      if (curDup && !newDup) { by[id] = r; return; }
+      if (curDup === newDup) {
+        var a = +((cur && cur.INV_NUM) || (cur && cur.INV) || 0), b = +((r && r.INV_NUM) || (r && r.INV) || 0);
+        if (b > a) by[id] = r;
+      }
+    });
+    return order.map(function (id) { return by[id]; });
+  }
+  return { parse: parse, parseRow: parseRow, parsePayload: parsePayload, parseMoney: parseMoney, parseDate: parseDate, FIXED_COLUMNS: FIXED_COLUMNS, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, UNRESOLVED_BUCKETS: UNRESOLVED_BUCKETS, distinctRows: distinctRows };
 }));
