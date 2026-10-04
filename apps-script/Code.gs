@@ -144,11 +144,7 @@ function applyRulingBatchToMaster_(requests) {
       else byPid[pid0] = p;
     }
 
-    var receiptText = readReceipts_(), already = {};
-    String(receiptText || '').split('\n').forEach(function (line) {
-      var m = line.match(/^REQUEST_ID=(.+)$/);
-      if (m) already[m[1].trim()] = true;
-    });
+    var already = completedReceiptRequestIds_(readReceipts_());
 
     for (var rix = 0; rix < requests.length; rix++) {
       var sub = requests[rix] || {}, ruling = sub.ruling || {}, pid = String(ruling.primaryId || '').trim(), requestId = String(ruling.requestId || '').trim();
@@ -233,6 +229,39 @@ function applyRulingBatchToMaster_(requests) {
     t.TOTAL_MS = Date.now() - started;
     return { ok: results.every(function (x) { return x && x.ok; }), mode: 'BATCH_RULING_SINGLE_COMMIT', processed: changed.length, counts: newCounts, results: results, timings: t };
   } finally { lock.releaseLock(); }
+}
+
+/**
+ * Request IDs whose receipt proves a successful write: only these may be skipped as ALREADY_APPLIED.
+ * Receipts are blocks from `RECEIPT=<TYPE>` to `END <TYPE>`; Docs getText() separates lines inside a block with \r and
+ * blocks with \n, so both are line breaks. A block counts only when it is complete (start and matching END), has a
+ * non-empty REQUEST_ID, COMPLETION_STATUS=COMPLETE and, for state-change receipts (or any receipt that records it),
+ * READBACK_VERIFIED=YES. FAILED, HOLD, INCOMPLETE, STATE_CHANGE_NEEDS_RESOLUTION, missing status and malformed or
+ * truncated blocks never count, so those requests are retried normally. Any one qualifying block is enough.
+ */
+function completedReceiptRequestIds_(text) {
+  var done = {}, block = null, lines = String(text || '').split(/\r\n|\r|\n/);
+  var KEYS = ['RECEIPT', 'REQUEST_ID', 'COMPLETION_STATUS', 'READBACK_VERIFIED'];
+  function finish(b) {
+    if (!b || b.bad) return;
+    var rid = String(b.f.REQUEST_ID || '').trim();
+    if (!rid || b.f.COMPLETION_STATUS !== 'COMPLETE') return;
+    var needsReadback = b.f.RECEIPT === 'STATE_CHANGE_RECEIPT' || b.f.READBACK_VERIFIED !== undefined;
+    if (needsReadback && b.f.READBACK_VERIFIED !== 'YES') return;
+    done[rid] = true;
+  }
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (/^RECEIPT=/.test(line)) { block = { f: {}, bad: false }; }   // a new start abandons any unterminated block
+    if (!block) continue;
+    var end = line.match(/^END (\S+)$/);
+    if (end) { if (end[1] === block.f.RECEIPT) finish(block); block = null; continue; }
+    var eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    var k = line.slice(0, eq), v = line.slice(eq + 1).trim();
+    if (KEYS.indexOf(k) >= 0) { if (block.f[k] !== undefined && block.f[k] !== v) block.bad = true; block.f[k] = v; }
+  }
+  return done;
 }
 
 function appendReceipts_(list) {
@@ -1186,4 +1215,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
