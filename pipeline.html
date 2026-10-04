@@ -482,7 +482,7 @@ function phoneLayout(){return window.innerWidth<=760||(window.innerWidth<=980&&w
 function visibleCols(){var phone=phoneLayout();var set=phone?S.cols.phone:S.cols.desktop;return set.filter(function(c){return COLS.indexOf(c)>=0})}
 /* ---------- presets ---------- */
 function validHttpUrl_(v){return /^https?:\/\/[^\s]+$/i.test(String(v||'').trim())}
-function researchGaps_(r){var p=r.payload||{},g=[];if(PipelineTrust.salary(p)==='UNKNOWN')g.push('salary');if(!PipelinePolicy.links(r).preferred)g.push('posting link');if(PipelineTrust.flex(p)!=='VERIFIED')g.push('FLEX evidence');return g}
+function researchGaps_(r){var p=r.payload||{},g=[];if(PipelineTrust.salary(p)==='UNKNOWN')g.push('salary');if(!PipelinePolicy.links(r).preferred)g.push('posting link');if(!hasResolvedFlex_(r))g.push('FLEX');return g}
 var PRESETS={
   ACTIVE:{label:'Active work',text:'Active canonical roles; archive and application history stay accessible separately',fn:function(r){return ['READY_TO_PURSUE','TIM_DECISION_REQUIRED','BLOCKED','MANUAL_RESEARCH','SCOUT_INTAKE','DISCOVERY_LEAD'].includes(r.BUCKET)}},
   MAINTENANCE:{label:'Heading maintenance',text:'Formatting headings disagree with authoritative row BUCKET; no row state is inferred from headings',fn:function(r){return r.mismatch}},
@@ -490,7 +490,7 @@ var PRESETS={
   SCOUT_INTAKE:{label:'Scout intake',hot:true,text:'BUCKET=SCOUT_INTAKE (discovered by Scout, awaiting Claude analysis and Forge verification; not an endorsement)',fn:function(r){return r.BUCKET==='SCOUT_INTAKE'}},
   LEADS:{label:'Discovery leads',hot:true,text:'BUCKET=DISCOVERY_LEAD (plausible opportunity, identity not yet resolved; never silently dropped)',fn:function(r){return r.BUCKET==='DISCOVERY_LEAD'}},
   NEEDS_ANALYSIS:{label:'Needs analysis',text:'BUCKET in (SCOUT_INTAKE, DISCOVERY_LEAD, MANUAL_RESEARCH, BLOCKED, TIM_DECISION_REQUIRED); VERIFY_LATER excluded by master rule',fn:function(r){return ['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED'].indexOf(r.BUCKET)>=0}},
-  MISSING_DATA:{label:'Missing data',hot:true,text:'Active roles missing salary, an exact posting link, or FLEX evidence',fn:function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length>0}},
+  MISSING_DATA:{label:'Missing data',hot:true,text:'Active roles missing salary, a usable posting link, or resolved FLEX classification',fn:function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length>0}},
   APPLY_NOW:{label:'Ready to pursue',text:'BUCKET=READY_TO_PURSUE (AI disposition) AND no BLOCKER AND no ANTI_RESURRECTION AND Tim ruling not against',fn:function(r){var ru=ruling(r);return r.BUCKET==='READY_TO_PURSUE'&&!attentionFor_(r).blocked&&!(ru&&((ru.kind==='APPLY_NOW'&&ru.value==='NO')||ru.kind==='DECLINE'))}},
   NEW:{label:'New to me',text:'DATE_ADDED within '+1+' day OR not yet seen by Tim; excludes DUPLICATE, CLOSED_DEAD, INVALID_DISCOVERY',fn:function(r){return isNew(r)&&['DUPLICATE','CLOSED_DEAD','INVALID_DISCOVERY'].indexOf(r.BUCKET)<0}},
   RULED:{label:'My rulings',text:'rows with a Tim ruling (pending, canonical, or master changed)',fn:function(r){return !!ruling(r)}},
