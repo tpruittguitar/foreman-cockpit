@@ -508,13 +508,16 @@ function renderPresets(){
   var h='<div class="preset-list">';Object.keys(PRESETS).forEach(function(k){var n=S.rows.filter(PRESETS[k].fn).length;h+='<span class="chip'+(S.preset===k?' on':'')+(PRESETS[k].hot&&n?' hot':'')+'" data-p="'+k+'">'+PRESETS[k].label+' <span class="mono'+(PRESETS[k].hot&&n?'':' faint')+'">'+n+'</span></span>'});
   var nsel=Object.keys(S.checked).filter(function(k){return S.checked[k]}).length;
   var discoverable=filteredRows().filter(function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length}).length;
-  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar">'+(nsel?'<b>'+nsel+' selected</b><button data-bulk="DECLINE">Decline selected</button><button data-bulk="MANUAL_RESEARCH">Research</button><button data-bulk="INVALID_DISCOVERY">Invalid</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><input type="text" id="search" placeholder="global search…" value="'+esc(S.search)+'" style="width:190px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
+  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar"><button id="select-visible" title="Select all rows in the current filtered view">Select visible</button>'+(nsel?'<button id="clear-selected" title="Clear all selected rows">Clear selection</button><b>'+nsel+' selected</b><button data-bulk="DECLINE">Decline selected</button><button data-bulk="MANUAL_RESEARCH">Research</button><button data-bulk="INVALID_DISCOVERY">Invalid</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><input type="text" id="search" placeholder="global search…" value="'+esc(S.search)+'" style="width:190px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
   h+='</div><div id="predicate"></div>';
   $('presets').innerHTML=h;
   $('presets').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){S.chartFilter=null;S.preset=el.getAttribute('data-p');pushHash();render()}});
   $('search').oninput=function(){S.search=this.value;render()};
   $('discover-data').onclick=function(){requestDiscoveryForRows_(filteredRows().filter(function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length}))};
   $('markseen').onclick=function(){filteredRows().forEach(function(r){S.seen[r.id]=Date.now()});LS.set('seen',S.seen);syncStateUp();render()};
+  $('select-visible').onclick=function(){filteredRows().forEach(function(r){if(PROTECTED.indexOf(r.BUCKET)<0)S.checked[r.id]=true});renderPresets();render()};
+  if($('clear-selected'))$('clear-selected').onclick=function(){S.checked={};renderPresets();render()};
+
   $('presets').querySelectorAll('[data-bulk]').forEach(function(b){b.onclick=function(){bulkAction(b.getAttribute('data-bulk'))}});
 }
 /* ---------- filtering / sorting ---------- */
