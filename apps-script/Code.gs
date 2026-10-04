@@ -145,6 +145,7 @@ function applyRulingBatchToMaster_(requests) {
     }
 
     var already = completedReceiptRequestIds_(readReceipts_());
+    var flexPolicy = readFlexPolicy_();
 
     for (var rix = 0; rix < requests.length; rix++) {
       var sub = requests[rix] || {}, ruling = sub.ruling || {}, pid = String(ruling.primaryId || '').trim(), requestId = String(ruling.requestId || '').trim();
@@ -161,7 +162,7 @@ function applyRulingBatchToMaster_(requests) {
         continue;
       }
       seenBatchPid[pid] = true;
-      var li = byPid[pid], before = lines[li], mu = mutateRow(before, ruling);
+      var li = byPid[pid], before = lines[li], mu = mutateRow(before, ruling, flexPolicy);
       if (!mu.ok) { results.push({ index: rix, ok: false, error: mu.error, primaryId: pid }); continue; }
       lines[li] = mu.after;
       changed.push({ index: rix, lineIndex: li, before: before, after: mu.after, mutation: mu, ruling: ruling });
@@ -331,7 +332,7 @@ function applyRulingToMaster_(ruling) {
     }
     if (hits.length !== 1) return fail_('identity not unique: ' + hits.length + ' rows match ' + pid + ' (fail closed)', ruling);
     var before = paras[hits[0]].getText();
-    var res = mutateRow(before, ruling);
+    var res = mutateRow(before, ruling, readFlexPolicy_());
     if (!res.ok) return fail_(res.error, ruling);
     var modCheck = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
     if (modCheck !== modBefore) return fail_('master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', ruling);
@@ -404,7 +405,7 @@ function applyUpsertToMaster_(ev) {
     var doc = DocumentApp.openById(MASTER_ID), body = doc.getBody(), paras = body.getParagraphs(), lines = [];
     for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
     var now = new Date().toISOString();
-    var plan = planUpsertApplication(lines, ev, { now: now });
+    var plan = planUpsertApplication(lines, ev, { now: now, flexPolicy: readFlexPolicy_() });
     var base = { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: (ev && ev.requestId) || plan.upsertKey || '', EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: (ev && ev.COMPANY) || '', TITLE: (ev && ev.TITLE) || '', STATE: (ev && (ev.STATE || ev.state)) || '', MODE: plan.mode, TARGET_FILE_ID: MASTER_ID, MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: now };
     if (!plan.ok) { base.COMPLETION_STATUS = plan.mode === 'HOLD' ? 'HOLD' : 'FAILED'; base.REASON = plan.error; base.POSSIBLE_MATCHES = plan.possibleMatches || []; try { appendReceipt_(base); } catch (e) {} return { ok: false, mode: plan.mode, error: plan.error, possibleMatches: plan.possibleMatches || [], receipt: base }; }
     if (plan.mode === 'ALREADY_APPLIED') { base.COMPLETION_STATUS = 'NO_CHANGE_REQUIRED'; base.PRIMARY_ID = plan.primaryId; return { ok: true, mode: plan.mode, primaryId: plan.primaryId, receipt: base }; }
@@ -535,7 +536,7 @@ function buildPayload(lead, payload, order) {
 }
 function clean_(v) { return String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').replace(/; /g, ', ').replace(/ \| /g, ' / ').trim(); }
 /** Apply one Tim ruling to one master row line. */
-function mutateRow(line, ruling) {
+function mutateRow(line, ruling, flexPolicy) {
   var cells = line.split(' | ');
   if (cells.length < FIXED_N + 1) return { ok: false, error: 'row has fewer than 10 cells' };
   var fixed = cells.slice(0, FIXED_N), rest = cells.slice(FIXED_N).join(' | ');
@@ -556,8 +557,8 @@ function mutateRow(line, ruling) {
     set('TIM_NOTE', note + ' [Tim ' + d + ']'); changes.push('TIM_NOTE');
   } else if (kind === 'APPLY_NOW' && val === 'YES') {
     if ((g = guardProtected('mark pursue on'))) return g;
-    if(PipelinePolicy.flex(P).blocked&&String(ruling.actor||'').toUpperCase()!=='TIM')return {ok:false,error:'STRICT requires explicit Tim override'};
-    if(PipelinePolicy.flex(P).blocked)set('TIM_FLEX_OVERRIDE','YES');
+    if(PipelinePolicy.flex(P,flexPolicy).blocked&&String(ruling.actor||'').toUpperCase()!=='TIM')return {ok:false,error:'STRICT requires explicit Tim override'};
+    if(PipelinePolicy.flex(P,flexPolicy).blocked)set('TIM_FLEX_OVERRIDE','YES');
     fixed[4] = 'READY_TO_PURSUE'; fixed[5] = 'RESOLVED/PURSUE_CANDIDATE';
     set('TIM_RULING', 'PURSUE'); tags.push('TIM_OVERRIDE_PURSUE_' + d); changes.push('BUCKET', 'DISPOSITION', 'TIM_RULING');
     if (P.DECLINE_REASON_CODE) { set('DECLINE_REASON_CODE_PRIOR', P.DECLINE_REASON_CODE); delete P.DECLINE_REASON_CODE; O.splice(O.indexOf('DECLINE_REASON_CODE'), 1); }
@@ -611,7 +612,7 @@ function mutateRow(line, ruling) {
     set('TIM_RULING', 'INVALID_DISCOVERY'); set('INVALID_REASON', note || 'Not a distinct usable job record (Tim ' + d + ')'); tags.push('TIM_INVALID_' + d);
     changes.push('BUCKET', 'DISPOSITION', 'INVALID_REASON');
   } else return { ok: false, error: 'unknown ruling kind ' + kind + ' ' + val };
-  var fr = applyFields_(ruling.fields, P, O, set);
+  var fr = applyFields_(ruling.fields, P, O, set, flexPolicy);
   if (!fr.ok) return fr;
   changes = changes.concat(fr.changed);
   var actor = String(ruling.actor || '').toUpperCase().replace(/[^A-Z0-9_]/g, '');
@@ -631,7 +632,7 @@ var ENRICH_DENY = ['DECLINE_REASON_CODE', 'DECLINE_REASON_CODE_PRIOR', 'DECLINE_
 function isEnrichDenied_(k) { k = String(k).trim().toUpperCase(); return /^TIM_/.test(k) || ENRICH_DENY.indexOf(k) >= 0; }
 var INTAKE_PRESERVE = ['INTAKE_KEY', 'SCOUT_RUN_ID', 'DISCOVERED_AT_ET', 'DISCOVERY_SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'REQ_ID', 'IDENTITY_CONFIDENCE', 'INITIAL_UNKNOWN_FIELDS', 'POSSIBLE_MATCHES', 'DATE_ADDED', 'NOTIFICATION_SOURCE'];
 /** Merge {KEY: value} into a parsed payload. Empty values are ignored (nothing is deleted); changed intake keys keep their old value under INTAKE_<KEY>. */
-function applyFields_(fields, P, O, set) {
+function applyFields_(fields, P, O, set, flexPolicy) {
   var changed = [];
   if (!fields) return { ok: true, changed: changed };
   if (typeof fields !== 'object' || Array.isArray(fields)) return { ok: false, error: 'fields must be an object {KEY: value}' };
@@ -657,14 +658,28 @@ function applyFields_(fields, P, O, set) {
   // and must not create UNKNOWN/0 placeholders.
   // A direct FLEX_CLASS/FLEX_MODIFIER write is also FLEX evidence: derive it so the pair stays valid and consistent.
   var flexEvidenceKeys = ['FLEX','FLEX_HINT','DEGREE_TEXT','DEGREE_REQ','DEGREE','REQUIREMENTS_REVIEWED','DEGREE_SINGLE_PATH_CONFIRMED','FLEX_CLASS','FLEX_MODIFIER'];
-  var flexEvidenceChanged = keys.some(function (rawKey) { return flexEvidenceKeys.indexOf(String(rawKey).trim().toUpperCase()) >= 0; });
+  var inputKeys = keys.map(function (rawKey) { return String(rawKey).trim().toUpperCase(); });
+  var flexEvidenceChanged = inputKeys.some(function (k) { return flexEvidenceKeys.indexOf(k) >= 0; });
   if (flexEvidenceChanged) {
-    if (fields.FLEX !== undefined || fields.FLEX_HINT !== undefined) delete P.FLEX_CLASS;
-    var f = PipelinePolicy.flex(P);
+    var directFlexChanged = inputKeys.some(function (k) { return ['FLEX','FLEX_HINT','FLEX_CLASS','FLEX_MODIFIER'].indexOf(k) >= 0; });
+    var degreeEvidenceChanged = inputKeys.some(function (k) { return ['DEGREE_TEXT','DEGREE_REQ','DEGREE','REQUIREMENTS_REVIEWED','DEGREE_SINGLE_PATH_CONFIRMED'].indexOf(k) >= 0; });
+    if (inputKeys.indexOf('FLEX') >= 0 || inputKeys.indexOf('FLEX_HINT') >= 0) delete P.FLEX_CLASS;
+    var normalizedPolicy = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy(flexPolicy || {}) : (flexPolicy || {});
+    var f = PipelinePolicy.flex(P, normalizedPolicy);
+    if (normalizedPolicy.FRESH_DEGREE_OVERRIDES_STALE_CLASS === 'YES' && degreeEvidenceChanged && !directFlexChanged) {
+      // Fresh degree evidence replaces the stale class only when it is conclusive; inconclusive text never wipes a known class (or a STRICT hold) to UNKNOWN.
+      var flexInput = {};
+      Object.keys(P).forEach(function (pk) { flexInput[pk] = P[pk]; });
+      delete flexInput.FLEX_CLASS;
+      delete flexInput.FLEX;
+      delete flexInput.FLEX_HINT;
+      var fresh = PipelinePolicy.flex(flexInput, normalizedPolicy);
+      if (fresh.known) f = fresh;
+    }
     set('FLEX_CLASS', f.class);
     set('FLEX_MODIFIER', String(f.modifier));
   }
-  var raw=Number(P.SCOPE_FIT_RAW||P.RAW_FIT);if((P.SCOPE_FIT_RAW||P.RAW_FIT)!==undefined&&isFinite(raw)){var a=PipelinePolicy.assess(P,raw);set('ADJUSTED_FIT',String(a.adjustedFit));set('PURSUIT_STATUS',a.decision);}
+  var raw=Number(P.SCOPE_FIT_RAW||P.RAW_FIT);if((P.SCOPE_FIT_RAW||P.RAW_FIT)!==undefined&&isFinite(raw)){var a=PipelinePolicy.assess(P,raw,flexPolicy);set('ADJUSTED_FIT',String(a.adjustedFit));set('PURSUIT_STATUS',a.decision);}
   return { ok: true, changed: changed };
 }
 /**
@@ -693,7 +708,7 @@ function planUpsertApplication(lines, ev, ctx) {
   }
   if (target) {
     if (hits.length !== 1) return { ok: false, mode: 'HOLD', error: 'TARGET_PRIMARY_ID ' + target + ' matches ' + hits.length + ' rows (fail closed)' };
-    var mt = mutateRow(lines[hits[0]], ruling); if (!mt.ok) return { ok: false, mode: 'HOLD', error: mt.error };
+    var mt = mutateRow(lines[hits[0]], ruling, ctx.flexPolicy); if (!mt.ok) return { ok: false, mode: 'HOLD', error: mt.error };
     return { ok: true, mode: 'UPDATE', index: hits[0], primaryId: target, matchedBy: 'TARGET_PRIMARY_ID', after: mt.after, mutation: mt, upsertKey: upsertKey };
   }
   if (!company || !title) return { ok: false, mode: 'INVALID', error: 'COMPANY and TITLE are required (or TARGET_PRIMARY_ID)' };
@@ -703,7 +718,7 @@ function planUpsertApplication(lines, ev, ctx) {
   if (m.kind === 'exact') {
     var row = m.rows[0], li = -1;
     for (var j = 0; j < lines.length; j++) if (/^\d+ \| /.test(lines[j]) && lines[j].split(' | ')[1].trim() === row.id) { if (li >= 0) return { ok: false, mode: 'HOLD', error: 'PRIMARY_ID ' + row.id + ' is not unique (fail closed)' }; li = j; }
-    var mu = mutateRow(lines[li], ruling); if (!mu.ok) return { ok: false, mode: 'HOLD', error: mu.error };
+    var mu = mutateRow(lines[li], ruling, ctx.flexPolicy); if (!mu.ok) return { ok: false, mode: 'HOLD', error: mu.error };
     return { ok: true, mode: 'UPDATE', index: li, primaryId: row.id, matchedBy: m.by, after: mu.after, mutation: mu, upsertKey: upsertKey };
   }
   var eventUrl=PipelinePolicy.links(ev).preferred;if(!eventUrl)return {ok:false,mode:'HOLD',error:'SOURCE_URL_REQUIRED: provide the initiating posting or email click-through URL for a new row'};
@@ -717,7 +732,7 @@ function planUpsertApplication(lines, ev, ctx) {
   else { set('REJECTION_DATE', evDate); set('REJECTION_EVIDENCE', evidence); set('STATE_SEMANTICS', 'Employer rejected Tim/application; distinct from DECLINED_BY_TIM'); }
   set('SOURCE_URL', eventUrl); set('INITIATING_URL',eventUrl); set('REQ_ID', ev.REQ_ID); set('ANTI_RESURRECTION', 'YES');
   if (ev.NOTE) set('NOTE', ev.NOTE);
-  var fr = applyFields_(ev.fields, P, O, set); if (!fr.ok) return { ok: false, mode: 'INVALID', error: fr.error };
+  var fr = applyFields_(ev.fields, P, O, set, ctx.flexPolicy); if (!fr.ok) return { ok: false, mode: 'INVALID', error: fr.error };
   set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', 'EMAIL'); set('STATE_SOURCE', String(ruling.actor).toUpperCase().replace(/[^A-Z0-9_]/g, '') + ':' + ruling.requestId); set('STATE_UPDATED_AT', now);
   var disp = state === 'APPLIED' ? 'RESOLVED/APPLIED_CONFIRMED' : 'RESOLVED/REJECTED_BY_EMPLOYER';
   var tag = (state === 'APPLIED' ? 'APPLIED_' : 'EMPLOYER_REJECTION_') + evDate;
@@ -1102,6 +1117,24 @@ function approveResume_(sel) {
   docsConfigFile_().setContent(JSON.stringify(cfg,null,2));
   appendEvent_({type:'APPROVED_RESUME_CHANGED',actor:'TIM',ts:ts,requestId:String(sel.requestId||''),fileId:id,fileName:file.getName()});
   return {ok:true,config:cfg};
+}
+/** Global FLEX policy from the structured keys in SECTION=DEGREE_FLEX of TIM_PIPELINE_RULES_CANONICAL. Read once per Writer transaction; absent or unreadable keys fall back to the production defaults. */
+function readFlexPolicy_() {
+  var defaults = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy({}) : {};
+  try {
+    var text = DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
+    var sec = String(text || '').match(/(?:^|\n)SECTION=DEGREE_FLEX\s*\n([\s\S]*?)(?=\nSECTION=|$)/);
+    if (!sec) return defaults;
+    var raw = {};
+    sec[1].split(/\r?\n/).forEach(function (line) {
+      var m = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (!m) return;
+      if (defaults[m[1]] !== undefined) raw[m[1]] = m[2];
+    });
+    return PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy(raw) : raw;
+  } catch (e) {
+    return defaults;
+  }
 }
 function readCanonicalRules_() {
   try {
