@@ -16,3 +16,6 @@ console.log('PASS: attention signals preserve unknowns, gates, protected states,
 const current={...row,payload:{FLOOR_STATUS:'CLEARS_200K',FLEX_CLASS:'HIGH_FLEX',SCOPE_FIT_RAW:'92',DOMAIN_FIT:'HIGH'}};
 assert(A.evaluate(current).strong,'Current FLEX_CLASS + SCOPE_FIT_RAW fields must drive attention');
 assert.equal(A.evaluate({...current,payload:{...current.payload,FLEX_CLASS:'NO_FLEX'}}).signals[1],-1);
+
+const grokOnly={...row,payload:{FLOOR_STATUS:'CLEARS_200K',FLEX_CLASS:'HIGH_FLEX',GROK_SCOPE_FIT_RAW:'92',DOMAIN_FIT:'HIGH'}};
+assert(A.evaluate(grokOnly).strong,'GROK_SCOPE_FIT_RAW must count as measured/current fit evidence');
