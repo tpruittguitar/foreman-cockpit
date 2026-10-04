@@ -515,7 +515,7 @@ function renderPresets(){
   $('search').oninput=function(){S.search=this.value;render()};
   $('discover-data').onclick=function(){requestDiscoveryForRows_(filteredRows().filter(function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length}))};
   $('markseen').onclick=function(){filteredRows().forEach(function(r){S.seen[r.id]=Date.now()});LS.set('seen',S.seen);syncStateUp();render()};
-  $('select-visible').onclick=function(){filteredRows().forEach(function(r){if(PROTECTED.indexOf(r.BUCKET)<0)S.checked[r.id]=true});renderPresets();render()};
+  $('select-visible').onclick=function(){filteredRows().forEach(function(r){if(['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE','BLOCKED'].indexOf(r.BUCKET)>=0)S.checked[r.id]=true});renderPresets();render()};
   if($('clear-selected'))$('clear-selected').onclick=function(){S.checked={};renderPresets();render()};
 
   $('presets').querySelectorAll('[data-bulk]').forEach(function(b){b.onclick=function(){bulkAction(b.getAttribute('data-bulk'))}});
@@ -717,8 +717,14 @@ function bulkAction(kind){
   var ids=Object.keys(S.checked).filter(function(k){return S.checked[k]}),rows=ids.map(rowById).filter(Boolean);
   if(!rows.length)return;
   if(!hasWriter()){alert('Writer required for bulk changes.');return}
-  var protectedRows=rows.filter(function(r){return PROTECTED.indexOf(r.BUCKET)>=0});
-  if(protectedRows.length){alert('Bulk action stopped. Protected rows selected: '+protectedRows.map(function(r){return r.COMPANY+' — '+r.TITLE}).join('; '));return}
+  var allowedByKind={
+    DECLINE:['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE'],
+    MANUAL_RESEARCH:['SCOUT_INTAKE','DISCOVERY_LEAD','TIM_DECISION_REQUIRED','READY_TO_PURSUE','BLOCKED','MANUAL_RESEARCH'],
+    INVALID_DISCOVERY:['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED']
+  };
+  var allowed=allowedByKind[kind]||[];
+  var ineligible=rows.filter(function(r){return allowed.indexOf(r.BUCKET)<0});
+  if(ineligible.length){alert('Bulk action stopped. '+kind+' is not allowed from the current state for: '+ineligible.map(function(r){return r.COMPANY+' — '+r.TITLE+' ['+r.BUCKET+']'}).join('; '));return}
   ensureCanonicalRules_().then(function(rules){
     var code='',note='';
     if(kind==='DECLINE'){
