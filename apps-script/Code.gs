@@ -102,16 +102,159 @@ function dispatchWrite_(req) {
   if (a === 'batch') {
     var list = Array.isArray(req.requests) ? req.requests : [];
     if (!list.length) return { ok: false, error: 'batch needs requests[]' };
-    if (list.length > 25) return { ok: false, error: 'batch too large (max 25 requests)' };
+    if (list.length > 50) return { ok: false, error: 'batch too large (max 50 requests)' };
+    var allRulings = list.every(function (sub) { return sub && sub.action === 'ruling' && sub.ruling; });
+    if (allRulings) return applyRulingBatchToMaster_(list);
     var out = [];
     for (var i = 0; i < list.length; i++) {
       var sub = list[i] || {};
       if (sub.action === 'batch' || WRITE_ACTIONS.indexOf(sub.action) < 0) { out.push({ index: i, ok: false, error: 'unsupported action in batch: ' + sub.action }); continue; }
       try { var r = dispatchWrite_(sub); r.index = i; out.push(r); } catch (e) { out.push({ index: i, ok: false, error: String(e && e.message || e) }); }
     }
-    return { ok: out.every(function (r) { return r.ok; }), results: out };
+    return { ok: out.every(function (r) { return r.ok; }), mode: 'SERIAL_MIXED_BATCH', results: out };
   }
   return { ok: false, error: 'unknown action ' + a + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
+}
+
+
+/* ================= fast ruling batch ================= */
+/**
+ * Applies a batch of ruling mutations against one master snapshot.
+ * One lock, one master open, one save, one readback, one receipt append and one event-log append.
+ * This is the high-throughput path used by Claude backlog ENRICH batches.
+ */
+function applyRulingBatchToMaster_(requests) {
+  var started = Date.now(), t = { TOTAL_MS: 0, LOCK_WAIT_MS: 0, MASTER_READ_MS: 0, PLAN_MS: 0, MASTER_WRITE_MS: 0, READBACK_MS: 0, RECEIPT_MS: 0, EVENT_MS: 0 };
+  var lock = LockService.getScriptLock(), lockStart = Date.now();
+  lock.waitLock(30000);
+  t.LOCK_WAIT_MS = Date.now() - lockStart;
+  try {
+    var readStart = Date.now();
+    var file = DriveApp.getFileById(MASTER_ID), modBefore = file.getLastUpdated().toISOString();
+    var doc = DocumentApp.openById(MASTER_ID), body = doc.getBody(), paras = body.getParagraphs(), lines = [];
+    for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
+    t.MASTER_READ_MS = Date.now() - readStart;
+
+    var planStart = Date.now(), byPid = {}, duplicatePid = {}, seenBatchPid = {}, results = [], receipts = [], events = [], changed = [];
+    for (var p = 0; p < lines.length; p++) {
+      if (!/^\d+ \| /.test(lines[p])) continue;
+      var cells = lines[p].split(' | '), pid0 = cells.length > 1 ? cells[1].trim() : '';
+      if (!pid0) continue;
+      if (byPid[pid0] !== undefined) duplicatePid[pid0] = true;
+      else byPid[pid0] = p;
+    }
+
+    var receiptText = readReceipts_(), already = {};
+    String(receiptText || '').split('\n').forEach(function (line) {
+      var m = line.match(/^REQUEST_ID=(.+)$/);
+      if (m) already[m[1].trim()] = true;
+    });
+
+    for (var rix = 0; rix < requests.length; rix++) {
+      var sub = requests[rix] || {}, ruling = sub.ruling || {}, pid = String(ruling.primaryId || '').trim(), requestId = String(ruling.requestId || '').trim();
+      var base = { index: rix, primaryId: pid, requestId: requestId };
+      if (!pid) { results.push({ index: rix, ok: false, error: 'no PRIMARY_ID in request' }); continue; }
+      if (requestId && already[requestId]) { results.push({ index: rix, ok: true, mode: 'ALREADY_APPLIED', primaryId: pid, requestId: requestId }); continue; }
+      if (duplicatePid[pid] || byPid[pid] === undefined) {
+        var count = duplicatePid[pid] ? 2 : 0;
+        results.push({ index: rix, ok: false, error: 'identity not unique: ' + count + ' rows match ' + pid + ' (fail closed)' });
+        continue;
+      }
+      if (seenBatchPid[pid]) {
+        results.push({ index: rix, ok: false, error: 'duplicate PRIMARY_ID within batch: ' + pid + ' (split sequential mutations into separate requests)' });
+        continue;
+      }
+      seenBatchPid[pid] = true;
+      var li = byPid[pid], before = lines[li], mu = mutateRow(before, ruling);
+      if (!mu.ok) { results.push({ index: rix, ok: false, error: mu.error, primaryId: pid }); continue; }
+      lines[li] = mu.after;
+      changed.push({ index: rix, lineIndex: li, before: before, after: mu.after, mutation: mu, ruling: ruling });
+      results.push({ index: rix, ok: true, mode: 'PLANNED', primaryId: pid, requestId: requestId, changes: mu.changes });
+    }
+
+    t.PLAN_MS = Date.now() - planStart;
+    if (!changed.length) {
+      t.TOTAL_MS = Date.now() - started;
+      return { ok: results.every(function (x) { return x.ok; }), mode: 'BATCH_RULING_NO_WRITE', results: results, timings: t };
+    }
+
+    var modCheck = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
+    if (modCheck !== modBefore) {
+      t.TOTAL_MS = Date.now() - started;
+      return { ok: false, mode: 'BATCH_RULING_RETRY', error: 'master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', results: results, timings: t };
+    }
+
+    var writeStart = Date.now();
+    for (var cw = 0; cw < changed.length; cw++) paras[changed[cw].lineIndex].setText(changed[cw].after);
+    var newCounts = recomputeCountsLine(lines), newEnd = recomputeEndLine(lines);
+    for (var k = 0; k < paras.length; k++) {
+      var tk = paras[k].getText();
+      if (/^COUNTS:/.test(tk)) paras[k].setText(newCounts);
+      else if (newEnd && /^END V2_CURRENT_POPULATION_MASTER/.test(tk)) paras[k].setText(newEnd);
+    }
+    doc.saveAndClose();
+    t.MASTER_WRITE_MS = Date.now() - writeStart;
+
+    var rbStart = Date.now(), p2 = DocumentApp.openById(MASTER_ID).getBody().getParagraphs(), backByPid = {}, countsBack = null;
+    for (var m = 0; m < p2.length; m++) {
+      var tt = p2[m].getText();
+      if (/^COUNTS:/.test(tt)) countsBack = tt;
+      if (/^\d+ \| /.test(tt)) {
+        var cc = tt.split(' | '), id = cc.length > 1 ? cc[1].trim() : '';
+        if (id) backByPid[id] = tt;
+      }
+    }
+    var countsVerified = countsBack === newCounts;
+    t.READBACK_MS = Date.now() - rbStart;
+
+    var executedAt = new Date().toISOString();
+    for (var z = 0; z < changed.length; z++) {
+      var ch = changed[z], rr = ch.ruling, mm = ch.mutation, verified = countsVerified && backByPid[String(rr.primaryId || '').trim()] === ch.after;
+      var receipt = {
+        RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: rr.requestId || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
+        TARGET_CANONICAL_ID: String(rr.primaryId || '').trim(), COMPANY: mm.company, TITLE: mm.title, REQ_ID: mm.req,
+        BEFORE_APPLICATION_STATE: mm.beforeState, AFTER_APPLICATION_STATE: mm.afterState,
+        BEFORE_POSTING_STATE: 'n/a', AFTER_POSTING_STATE: 'n/a',
+        CANONICAL_ID_PRESERVED: 'YES', HISTORY_PRESERVED: 'YES', COUNTS_UPDATED: 'YES', READBACK_VERIFIED: verified ? 'YES' : 'NO',
+        TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: verified ? 'COMPLETE' : 'FAILED', MASTER_MODIFIED_BEFORE: modBefore,
+        EXECUTED_AT: executedAt, CHANGES: mm.changes, BATCH_MODE: 'MULTI_ROW_SINGLE_COMMIT'
+      };
+      receipts.push(receipt);
+      events.push({ type: 'TIM_RULING', primaryId: String(rr.primaryId || '').trim(), actor: rr.actor || 'TIM', ts: executedAt, requestId: rr.requestId || '', kind: rr.kind || '', code: rr.code || '', note: rr.note || '', before: ch.before, after: ch.after, verified: verified, batchMode: 'MULTI_ROW_SINGLE_COMMIT' });
+      results[ch.index] = { index: ch.index, ok: verified, mode: 'BATCH_RULING', primaryId: String(rr.primaryId || '').trim(), requestId: rr.requestId || '', before: ch.before, after: ch.after, changes: mm.changes, verified: verified };
+    }
+
+    var receiptStart = Date.now();
+    appendReceipts_(receipts);
+    t.RECEIPT_MS = Date.now() - receiptStart;
+    var eventStart = Date.now();
+    appendEvents_(events);
+    t.EVENT_MS = Date.now() - eventStart;
+    t.TOTAL_MS = Date.now() - started;
+    return { ok: results.every(function (x) { return x && x.ok; }), mode: 'BATCH_RULING_SINGLE_COMMIT', processed: changed.length, counts: newCounts, results: results, timings: t };
+  } finally { lock.releaseLock(); }
+}
+
+function appendReceipts_(list) {
+  if (!list || !list.length) return;
+  var file = findOrCreate_(RECEIPTS_DOC_NAME, 'doc'), doc = DocumentApp.openById(file.getId()), body = doc.getBody();
+  for (var i = 0; i < list.length; i++) {
+    var r = list[i], lines = Object.keys(r).map(function (k) { return k + '=' + (typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]); });
+    body.appendParagraph(lines.join('\n') + '\nEND ' + r.RECEIPT);
+    body.appendParagraph('');
+  }
+  doc.saveAndClose();
+}
+
+function appendEvents_(list) {
+  if (!list || !list.length) return;
+  var file = findOrCreate_(EVENT_LOG_NAME, 'text', '\n'), cur = file.getBlob().getDataAsString(), out = [];
+  for (var i = 0; i < list.length; i++) {
+    var rec = list[i] || {};
+    if (!rec.ts) rec.ts = new Date().toISOString();
+    out.push(JSON.stringify(rec));
+  }
+  file.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + out.join('\n') + '\n');
 }
 
 /* ================= request-result recovery ================= */
