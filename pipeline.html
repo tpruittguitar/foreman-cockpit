@@ -497,6 +497,7 @@ var PRESETS={
   DECLINED:{label:'Declined',text:'BUCKET=DECLINED_BY_TIM',fn:function(r){return r.BUCKET==='DECLINED_BY_TIM'}},
   APPLIED:{label:'Applied',text:'BUCKET=APPLIED, grouped by DISPOSITION (interview/offer states live in DISPOSITION today)',fn:function(r){return r.BUCKET==='APPLIED'}},
   NEEDS_TIM:{label:'Review queue',hot:true,text:'rows requiring Tim decision or unresolved active review',fn:function(r){return ['TIM_DECISION_REQUIRED','READY_TO_PURSUE','MANUAL_RESEARCH','BLOCKED'].indexOf(r.BUCKET)>=0}},
+  DECLINE_CANDIDATES:{label:'Decline candidates',hot:true,text:'active unresolved rows where an AI review note explicitly recommends decline; Tim must still approve the ruling',fn:function(r){return ['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE'].indexOf(r.BUCKET)>=0&&/(?:DECLINE candidate|LIKELY[_ ]PASS|recommend(?:ed|ation)?[^\n]{0,40}decline)/i.test((r.payload.CLAUDE_REVIEW_NOTE||'')+' '+(r.payload.PROPOSED_DISPOSITION||'')+' '+(r.payload.RECOMMENDATION||''))}},
   HIGH_PAY:{label:'High Pay',text:'known/estimated compensation midpoint >= $200k',fn:function(r){return r.compMid!=null&&r.compMid>=200000}},
   LOCAL:{label:'Local',text:'Tennessee / Chattanooga-Cleveland regional roles',fn:function(r){return /(TN|Tennessee|Chattanooga|Cleveland|Knoxville)/i.test(r.LOCATION||'')}},
   REMOTE:{label:'Remote',text:'location or payload indicates remote',fn:function(r){return /remote/i.test((r.LOCATION||'')+' '+r.raw)}},
@@ -507,7 +508,7 @@ function renderPresets(){
   var h='<div class="preset-list">';Object.keys(PRESETS).forEach(function(k){var n=S.rows.filter(PRESETS[k].fn).length;h+='<span class="chip'+(S.preset===k?' on':'')+(PRESETS[k].hot&&n?' hot':'')+'" data-p="'+k+'">'+PRESETS[k].label+' <span class="mono'+(PRESETS[k].hot&&n?'':' faint')+'">'+n+'</span></span>'});
   var nsel=Object.keys(S.checked).filter(function(k){return S.checked[k]}).length;
   var discoverable=filteredRows().filter(function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length}).length;
-  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar">'+(nsel?'<b>'+nsel+' selected</b><button data-bulk="DECLINE">Decline</button><button data-bulk="MANUAL_RESEARCH">Research</button><button data-bulk="INVALID_DISCOVERY">Invalid</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><input type="text" id="search" placeholder="global search…" value="'+esc(S.search)+'" style="width:190px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
+  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar">'+(nsel?'<b>'+nsel+' selected</b><button data-bulk="DECLINE">Decline selected</button><button data-bulk="MANUAL_RESEARCH">Research</button><button data-bulk="INVALID_DISCOVERY">Invalid</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><input type="text" id="search" placeholder="global search…" value="'+esc(S.search)+'" style="width:190px"> <button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
   h+='</div><div id="predicate"></div>';
   $('presets').innerHTML=h;
   $('presets').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){S.chartFilter=null;S.preset=el.getAttribute('data-p');pushHash();render()}});
@@ -705,7 +706,41 @@ function openRow(id){var r=rowById(id);if(!r)return;S.focus=id;S.detailTab=S.det
 function linkify(s){s=esc(s);return s.replace(/(https?:\/\/[^\s"<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')}
 $('d-close').onclick=function(){$('drawer').classList.remove('on');S.focus=null;render()};
 document.addEventListener('keydown',function(e){if(e.target&&/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(e.target.tagName)||e.target.isContentEditable||document.querySelector('dialog[open]')||S.tab!=='pipeline'||e.ctrlKey||e.metaKey||e.altKey)return;if(e.key==='Escape'){$('drawer').classList.remove('on');closePop();return}var rows=filteredRows();if(!rows.length)return;var idx=rows.findIndex(function(x){return x.id===S.focus});if(e.key==='ArrowDown'||e.key==='j'||e.key==='J'){e.preventDefault();openRow(rows[Math.min(rows.length-1,idx+1)].id)}else if(e.key==='ArrowUp'||e.key==='k'||e.key==='K'){e.preventDefault();openRow(rows[Math.max(0,idx-1)].id)}else if(['1','2','3','4'].includes(e.key)&&S.focus){e.preventDefault();S.detailTab='overview';openRow(S.focus);$('edit-state').value={'1':'READY_TO_PURSUE','2':'MANUAL_RESEARCH','3':'DECLINED_BY_TIM','4':'MANUAL_RESEARCH'}[e.key];if(e.key==='3')$('edit-reason').value='TIM_EXPLICIT_DECLINE';if(e.key==='4')$('edit-note').value='Research requested by Tim: ';$('edit-note').focus()}else if(e.key==='Enter'&&S.focus){openRow(S.focus)}else if((e.key==='d'||e.key==='D')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-state'))$('edit-state').value='DECLINED_BY_TIM'},0)}else if((e.key==='a'||e.key==='A')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-state'))$('edit-state').value='APPLIED'},0)}else if((e.key==='n'||e.key==='N')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-note'))$('edit-note').focus()},0)}});
-function bulkAction(kind){var ids=Object.keys(S.checked).filter(function(k){return S.checked[k]});if(!ids.length)return;if(!hasWriter()){alert('Writer required for bulk changes.');return}var code=kind==='DECLINE'?prompt('Decline reason code','TIM_EXPLICIT_DECLINE'):'';var note=prompt('Bulk note / reason','')||'';var chain=Promise.resolve();ids.forEach(function(id){chain=chain.then(function(){var r=rowById(id);if(!r)return;var ruling={primaryId:r.PRIMARY_ID,kind:kind,code:code,note:note,actor:'TIM',requestId:'PX-BULK-'+Date.now()+'-'+r.id.slice(-6)};return gsPost({action:'ruling',ruling:ruling})})});chain.then(function(){S.checked={};load()})}
+function ensureCanonicalRules_(){
+  if(S.canonicalRules&&S.canonicalRules.text)return Promise.resolve(S.canonicalRules);
+  return gsGet('canonical_rules').then(function(j){if(!j||!j.ok)throw new Error((j&&j.error)||'Canonical rules could not be loaded');S.canonicalRules=j;return j});
+}
+function bulkAction(kind){
+  var ids=Object.keys(S.checked).filter(function(k){return S.checked[k]}),rows=ids.map(rowById).filter(Boolean);
+  if(!rows.length)return;
+  if(!hasWriter()){alert('Writer required for bulk changes.');return}
+  var protectedRows=rows.filter(function(r){return PROTECTED.indexOf(r.BUCKET)>=0});
+  if(protectedRows.length){alert('Bulk action stopped. Protected rows selected: '+protectedRows.map(function(r){return r.COMPANY+' — '+r.TITLE}).join('; '));return}
+  ensureCanonicalRules_().then(function(rules){
+    var code='',note='';
+    if(kind==='DECLINE'){
+      var allowed=PipelineRules.declineReasonCodes((rules&&rules.text)||'');
+      if(!allowed.length)throw new Error('No canonical decline reason codes found. Reload Rules before declining.');
+      var suggested='PAY_BELOW_FLOOR';
+      if(allowed.indexOf(suggested)<0)suggested=allowed[0];
+      code=(prompt('Decline reason code\nAllowed: '+allowed.join(', '),suggested)||'').trim().toUpperCase();
+      if(!code)return null;
+      if(allowed.indexOf(code)<0)throw new Error('Invalid decline reason code: '+code+'\nAllowed: '+allowed.join(', '));
+      note=(prompt('Bulk decline note / reason','Approved by Tim in Pipeline Explorer bulk review')||'').trim();
+    }else{
+      note=(prompt('Bulk note / reason','')||'').trim();
+    }
+    var preview=rows.slice(0,12).map(function(r){return '• '+r.COMPANY+' — '+r.TITLE+' ['+r.BUCKET+']'}).join('\n');
+    if(rows.length>12)preview+='\n• … '+(rows.length-12)+' more';
+    var actionLabel=kind==='DECLINE'?'DECLINE → DECLINED_BY_TIM':kind;
+    if(!confirm(actionLabel+'\n\n'+rows.length+' selected rows\n'+(code?'Reason: '+code+'\n':'')+(note?'Note: '+note+'\n':'')+'\n'+preview+'\n\nSubmit as Tim?'))return null;
+    var stamp=Date.now(),requests=rows.map(function(r,i){return {action:'ruling',ruling:{primaryId:r.PRIMARY_ID,kind:kind,code:code,note:note,actor:'TIM',requestId:'PX-BULK-'+stamp+'-'+String(i+1)+'-'+r.id.slice(-6)}}});
+    var chunks=[];for(var i=0;i<requests.length;i+=50)chunks.push(requests.slice(i,i+50));
+    var results=[],chain=Promise.resolve();
+    chunks.forEach(function(chunk){chain=chain.then(function(){return gsPost({action:'batch',requests:chunk}).then(function(j){results.push(j);if(!j||!j.ok)throw new Error((j&&j.error)||'Bulk Writer batch failed');return j})})});
+    return chain.then(function(){S.checked={};readout('<span class="good">Bulk '+esc(kind)+' submitted: '+rows.length+' rows in '+chunks.length+' Writer batch'+(chunks.length===1?'':'es')+'</span>');load();return results});
+  }).catch(function(e){alert('Bulk action failed: '+e.message)});
+}
 function columnWidths(){return phoneLayout()?S.colWidthsPhone:S.colWidths}
 function persistColumnWidths(){LS.set(phoneLayout()?'colWidthsPhone':'colWidths',columnWidths())}
 function columnMin(c){return c==='NEW'?44:60}
