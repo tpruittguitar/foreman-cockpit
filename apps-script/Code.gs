@@ -39,6 +39,8 @@ var JOB_DOCS_CONFIG_NAME = 'JOB_DOCUMENTS_CANONICAL.json';
 var SCORING_MODEL_NAME = 'PIPELINE_SCORING_MODEL.json';
 var SCORING_MODEL_HISTORY_NAME = 'PIPELINE_SCORING_MODEL_HISTORY.jsonl';
 var SCORING_MODEL_ID = 'TIM_WEIGHTED_JOB_RATING';
+var TARGET_COMPANIES_DOC_ID = '1DU-HtaFqCoLE0M2eed57TZhhE6tC1dl__Hprpy2xEI4';
+var TARGET_COMPANY_PRIORITIES = ['P1','P2','P3','WATCH','PAUSED'];
 var SCORING_WEIGHT_KEYS = ['experience','flex','compensation','geo','ats','title','culture','ownership'];
 
 var FIXED_N = 9;
@@ -53,7 +55,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','target_companies','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_target_companies','save_scoring_model','undo_ruling','install_automation','batch'] });
     if (a === 'master') return out_(readMaster_());
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
@@ -66,6 +68,7 @@ function doGet(e) {
     if (a === 'discovery_requests') return out_(readDiscoveryRequests_(p.primaryId || '', +(p.limit || 100)));
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'canonical_rules') return out_(readCanonicalRules_());
+    if (a === 'target_companies') return out_(readTargetCompanies_());
     if (a === 'scoring') return out_(readScoringModel_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
     if (a === 'automation') return out_(automationStatus_());
@@ -85,7 +88,7 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_target_companies', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch'];
 function dispatchWrite_(req) {
   req = req || {};
   var a = String(req.action || '');
@@ -96,6 +99,7 @@ function dispatchWrite_(req) {
   if (a === 'interview_note') return saveInterviewNote_(req.note || req);
   if (a === 'approve_resume') return approveResume_(req.selection || req);
   if (a === 'save_rules') return saveCanonicalRules_(req.rules || req);
+  if (a === 'save_target_companies') return saveTargetCompanies_(req.registry || req);
   if (a === 'save_scoring_model') return saveScoringModel_(req.model || req);
   if (a === 'undo_ruling') return undoLastRuling_(req.undo || req);
   if (a === 'install_automation') { var ir = installAutomation(); return { ok:true, action:'install_automation', result:ir || null, installedAt:new Date().toISOString() }; }
@@ -1185,6 +1189,71 @@ function scoringModelFile_() {
   var it = folder_().getFilesByName(SCORING_MODEL_NAME);
   return it.hasNext() ? it.next() : null;
 }
+
+/* ================= target company registry ================= */
+/* Drive-backed Scout targeting configuration. This is discovery policy/configuration, never a job population. */
+function normalizeTargetCompanies_(registry) {
+  registry = registry || {};
+  var out = {};
+  Object.keys(registry).forEach(function (k) { if (k !== 'companies') out[k] = registry[k]; });
+  out.schema_version = +(registry.schema_version || 1);
+  out.owner = String(registry.owner || 'Tim Pruitt');
+  out.purpose = String(registry.purpose || 'Canonical target-company registry for Pipeline Explorer and Scout/Grok targeted discovery. Not a job population.');
+  out.manual_priority_controls = true;
+  var src = Array.isArray(registry.companies) ? registry.companies : [], seen = {}, list = [];
+  for (var i = 0; i < src.length; i++) {
+    var x = src[i] || {}, company = clean_(x.company || ''), key = company.toLowerCase();
+    if (!company || seen[key]) continue;
+    seen[key] = true;
+    var p = String(x.priority || 'WATCH').toUpperCase();
+    if (TARGET_COMPANY_PRIORITIES.indexOf(p) < 0) p = 'WATCH';
+    var y = {};
+    Object.keys(x).forEach(function (k) { y[k] = x[k]; });
+    y.id = clean_(x.id || ('TC-' + (i + 1)));
+    y.company = company;
+    y.priority = p;
+    y.status = p === 'PAUSED' ? 'PAUSED' : 'ACTIVE';
+    y.priority_source = clean_(x.priority_source || 'SEED_RECOMMENDATION');
+    y.careers_url = clean_(x.careers_url || '');
+    y.aliases = Array.isArray(x.aliases) ? x.aliases.map(clean_).filter(Boolean) : [];
+    y.target_functions = Array.isArray(x.target_functions) ? x.target_functions.map(clean_).filter(Boolean) : [];
+    y.source_rank = +(x.source_rank || 0);
+    y.jobs_found = +(x.jobs_found || 0);
+    y.qualified_hits = +(x.qualified_hits || 0);
+    list.push(y);
+  }
+  out.companies = list;
+  return out;
+}
+function readTargetCompanies_() {
+  var file = DriveApp.getFileById(TARGET_COMPANIES_DOC_ID);
+  var text = DocumentApp.openById(TARGET_COMPANIES_DOC_ID).getBody().getText().trim();
+  var registry = {};
+  try { registry = text ? JSON.parse(text) : {}; } catch (e) { return { ok:false, error:'target company registry JSON is invalid: ' + e.message, id:TARGET_COMPANIES_DOC_ID }; }
+  return { ok:true, id:TARGET_COMPANIES_DOC_ID, title:file.getName(), modifiedTime:file.getLastUpdated().toISOString(), registry:normalizeTargetCompanies_(registry) };
+}
+function saveTargetCompanies_(registry) {
+  registry = registry || {};
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var normalized = normalizeTargetCompanies_(registry);
+    if (!normalized.companies.length) return { ok:false, error:'target company registry cannot be empty' };
+    normalized.updated_at = new Date().toISOString();
+    normalized.updated_by = clean_(registry.actor || 'TIM').toUpperCase() || 'TIM';
+    delete normalized.actor;
+    var submitted = JSON.stringify(normalized, null, 2);
+    var doc = DocumentApp.openById(TARGET_COMPANIES_DOC_ID), body = doc.getBody();
+    body.clear(); body.appendParagraph(submitted); doc.saveAndClose();
+    var backText = DocumentApp.openById(TARGET_COMPANIES_DOC_ID).getBody().getText().trim(), back;
+    try { back = normalizeTargetCompanies_(JSON.parse(backText)); } catch (e) { return { ok:false, error:'target company readback JSON invalid: ' + e.message }; }
+    var verified = JSON.stringify(back.companies) === JSON.stringify(normalized.companies);
+    var now = new Date().toISOString(), requestId = clean_(registry.requestId || '');
+    appendEvent_({ type:'TARGET_COMPANIES_SAVED', actor:'TIM', ts:now, requestId:requestId, companyCount:normalized.companies.length, p1:normalized.companies.filter(function(x){return x.priority==='P1'}).length, verified:verified });
+    appendReceipt_({ RECEIPT:'TARGET_COMPANY_REGISTRY_RECEIPT', REQUEST_ID:requestId, EXECUTED_BY:'Pipeline Explorer Apps Script (runs as Tim)', TARGET_FILE_ID:TARGET_COMPANIES_DOC_ID, COMPANY_COUNT:normalized.companies.length, READBACK_VERIFIED:verified?'YES':'NO', COMPLETION_STATUS:verified?'COMPLETE':'FAILED', EXECUTED_AT:now });
+    return { ok:verified, id:TARGET_COMPANIES_DOC_ID, companyCount:normalized.companies.length, readbackVerified:verified, registry:back };
+  } finally { lock.releaseLock(); }
+}
+
 function readScoringModel_() {
   try {
     var file = scoringModelFile_();
