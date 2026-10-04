@@ -54,7 +54,7 @@
     if(!sec)return [];
     var m=sec[1].match(/Allowed reason codes:\s*([^\n]+)/i);
     if(!m)return [];
-    return m[1].split(',').map(function(x){return x.trim().toUpperCase()}).filter(function(x){return /^[A-Z][A-Z0-9_]+$/.test(x)});
+    return m[1].split(',').map(function(x){return x.trim().replace(/[.;:]+$/,'').toUpperCase()}).filter(function(x){return /^[A-Z][A-Z0-9_]+$/.test(x)});
   }
   function setFlexPolicy(text,policy){
     text=String(text||'');var p=flexPolicy(text),src=policy||{};
