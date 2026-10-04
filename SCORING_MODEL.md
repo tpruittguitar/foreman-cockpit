@@ -35,12 +35,11 @@ Weights must total exactly 100. The Pipeline Scoring page is the place to adjust
 
 FLEX is a weighted score input, not an automatic rejection, except `STRICT`.
 
-- `HIGH_FLEX`: no degree mentioned. Default modifier `+15`; FLEX component score `80`.
-- `SOFT_FLEX`: a degree is listed and the same requirements block gives more than one degree-or-experience path. Default modifier `+6`; FLEX component score `62`.
-- `NO_FLEX`: degree required with no equivalency. Default modifier `-10`; FLEX component score `30`. Still pursue when adjusted fit is about 80+ and pay/title are clear.
-- `STRICT`: degree required, one path only, no equivalency. FLEX component score `0`; hold unless Tim explicitly overrides.
-- If the posting does not mention a degree, do not invent a degree gate. Record `HIGH_FLEX` only when the text supports it; otherwise use `UNKNOWN`.
-
+- `HIGH_FLEX`: no degree requirement is stated, or the posting explicitly accepts equivalent experience/non-degree experience as a substitute. No degree gate is imposed. Default modifier `+15`; FLEX component score `80`.
+- `SOFT_FLEX`: a degree is listed and an experience-equivalency path is also provided or clearly considered, but the degree remains the normal or preferred path. Default modifier `+6`; FLEX component score `62`.
+- `NO_FLEX`: a degree is required and no experience-equivalency path is provided. Default modifier `-10`; FLEX component score `30`. Still pursue when adjusted fit is about 80+ and pay/title are clear.
+- `STRICT`: a specific degree is required through one exclusive path, with no meaningful equivalency. FLEX component score `0`; hold unless Tim explicitly overrides.
+- If the posting does not mention a degree, do not invent a degree gate. If the text is insufficient to determine whether experience is accepted, use `UNKNOWN`.
 Always report the FLEX class, modifier, raw fit, adjusted fit, and evidence wording.
 
 ## Component evidence rules
