@@ -224,6 +224,21 @@ function writerStatus_() {
   part('recentRuns', function () {
     var lf = findOrCreate_(QUEUE_LOG_NAME, 'text', ''), lines = String(lf.getBlob().getDataAsString() || '').split('\n').filter(Boolean).slice(-8);
     s.recentRuns = lines.map(function (l) { try { var e = JSON.parse(l); return { file: e.file, terminalStatus: e.terminalStatus || (e.ok ? 'SUCCESS' : 'FAILED'), action: e.action || '', finishedAt: e.finishedAt || '', totalMs: e.totalMs || 0, error: String(e.error || '').slice(0, 240) }; } catch (x) { return null; } }).filter(Boolean).reverse();
+    // PARTIAL_HOLD is an audit fact, not necessarily an active fault. If every request ID in the
+    // original failed batch is now COMPLETE in the durable receipt index, keep it in recentRuns
+    // but mark it recovered so the Explorer no longer raises an active warning.
+    var partials = s.recentRuns.filter(function (r) { return r.terminalStatus === 'PARTIAL_HOLD'; });
+    if (partials.length) {
+      var idx = readIndex_(), states = (idx && idx.requests) || {}, failed = queueFolders_().failed;
+      partials.forEach(function (r) {
+        var it = failed.getFilesByName(r.file);
+        if (!it.hasNext()) return;
+        var parsed = parseQueueContent_(readQueueFile_(it.next()));
+        if (!parsed.ok) return;
+        var ids = requestIdsOf_(parsed.body);
+        r.recovered = ids.length > 0 && ids.every(function (id) { return states[id] && states[id].s === 'COMPLETE'; });
+      });
+    }
   });
   part('unverified', function () {
     var idx = readIndex_(), pend = (idx && idx.pending) || [];
@@ -253,7 +268,7 @@ function writerWarnings_(s, now) {
   var u = s.unverified || {}, ua = age(u.oldestWrittenAt);
   if (u.count && ua > STATUS_UNVERIFIED_WARN_MS) w.push({ level: ua > STATUS_UNVERIFIED_CRIT_MS ? 'critical' : 'warn', code: 'WRITE_UNVERIFIED', message: u.count + ' master write(s) not yet independently verified; oldest ' + min(ua) + ' ago. New master writes are fenced until it resolves.' });
   (s.recentRuns || []).forEach(function (r) {
-    if (/HOLD/.test(r.terminalStatus) && age(r.finishedAt) < STATUS_RECENT_HOLD_MS) w.push({ level: 'warn', code: r.terminalStatus, message: r.file + ' ended ' + r.terminalStatus + ' at ' + r.finishedAt + '. See its RESULT in WRITER_QUEUE/failed before resubmitting.' });
+    if (/HOLD/.test(r.terminalStatus) && !r.recovered && age(r.finishedAt) < STATUS_RECENT_HOLD_MS) w.push({ level: 'warn', code: r.terminalStatus, message: r.file + ' ended ' + r.terminalStatus + ' at ' + r.finishedAt + '. See its RESULT in WRITER_QUEUE/failed before resubmitting.' });
   });
   (s.errors || []).forEach(function (e) { w.push({ level: 'warn', code: 'STATUS_PART_UNAVAILABLE', message: e }); });
   return w;
