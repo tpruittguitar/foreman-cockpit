@@ -39,8 +39,15 @@ master well under Google's 1,024,000-character limit for a Google Doc without cr
   master with evidence merged back, plus the archived rows (marked `ARCHIVE_STATE=ARCHIVED_TERMINAL`) under their bucket
   headings, with COUNTS and END recomputed over both. Every existing view and rule works unchanged, and archived rows are
   labelled read-only.
-  - **Fail closed on freshness:** if the canonical master cannot be fetched and validated, a cached copy is shown only under a
-    STALE · FETCH FAILED banner, and saving is disabled.
+  - **Retries:** each read retries on its own, twice (about 3 s, then 8 s), but only for transient failures:
+    - a network error;
+    - an HTML or other non-JSON response;
+    - a Writer `ok:false` that the Writer's `isTransientDocError_` classifies as transient.
+
+    A response that parses but is structurally invalid, or any other `ok:false`, fails at once. A fresh master is shown
+    immediately, while archive or evidence are still retrying.
+  - **Fail closed on freshness:** if the canonical master cannot be fetched and validated after its retries, a cached copy is
+    shown only under a STALE · FETCH FAILED banner, and saving is disabled.
   - **Archive or evidence failure:** reported separately. The master stays current; a row's narrative can then be loaded on
     demand with `GET action=evidence&primaryId=…`.
 - **Scout:** no change. It keeps sending `SCOUT_NOTES` and other intake facts; the Writer routes narrative to the companion
