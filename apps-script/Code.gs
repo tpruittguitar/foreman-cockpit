@@ -80,7 +80,7 @@ function doPost(e) {
   try {
     if (req.action === 'state') { writeState_(req.state || {}); return out_({ ok: true }); }
     return out_(dispatchWrite_(req));
-  } catch (err) { return out_({ ok: false, error: String(err && err.message || err) }); }
+  } catch (err) { return out_({ ok: false, error: String(err && err.message || err), errorStack: errorStack_(err), docAccess: docAccessSummary_() }); }
 }
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
@@ -132,7 +132,7 @@ function applyRulingBatchToMaster_(requests) {
     var readStart = Date.now();
     DOC_ACCESS_ = [];
     var modBefore = masterModified_();
-    var M = openMaster_(), doc = M.doc, body = M.body, paras = M.paras, lines = M.lines;
+    var M = openMaster_(), lines = M.lines, snapshot = lines.slice();
     t.MASTER_READ_MS = Date.now() - readStart;
 
     var planStart = Date.now(), byPid = {}, duplicatePid = {}, seenBatchPid = {}, results = [], receipts = [], events = [], changed = [];
@@ -182,14 +182,9 @@ function applyRulingBatchToMaster_(requests) {
     }
 
     var writeStart = Date.now();
-    for (var cw = 0; cw < changed.length; cw++) paras[changed[cw].lineIndex].setText(changed[cw].after);
     var newCounts = recomputeCountsLine(lines), newEnd = recomputeEndLine(lines);
-    for (var k = 0; k < paras.length; k++) {
-      var tk = paras[k].getText();
-      if (/^COUNTS:/.test(tk)) paras[k].setText(newCounts);
-      else if (newEnd && /^END V2_CURRENT_POPULATION_MASTER/.test(tk)) paras[k].setText(newEnd);
-    }
-    doc.saveAndClose();
+    var edits = changed.map(function (c) { return { index: c.lineIndex, text: c.after }; }).concat(masterTrailerEdits_(lines, newCounts, newEnd));
+    commitMaster_(M, snapshot, edits);
     t.MASTER_WRITE_MS = Date.now() - writeStart;
 
     var rbStart = Date.now(), p2 = readMasterLines_('MASTER_READBACK'), backByPid = {}, countsBack = null;
@@ -307,7 +302,8 @@ function findRequestResult_(requestId) {
 }
 
 /* ================= transient Google document access ================= */
-/* Bounded retry for READ-ONLY opens/reads of the master and receipts documents. Writes, saves and appends are never retried.
+/* Bounded retry for READ-ONLY opens/reads of the master and receipts documents. Appends are never retried; the master commit
+ * has its own verified retry (commitMaster_ below).
  * Only transient Docs/Drive service errors are retried (after ~1s, 2s, 4s: at most 3 retries); any other error, or exhaustion,
  * throws exactly as before, so every caller still fails closed. DOC_ACCESS_ records per-operation telemetry for the result. */
 var DOC_RETRY_DELAYS_MS = [1000, 2000, 4000];
@@ -329,9 +325,9 @@ function withDocRetry_(op, fn) {
     } catch (e) {
       var msg = String(e && e.message || e);
       if (!first) first = msg;
-      if (!isTransientDocError_(e)) { DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'DETERMINISTIC_FAILURE', ms: Date.now() - started, error: msg }); throw e; }
+      if (!isTransientDocError_(e)) { DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'DETERMINISTIC_FAILURE', ms: Date.now() - started, error: msg, stack: errorStack_(e) }); throw e; }
       if (attempt > DOC_RETRY_DELAYS_MS.length) {
-        DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'RETRY_EXHAUSTED', ms: Date.now() - started, error: msg });
+        DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'RETRY_EXHAUSTED', ms: Date.now() - started, error: msg, stack: errorStack_(e) });
         throw new Error(msg + ' [' + op + ': retry exhausted after ' + attempt + ' attempts]');
       }
       docSleep_(DOC_RETRY_DELAYS_MS[attempt - 1]);
@@ -339,7 +335,7 @@ function withDocRetry_(op, fn) {
   }
 }
 function docAccessSummary_() {
-  var rank = { INITIAL_SUCCESS: 0, RECOVERED_BY_RETRY: 1, DETERMINISTIC_FAILURE: 2, RETRY_EXHAUSTED: 3 }, status = 'INITIAL_SUCCESS', retries = 0;
+  var rank = { INITIAL_SUCCESS: 0, RECOVERED_BY_RETRY: 1, DETERMINISTIC_FAILURE: 2, RETRY_EXHAUSTED: 3, UNVERIFIED_STATE: 4 }, status = 'INITIAL_SUCCESS', retries = 0;
   DOC_ACCESS_.forEach(function (x) { retries += x.attempts - 1; if (rank[x.status] > rank[status]) status = x.status; });
   return { status: status, retries: retries, ops: DOC_ACCESS_.slice() };
 }
@@ -360,6 +356,64 @@ function readMasterLines_(op) {
     return out;
   });
 }
+/** First lines of a JS stack (Apps Script V8 gives "at fn (Code:LINE:COL)"), so a failure names its exact line. */
+function errorStack_(e) { return String(e && e.stack || '').split('\n').slice(0, 6).map(function (s) { return s.trim(); }).join(' | ').slice(0, 1200); }
+function sameLines_(a, b) { if (a.length !== b.length) return false; for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true; }
+/** Edits for the COUNTS and END trailer paragraphs, located in the already-read snapshot (no post-edit scan of every paragraph). */
+function masterTrailerEdits_(lines, newCounts, newEnd) {
+  var out = [];
+  for (var k = 0; k < lines.length; k++) {
+    if (/^COUNTS:/.test(lines[k])) out.push({ index: k, text: newCounts });
+    else if (newEnd && /^END V2_CURRENT_POPULATION_MASTER/.test(lines[k])) out.push({ index: k, text: newEnd });
+  }
+  return out;
+}
+/* ================= master commit ================= */
+/* The commit (paragraph setText + saveAndClose) is where "The document is inaccessible" was escaping unretried. A failed
+ * commit is retried ONLY after an independent fresh read proves the master is byte-identical to the snapshot this transaction
+ * planned from (nothing landed, nobody else wrote). If the fresh read equals the intended result, the commit landed despite the
+ * error and is not re-applied. Anything else (partial, concurrent, unreadable) fails closed with no retry. */
+var COMMIT_RETRY_DELAYS_MS = [2000, 5000];
+function commitMaster_(M, base, edits) {
+  var started = Date.now(), attempt = 0, first = '', firstStack = '', target = base.slice();
+  edits = edits.filter(function (x) { return base[x.index] !== x.text; });
+  edits.forEach(function (x) { target[x.index] = x.text; });
+  for (;;) {
+    attempt++;
+    var stage = 'MASTER_SET_TEXT';
+    try {
+      for (var i = 0; i < edits.length; i++) M.paras[edits[i].index].setText(edits[i].text);
+      stage = 'MASTER_SAVE';
+      M.doc.saveAndClose();
+      DOC_ACCESS_.push({ op: 'MASTER_COMMIT', attempts: attempt, status: attempt === 1 ? 'INITIAL_SUCCESS' : 'RECOVERED_BY_RETRY', ms: Date.now() - started, error: first, stack: firstStack, edits: edits.length });
+      return { attempts: attempt, landedOnError: false };
+    } catch (e) {
+      var msg = String(e && e.message || e);
+      if (!first) { first = msg + ' (' + stage + ')'; firstStack = errorStack_(e); }
+      if (!isTransientDocError_(e)) { DOC_ACCESS_.push({ op: 'MASTER_COMMIT', attempts: attempt, status: 'DETERMINISTIC_FAILURE', ms: Date.now() - started, error: first, stack: errorStack_(e) }); throw e; }
+      var fresh = readMasterLines_('MASTER_COMMIT_VERIFY');
+      if (sameLines_(fresh, target)) {
+        DOC_ACCESS_.push({ op: 'MASTER_COMMIT', attempts: attempt, status: 'RECOVERED_BY_RETRY', ms: Date.now() - started, error: first, stack: firstStack, edits: edits.length, landedOnError: true });
+        return { attempts: attempt, landedOnError: true };
+      }
+      if (!sameLines_(fresh, base)) {
+        DOC_ACCESS_.push({ op: 'MASTER_COMMIT', attempts: attempt, status: 'UNVERIFIED_STATE', ms: Date.now() - started, error: first, stack: firstStack });
+        throw new Error(msg + ' [MASTER_COMMIT: master matches neither the planned snapshot nor the intended result after a failed commit; not retried, needs resolution]');
+      }
+      if (attempt > COMMIT_RETRY_DELAYS_MS.length) {
+        DOC_ACCESS_.push({ op: 'MASTER_COMMIT', attempts: attempt, status: 'RETRY_EXHAUSTED', ms: Date.now() - started, error: first, stack: firstStack });
+        throw new Error(msg + ' [MASTER_COMMIT: retry exhausted after ' + attempt + ' attempts; master verified unchanged]');
+      }
+      docSleep_(COMMIT_RETRY_DELAYS_MS[attempt - 1]);
+      var M2 = openMaster_();
+      if (!sameLines_(M2.lines, base)) {
+        DOC_ACCESS_.push({ op: 'MASTER_COMMIT', attempts: attempt, status: 'UNVERIFIED_STATE', ms: Date.now() - started, error: first, stack: firstStack });
+        throw new Error(msg + ' [MASTER_COMMIT: master changed before retry; not retried]');
+      }
+      M.doc = M2.doc; M.body = M2.body; M.paras = M2.paras;
+    }
+  }
+}
 
 /* ================= master read ================= */
 function readMaster_() {
@@ -376,27 +430,25 @@ function applyRulingToMaster_(ruling) {
   try {
     DOC_ACCESS_ = [];
     var modBefore = masterModified_();
-    var M = openMaster_(), doc = M.doc, body = M.body, paras = M.paras;
+    var M = openMaster_(), base = M.lines.slice();
     var pid = String(ruling.primaryId || '').trim();
     if (!pid) return fail_('no PRIMARY_ID in request', ruling);
     var hits = [];
-    for (var i = 0; i < paras.length; i++) {
-      var t = paras[i].getText();
+    for (var i = 0; i < base.length; i++) {
+      var t = base[i];
       if (/^\d+ \| /.test(t)) { var cells = t.split(' | '); if (cells.length > 2 && cells[1].trim() === pid) hits.push(i); }
     }
     if (hits.length !== 1) return fail_('identity not unique: ' + hits.length + ' rows match ' + pid + ' (fail closed)', ruling);
-    var before = paras[hits[0]].getText();
+    var before = base[hits[0]];
     var flexPolicy = readFlexPolicy_();
     var res = mutateRow(before, ruling, flexPolicy);
     if (!res.ok) return fail_(res.error, ruling);
     var modCheck = masterModified_();
     if (modCheck !== modBefore) return fail_('master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', ruling);
-    paras[hits[0]].setText(res.after);
-    var lines = [];
-    for (var j = 0; j < paras.length; j++) lines.push(paras[j].getText());
+    var lines = base.slice();
+    lines[hits[0]] = res.after;
     var newCounts = recomputeCountsLine(lines), newEnd = recomputeEndLine(lines);
-    for (var k = 0; k < paras.length; k++) { var tk = paras[k].getText(); if (/^COUNTS:/.test(tk)) paras[k].setText(newCounts); else if (newEnd && /^END V2_CURRENT_POPULATION_MASTER/.test(tk)) paras[k].setText(newEnd); }
-    doc.saveAndClose();
+    commitMaster_(M, base, [{ index: hits[0], text: res.after }].concat(masterTrailerEdits_(lines, newCounts, newEnd)));
     var p2 = readMasterLines_('MASTER_READBACK');
     var readback = null, countsBack = null;
     for (var m = 0; m < p2.length; m++) { var tt = p2[m]; if (tt === res.after) readback = tt; if (/^COUNTS:/.test(tt)) countsBack = tt; }
@@ -1321,4 +1373,4 @@ function appendReceipt_(r) {
 function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; var id = it.next().getId(); return withDocRetry_('RECEIPTS_READ', function () { return DocumentApp.openById(id).getBody().getText(); }); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, COMMIT_RETRY_DELAYS_MS: COMMIT_RETRY_DELAYS_MS, commitMaster_: commitMaster_, errorStack_: errorStack_, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

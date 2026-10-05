@@ -107,9 +107,11 @@ function processWriterQueue() {
       if (!parsed.ok) result = { ok: false, error: parsed.error };
       else if (WRITE_ACTIONS.indexOf(parsed.body.action) < 0) result = { ok: false, error: 'unsupported action ' + parsed.body.action + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
       else { delete parsed.body.key; result = dispatchWrite_(parsed.body); }
-    } catch (e) { result = { ok: false, error: String(e && e.message || e) }; }
+    } catch (e) { result = { ok: false, error: String(e && e.message || e), errorStack: errorStack_(e), docAccess: docAccessSummary_() }; }
     var dest = result && result.ok ? f.processed : f.failed;
     entry.ok = !!(result && result.ok); entry.action = (result && result.mode) || ''; entry.finishedAt = new Date().toISOString(); entry.error = (result && result.error) || '';
+    if (result && result.errorStack) entry.errorStack = result.errorStack;
+    if (result && result.docAccess && result.docAccess.status !== 'INITIAL_SUCCESS') entry.docAccess = result.docAccess;
     entry.totalMs = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
     if (result && result.timings) entry.writerTimings = result.timings;
     dest.createFile('RESULT__' + original.replace(/\.[A-Za-z]+$/, '') + '.json', JSON.stringify({ request_file: original, request_file_id: file.getId(), processed: entry, result: result }, null, 2), MimeType.PLAIN_TEXT);
