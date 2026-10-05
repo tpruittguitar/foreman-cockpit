@@ -19,6 +19,9 @@ header{flex:none;border-bottom:1px solid var(--line);background:linear-gradient(
 .brand{font-weight:700;letter-spacing:3px;font-size:12px;color:var(--white)}.brand small{display:block;font-weight:400;letter-spacing:1px;font-size:9px;color:var(--faint)}
 .build-identity{position:relative;flex:none}.build-badge{font:9px var(--mono);text-transform:none;letter-spacing:0;padding:3px 6px;color:var(--dim);border-color:var(--line2);white-space:nowrap}.build-badge.latest{color:var(--ng);border-color:var(--ng)}.build-badge.behind{color:var(--nm);border-color:var(--nm)}.build-badge.unknown{color:var(--nm);border-color:var(--nm)}
 .build-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:310px;max-width:min(430px,90vw);padding:9px;background:#080808;border:1px solid var(--line2);box-shadow:0 8px 30px #000;color:var(--text);font:10px/1.45 var(--sans)}.build-panel[hidden]{display:none}.build-panel h3{margin:0 0 7px;font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}.build-panel .build-row{display:grid;grid-template-columns:105px minmax(0,1fr);gap:4px 8px;margin:3px 0}.build-panel .build-key{color:var(--faint);font-family:var(--mono);text-transform:uppercase;font-size:9px}.build-panel .build-value{min-width:0;overflow-wrap:anywhere}.build-panel .build-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.build-panel .build-status{margin-top:7px;color:var(--dim)}
+.writer-identity{position:relative;flex:none}.writer-badge.ok{color:var(--ng);border-color:var(--ng)}.writer-badge.warn{color:#f5b041;border-color:#f5b041}.writer-badge.critical{color:#fff;background:var(--nm);border-color:var(--nm)}
+.writer-warn{margin:4px 0;padding:3px 6px;border-left:2px solid #f5b041;color:var(--text)}.writer-warn.critical{border-left-color:var(--nm)}.writer-warn b{font:9px var(--mono);color:var(--dim);margin-right:4px}.writer-runs{margin:4px 0 0;padding:0;list-style:none}.writer-runs li{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px;margin:2px 0}.writer-runs .pill{font-size:8.5px;text-align:center}.pill.warn{border-color:#f5b041;color:#f5b041}
+#writer-alert{display:none;padding:4px 10px;background:#2a0010;border-bottom:1px solid var(--nm);color:#fff;font:10px/1.4 var(--sans);cursor:pointer}#writer-alert.on{display:block}#writer-alert.warn{background:#2a1d00;border-bottom-color:#f5b041}#writer-alert b{font:9px var(--mono);letter-spacing:1px;margin-right:6px}
 #readout{font-family:var(--mono);font-size:10px;color:var(--dim);flex:1;min-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #readout b{color:var(--white);font-weight:600}#readout .bad{color:var(--nm)}#readout .good{color:var(--ng)}
 nav{display:flex;gap:2px}nav button{border-color:transparent;color:var(--dim)}nav button.on{border-color:var(--line2);color:var(--white)}
@@ -242,6 +245,7 @@ tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-targ
 <header>
   <div class="brand">PIPELINE EXPLORER<small id="brandsub">canonical master · viewer + Tim rulings</small></div>
   <div class="build-identity"><button id="build-badge" class="build-badge" type="button" aria-expanded="false" title="Deployment identity">BUILD · checking</button><div id="build-panel" class="build-panel" hidden></div></div>
+  <div class="writer-identity"><button id="writer-badge" class="build-badge writer-badge" type="button" aria-expanded="false" title="Writer state: freeze, queue, claims, unverified writes">WRITER · checking</button><div id="writer-panel" class="build-panel" hidden></div></div>
   <div id="readout">no data</div>
   <nav>
     <button data-tab="today">Today</button><button data-tab="pipeline" class="on">Pipeline</button><button data-tab="intake">Manual Intake</button><button data-tab="companies">Target Companies</button><button data-tab="reports">Reports</button><button data-tab="quality">Scout Analysis</button><button data-tab="rules">Rules</button><button data-tab="documents">Job Documents</button><button data-tab="columns">Columns</button><button data-tab="scoring">Scoring</button>
@@ -249,6 +253,7 @@ tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-targ
   <button id="compare-open">Compare · 0/3</button><button id="density-toggle">Compact</button><button id="refresh" class="neon">Refresh</button>
   <button id="settings" title="Writer setup">⚙</button>
 </header>
+<div id="writer-alert" role="alert"></div>
 <div class="bar" id="presets"></div>
 <div class="bar" id="filters" style="display:none"></div>
 <div class="bar" id="mapfilters" aria-label="Map point filters"><span>MAP POINTS</span><button data-mapfilter="selected">Selected</button><button data-mapfilter="visible">Current View</button><button data-mapfilter="applied">All Applied</button><button data-mapfilter="active">Active Work</button><button data-mapfilter="scout">Scout Intake</button><button data-mapfilter="ready">Ready</button></div>
@@ -315,10 +320,10 @@ function buildStatusHtml_(){var x=S.buildLatest||{};if(x.status==='latest')retur
 function renderBuildIdentity_(){
   var b=$('build-badge'),p=$('build-panel');if(!b||!p)return;
   var i=S.buildInfo||{},short=i.commitShort||(i.commit&&i.commit!=='local'?String(i.commit).slice(0,7):'unknown');
-  b.textContent='BUILD · '+short;
+  b.textContent='BUILD · '+short+(i.pr?' · #'+i.pr:'');
   b.className='build-badge '+(S.buildLatest&&S.buildLatest.status==='latest'?'latest':S.buildLatest&&S.buildLatest.status==='behind'?'behind':S.buildLatest&&S.buildLatest.status==='unknown'?'unknown':'');
   var commit=i.commit||'not recorded',branch=i.branch||'not recorded',context=i.context||'not recorded',commitLink=buildCommitUrl_(commit);
-  p.innerHTML='<h3>Deployment identity</h3><div class="build-row"><span class="build-key">status</span><span class="build-value">'+buildStatusHtml_()+'</span></div><div class="build-row"><span class="build-key">frontend commit</span><span class="build-value mono"><a href="'+commitLink+'" target="_blank" rel="noopener">'+esc(commit)+'</a></span></div><div class="build-row"><span class="build-key">branch</span><span class="build-value">'+esc(branch)+'</span></div><div class="build-row"><span class="build-key">deploy context</span><span class="build-value">'+esc(context)+'</span></div><div class="build-row"><span class="build-key">built</span><span class="build-value">'+esc(buildTime_(i.builtAt))+'</span></div><div class="build-row"><span class="build-key">backend</span><span class="build-value">'+esc(S.connection?S.connection.state:'not checked')+'</span></div><div class="build-panel build-status">'+esc((S.buildLatest&&S.buildLatest.message)||'The badge identifies the exact frontend build; backend status is checked separately when the writer connects.')+'</div><div class="build-actions"><button id="build-check" type="button">Check main</button><a class="button" href="https://github.com/tpruittguitar/foreman-cockpit/commits/main" target="_blank" rel="noopener">Open main history</a></div>';
+  p.innerHTML='<h3>Deployment identity</h3><div class="build-row"><span class="build-key">status</span><span class="build-value">'+buildStatusHtml_()+'</span></div><div class="build-row"><span class="build-key">frontend PR</span><span class="build-value">'+prLink_(i.pr,i.subject)+'</span></div><div class="build-row"><span class="build-key">writer code</span><span class="build-value">'+writerBuildHtml_()+'</span></div><div class="build-row"><span class="build-key">frontend commit</span><span class="build-value mono"><a href="'+commitLink+'" target="_blank" rel="noopener">'+esc(commit)+'</a></span></div><div class="build-row"><span class="build-key">branch</span><span class="build-value">'+esc(branch)+'</span></div><div class="build-row"><span class="build-key">deploy context</span><span class="build-value">'+esc(context)+'</span></div><div class="build-row"><span class="build-key">built</span><span class="build-value">'+esc(buildTime_(i.builtAt))+'</span></div><div class="build-row"><span class="build-key">backend</span><span class="build-value">'+esc(S.connection?S.connection.state:'not checked')+'</span></div><div class="build-panel build-status">'+esc((S.buildLatest&&S.buildLatest.message)||'The badge identifies the exact frontend build; backend status is checked separately when the writer connects.')+'</div><div class="build-actions"><button id="build-check" type="button">Check main</button><a class="button" href="https://github.com/tpruittguitar/foreman-cockpit/commits/main" target="_blank" rel="noopener">Open main history</a></div>';
   var check=$('build-check');if(check)check.onclick=function(){checkLatestBuild_(true)};
 }
 function checkLatestBuild_(manual){
@@ -326,6 +331,45 @@ function checkLatestBuild_(manual){
   if(!i.commit||i.commit==='local'){S.buildLatest={status:'unknown',message:'This is a local/source build; Netlify commit metadata is not available.'};renderBuildIdentity_();return Promise.resolve(S.buildLatest)}
   S.buildLatest={status:'checking',message:'Comparing this build with GitHub main…'};renderBuildIdentity_();
   return fetch('https://api.github.com/repos/tpruittguitar/foreman-cockpit/commits/main',{cache:'no-store',headers:{Accept:'application/vnd.github+json'}}).then(function(r){if(!r.ok)throw new Error('GitHub HTTP '+r.status);return r.json()}).then(function(j){var main=String(j.sha||'');if(!main)throw new Error('GitHub returned no main commit');if(i.commit===main)S.buildLatest={status:'latest',message:'This deployed frontend matches the current GitHub main commit.'};else if(i.context==='production')S.buildLatest={status:'behind',message:'Production is serving an older commit than GitHub main. Deploy the newer main commit.'};else S.buildLatest={status:'preview',message:'This is not the current main commit; it is a preview or branch build.'};S.buildLatest.main=main;return S.buildLatest}).catch(function(e){S.buildLatest={status:'unknown',message:'Could not compare with GitHub main: '+e.message};return S.buildLatest}).then(function(v){renderBuildIdentity_();return v});
+}
+function prLink_(pr,subject){if(!pr)return 'not recorded (built outside a PR merge)';var t=String(subject||'').replace(/\s*\(#\d+\)\s*$/,'');return '<a href="https://github.com/tpruittguitar/foreman-cockpit/pull/'+encodeURIComponent(pr)+'" target="_blank" rel="noopener">PR #'+esc(pr)+'</a>'+(t?' · '+esc(t):'');}
+function writerBuildHtml_(){var w=S.writerStatus;if(!hasWriter())return 'writer not configured';if(!w)return 'checking';if(w.unsupported)return 'predates writer_status (deploy needed to report its PR)';var b=w.build;if(!b)return w.fetchError?'unreachable':'not reported';if(!b.pr&&(!b.commit||b.commit==='source'))return 'deployed without a build stamp';return (b.pr?prLink_(b.pr,b.subject):'no PR · '+esc(b.subject||''))+' · <span class="mono">'+esc(b.commit||'')+'</span>'+(b.deployedAt?' · deployed '+esc(buildTime_(b.deployedAt)):'');}
+/* ---- writer state monitor: GET writer_status every 60 s while visible; badge, panel and an alert strip ---- */
+function writerAge_(ms){ms=Math.max(0,+ms||0);return ms<90000?Math.round(ms/1000)+' s':ms<5400000?Math.round(ms/60000)+' min':(ms/3600000).toFixed(1)+' h';}
+function writerRow_(k,v){return '<div class="build-row"><span class="build-key">'+esc(k)+'</span><span class="build-value">'+v+'</span></div>';}
+function renderWriterStatus_(){
+  var b=$('writer-badge'),p=$('writer-panel'),al=$('writer-alert');if(!b||!p)return;
+  var w=S.writerStatus,lvl='',label,html='<h3>Writer state</h3>',alertMsg='';
+  if(!hasWriter()){label='not configured';html+='<div class="build-status">Configure the writer in settings to monitor it.</div>';}
+  else if(!w){label='checking';html+='<div class="build-status">Checking…</div>';}
+  else if(w.unsupported){label='monitor unavailable';lvl='warn';html+='<div class="build-status">The deployed Writer predates <span class="mono">writer_status</span>. Deploy the Writer to enable monitoring.</div>';}
+  else if(w.fetchError){label='unreachable';lvl='warn';html+='<div class="writer-warn"><b>UNREACHABLE</b>'+esc(w.fetchError)+'</div>';}
+  else{
+    lvl=w.level||'ok';var fz=w.freeze&&w.freeze.frozen?w.freeze:null,q=w.queue||{},proc=q.processing||[],u=w.unverified||{},now=w.checkedAt||Date.now();
+    label=fz?'FROZEN':proc.length?'PROCESSING '+proc.length:q.pending?'QUEUED '+q.pending:'IDLE';
+    (w.warnings||[]).slice().sort(function(a,c){return (c.level==='critical')-(a.level==='critical')}).forEach(function(x){html+='<div class="writer-warn '+esc(x.level)+'"><b>'+esc(x.code)+'</b>'+esc(x.message)+'</div>';if(!alertMsg)alertMsg='<b>WRITER '+esc(x.level==='critical'?'ALERT':'WARNING')+'</b>'+esc(x.message);});
+    html+=writerRow_('writes',fz?'<span class="pill bad">FROZEN</span> '+esc(fz.reason||'')+' · by '+esc(fz.by||'?')+(fz.at?' · '+esc(buildTime_(fz.at)):''):'<span class="pill ok">ACCEPTING</span>');
+    html+=writerRow_('live code',writerBuildHtml_());
+    html+=writerRow_('processing',proc.length?proc.map(function(x){return esc(x.file)+' · '+writerAge_(x.ageMs);}).join('<br>'):'none');
+    html+=writerRow_('queued',q.pending?q.pending+' · oldest '+writerAge_(Date.parse(w.now)-Date.parse(q.oldestPendingAt)):'none')+(q.hold&&q.hold.length?writerRow_('held',esc(q.hold.join(', '))):'');
+    html+=writerRow_('unverified',u.count?u.count+' write(s) · oldest '+writerAge_(Date.parse(w.now)-Date.parse(u.oldestWrittenAt)):'none');
+    html+=writerRow_('trigger',w.triggerInstalled===false?'<span class="pill bad">MISSING</span>':w.triggerInstalled?'installed':'unknown');
+    if(w.migration)html+=writerRow_('migration',esc((w.migration.mode||'')+' '+(w.migration.status||'')));
+    var runs=(w.recentRuns||[]).slice(0,6);
+    if(runs.length)html+='<h3 style="margin-top:8px">Recent queue results</h3><ul class="writer-runs">'+runs.map(function(r){var t=r.terminalStatus||'',cls=t==='SUCCESS'?'ok':/HOLD/.test(t)?'warn':'bad';return '<li><span class="pill '+cls+'">'+esc(t)+'</span><span title="'+esc(r.error||'')+'">'+esc(r.file)+' · '+esc(buildTime_(r.finishedAt))+(r.totalMs?' · '+writerAge_(r.totalMs):'')+'</span></li>';}).join('')+'</ul>';
+    html+='<div class="build-status">Checked '+esc(new Date(now).toLocaleTimeString())+'. Refreshes every minute while this page is open.</div>';
+  }
+  html+='<div class="build-actions"><button id="writer-refresh" type="button">Refresh now</button></div>';
+  b.textContent='WRITER · '+label+(lvl==='critical'?' · !!':lvl==='warn'?' · !':'');
+  b.className='build-badge writer-badge '+lvl;
+  p.innerHTML=html;var rf=$('writer-refresh');if(rf)rf.onclick=function(e){e.stopPropagation();loadWriterStatus_(true)};
+  if(al){if(alertMsg&&(lvl==='critical'||lvl==='warn')){al.className='on '+lvl;al.innerHTML=alertMsg+' <span style="opacity:.7">· details: WRITER badge</span>';}else{al.className='';al.innerHTML='';}}
+}
+function loadWriterStatus_(manual){
+  if(!S.writerBound){var wb=$('writer-badge'),wp=$('writer-panel'),al=$('writer-alert');if(wb&&wp){wb.onclick=function(e){e.stopPropagation();var show=wp.hidden;wp.hidden=!show;wb.setAttribute('aria-expanded',show?'true':'false');if(show)loadWriterStatus_(true)};if(al)al.onclick=function(e){e.stopPropagation();wp.hidden=false;wb.setAttribute('aria-expanded','true')};document.addEventListener('click',function(e){if(!e.target.closest('.writer-identity')&&!e.target.closest('#writer-alert')){wp.hidden=true;wb.setAttribute('aria-expanded','false')}});document.addEventListener('visibilitychange',function(){if(!document.hidden)loadWriterStatus_()});setInterval(function(){if(!document.hidden)loadWriterStatus_()},60000);S.writerBound=true}}
+  if(!hasWriter()){S.writerStatus=null;renderWriterStatus_();return Promise.resolve(null)}
+  if(S.writerBusy&&!manual)return Promise.resolve(S.writerStatus);S.writerBusy=true;
+  return gsGet('writer_status').then(function(j){if(j&&j.ok)S.writerStatus=j;else if(j&&/unknown action/.test(j.error||''))S.writerStatus={unsupported:true};else S.writerStatus={fetchError:(j&&j.error)||'no response'};S.writerStatus.checkedAt=Date.now()}).catch(function(e){S.writerStatus={fetchError:e.message,checkedAt:Date.now()}}).then(function(){S.writerBusy=false;renderWriterStatus_();renderBuildIdentity_();return S.writerStatus});
 }
 function loadBuildInfo_(){
   if(!S.buildBound){var badge=$('build-badge'),panel=$('build-panel');if(badge&&panel){badge.onclick=function(e){e.stopPropagation();var show=panel.hidden;panel.hidden=!show;badge.setAttribute('aria-expanded',show?'true':'false')};document.addEventListener('click',function(e){if(!e.target.closest('.build-identity')){panel.hidden=true;badge.setAttribute('aria-expanded','false')}});S.buildBound=true}}
@@ -1263,8 +1307,8 @@ function renderSettings(){var v=$('view-settings');v.innerHTML='<div class="pane
  '<div class="tip" style="margin-top:8px">Connection: '+esc(S.connection.state)+' · Last successful read: '+esc(S.connection.lastRead||'none')+'<br>Last verified write: '+esc((LS.get('lastWrite',{})||{}).at||'none on this device')+'<br>Last write error: '+esc(LS.get('writeError','')||'none')+'<br>Writes run as Tim through the authorized writer. Local drafts do not change master state.<br>Last read error: '+esc(S.connection.error||'none')+'</div></div>'+diagnostics()+
  '<div class="panel"><h3>Receipts</h3><div class="row"><button id="cfg-receipts">Load receipts from Drive</button></div><pre id="cfg-rc" class="mono" style="white-space:pre-wrap;font-size:9.5px;color:var(--dim)"></pre></div>';
  $('cfg-test').onclick=function(){var u=$('cfg-url').value.trim(),k=$('cfg-key').value.trim();var old=S.cfg;S.cfg={url:u,key:k};$('cfg-msg').textContent='testing…';gsGet('ping').then(function(j){$('cfg-msg').textContent=j.ok?'OK · script answers · master '+(j.master||'').slice(0,12)+'…':'script says: '+(j.error||'not ok');S.cfg=old;S.connection.state=j.ok?'Connected':'Read failed';S.connection.error=j.ok?'':j.error||'Rejected'}).catch(function(e){$('cfg-msg').textContent='no answer: '+e.message;S.cfg=old;S.connection.state='Unreachable';S.connection.error=e.message})};
- $('cfg-save').onclick=function(){S.cfg={url:$('cfg-url').value.trim(),key:$('cfg-key').value.trim()};LS.set('cfg',S.cfg);renderSettings();load()};
- $('cfg-clear').onclick=function(){S.cfg={url:'',key:''};LS.set('cfg',S.cfg);LS.set('cache',null);S.master=null;S.rows=[];S.text='';S.focus=null;S.docs=null;S.canonicalRules=null;S.runs=[];$('drawer').classList.remove('on');$('d-body').innerHTML='';document.querySelectorAll('.view').forEach(function(v){if(!['view-pipeline','view-settings'].includes(v.id))v.innerHTML=''});$('readout').textContent='Protected master · not connected';S.connection={state:'Not configured',error:'',lastRead:null};$('dash').innerHTML='';$('grid').querySelector('tbody').innerHTML='';renderSettings()};
+ $('cfg-save').onclick=function(){S.cfg={url:$('cfg-url').value.trim(),key:$('cfg-key').value.trim()};LS.set('cfg',S.cfg);renderSettings();load();loadWriterStatus_(true)};
+ $('cfg-clear').onclick=function(){S.cfg={url:'',key:''};LS.set('cfg',S.cfg);S.writerStatus=null;renderWriterStatus_();LS.set('cache',null);S.master=null;S.rows=[];S.text='';S.focus=null;S.docs=null;S.canonicalRules=null;S.runs=[];$('drawer').classList.remove('on');$('d-body').innerHTML='';document.querySelectorAll('.view').forEach(function(v){if(!['view-pipeline','view-settings'].includes(v.id))v.innerHTML=''});$('readout').textContent='Protected master · not connected';S.connection={state:'Not configured',error:'',lastRead:null};$('dash').innerHTML='';$('grid').querySelector('tbody').innerHTML='';renderSettings()};
  $('cfg-receipts').onclick=function(){if(!hasWriter()){$('cfg-rc').textContent='writer not configured';return}gsGet('receipts').then(function(j){$('cfg-rc').textContent=j.ok?(j.text||'(no receipts yet)'):(j.error||'error')}).catch(function(e){$('cfg-rc').textContent=e.message})};
 }
 $('settings').onclick=function(){switchTab('settings')};
@@ -1282,7 +1326,7 @@ $('refresh').onclick=function(){load()};
 function pushHash(){var o={t:S.tab,p:S.preset,s:S.sort,f:S.filters};try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(o)))}catch(e){}}
 function readHash(){try{if(location.hash.length>1){var o=JSON.parse(decodeURIComponent(location.hash.slice(1)));if(o.t&&$('view-'+o.t))S.tab=o.t;if(o.p&&PRESETS[o.p])S.preset=o.p;if(o.s)S.sort=o.s;if(o.f)S.filters=o.f}}catch(e){}}
 window.addEventListener('resize',function(){if(S.master)render()});
-loadBuildInfo_();
+loadBuildInfo_();loadWriterStatus_();
 S.tab='today';readHash();switchTab(S.tab);
 var cache=LS.get('cache',null);if(cache&&hasWriter()){apply(cache.text,cache.meta,true)}
 load();

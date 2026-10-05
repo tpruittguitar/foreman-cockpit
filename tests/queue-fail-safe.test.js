@@ -1,0 +1,246 @@
+// Queue fail-safe: every claimed request reaches a visible terminal state, malformed batches are rejected before the master
+// is opened, a mixed batch never runs into the 6-minute limit, and an abandoned claim is reported, never re-run.
+const test = require('node:test'), assert = require('node:assert/strict');
+const W = require('../apps-script/Code.gs');
+const A = require('../apps-script/Automation.gs');
+
+// The exact shape of IDENTITY_RESOLVE_PASS2/PASS3 (2026-10-05): ruling fields at the top level, snake_case, no "ruling" object.
+const flatRuling = (rid, pid) => ({ action: 'ruling', request_id: rid, actor: 'FORGE', kind: 'ENRICH', primary_id: pid, fields: { IDENTITY_CONFIDENCE: 'HIGH' } });
+const nested = (rid, pid) => ({ action: 'ruling', ruling: { primaryId: pid, kind: 'ENRICH', actor: 'CLAUDE', requestId: rid, fields: { CLAUDE_NOTE: 'note for ' + rid } } });
+
+// ---------- shape checks (no Apps Script services exist in this process: touching one would throw) ----------
+test('a batch of flat rulings is rejected at once, before the master is opened, naming every malformed index', () => {
+  delete global.LockService; delete global.DocumentApp; delete global.DriveApp;
+  const r = W.dispatchWrite_({ action: 'batch', requests: [flatRuling('IDRES-P2-1', 'V2I-F01B90E8767D'), flatRuling('IDRES-P2-2', 'V2I-EC39AAAA36F0')] });
+  assert.equal(r.ok, false);
+  assert.equal(r.mode, 'REJECTED_SCHEMA');
+  assert.equal(r.attempted, 0);
+  assert.deepEqual(r.results.map(x => x.index), [0, 1]);
+  assert.match(r.results[0].error, /must be nested/);
+  assert.match(r.results[0].error, /found at top level: primary_id, request_id, kind, fields, actor/);
+});
+
+test('one malformed request rejects the whole batch; valid siblings are not applied', () => {
+  const r = W.dispatchWrite_({ action: 'batch', requests: [nested('R-1', 'V2F-AAAA00000001'), { action: 'ruling', ruling: { primary_id: 'V2F-X' } }, { action: 'nope' }] });
+  assert.equal(r.mode, 'REJECTED_SCHEMA');
+  assert.deepEqual(r.results.map(x => x.index), [1, 2]);
+  assert.match(r.results[0].error, /ruling\.primaryId is required \(found primary_id/);
+  assert.match(r.results[1].error, /unsupported action in batch: nope/);
+});
+
+test('a single flat ruling is rejected without opening the master or writing a receipt', () => {
+  const r = W.dispatchWrite_(flatRuling('IDRES-P3-1', 'V2I-E52292921A30'));
+  assert.equal(r.mode, 'REJECTED_SCHEMA');
+  assert.equal(r.receipt, undefined);
+});
+
+test('requestShapeError_ accepts the documented nested ruling and ignores other actions', () => {
+  assert.equal(W.requestShapeError_(nested('R-1', 'V2F-AAAA00000001')), '');
+  assert.equal(W.requestShapeError_({ action: 'intake', records: [] }), '');
+});
+
+// ---------- mixed batches with in-memory services ----------
+const MASTER = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI';
+function rowLine(inv, id) { return inv + ' | ' + id + ' | Acme Corp | Director of Quality | SCOUT_INTAKE | ANALYSIS_PENDING | - | REQ-' + inv + ' | Austin, TX | NOTIFICATION_SOURCE=LinkedIn; SOURCE_URL=https://example.com/' + inv; }
+function fakeServices() {
+  const para = t => { let s = t; return { getText: () => s, setText: v => { s = v; } }; };
+  const master = ['COUNTS: TOTAL=2 SCOUT_INTAKE=2 UNACCOUNTED=0', rowLine(1, 'V2F-AAAA00000001'), rowLine(2, 'V2F-BBBB00000002'), 'END V2_CURRENT_POPULATION_MASTER (2 rows)'].map(para);
+  const receiptParas = [para('')];
+  let saves = 0, events = '';
+  const masterDoc = { getBody: () => ({ getParagraphs: () => master }), saveAndClose: () => { saves++; } };
+  const receiptDoc = { getBody: () => ({ getText: () => receiptParas.map(p => p.getText()).join('\n'), appendParagraph: t => receiptParas.push(para(t)) }), saveAndClose: () => {} };
+  const files = {
+    PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS: { getId: () => 'RECEIPTS', getMimeType: () => 'application/vnd.google-apps.document' },
+    'PIPELINE_EVENT_LOG.jsonl': { getId: () => 'EVENTS', getBlob: () => ({ getDataAsString: () => events }), setContent: v => { events = v; } }
+  };
+  const iter = list => { let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; };
+  const folder = { getFilesByName: n => iter(files[n] ? [files[n]] : []), createFile: (n, c) => { let v = c; return files[n] = { getId: () => n, getMimeType: () => 'text/plain', getBlob: () => ({ getDataAsString: () => v }), setContent: x => { v = x; } }; } };
+  global.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
+  global.DriveApp = { getFileById: id => ({ getLastUpdated: () => new Date('2026-10-04T20:00:00Z'), getParents: () => iter([folder]), getId: () => id }) };
+  global.DocumentApp = { openById: id => id === MASTER ? masterDoc : receiptDoc };
+  global.MimeType = { PLAIN_TEXT: 'text/plain' };
+  return { row: id => master.map(p => p.getText()).find(l => l.split(' | ')[1] === id), saves: () => saves };
+}
+const mixed = () => ({ action: 'batch', requests: [nested('MIX-1', 'V2F-AAAA00000001'), nested('MIX-2', 'V2F-BBBB00000002'), { action: 'unfreeze_writer', reason: 'x' }] });
+
+test('mixed batch: the second master write is fenced, so the batch ends PARTIAL with the untouched remainder', () => {
+  const f = fakeServices(); W.resetExecution_(); W.setWriteDeadline_(0);
+  const r = W.dispatchWrite_(mixed());
+  assert.equal(r.mode, 'SERIAL_MIXED_BATCH');
+  assert.equal(r.ok, false);
+  assert.equal(r.partial, true);
+  assert.equal(r.stoppedBy, 'WRITE_FENCE');
+  assert.equal(r.attempted, 1);
+  assert.deepEqual(r.notAttempted, [1, 2]);
+  assert.deepEqual(r.remainder.requests.map(x => x.action), ['ruling', 'unfreeze_writer']);
+  assert.equal(r.results[0].ok, true);
+  assert.match(f.row('V2F-AAAA00000001'), /CLAUDE_NOTE=note for MIX-1/);
+  assert.doesNotMatch(f.row('V2F-BBBB00000002'), /CLAUDE_NOTE/, 'the fenced request was never applied');
+  assert.equal(f.saves(), 1);
+  assert.equal(A.terminalStatus_(r), 'PARTIAL_HOLD');
+});
+
+test('mixed batch fenced on its first request returns the fence itself, so the worker leaves it queued', () => {
+  fakeServices(); W.resetExecution_(); W.setWriteDeadline_(0);
+  W.dispatchWrite_(nested('PRIOR', 'V2F-AAAA00000001'));          // this execution has already written the master
+  const r = W.dispatchWrite_(mixed());
+  assert.equal(r.mode, 'WRITE_FENCE');
+});
+
+test('mixed batch: no request starts after the deadline; a deadline before the first keeps it queued', () => {
+  const f = fakeServices(); W.resetExecution_();
+  W.setWriteDeadline_(Date.now() - 1);
+  const r = W.dispatchWrite_(mixed());
+  W.setWriteDeadline_(0);
+  assert.equal(r.mode, 'WRITE_FENCE');
+  assert.match(r.error, /time budget/);
+  assert.equal(f.saves(), 0);
+});
+
+// ---------- the worker: processWriterQueue with a fake queue ----------
+function queueHarness(opts) {
+  opts = opts || {};
+  const log = [], created = [], folders = {};
+  const iter = list => { let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; };
+  const mkFolder = id => folders[id] = { id, getId: () => id, files: [], getFiles() { return iter(this.files.slice()); }, createFile(n, c) { created.push({ folder: id, name: n, body: JSON.parse(c) }); return {}; } };
+  const queue = mkFolder('queue'), processed = mkFolder('processed'), failed = mkFolder('failed');
+  const byId = {};
+  function addFile(name, body, ageMs, updatedAgoMs) {
+    let n = name, parent = queue, updated = Date.now() - (updatedAgoMs === undefined ? ageMs : updatedAgoMs);
+    const f = { getId: () => 'id-' + name, getName: () => n, setName: v => { if (opts.renameThrows && /^IDENT/.test(v)) throw new Error('rename failed'); n = v; updated = Date.now(); },
+      getDateCreated: () => new Date(Date.now() - ageMs), getLastUpdated: () => new Date(updated), getMimeType: () => 'text/plain',
+      getBlob: () => ({ getDataAsString: () => JSON.stringify(body) }),
+      getParents: () => iter([parent]),
+      moveTo: p => { if (opts.moveThrows) throw new Error('move failed'); parent.files = parent.files.filter(x => x !== f); parent = p; p.files.push(f); } };
+    queue.files.push(f); byId[f.getId()] = f; return f;
+  }
+  global.LockService = { getScriptLock: () => ({ tryLock: () => true, waitLock() {}, releaseLock() {} }) };
+  global.DriveApp = { getFileById: id => byId[id] };
+  global.MimeType = { PLAIN_TEXT: 'text/plain', GOOGLE_DOCS: 'application/vnd.google-apps.document' };
+  global.folder_ = () => ({ getFoldersByName: n => iter(n === 'WRITER_QUEUE' ? [queue] : []) });
+  queue.getFoldersByName = n => iter(n === 'processed' ? [processed] : n === 'failed' ? [failed] : []);
+  global.findOrCreate_ = () => ({ getBlob: () => ({ getDataAsString: () => log.map(e => JSON.stringify(e)).join('\n') }), setContent: v => { log.length = 0; v.split('\n').filter(Boolean).forEach(l => log.push(JSON.parse(l))); } });
+  global.verifyNow_ = () => ({ ok: true });
+  global.errorStack_ = e => String(e && e.stack || '');
+  global.docAccessSummary_ = () => ({ status: 'INITIAL_SUCCESS' });
+  global.WRITE_ACTIONS = W.WRITE_ACTIONS;
+  global.readIndex_ = () => ({ requests: { 'IDRES-P3-A': { s: 'COMPLETE', at: '2026-10-05T03:00:00Z', w: 'W-1' } } });
+  const deadlines = [];
+  global.setWriteDeadline_ = t => deadlines.push(t);
+  global.dispatchWrite_ = opts.dispatch || (() => ({ ok: true, mode: 'TEST' }));
+  return { queue, processed, failed, addFile, log, created, deadlines };
+}
+
+test('worker: a stale PROCESSING__ claim is finalized as HOLD_ABANDONED with request-ID states, never re-dispatched', () => {
+  let dispatched = 0;
+  const h = queueHarness({ dispatch: () => { dispatched++; return { ok: true }; } });
+  const body = { action: 'batch', requests: [nested('IDRES-P3-A', 'V2I-1'), nested('IDRES-P3-B', 'V2I-2')] };
+  h.addFile('PROCESSING__IDENTITY_RESOLVE_PASS3.json', body, 20 * 60000, 9 * 60000);
+  const out = A.processWriterQueue();
+  assert.equal(dispatched, 0, 'abandoned request is not re-run');
+  assert.equal(out.processed, 1);
+  const res = h.created[0];
+  assert.equal(res.folder, 'failed');
+  assert.equal(res.name, 'RESULT__IDENTITY_RESOLVE_PASS3.json');
+  assert.equal(res.body.terminalStatus, 'HOLD_ABANDONED');
+  assert.deepEqual(res.body.result.requestIds, ['IDRES-P3-A', 'IDRES-P3-B']);
+  assert.equal(res.body.result.requestIndexStates['IDRES-P3-A'].s, 'COMPLETE');
+  assert.equal(res.body.result.requestIndexStates['IDRES-P3-B'], null);
+  assert.equal(h.failed.files[0].getName(), 'IDENTITY_RESOLVE_PASS3.json', 'request file released and moved to failed');
+  assert.equal(h.log[0].terminalStatus, 'HOLD_ABANDONED');
+});
+
+test('worker: a fresh PROCESSING__ claim (another execution is still running it) is left alone', () => {
+  let dispatched = 0;
+  const h = queueHarness({ dispatch: () => { dispatched++; return { ok: true }; } });
+  h.addFile('PROCESSING__LIVE.json', { action: 'intake', records: [] }, 5 * 60000, 2 * 60000);
+  const out = A.processWriterQueue();
+  assert.equal(out.processed, 0); assert.equal(dispatched, 0); assert.equal(h.created.length, 0);
+});
+
+test('worker: an exception thrown by the writer still produces a FAILED RESULT and moves the request', () => {
+  const h = queueHarness({ dispatch: () => { throw new Error('Exceeded maximum execution time'); } });
+  h.addFile('IDENT_X.json', { action: 'intake', records: [] }, 60000);
+  A.processWriterQueue();
+  assert.equal(h.created[0].body.terminalStatus, 'FAILED');
+  assert.match(h.created[0].body.result.error, /Exceeded maximum/);
+  assert.equal(h.failed.files.length, 1);
+  assert.equal(h.queue.files.length, 0);
+});
+
+test('worker: a partial batch is finalized as PARTIAL_HOLD with the remainder in the RESULT', () => {
+  const h = queueHarness({ dispatch: () => ({ ok: false, mode: 'SERIAL_MIXED_BATCH', partial: true, attempted: 1, notAttempted: [1], stoppedBy: 'WRITE_FENCE', remainder: { action: 'batch', requests: [{}] }, results: [{ ok: true }] }) });
+  h.addFile('MIX.json', { action: 'batch', requests: [] }, 60000);
+  A.processWriterQueue();
+  assert.equal(h.created[0].folder, 'failed');
+  assert.equal(h.created[0].body.terminalStatus, 'PARTIAL_HOLD');
+  assert.deepEqual(h.log[0].notAttempted, [1]);
+});
+
+test('worker: when the move fails the request is renamed HOLD__ and is never claimed again', () => {
+  let dispatched = 0;
+  const h = queueHarness({ moveThrows: true, dispatch: () => { dispatched++; return { ok: true }; } });
+  h.addFile('M.json', { action: 'intake', records: [] }, 60000);
+  A.processWriterQueue();
+  assert.equal(h.queue.files[0].getName(), 'HOLD__M.json');
+  assert.equal(h.log[0].terminalStatus, 'HOLD_UNMOVED');
+  A.processWriterQueue();
+  assert.equal(dispatched, 1, 'HOLD__ file is not picked up again');
+});
+
+test('worker: a WRITE_FENCE result releases the claim and leaves the request queued (no RESULT)', () => {
+  const h = queueHarness({ dispatch: () => ({ ok: false, mode: 'WRITE_FENCE', error: 'Writer frozen' }) });
+  h.addFile('F.json', { action: 'intake', records: [] }, 60000);
+  const out = A.processWriterQueue();
+  assert.equal(out.deferred.file, 'F.json');
+  assert.equal(h.queue.files[0].getName(), 'F.json');
+  assert.equal(h.created.length, 0);
+});
+
+test('worker: no new file is claimed after the claim cutoff; the deadline is set and always cleared', () => {
+  const realNow = Date.now; let t = realNow(), dispatched = 0;
+  const h = queueHarness({ dispatch: () => { dispatched++; t += A.QUEUE_CLAIM_CUTOFF_MS + 1000; return { ok: true }; } });
+  h.addFile('ONE.json', { action: 'intake', records: [] }, 120000);
+  h.addFile('TWO.json', { action: 'intake', records: [] }, 60000);
+  Date.now = () => t;
+  try { A.processWriterQueue(); } finally { Date.now = realNow; }
+  assert.equal(dispatched, 1, 'the second file waits for the next tick');
+  assert.equal(h.queue.files.length, 1);
+  assert.equal(h.queue.files[0].getName(), 'TWO.json');
+  assert.equal(h.deadlines.length, 2);
+  assert.ok(h.deadlines[0] > 0); assert.equal(h.deadlines[1], 0);
+});
+
+test('requestIdsOf_ finds nested and snake_case IDs once each', () => {
+  assert.deepEqual(A.requestIdsOf_({ requests: [nested('A', 'P'), flatRuling('B', 'Q'), nested('A', 'P')] }), ['A', 'B']);
+  assert.deepEqual(A.requestIdsOf_(null), []);
+});
+
+// ---------- writer monitor warnings (pure) ----------
+test('monitor: a freeze with no running migration is critical; during a LIVE migration step it is a warning', () => {
+  const now = Date.parse('2026-10-05T04:00:00Z'), at = '2026-10-05T03:55:00Z';
+  const base = { freeze: { frozen: true, reason: 'r', by: 'CLAUDE', at }, queue: {}, triggerInstalled: true };
+  const unexpected = A.writerWarnings_(Object.assign({ migration: { mode: 'LIVE', status: 'CUTOVER_COMPLETE' } }, base), now);
+  assert.equal(unexpected[0].code, 'FROZEN_UNEXPECTED'); assert.equal(unexpected[0].level, 'critical');
+  const migrating = A.writerWarnings_(Object.assign({ migration: { mode: 'LIVE', status: 'IN_PROGRESS' } }, base), now);
+  assert.equal(migrating[0].code, 'FROZEN_FOR_MIGRATION'); assert.equal(migrating[0].level, 'warn');
+  const longMigration = A.writerWarnings_(Object.assign({}, base, { migration: { mode: 'LIVE', status: 'IN_PROGRESS' }, freeze: Object.assign({}, base.freeze, { at: '2026-10-05T03:00:00Z' }) }), now);
+  assert.equal(longMigration[0].level, 'critical');
+});
+
+test('monitor: long and abandoned claims, backlog, missing trigger, unverified writes and recent holds', () => {
+  const now = Date.parse('2026-10-05T04:00:00Z');
+  const w = A.writerWarnings_({
+    queue: { pending: 2, oldestPendingAt: '2026-10-05T03:40:00Z', hold: ['HOLD__X.json'], processing: [{ file: 'A.json', ageMs: 5 * 60000 }, { file: 'B.json', ageMs: 9 * 60000 }] },
+    triggerInstalled: false,
+    unverified: { count: 1, oldestWrittenAt: '2026-10-05T03:30:00Z' },
+    recentRuns: [{ file: 'P2.json', terminalStatus: 'HOLD_ABANDONED', finishedAt: '2026-10-05T03:50:00Z' }, { file: 'OK.json', terminalStatus: 'SUCCESS', finishedAt: '2026-10-05T03:51:00Z' }],
+    errors: ['queue: boom']
+  }, now);
+  const by = Object.fromEntries(w.map(x => [x.code, x.level]));
+  assert.deepEqual(by, { CLAIM_RUNNING_LONG: 'warn', CLAIM_ABANDONED: 'critical', QUEUE_HOLD: 'warn', QUEUE_BACKLOG: 'warn', TRIGGER_MISSING: 'critical', WRITE_UNVERIFIED: 'critical', HOLD_ABANDONED: 'warn', STATUS_PART_UNAVAILABLE: 'warn' });
+});
+
+test('monitor: an idle, healthy writer has no warnings', () => {
+  assert.deepEqual(A.writerWarnings_({ freeze: null, queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, recentRuns: [{ file: 'X', terminalStatus: 'SUCCESS', finishedAt: '2026-10-05T03:59:00Z' }], errors: [] }, Date.parse('2026-10-05T04:00:00Z')), []);
+});
