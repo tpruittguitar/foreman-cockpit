@@ -233,14 +233,18 @@ function writerStatus_() {
   });
   part('trigger', function () { s.triggerInstalled = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === QUEUE_TRIGGER_FN; }); });
   part('recentRuns', function () {
-    var lf = findOrCreate_(QUEUE_LOG_NAME, 'text', ''), lines = String(lf.getBlob().getDataAsString() || '').split('\n').filter(Boolean).slice(-8);
-    s.recentRuns = lines.map(function (l) { try { var e = JSON.parse(l); return { file: e.file, fileId: e.fileId || '', terminalStatus: e.terminalStatus || (e.ok ? 'SUCCESS' : 'FAILED'), action: e.action || '', finishedAt: e.finishedAt || '', totalMs: e.totalMs || 0, error: String(e.error || '').slice(0, 240) }; } catch (x) { return null; } }).filter(Boolean).reverse();
+    var lf = findOrCreate_(QUEUE_LOG_NAME, 'text', ''), lines = String(lf.getBlob().getDataAsString() || '').split('\n').filter(Boolean);
+    var runs = lines.map(function (l) { try { var e = JSON.parse(l); return { file: e.file, fileId: e.fileId || '', terminalStatus: e.terminalStatus || (e.ok ? 'SUCCESS' : 'FAILED'), action: e.action || '', finishedAt: e.finishedAt || '', totalMs: e.totalMs || 0, error: String(e.error || '').slice(0, 240) }; } catch (x) { return null; } }).filter(Boolean);
+    s.recentRuns = runs.slice(-8).reverse();
+    // Warnings follow the 24-hour policy window, not queue traffic: every HOLD-type result that finished
+    // inside the window is kept, however many runs came after it. An unparseable finishedAt counts as recent.
+    s.recentHolds = runs.filter(function (r) { var t = Date.parse(r.finishedAt); return /HOLD/.test(r.terminalStatus) && (isNaN(t) || now - t < STATUS_RECENT_HOLD_MS); }).reverse();
     // PARTIAL_HOLD is an audit fact, not necessarily an active fault. If every request in the
     // original failed batch carries a request ID that is now COMPLETE in the durable receipt index,
-    // keep it in recentRuns but mark it recovered so the Explorer no longer raises an active warning.
+    // keep it in history but mark it recovered so the Explorer no longer raises an active warning.
     // Fail closed: the exact logged file is read by ID; a missing ID, an unreadable file or any
     // request without a COMPLETE ID leaves the run unrecovered and its warning in place.
-    var partials = s.recentRuns.filter(function (r) { return r.terminalStatus === 'PARTIAL_HOLD'; });
+    var partials = s.recentHolds.concat(s.recentRuns).filter(function (r, i, all) { return r.terminalStatus === 'PARTIAL_HOLD' && all.indexOf(r) === i; });
     if (partials.length) {
       var idx = readIndex_(), states = (idx && idx.requests) || {};
       partials.forEach(function (r) {
@@ -280,7 +284,8 @@ function writerWarnings_(s, now) {
   if (s.triggerInstalled === false) w.push({ level: 'critical', code: 'TRIGGER_MISSING', message: 'The queue trigger is not installed; queued requests are not processed.' });
   var u = s.unverified || {}, ua = age(u.oldestWrittenAt);
   if (u.count && ua > STATUS_UNVERIFIED_WARN_MS) w.push({ level: ua > STATUS_UNVERIFIED_CRIT_MS ? 'critical' : 'warn', code: 'WRITE_UNVERIFIED', message: u.count + ' master write(s) not yet independently verified; oldest ' + min(ua) + ' ago. New master writes are fenced until it resolves.' });
-  (s.recentRuns || []).forEach(function (r) {
+  // recentHolds covers the whole 24-hour window; recentRuns (last 8) is only a fallback for an older status shape.
+  (Array.isArray(s.recentHolds) ? s.recentHolds : (s.recentRuns || [])).forEach(function (r) {
     if (/HOLD/.test(r.terminalStatus) && !r.recovered && age(r.finishedAt) < STATUS_RECENT_HOLD_MS) w.push({ level: 'warn', code: r.terminalStatus, message: r.file + ' ended ' + r.terminalStatus + ' at ' + r.finishedAt + '. See its RESULT in WRITER_QUEUE/failed before resubmitting.' });
   });
   (s.errors || []).forEach(function (e) { w.push({ level: 'warn', code: 'STATUS_PART_UNAVAILABLE', message: e }); });
