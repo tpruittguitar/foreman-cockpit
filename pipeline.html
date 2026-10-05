@@ -21,6 +21,7 @@ header{flex:none;border-bottom:1px solid var(--line);background:linear-gradient(
 .build-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:310px;max-width:min(430px,90vw);padding:9px;background:#080808;border:1px solid var(--line2);box-shadow:0 8px 30px #000;color:var(--text);font:10px/1.45 var(--sans)}.build-panel[hidden]{display:none}.build-panel h3{margin:0 0 7px;font-size:9px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}.build-panel .build-row{display:grid;grid-template-columns:105px minmax(0,1fr);gap:4px 8px;margin:3px 0}.build-panel .build-key{color:var(--faint);font-family:var(--mono);text-transform:uppercase;font-size:9px}.build-panel .build-value{min-width:0;overflow-wrap:anywhere}.build-panel .build-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.build-panel .build-status{margin-top:7px;color:var(--dim)}
 .writer-identity{position:relative;flex:none}.writer-badge.ok{color:var(--ng);border-color:var(--ng)}.writer-badge.warn{color:#f5b041;border-color:#f5b041}.writer-badge.critical{color:#fff;background:var(--nm);border-color:var(--nm)}
 .writer-warn{margin:4px 0;padding:3px 6px;border-left:2px solid #f5b041;color:var(--text)}.writer-warn.critical{border-left-color:var(--nm)}.writer-warn b{font:9px var(--mono);color:var(--dim);margin-right:4px}.writer-runs{margin:4px 0 0;padding:0;list-style:none}.writer-runs li{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px;margin:2px 0}.writer-runs .pill{font-size:8.5px;text-align:center}.pill.warn{border-color:#f5b041;color:#f5b041}
+#load-alert{display:none;padding:6px 10px;font:11px/1.45 var(--sans);color:#fff;background:#3a000f;border-bottom:2px solid var(--nm)}#load-alert.on{display:block}#load-alert.stale,#load-alert.none{background:repeating-linear-gradient(135deg,#3a000f 0 14px,#24000a 14px 28px)}#load-alert.partial{background:#2a1d00;border-bottom-color:#f5b041}#load-alert b{font:10px var(--mono);letter-spacing:1.2px;margin-right:6px}#load-alert button{margin-left:8px;font-size:9px;padding:1px 6px}body[data-freshness=stale] #readout,body[data-freshness=none] #readout{color:var(--nm)}
 #writer-alert{display:none;padding:4px 10px;background:#2a0010;border-bottom:1px solid var(--nm);color:#fff;font:10px/1.4 var(--sans);cursor:pointer}#writer-alert.on{display:block}#writer-alert.warn{background:#2a1d00;border-bottom-color:#f5b041}#writer-alert b{font:9px var(--mono);letter-spacing:1px;margin-right:6px}
 #readout{font-family:var(--mono);font-size:10px;color:var(--dim);flex:1;min-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #readout b{color:var(--white);font-weight:600}#readout .bad{color:var(--nm)}#readout .good{color:var(--ng)}
@@ -253,6 +254,7 @@ tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-targ
   <button id="compare-open">Compare · 0/3</button><button id="density-toggle">Compact</button><button id="refresh" class="neon">Refresh</button>
   <button id="settings" title="Writer setup">⚙</button>
 </header>
+<div id="load-alert" role="alert" aria-live="assertive"></div>
 <div id="writer-alert" role="alert"></div>
 <div class="bar" id="presets"></div>
 <div class="bar" id="filters" style="display:none"></div>
@@ -282,6 +284,7 @@ tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-targ
 </div>
 <div id="pop"></div>
 <script src="pipeline-parser.js"></script>
+<script src="pipeline-loader.js"></script>
 <script src="pipeline-evidence.js"></script>
 <script src="pipeline-quality.js"></script>
 <script src="pipeline-charts.js"></script>
@@ -410,6 +413,7 @@ function recoverWriteResult_(rid,attempt){
   });
 }
 function gsPost(body){
+  if(!S.load||S.load.freshness!=='LIVE')return Promise.resolve({ok:false,error:'Writes are disabled: the current canonical master is not loaded'+(S.load&&S.load.error?' ('+S.load.error+')':'')+'. Refresh first.'});
   body=JSON.parse(JSON.stringify(body||{}));
   var rid=requestIdForBody_(body);
   body.key=S.cfg.key;
@@ -427,7 +431,6 @@ function gsPost(body){
     });
 }
 var Source={
-  script:function(){return gsGet('master','&hydrate=1').then(function(j){if(j.ok){j.id=j.id+' via writer script'+(j.hydrated?' (hydrated: evidence companion + terminal archive)':'')}return j})},
   netlify:function(){return fetch('/api/master',{cache:'no-store'}).then(function(r){return r.json()})},
   url:function(u){return fetch(u,{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text()}).then(function(t){return{ok:true,id:'(url) '+u,fetchedAt:new Date().toISOString(),bytes:t.length,text:t}})}
 };
@@ -445,15 +448,36 @@ function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
   readout('<b>fetching…</b>');
   if(!hasWriter()){S.connection.state='Not configured';readout('Protected master · configure your writer to connect');switchTab('settings');return}
-  S.connection.state='Checking';S.connection.error='';
-  var p=Source.script();
+  S.connection.state='Checking';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'PENDING'},evidence:{state:'PENDING'}};renderLoadAlert_();
   if(hasWriter()&&!src){syncStateDown();loadCanonicalScoring_();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality();if(S.tab==='today')renderToday()}}).catch(function(){});gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
-  p.then(function(res){
-    if(!res.ok){S.connection.state='Read failed';S.connection.error=res.hint||res.error||'Writer rejected read';readout('<span class="bad">FETCH FAILED</span> '+esc(res.hint||res.error||('status '+res.status)));var c=LS.get('cache',null);if(c){apply(c.text,c.meta,true)}return}
-    S.connection.state='Connected';S.connection.lastRead=new Date().toISOString();S.connection.error='';
-    var meta={id:res.id,fetchedAt:res.fetchedAt,bytes:res.bytes,modifiedTime:res.modifiedTime||''};LS.set('cache',{text:res.text,meta:meta});apply(res.text,meta,false);
-  }).catch(function(e){S.connection.state='Unreachable';S.connection.error=e.message;readout('<span class="bad">FETCH ERROR</span> '+esc(e.message));var c=LS.get('cache',null);if(c)apply(c.text,c.meta,true)});
+  var seq=S.loadSeq=(S.loadSeq||0)+1,lastText=null;
+  // Three separate reads merged in the browser (PipelineLoader); the canonical master alone decides freshness.
+  return PipelineLoader.load({get:gsGet,cache:{read:function(){return LS.get('cache',null)},write:function(v){LS.set('cache',v)}},onUpdate:function(v){
+    if(seq!==S.loadSeq)return;
+    S.load=v;
+    if(v.freshness==='LIVE'){S.connection.state='Connected';S.connection.lastRead=v.meta.fetchedAt||new Date().toISOString();S.connection.error=''}
+    else{S.connection.state=v.freshness==='STALE'?'FETCH FAILED · STALE CACHE':'FETCH FAILED';S.connection.error=v.error}
+    if(v.text&&v.text!==lastText){lastText=v.text;apply(v.text,v.meta,v.freshness!=='LIVE')}
+    else if(!v.text){lastText=null;S.master=null;S.rows=[];S.text='';$('dash').innerHTML='';$('grid').querySelector('tbody').innerHTML='';$('drawer').classList.remove('on');if(S.tab==='today')renderToday()}
+    renderLoadAlert_();if(S.master)renderReadout();else readout('<span class="bad">FETCH FAILED</span> '+esc(v.error||''));
+  }});
 }
+function fmtTime_(iso){var d=new Date(iso||'');return isNaN(d.getTime())?'unknown time':d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
+function renderLoadAlert_(){
+  var el=$('load-alert');if(!el)return;var v=S.load||{},cls='',h='';document.body.dataset.freshness=String(v.freshness||'').toLowerCase();
+  var retry=' <button id="load-retry" type="button">Retry now</button>';
+  if(v.freshness==='STALE'){cls='stale';h='<b>STALE · FETCH FAILED</b>The current canonical master could not be loaded ('+esc(v.error)+'). You are looking at a <u>cached copy fetched '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+'</u>. It is NOT the live master; saving is disabled until a fresh read succeeds.'+retry}
+  else if(v.freshness==='NONE'){cls='none';h='<b>FETCH FAILED · NO DATA</b>The current canonical master could not be loaded ('+esc(v.error)+') and no cached copy exists on this device.'+retry}
+  else if(v.freshness==='LIVE'){
+    var bad=[];if(v.archive&&v.archive.state==='FAILED')bad.push('<b>ARCHIVE UNAVAILABLE</b>Archived (terminal) rows are not shown: '+esc(v.archive.error)+'.');
+    if(v.evidence&&v.evidence.state==='FAILED')bad.push('<b>EVIDENCE UNAVAILABLE</b>Narrative fields are not merged ('+esc(v.evidence.error)+'); decline-candidate detection and AI context may be incomplete. A row\'s narrative can be loaded on demand in its detail drawer.');
+    if(bad.length){cls='partial';h=bad.join('<br>')+' The canonical master itself is current ('+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+').'+retry}
+  }
+  el.className=cls?'on '+cls:'';el.innerHTML=h;var b=$('load-retry');if(b)b.onclick=function(){load()};
+}
+function freshnessLabel_(){var v=S.load||{};if(v.freshness==='STALE')return '<span class="bad">STALE · FETCH FAILED · cached '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+'</span>';if(v.freshness==='LOADING')return 'Loading current master…';
+  var parts=[esc(S.connection.state)];if(v.archive&&v.archive.state==='PENDING'||v.evidence&&v.evidence.state==='PENDING')parts.push('loading archive/evidence…');if(v.archive&&v.archive.state==='FAILED')parts.push('<span class="bad">ARCHIVE UNAVAILABLE</span>');if(v.evidence&&v.evidence.state==='FAILED')parts.push('<span class="bad">EVIDENCE UNAVAILABLE</span>');
+  return parts.join(' · ')+' · read '+esc(S.connection.lastRead?new Date(S.connection.lastRead).toLocaleTimeString():'not verified');}
 function apply(text,meta,fromCache){
   var m=PipelineParser.parse(text);S.master=m;S.text=text;S.meta=meta||{};S.meta.fromCache=!!fromCache;
   scoreCache={};S.rows=m.rows.map(decorate);
@@ -603,7 +627,7 @@ function renderReadout(){
   var m=S.master;if(!m)return;var ck=m.checksum.ok?'<span class="good">COUNTS OK</span>':'<span class="bad">COUNTS MISMATCH '+esc(m.checksum.diffs.map(function(d){return d.bucket+' '+d.declared+'≠'+d.parsed}).join(', '))+'</span>';
   var t=m.title.split('(')[0].trim().slice(0,48);
   var rr=distinctRows_(),rb={};rr.forEach(function(r){rb[r.BUCKET]=(rb[r.BUCKET]||0)+1});var ready=rb.READY_TO_PURSUE||0,need=rb.TIM_DECISION_REQUIRED||0;
-  readout('<b>'+rr.length+' roles</b> · '+m.rows.length+' row-lines · '+ready+' ready · '+need+' need you · '+esc(S.connection.state)+(S.meta.fromCache?' · OFFLINE CACHE':'')+' · read '+esc(S.connection.lastRead?new Date(S.connection.lastRead).toLocaleTimeString():'not verified'));
+  readout('<b>'+rr.length+' roles</b> · '+m.rows.length+' row-lines · '+ready+' ready · '+need+' need you · '+freshnessLabel_());
 
 }
 function render(){
@@ -719,6 +743,13 @@ function renderDetail(r){
   $('detail-tabs').querySelectorAll('button').forEach(function(b){b.onclick=function(){S.detailTab=b.getAttribute('data-dtab');renderDetail(r)}});
   if(S.detailTab==='overview')renderOverview(r);else if(S.detailTab==='interview')renderInterview(r);else if(S.detailTab==='timeline')renderTimeline(r);else $('d-body').innerHTML='<div class="detail-grid">'+compStrip(r)+'</div>';
 }
+function onDemandEvidenceCard_(r){
+  var v=S.load||{};if(!(v.evidence&&v.evidence.state==='FAILED')||!/^EVC1:\d+$/.test(r.payload.EVIDENCE_REF||'')||r.payload.ARCHIVE_STATE)return '';
+  var e=(S.rowEvidence||{})[r.PRIMARY_ID];
+  var body=!e?'<button id="row-evidence-load" type="button">Load narrative for this row</button>':e.loading?'Loading…':e.error?'<span class="bad">'+esc(e.error)+'</span>':'<div class="kv">'+Object.keys(e.fields||{}).map(function(k){return '<div>'+esc(k)+'</div><div>'+esc(e.fields[k])+'</div>'}).join('')+'</div>';
+  return '<div class="detail-card full"><h3>Narrative evidence · loaded on demand</h3><p class="tip">The evidence companion could not be loaded in bulk, so this row\'s narrative is fetched separately.</p>'+body+'</div>';
+}
+function loadRowEvidence_(r){S.rowEvidence=S.rowEvidence||{};S.rowEvidence[r.PRIMARY_ID]={loading:true};renderDetail(r);PipelineLoader.rowEvidence(gsGet,r.PRIMARY_ID).then(function(j){S.rowEvidence[r.PRIMARY_ID]=j&&j.ok?{fields:j.fields||{}}:{error:(j&&j.error)||'evidence unavailable'}}).catch(function(e){S.rowEvidence[r.PRIMARY_ID]={error:e.message}}).then(function(){if(S.focus===r.id)renderDetail(r)})}
 function renderOverview(r){
   var dups=duplicateCandidates(r),codes={TIM_EXPLICIT_DECLINE:1,PAY_BELOW_FLOOR:1,GEOGRAPHY_GATE_FAIL:1,FLEX_STRICT_NO:1,SCOPE_BELOW_TARGET:1,FIT_TOO_WEAK:1,DOMAIN_MISMATCH:1,LOCATION_NOT_ACCEPTABLE:1,NO_LONGER_AVAILABLE:1,MULTIPLE_RULE_FAILURES:1};S.rows.forEach(function(x){if(x.payload.DECLINE_REASON_CODE)codes[x.payload.DECLINE_REASON_CODE]=1});
   var h='<div class="detail-grid"><div class="detail-card full"><h3>Tim decision</h3><div class="edit-grid"><label>State</label><select id="edit-state"><option value="">No state change</option><option value="READY_TO_PURSUE">READY_TO_PURSUE</option><option value="APPLIED">APPLIED</option><option value="REJECTED_BY_EMPLOYER">Rejected by Employer</option><option value="MANUAL_RESEARCH">MANUAL_RESEARCH</option><option value="DECLINED_BY_TIM">DECLINED_BY_TIM</option><option value="CLOSED_DEAD">CLOSED_DEAD</option><option value="INVALID_DISCOVERY">INVALID_DISCOVERY</option><option value="DUPLICATE">DUPLICATE</option></select><label class="rejection-field" hidden>Rejection date</label><input class="rejection-field" hidden type="date" id="edit-event-date"><label class="rejection-field" hidden>Rejection evidence</label><input class="rejection-field" hidden type="text" id="edit-evidence" placeholder="Email sender / subject, Gmail ID, or employer notice"><label>Reason code</label><select id="edit-reason"><option value="">—</option>'+Object.keys(codes).sort().map(function(x){return '<option>'+esc(x)+'</option>'}).join('')+'</select><label>Duplicate of</label><input id="edit-dup" type="text" value="'+esc((r.payload.POSSIBLE_MATCHES||'').split(',')[0]||'')+'"><label>My note</label><textarea id="edit-note" placeholder="What I decided, why, or what an AI should do next…"></textarea></div><div class="row"><button id="save-decision" class="neon">Save decision</button><button id="undo-decision">Undo last Tim decision</button><button id="compare-role">Compare role</button><button id="pin-row" class="'+(S.pins[r.id]?'on':'')+'">'+(S.pins[r.id]?'★ Pinned':'☆ Pin')+'</button><span id="edit-status" class="tip"></span></div></div>';
@@ -729,9 +760,11 @@ function renderOverview(r){
   h+=researchCard_(r);
   var at=attentionFor_(r);h+='<div class="detail-card full"><h3>Attention signals · viewer only</h3><div class="kv">'+['Pay','Degree FLEX','Work content','Title level','Domain'].map(function(k,i){return '<div>'+k+'</div><div>'+(at.signals[i]===1?'FAVORABLE':at.signals[i]===-1?'CONFLICT':'UNKNOWN / NEEDS EVIDENCE')+'</div>'}).join('')+'</div><p class="tip">Pay: base midpoint ≥ $200k and recorded floor cleared, or explicit HIGH pay match. FLEX: YES. Work/domain: recorded HIGH/STRONG or score ≥80. Level: director/head/VP/chief/plant/general manager, or explicit HIGH level fit. SOFT FLEX, low-confidence measurements, and missing fields remain unknown. All five must be favorable, with no blocker or protected application state, for bright highlighting. This does not change the master or its rules.</p></div>';
   h+='<div class="detail-card full"><h3>AI context</h3><div class="sec scout"><h4>Scout</h4>'+esc(r.payload.SCOUT_NOTES||r.payload.DISCOVERY_SOURCE||'—')+'</div><div class="sec forge"><h4>Forge</h4>'+esc(r.payload.FORGE_STATUS||r.payload.BLOCKER||r.payload.SALARY_BASIS||'—')+'</div><div class="sec claude"><h4>Claude</h4>'+esc(r.payload.CLAUDE_NOTE||r.payload.ANALYSIS_NOTE||r.payload.FIT||'—')+'</div></div></div>';
+  h+=onDemandEvidenceCard_(r);
   h+='<div class="tip">Write status: '+esc(rulingState(r)?rulingState(r).s:'No pending decision')+' · J/K navigate; 1 pursue, 2 hold, 3 decline, 4 research. Shortcuts prepare a decision; Save submits it.</div>';
   $('d-body').innerHTML=h;
   $('compare-role').onclick=function(){toggleCompare(r.id);renderDetail(r)};
+  var rel=$('row-evidence-load');if(rel)rel.onclick=function(){loadRowEvidence_(r)};
   $('pin-row').onclick=function(){S.pins[r.id]=!S.pins[r.id];LS.set('pins',S.pins);render();renderDetail(r)};
   $('edit-state').onchange=function(){var rejected=this.value==='REJECTED_BY_EMPLOYER';$('d-body').querySelectorAll('.rejection-field').forEach(function(el){el.hidden=!rejected})};
   $('save-decision').onclick=function(){saveTimDecision(r)};
@@ -832,7 +865,9 @@ var attentionCache={};
 function attentionFor_(r){if(attentionCache[r.id])return attentionCache[r.id];var a=PipelineAttention.evaluate(r),ru=ruling(r);if(ru&&(['DECLINE','REJECTED_BY_EMPLOYER','APPLIED','INVALID_DISCOVERY','CLOSED_DEAD','DUPLICATE'].indexOf(ru.kind)>=0||ru.kind==='APPLY_NOW'&&ru.value==='NO')){a.strong=false;a.active=false}return attentionCache[r.id]=a}
 function hasMeasuredFit_(r){return PipelineEvidence.fit((r&&r.payload)||{}).value!=null}
 function hasResolvedFlex_(r){var p=(r&&r.payload)||{},cls=String(p.FLEX_CLASS||'').toUpperCase();return /^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(cls)||(!PipelineTrust.missing(p.FLEX)&&!/^(UNKNOWN|NOT_STATED|NOT STATED|TBD|—|-)$/i.test(String(p.FLEX).trim()))}
-function hasResolvedIdentity_(r){var p=(r&&r.payload)||{},company=String(r&&r.COMPANY||'').trim(),title=String(r&&r.TITLE||'').trim(),location=String(r&&r.LOCATION||'').trim(),pid=String(r&&r.PRIMARY_ID||'').trim(),req=String(r&&r.REQ||p.REQ_ID||'').trim(),url=p.COMPANY_SOURCE_URL||p.SOURCE_URL||p.INITIATING_URL||'';var explicitAmbiguity=/^(LOW|AMBIGUOUS|CONFLICT|HOLD)$/i.test(String(p.IDENTITY_CONFIDENCE||''))||!!p.POSSIBLE_MATCHES||!!p.IDENTITY_CONFLICT;return !!company&&!!title&&!!location&&!!pid&&!/^(UNKNOWN|-)$/i.test(pid)&&(!explicitAmbiguity)&&((req&&!/^(UNKNOWN|UNCAPTURED|-)$/i.test(req))||/^https?:\/\//i.test(url))}
+// A fixed REQ cell holding a sentinel (UNKNOWN, UNCAPTURED, -, blank) must not mask a usable payload REQ_ID; a usable fixed REQ still wins.
+function usableReq_(v){v=String(v==null?'':v).trim();return !!v&&!/^(UNKNOWN|UNCAPTURED|-)$/i.test(v)}
+function hasResolvedIdentity_(r){var p=(r&&r.payload)||{},company=String(r&&r.COMPANY||'').trim(),title=String(r&&r.TITLE||'').trim(),location=String(r&&r.LOCATION||'').trim(),pid=String(r&&r.PRIMARY_ID||'').trim(),req=usableReq_(r&&r.REQ)?String(r.REQ).trim():usableReq_(p.REQ_ID)?String(p.REQ_ID).trim():'',url=p.COMPANY_SOURCE_URL||p.SOURCE_URL||p.INITIATING_URL||'';var explicitAmbiguity=/^(LOW|AMBIGUOUS|CONFLICT|HOLD)$/i.test(String(p.IDENTITY_CONFIDENCE||''))||!!p.POSSIBLE_MATCHES||!!p.IDENTITY_CONFLICT;return !!company&&!!title&&!!location&&!!pid&&!/^(UNKNOWN|-)$/i.test(pid)&&(!explicitAmbiguity)&&(!!req||/^https?:\/\//i.test(url))}
 function attentionChart_(compact){var active=distinctRows_().filter(PRESETS.ACTIVE.fn),gaps=[{label:'Pay missing',color:'#c9aa77',fn:function(r){return r.compMid==null}},{label:'FLEX unresolved',color:'#91b8d1',fn:function(r){return !hasResolvedFlex_(r)}},{label:'Fit evidence missing',color:'#8b9fae',fn:function(r){return !hasMeasuredFit_(r)}},{label:'Identity unresolved',color:'#c28d64',fn:function(r){return !hasResolvedIdentity_(r)}}];return PipelineCharts.bars('Research gaps',gaps.map(function(g){var rows=active.filter(g.fn);return {label:g.label,value:rows.length,color:g.color,filter:chartFilter_(g.label,rows)}}),{compact:compact})}
 
 function applyChartFilter_(filter){mapView.returnView=null;mapView.overview=null;mapView.focus=null;S.mapMode='visible';LS.set('mapMode','visible');S.chartFilter=filter;S.preset='ALL';S.search='';S.filters={};S.focus=null;$('drawer').classList.remove('on');pushHash();renderPresets();switchTab('pipeline');$('gridwrap').scrollTop=0;animateMap_({zoom:1,x:480,y:255})}
@@ -1328,7 +1363,6 @@ function readHash(){try{if(location.hash.length>1){var o=JSON.parse(decodeURICom
 window.addEventListener('resize',function(){if(S.master)render()});
 loadBuildInfo_();loadWriterStatus_();
 S.tab='today';readHash();switchTab(S.tab);
-var cache=LS.get('cache',null);if(cache&&hasWriter()){apply(cache.text,cache.meta,true)}
 load();
 })();
 </script>
