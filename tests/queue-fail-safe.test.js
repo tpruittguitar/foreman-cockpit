@@ -241,6 +241,70 @@ test('monitor: long and abandoned claims, backlog, missing trigger, unverified w
   assert.deepEqual(by, { CLAIM_RUNNING_LONG: 'warn', CLAIM_ABANDONED: 'critical', QUEUE_HOLD: 'warn', QUEUE_BACKLOG: 'warn', TRIGGER_MISSING: 'critical', WRITE_UNVERIFIED: 'critical', HOLD_ABANDONED: 'warn', STATUS_PART_UNAVAILABLE: 'warn' });
 });
 
+test('monitor: recovered PARTIAL_HOLD stays in history but no longer raises an active warning', () => {
+  const now = Date.parse('2026-10-05T07:00:00Z');
+  const w = A.writerWarnings_({
+    queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 },
+    recentRuns: [
+      { file: 'OLD.json', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:30:00Z', recovered: true },
+      { file: 'LIVE.json', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:40:00Z', recovered: false }
+    ], errors: []
+  }, now);
+  assert.equal(w.length, 1);
+  assert.equal(w[0].code, 'PARTIAL_HOLD');
+  assert.match(w[0].message, /LIVE\.json/);
+});
+
+// The live GROK_RECON_20261005_0223ET shapes: request IDs sit under event.requestId / ruling.requestId.
+const upsert = rid => ({ action: 'upsert_application', event: { COMPANY: 'Co', STATE: 'APPLIED', requestId: rid } });
+const dupRuling = rid => ({ action: 'ruling', ruling: { primaryId: 'V2I-X', kind: 'DUPLICATE', requestId: rid } });
+const ORIGINAL = { action: 'batch', requests: [upsert('PWC'), upsert('EATON'), upsert('ORACLE'), dupRuling('BEEHIVE')] };
+const R2 = { action: 'batch', requests: [upsert('EATON-R2'), upsert('ORACLE'), dupRuling('BEEHIVE')] };
+// Live receipt index, 2026-10-05: the original EATON request was never written (lock timeout); it was re-sent as EATON-R2.
+const LIVE_STATES = { PWC: { s: 'COMPLETE' }, 'EATON-R2': { s: 'COMPLETE' }, ORACLE: { s: 'COMPLETE' }, BEEHIVE: { s: 'COMPLETE' } };
+
+test('recovery: a partial batch is recovered only when every one of its own request IDs is COMPLETE', () => {
+  assert.equal(A.partialHoldRecovered_(R2, LIVE_STATES), true);
+  assert.equal(A.partialHoldRecovered_(ORIGINAL, LIVE_STATES), false, 'EATON was completed under a different ID; the original is not proven recovered');
+  assert.equal(A.partialHoldRecovered_(ORIGINAL, Object.assign({ EATON: { s: 'COMPLETE' } }, LIVE_STATES)), true);
+  assert.equal(A.partialHoldRecovered_(R2, Object.assign({}, LIVE_STATES, { ORACLE: { s: 'FALSE_COMPLETE' } })), false);
+  assert.equal(A.partialHoldRecovered_({ action: 'batch', requests: [upsert('PWC'), { action: 'upsert_application', event: { COMPANY: 'No ID' } }] }, LIVE_STATES), false, 'a request without an ID cannot be proven applied');
+  assert.equal(A.partialHoldRecovered_({ action: 'batch', requests: [] }, LIVE_STATES), false);
+});
+
+test('monitor: writer_status reads the exact logged file by ID and fails closed when it cannot', () => {
+  const saved = { DriveApp: global.DriveApp, MimeType: global.MimeType, findOrCreate_: global.findOrCreate_, readIndex_: global.readIndex_ };
+  const file = (id, body) => ({ getId: () => id, getMimeType: () => 'application/json', getBlob: () => ({ getDataAsString: () => JSON.stringify(body) }) });
+  // Same file name for the original and a decoy: only the logged fileId decides which body is read.
+  const files = { 'ID-R2': file('ID-R2', R2), 'ID-ORIG': file('ID-ORIG', ORIGINAL) };
+  const log = [
+    { file: 'GROK.json', fileId: 'ID-R2', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:30:57Z' },
+    { file: 'GROK.json', fileId: 'ID-ORIG', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:28:43Z' },
+    { file: 'NOID.json', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:20:00Z' },
+    { file: 'GONE.json', fileId: 'ID-GONE', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:10:00Z' }
+  ].reverse().map(e => JSON.stringify(e)).join('\n');
+  try {
+    global.MimeType = { GOOGLE_DOCS: 'application/vnd.google-apps.document' };
+    global.DriveApp = { getFileById: id => files[id] || (() => { throw new Error('No item with the given ID could be found'); })() };
+    global.findOrCreate_ = () => ({ getBlob: () => ({ getDataAsString: () => log }) });
+    global.readIndex_ = () => ({ requests: LIVE_STATES, pending: [] });
+    const s = A.writerStatus_();
+    const runs = Object.fromEntries(s.recentRuns.map(r => [r.fileId || r.file, r]));
+    assert.equal(runs['ID-R2'].recovered, true);
+    assert.equal(runs['ID-ORIG'].recovered, false);
+    assert.equal(runs['NOID.json'].recovered, false);
+    assert.equal(runs['ID-GONE'].recovered, false);
+    assert.match(runs['ID-GONE'].recoveryError, /No item/);
+    assert.ok(!s.errors.some(e => /^recentRuns/.test(e)), 'one unreadable file does not take down recent runs');
+    assert.equal(s.recentRuns.length, 4, 'every PARTIAL_HOLD stays in history');
+    const w = A.writerWarnings_(Object.assign({}, s, { queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, errors: [] }), Date.parse('2026-10-05T07:00:00Z'));
+    assert.deepEqual(w.map(x => x.code), ['PARTIAL_HOLD', 'PARTIAL_HOLD', 'PARTIAL_HOLD']);
+    assert.ok(!w.some(x => /06:30:57/.test(x.message)), 'the recovered R2 hold raises no active warning');
+  } finally {
+    for (const k of Object.keys(saved)) { if (saved[k] === undefined) delete global[k]; else global[k] = saved[k]; }
+  }
+});
+
 test('monitor: an idle, healthy writer has no warnings', () => {
   assert.deepEqual(A.writerWarnings_({ freeze: null, queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, recentRuns: [{ file: 'X', terminalStatus: 'SUCCESS', finishedAt: '2026-10-05T03:59:00Z' }], errors: [] }, Date.parse('2026-10-05T04:00:00Z')), []);
 });
