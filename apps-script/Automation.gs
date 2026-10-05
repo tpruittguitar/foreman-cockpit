@@ -7,6 +7,8 @@
  * the HTTP endpoint uses (dispatchWrite_ in Code.gs: intake | ruling | upsert_application | batch), then moves the request to
  * WRITER_QUEUE/processed (ok) or WRITER_QUEUE/failed (not ok) with a RESULT__<name>.json beside it, and appends one line to
  * WRITER_QUEUE_LOG.jsonl beside the master. Every write keeps the writer's identity, dedupe, protected-state and readback rules.
+ * Each tick first verifies earlier writes from a fresh read (a write is never verified by its own execution); master writes
+ * return verification PENDING and become COMPLETE only then. At most one master write per tick: a fenced request stays queued.
  *
  * File format: plain text or Google Doc whose content is one JSON object, e.g.
  *   {"action":"intake","run":{"SCOUT_RUN_ID":"...","GROSS_FOUND":3},"records":[...]}
@@ -93,7 +95,9 @@ function isPendingQueueFile_(file, folderId, now) {
 
 /** Trigger handler (also callable via GET action=process_queue). Applies pending queue files oldest first, one claim at a time. */
 function processWriterQueue() {
-  var started = Date.now(), f = queueFolders_(), done = [], busy = false, handled = {};
+  var started = Date.now(), f = queueFolders_(), done = [], busy = false, handled = {}, deferred = null;
+  // Independent verification first: this tick is a new execution, so its fresh read shows what earlier writes really persisted.
+  var verification; try { verification = verifyNow_(); } catch (ve) { verification = { ok: false, error: String(ve && ve.message || ve), errorStack: errorStack_(ve) }; }
   while (Date.now() - started <= QUEUE_BUDGET_MS) {
     var claim = claimNextQueueFile_(f.queue, handled);
     if (claim.busy) { busy = true; break; }
@@ -107,9 +111,18 @@ function processWriterQueue() {
       if (!parsed.ok) result = { ok: false, error: parsed.error };
       else if (WRITE_ACTIONS.indexOf(parsed.body.action) < 0) result = { ok: false, error: 'unsupported action ' + parsed.body.action + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
       else { delete parsed.body.key; result = dispatchWrite_(parsed.body); }
-    } catch (e) { result = { ok: false, error: String(e && e.message || e) }; }
+    } catch (e) { result = { ok: false, error: String(e && e.message || e), errorStack: errorStack_(e), docAccess: docAccessSummary_() }; }
+    if (result && result.mode === 'WRITE_FENCE') {
+      // Not a failure: an earlier write is unverified, or this execution already wrote the master. Leave it queued.
+      file.setName(original);
+      deferred = { file: original, reason: result.error, pendingWrites: result.pendingWrites || [] };
+      break;
+    }
     var dest = result && result.ok ? f.processed : f.failed;
     entry.ok = !!(result && result.ok); entry.action = (result && result.mode) || ''; entry.finishedAt = new Date().toISOString(); entry.error = (result && result.error) || '';
+    if (result && result.verification) { entry.verification = result.verification; entry.writeId = result.writeId || ''; }
+    if (result && result.errorStack) entry.errorStack = result.errorStack;
+    if (result && result.docAccess && result.docAccess.status !== 'INITIAL_SUCCESS') entry.docAccess = result.docAccess;
     entry.totalMs = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
     if (result && result.timings) entry.writerTimings = result.timings;
     dest.createFile('RESULT__' + original.replace(/\.[A-Za-z]+$/, '') + '.json', JSON.stringify({ request_file: original, request_file_id: file.getId(), processed: entry, result: result }, null, 2), MimeType.PLAIN_TEXT);
@@ -118,7 +131,7 @@ function processWriterQueue() {
     appendQueueLog_(entry);
     done.push(entry);
   }
-  return { ok: true, processed: done.length, remaining: listPending_(f.queue).length, busy: busy, results: done };
+  return { ok: true, processed: done.length, remaining: listPending_(f.queue).length, busy: busy, deferred: deferred, verification: verification, results: done };
 }
 
 function readQueueFile_(file) {
