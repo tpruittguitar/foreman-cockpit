@@ -207,7 +207,7 @@ function applyRulingBatchToMaster_(requests) {
     var fence = writeFence_(snapshot);
     if (fence) { t.TOTAL_MS = Date.now() - started; fence.timings = t; fence.docAccess = docAccessSummary_(); return fence; }
 
-    var planStart = Date.now(), byPid = {}, duplicatePid = {}, seenBatchPid = {}, results = [], receipts = [], events = [], changed = [];
+    var planStart = Date.now(), byPid = {}, duplicatePid = {}, seenBatchPid = {}, results = [], receipts = [], events = [], changed = [], identityArchive = null;
     for (var p = 0; p < lines.length; p++) {
       if (!/^\d+ \| /.test(lines[p])) continue;
       var cells = lines[p].split(' | '), pid0 = cells.length > 1 ? cells[1].trim() : '';
@@ -238,6 +238,11 @@ function applyRulingBatchToMaster_(requests) {
       seenBatchPid[pid] = true;
       var li = byPid[pid], before = snapshot[li], mu = mutateRow(before, ruling, flexPolicy);
       if (!mu.ok) { results.push({ index: rix, ok: false, error: mu.error, primaryId: pid }); continue; }
+      if (String(ruling.kind || '').toUpperCase() === 'IDENTITY') {
+        if (!identityArchive) identityArchive = archiveRowsLive_();
+        var conflict = identityConflicts_(lines, li, mu.after, ruling, identityArchive);
+        if (conflict) { results.push({ index: rix, ok: false, mode: 'HOLD', error: conflict, primaryId: pid }); continue; }
+      }
       mu.after = externalizeEvidence_(evidenceRouting_(), before, mu.after, String(ruling.actor || 'TIM').toUpperCase() + ':' + requestId, new Date().toISOString());
       lines[li] = mu.after;
       changed.push({ index: rix, lineIndex: li, before: before, after: mu.after, mutation: mu, ruling: ruling });
@@ -1070,6 +1075,7 @@ function applyRulingToMaster_(ruling) {
     var flexPolicy = readFlexPolicy_();
     var res = mutateRow(before, ruling, flexPolicy);
     if (!res.ok) return fail_(res.error, ruling);
+    if (String(ruling.kind || '').toUpperCase() === 'IDENTITY') { var idConflict = identityConflicts_(snapshot, hits[0], res.after, ruling, archiveRowsLive_()); if (idConflict) return { ok: false, mode: 'HOLD', error: idConflict, primaryId: pid }; }
     var routing = evidenceRouting_();
     res.after = externalizeEvidence_(routing, before, res.after, String(ruling.actor || 'TIM').toUpperCase() + ':' + (ruling.requestId || 'no-id'), new Date().toISOString());
     var modCheck = masterModified_();
@@ -1281,6 +1287,71 @@ function buildPayload(lead, payload, order) {
 }
 function clean_(v) { return String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').replace(/; /g, ', ').replace(/ \| /g, ' / ').trim(); }
 /** Apply one Tim ruling to one master row line. */
+/* ================= governed identity correction (ruling kind IDENTITY) ================= */
+var IDENTITY_FIXED_KEYS = ['COMPANY', 'TITLE', 'REQ', 'LOCATION'];
+var IDENTITY_FIXED_INDEX = { COMPANY: 2, TITLE: 3, REQ: 7, LOCATION: 8 };
+var IDENTITY_PLACEHOLDER_RE = /^(UNKNOWN|UNCAPTURED|NOT_STATED|N\/A|NONE|TBD|-|CONFIDENTIAL)$/i;
+/**
+ * Pure: one identity correction on a parsed row, all or nothing.
+ * - ruling.identity {COMPANY?, TITLE?, REQ?, LOCATION?} rewrites the fixed columns; each prior value is kept as
+ *   IDENTITY_PRIOR_<KEY>; placeholders are refused.
+ * - ruling.evidence (text) and ruling.evidenceUrl (http/https) are required.
+ * - A payload copy of COMPANY/TITLE/LOCATION/REQ that differs from the fixed column is removed (kept as
+ *   IDENTITY_PRIOR_PAYLOAD_<KEY>), so the row can never carry two identities.
+ * - POSSIBLE_MATCHES is cleared only when ruling.reconciled names every listed PRIMARY_ID with a verdict DISTINCT: <why>
+ *   or DUPLICATE_RESOLVED: <why>; the list and verdicts are kept (IDENTITY_PRIOR_POSSIBLE_MATCHES, POSSIBLE_MATCHES_RECONCILED).
+ *   Whether the reconciled rows really allow that is checked against the master by identityConflicts_.
+ */
+function identityChange_(fixed, P, O, set, ruling) {
+  var changed = [], idn = ruling.identity || {}, rec = ruling.reconciled || {};
+  if (typeof idn !== 'object' || Array.isArray(idn)) return { ok: false, error: 'IDENTITY identity must be an object {COMPANY?, TITLE?, REQ?, LOCATION?}' };
+  var evidence = clean_(ruling.evidence || ''), evidenceUrl = String(ruling.evidenceUrl || '').trim();
+  if (evidence.length < 20) return { ok: false, error: 'IDENTITY requires evidence (what the source shows, at least 20 characters)' };
+  if (!/^https?:\/\/[^\s]+$/i.test(evidenceUrl)) return { ok: false, error: 'IDENTITY requires evidenceUrl (the http(s) page the evidence comes from)' };
+  var keys = Object.keys(idn);
+  for (var i = 0; i < keys.length; i++) {
+    var k = String(keys[i]).trim().toUpperCase();
+    if (IDENTITY_FIXED_KEYS.indexOf(k) < 0) return { ok: false, error: 'IDENTITY identity key ' + keys[i] + ' is not one of ' + IDENTITY_FIXED_KEYS.join(', ') };
+    var v = clean_(idn[keys[i]]);
+    if (!v || IDENTITY_PLACEHOLDER_RE.test(v)) return { ok: false, error: 'IDENTITY ' + k + ' must be a real value, not a placeholder (' + JSON.stringify(v) + ')' };
+    var at = IDENTITY_FIXED_INDEX[k];
+    if (fixed[at] !== v) { set('IDENTITY_PRIOR_' + k, fixed[at]); fixed[at] = v; changed.push(k); }
+  }
+  ['COMPANY', 'TITLE', 'LOCATION', 'REQ'].forEach(function (k) {
+    if (P[k] !== undefined && String(P[k]).trim() !== String(fixed[IDENTITY_FIXED_INDEX[k]]).trim()) {
+      set('IDENTITY_PRIOR_PAYLOAD_' + k, P[k]); delete P[k]; O.splice(O.indexOf(k), 1); changed.push('PAYLOAD_' + k + '_REMOVED');
+    }
+  });
+  var listed = String(P.POSSIBLE_MATCHES || '').split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+  var recKeys = Object.keys(rec);
+  for (var r = 0; r < recKeys.length; r++) if (!/^(DISTINCT|DUPLICATE_RESOLVED):\s*\S.{9,}/.test(String(rec[recKeys[r]] || ''))) return { ok: false, error: 'IDENTITY reconciled[' + recKeys[r] + '] must read "DISTINCT: <evidence>" or "DUPLICATE_RESOLVED: <evidence>"' };
+  if (listed.length) {
+    var missing = listed.filter(function (p) { return !rec[p]; });
+    if (missing.length) return { ok: false, error: 'IDENTITY cannot clear POSSIBLE_MATCHES: not reconciled ' + missing.join(', ') + ' (reconcile every listed row first)' };
+    set('IDENTITY_PRIOR_POSSIBLE_MATCHES', P.POSSIBLE_MATCHES);
+    set('POSSIBLE_MATCHES_RECONCILED', listed.map(function (p) { return p + ' ' + String(rec[p]).split(':')[0]; }).join(', '));
+    delete P.POSSIBLE_MATCHES; O.splice(O.indexOf('POSSIBLE_MATCHES'), 1); changed.push('POSSIBLE_MATCHES_CLEARED');
+  }
+  set('IDENTITY_EVIDENCE', evidence); set('IDENTITY_EVIDENCE_URL', evidenceUrl); changed.push('IDENTITY_EVIDENCE');
+  return { ok: true, changed: changed };
+}
+/**
+ * Pure: after an IDENTITY mutation, does the row's identity collide with another live or archived row that the ruling
+ * did not reconcile? Uses the intake matcher (matchExisting) on the corrected identity. Also checks that every
+ * DUPLICATE_RESOLVED reconciliation names a row that really is DUPLICATE. Returns '' or the refusal reason.
+ */
+function identityConflicts_(lines, lineIndex, after, ruling, archiveRows) {
+  var c = after.split(' | '), P = parsePayload(c.slice(FIXED_N).join(' | ')).payload, rec = ruling.reconciled || {}, self = c[1].trim();
+  var others = lines.filter(function (l, i) { return i !== lineIndex; }).concat(archiveRows || []);
+  var bucketOf = {}; others.forEach(function (l) { if (/^\d+ \| /.test(l)) { var x = l.split(' | '); if (x.length > 4) bucketOf[x[1].trim()] = x[4]; } });
+  var badDup = Object.keys(rec).filter(function (p) { return /^DUPLICATE_RESOLVED/.test(rec[p]) && bucketOf[p] !== 'DUPLICATE'; });
+  if (badDup.length) return 'DUPLICATE_RESOLVED requires the other row to be DUPLICATE already: ' + badDup.map(function (p) { return p + ' is ' + (bucketOf[p] || 'missing'); }).join(', ');
+  var usable = function (v) { v = String(v || '').trim(); return !!v && !IDENTITY_PLACEHOLDER_RE.test(v); };
+  var m = matchExisting({ COMPANY: c[2], TITLE: c[3], LOCATION: c[8], REQ_ID: usable(c[7]) ? c[7] : (P.REQ_ID || ''), SOURCE_URL: P.COMPANY_SOURCE_URL || P.SOURCE_URL || '' }, indexExisting(others));
+  if (m.kind === 'none') return '';
+  var hit = m.rows.map(function (r) { return r.id; }).filter(function (id) { return id !== self && !rec[id]; });
+  return hit.length ? 'IDENTITY_COLLISION: corrected identity matches ' + hit.join(', ') + ' by ' + m.by + ' (reconcile it as DISTINCT or resolve the duplicate first)' : '';
+}
 function mutateRow(line, ruling, flexPolicy) {
   var cells = line.split(' | ');
   if (cells.length < FIXED_N + 1) return { ok: false, error: 'row has fewer than 10 cells' };
@@ -1335,6 +1406,10 @@ function mutateRow(line, ruling, flexPolicy) {
     var deniedKeys = Object.keys(ruling.fields).filter(function (k) { return isEnrichDenied_(k); });
     if (deniedKeys.length) return { ok: false, error: 'ENRICH cannot set state, application or Tim ruling fields: ' + deniedKeys.join(', ') + ' (use the matching ruling kind or upsert_application)' };
     if (note) { set('ENRICH_NOTE', note); changes.push('ENRICH_NOTE'); }
+  } else if (kind === 'IDENTITY') {
+    if ((g = guardProtected('correct the identity of'))) return g;
+    var idc = identityChange_(fixed, P, O, set, ruling); if (!idc.ok) return idc;
+    changes = changes.concat(idc.changed);
   } else if (kind === 'MANUAL_RESEARCH') {
     if ((g = guardProtected('send to research'))) return g;
     fixed[4] = 'MANUAL_RESEARCH'; fixed[5] = 'RESOLVED/NEEDS_RESOLUTION';
@@ -1364,13 +1439,14 @@ function mutateRow(line, ruling, flexPolicy) {
   var source = (actor || 'TIM_EXPLORER') + ':' + (ruling.requestId || 'no-id');
   // ENRICH is data-only: keep the row's state provenance exactly as it was (absent stays absent) and record the enrichment separately.
   if (kind === 'ENRICH') { set('ENRICH_SOURCE', source); set('ENRICH_UPDATED_AT', ts); }
+  else if (kind === 'IDENTITY') { set('IDENTITY_SOURCE', source); set('IDENTITY_UPDATED_AT', ts); }
   else { set('STATE_SOURCE', source); set('STATE_UPDATED_AT', ts); }
   fixed[6] = tags.length ? tags.filter(function (t, i) { return tags.indexOf(t) === i; }).join('; ') : '-';
   var after = fixed.join(' | ') + ' | ' + buildPayload(pp.lead, P, O);
   return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7] };
 }
 /** Payload keys a write may never set directly (writer-owned) and intake keys whose prior value is kept as INTAKE_<KEY> when changed. */
-var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT'];
+var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT', 'IDENTITY_SOURCE', 'IDENTITY_UPDATED_AT'];
 /** Keys an ENRICH may never set: bucket/disposition reasons, application/rejection state, and anything Tim-ruled (TIM_*). Those change only through ruling kinds or upsert_application. */
 var ENRICH_DENY = ['DECLINE_REASON_CODE', 'DECLINE_REASON_CODE_PRIOR', 'DECLINE_REASON_TEXT', 'REOPEN_TRIGGER', 'DUP_OF', 'INVALID_REASON', 'RESEARCH_REQUEST', 'POSTING_STATE',
   'APP_DATE', 'APP_STATUS_EVIDENCE', 'APPLICATION_STATUS', 'APPLICATION_RECEIPT_GMAIL_ID', 'REJECTION_DATE', 'REJECTION_EVIDENCE', 'STATE_SEMANTICS', 'ANTI_RESURRECTION', 'UPSERT_KEY'];
@@ -1387,6 +1463,7 @@ function applyFields_(fields, P, O, set, flexPolicy) {
     var k = String(keys[i]).trim().toUpperCase();
     if (!/^[A-Z][A-Z0-9_]{1,60}$/.test(k)) return { ok: false, error: 'bad field name ' + keys[i] };
     if (FIELD_DENY.indexOf(k) >= 0) return { ok: false, error: 'field ' + k + ' is writer-owned and cannot be set' };
+    if (IDENTITY_FIXED_KEYS.indexOf(k) >= 0 || k === 'POSSIBLE_MATCHES') return { ok: false, error: 'field ' + k + ' cannot be set through fields: identity columns and POSSIBLE_MATCHES change only through kind IDENTITY (fixed columns + evidence + reconciliation), so a payload copy can never contradict the row' };
     var v = fields[keys[i]]; if (v === undefined || v === null) continue;
     v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v)).slice(0, 1500);
     if (v === '') continue;
@@ -2027,4 +2104,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
