@@ -71,8 +71,17 @@ The live writer also exposes `data_discovery` (durable requests to research miss
 | `APPLIED`, with `eventDate` and `evidence` | Moves the row to APPLIED. |
 | `REJECTED_BY_EMPLOYER`, with `eventDate` and `evidence` | Moves the row to REJECTED_BY_EMPLOYER. `evidence` is required. |
 | `NOTE`, with `note` | Adds a TIM_NOTE. |
+| `IDENTITY`, with `identity`, `evidence`, `evidenceUrl` (and `reconciled` when the row has POSSIBLE_MATCHES) | Corrects the row's identity. The bucket, disposition and Tim fields do not change. Details below. |
 
-`fields` may be added to any kind as `{KEY: value}`. Keys are upper-case. `STATE_SOURCE`, `STATE_UPDATED_AT`, `PRIMARY_ID`, `BUCKET` and `DISPOSITION` are writer-owned and are refused. Empty values are ignored, so nothing is deleted. If you change an intake key such as `SOURCE_URL`, the old value is kept as `INTAKE_SOURCE_URL`.
+**`IDENTITY` in detail:**
+- `identity` `{COMPANY?, TITLE?, REQ?, LOCATION?}` rewrites those fixed columns together, all or nothing. Each prior value is kept as `IDENTITY_PRIOR_<KEY>`, and placeholders (`UNKNOWN`, `NOT_STATED`, `-`, `Confidential` and similar) are refused.
+- `evidence` (at least 20 characters, saying what the source shows) and `evidenceUrl` (the http(s) page it comes from) are required.
+- A payload copy of COMPANY/TITLE/LOCATION/REQ that differs from the corrected column is removed and kept as `IDENTITY_PRIOR_PAYLOAD_<KEY>`.
+- `POSSIBLE_MATCHES` is cleared only when `reconciled` names **every** listed row as `"DISTINCT: <evidence>"` or `"DUPLICATE_RESOLVED: <evidence>"`. `DUPLICATE_RESOLVED` is accepted only if that row is already DUPLICATE. The list and the verdicts are kept.
+- The corrected identity goes through the intake duplicate matcher against every other live and archived row. An unreconciled match is refused as `HOLD` (`IDENTITY_COLLISION`).
+- Provenance is recorded as `IDENTITY_SOURCE` and `IDENTITY_UPDATED_AT`.
+
+`fields` may be added to any kind as `{KEY: value}`. `COMPANY`, `TITLE`, `LOCATION`, `REQ` and `POSSIBLE_MATCHES` are refused in `fields` for every kind: they change only through `IDENTITY`, so a payload copy can never contradict the row. Keys are upper-case. `STATE_SOURCE`, `STATE_UPDATED_AT`, `PRIMARY_ID`, `BUCKET` and `DISPOSITION` are writer-owned and are refused. Empty values are ignored, so nothing is deleted. If you change an intake key such as `SOURCE_URL`, the old value is kept as `INTAKE_SOURCE_URL`.
 
 `actor` sets the `STATE_SOURCE=<ACTOR>:<requestId>` stamp. Use `FORGE`, `CLAUDE` or `GROK`. When `actor` is omitted, the stamp is `TIM_EXPLORER`.
 
