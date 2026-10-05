@@ -2,7 +2,20 @@
 (function(root){'use strict';
 var Evidence=typeof module==='object'&&module.exports?require('./pipeline-evidence'):root.PipelineEvidence;
 function missing(v){return !v||/^(UNKNOWN|NOT_STATED|NOT STATED|TBD|—|-)$/i.test(String(v).trim())}
-function salary(p){p=p||{};var ev=Evidence&&Evidence.salary?Evidence.salary(p):{mid:null,source:''};if(ev.mid==null)return 'UNKNOWN';if(!missing(p.SALARY_BASE_POSTED)||!missing(p.PAY_POSTED)||(ev.source==='GROK_SALARY'&&/\bPOSTED\b/i.test(p.GROK_SALARY)&&!/NOT POSTED|ESTIMAT/i.test(p.GROK_SALARY))||ev.source==='SALARY_POSTED')return /^VERIFIED$/i.test(p.SALARY_CONF||'')?'VERIFIED':'POSTED · UNVERIFIED';return 'ESTIMATED'+(p.SALARY_CONF?' · '+String(p.SALARY_CONF).replace(/VERIFIED/gi,'CONFIDENCE UNCONFIRMED'):'')}
+// Tim's ruling, 2026-10-05: salary posted in a job description is verified, whoever hosted the posting (employer, recruiter
+// or aggregator copy). A posted value is recognised from the posted fields, or from an explicit EMPLOYER_POSTED basis / POSTED label (even when the figure sits in an estimate field).
+// Fail closed: conflicting evidence (a posted value on a row also marked as an estimate, or a 'posted' field whose own
+// text says estimate / not posted / claimed, e.g. 'Ladders estimate') or recorded doubt in SALARY_CONF
+// shows POSTED · UNVERIFIED unless SALARY_CONF is explicitly VERIFIED, and an estimate with no posted value stays ESTIMATED.
+function salary(p){
+  p=p||{};var ev=Evidence&&Evidence.salary?Evidence.salary(p):{mid:null,source:''};if(ev.mid==null)return 'UNKNOWN';
+  var basis=String(p.SALARY_BASIS||''),label=String(p.SALARY_LABEL||'').trim(),estimateMarked=/ESTIMAT|COMPARABLE/i.test(basis)||/ESTIMAT/i.test(label)||/ESTIMAT|NOT[ _]?POSTED|CLAIMED/i.test([p.SALARY_BASE_POSTED,p.PAY_POSTED,p.SALARY_POSTED].join(' ')),doubt=/UNVERIFIED|LOW|DISPUT|CONFLICT/i.test(p.SALARY_CONF||'');
+  var postedValue=!missing(p.SALARY_BASE_POSTED)||!missing(p.PAY_POSTED)||ev.source==='SALARY_POSTED'||(ev.source==='GROK_SALARY'&&/\bPOSTED\b/i.test(p.GROK_SALARY)&&!/NOT POSTED|ESTIMAT/i.test(p.GROK_SALARY));
+  var postedMarker=/^EMPLOYER_POSTED/i.test(basis)||/^POSTED$/i.test(label);
+  if(postedValue)return /^VERIFIED$/i.test(p.SALARY_CONF||'')||!(estimateMarked||doubt)?'VERIFIED':'POSTED · UNVERIFIED';
+  if(postedMarker&&!estimateMarked)return doubt?'POSTED · UNVERIFIED':'VERIFIED';
+  return 'ESTIMATED'+(p.SALARY_CONF?' · '+String(p.SALARY_CONF).replace(/VERIFIED/gi,'CONFIDENCE UNCONFIRMED'):'');
+}
 function flex(p){
   p=p||{};var cls=String(p.FLEX_CLASS||'').toUpperCase(),classified=/^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(cls);
   if(/ESTIMAT/i.test(p.FLEX_BASIS||''))return 'ESTIMATED';
