@@ -272,36 +272,96 @@ test('recovery: a partial batch is recovered only when every one of its own requ
   assert.equal(A.partialHoldRecovered_({ action: 'batch', requests: [] }, LIVE_STATES), false);
 });
 
-test('monitor: writer_status reads the exact logged file by ID and fails closed when it cannot', () => {
+// Run writerStatus_ against a fake queue log, fake Drive files and the live receipt states; restores globals afterwards.
+const ago = min => new Date(Date.now() - min * 60000).toISOString();
+const queueFile = (id, body) => ({ getId: () => id, getMimeType: () => 'application/json', getBlob: () => ({ getDataAsString: () => JSON.stringify(body) }) });
+function writerStatusWith(logEntries, files) {
   const saved = { DriveApp: global.DriveApp, MimeType: global.MimeType, findOrCreate_: global.findOrCreate_, readIndex_: global.readIndex_ };
-  const file = (id, body) => ({ getId: () => id, getMimeType: () => 'application/json', getBlob: () => ({ getDataAsString: () => JSON.stringify(body) }) });
-  // Same file name for the original and a decoy: only the logged fileId decides which body is read.
-  const files = { 'ID-R2': file('ID-R2', R2), 'ID-ORIG': file('ID-ORIG', ORIGINAL) };
-  const log = [
-    { file: 'GROK.json', fileId: 'ID-R2', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:30:57Z' },
-    { file: 'GROK.json', fileId: 'ID-ORIG', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:28:43Z' },
-    { file: 'NOID.json', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:20:00Z' },
-    { file: 'GONE.json', fileId: 'ID-GONE', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:10:00Z' }
-  ].reverse().map(e => JSON.stringify(e)).join('\n');
   try {
     global.MimeType = { GOOGLE_DOCS: 'application/vnd.google-apps.document' };
     global.DriveApp = { getFileById: id => files[id] || (() => { throw new Error('No item with the given ID could be found'); })() };
-    global.findOrCreate_ = () => ({ getBlob: () => ({ getDataAsString: () => log }) });
+    global.findOrCreate_ = () => ({ getBlob: () => ({ getDataAsString: () => logEntries.map(e => JSON.stringify(e)).join('\n') }) });
     global.readIndex_ = () => ({ requests: LIVE_STATES, pending: [] });
-    const s = A.writerStatus_();
-    const runs = Object.fromEntries(s.recentRuns.map(r => [r.fileId || r.file, r]));
-    assert.equal(runs['ID-R2'].recovered, true);
-    assert.equal(runs['ID-ORIG'].recovered, false);
-    assert.equal(runs['NOID.json'].recovered, false);
-    assert.equal(runs['ID-GONE'].recovered, false);
-    assert.match(runs['ID-GONE'].recoveryError, /No item/);
-    assert.ok(!s.errors.some(e => /^recentRuns/.test(e)), 'one unreadable file does not take down recent runs');
-    assert.equal(s.recentRuns.length, 4, 'every PARTIAL_HOLD stays in history');
-    const w = A.writerWarnings_(Object.assign({}, s, { queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, errors: [] }), Date.parse('2026-10-05T07:00:00Z'));
-    assert.deepEqual(w.map(x => x.code), ['PARTIAL_HOLD', 'PARTIAL_HOLD', 'PARTIAL_HOLD']);
-    assert.ok(!w.some(x => /06:30:57/.test(x.message)), 'the recovered R2 hold raises no active warning');
+    return A.writerStatus_();
   } finally {
     for (const k of Object.keys(saved)) { if (saved[k] === undefined) delete global[k]; else global[k] = saved[k]; }
+  }
+}
+const healthy = s => Object.assign({}, s, { queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, errors: [] });
+const successes = (n, fromMin) => Array.from({ length: n }, (_, i) => ({ file: 'OK_' + i + '.json', fileId: 'OK' + i, ok: true, terminalStatus: 'SUCCESS', finishedAt: ago(fromMin - i) }));
+
+test('monitor: writer_status reads the exact logged file by ID and fails closed when it cannot', () => {
+  // Same file name for the original and a decoy: only the logged fileId decides which body is read.
+  const files = { 'ID-R2': queueFile('ID-R2', R2), 'ID-ORIG': queueFile('ID-ORIG', ORIGINAL) };
+  const r2At = ago(30);
+  const s = writerStatusWith([
+    { file: 'GONE.json', fileId: 'ID-GONE', terminalStatus: 'PARTIAL_HOLD', finishedAt: ago(50) },
+    { file: 'NOID.json', terminalStatus: 'PARTIAL_HOLD', finishedAt: ago(40) },
+    { file: 'GROK.json', fileId: 'ID-ORIG', terminalStatus: 'PARTIAL_HOLD', finishedAt: ago(32) },
+    { file: 'GROK.json', fileId: 'ID-R2', terminalStatus: 'PARTIAL_HOLD', finishedAt: r2At }
+  ], files);
+  const runs = Object.fromEntries(s.recentRuns.map(r => [r.fileId || r.file, r]));
+  assert.equal(runs['ID-R2'].recovered, true);
+  assert.equal(runs['ID-ORIG'].recovered, false);
+  assert.equal(runs['NOID.json'].recovered, false);
+  assert.equal(runs['ID-GONE'].recovered, false);
+  assert.match(runs['ID-GONE'].recoveryError, /No item/);
+  assert.ok(!s.errors.some(e => /^recentRuns/.test(e)), 'one unreadable file does not take down recent runs');
+  assert.equal(s.recentRuns.length, 4, 'every PARTIAL_HOLD stays in history');
+  const w = A.writerWarnings_(healthy(s), Date.now());
+  assert.deepEqual(w.map(x => x.code), ['PARTIAL_HOLD', 'PARTIAL_HOLD', 'PARTIAL_HOLD']);
+  assert.ok(!w.some(x => x.message.includes(r2At)), 'the recovered R2 hold raises no active warning');
+});
+
+test('monitor: an unresolved PARTIAL_HOLD keeps warning behind more than eight newer runs until its 24 hours expire', () => {
+  const files = { 'ID-ORIG': queueFile('ID-ORIG', ORIGINAL) };
+  const holdAt = ago(23 * 60);
+  const s = writerStatusWith([{ file: 'GROK.json', fileId: 'ID-ORIG', terminalStatus: 'PARTIAL_HOLD', finishedAt: holdAt }].concat(successes(12, 600)), files);
+  assert.ok(!s.recentRuns.some(r => r.terminalStatus === 'PARTIAL_HOLD'), 'the hold is older than the last eight runs');
+  assert.equal(s.recentHolds.length, 1);
+  assert.equal(s.recentHolds[0].recovered, false, 'strict rule: EATON-R2 does not satisfy EATON');
+  const w = A.writerWarnings_(healthy(s), Date.now());
+  assert.deepEqual(w.map(x => x.code), ['PARTIAL_HOLD']);
+  assert.ok(w[0].message.includes(holdAt));
+  // Past 24 hours the same hold ages out of the window: no warning, nothing deleted from the log.
+  const old = writerStatusWith([{ file: 'GROK.json', fileId: 'ID-ORIG', terminalStatus: 'PARTIAL_HOLD', finishedAt: ago(24 * 60 + 1) }].concat(successes(12, 600)), files);
+  assert.equal(old.recentHolds.length, 0);
+  assert.deepEqual(A.writerWarnings_(healthy(old), Date.now()), []);
+});
+
+test('monitor: a recovered PARTIAL_HOLD more than eight runs back stays in history without an active warning', () => {
+  const files = { 'ID-R2': queueFile('ID-R2', R2) };
+  const s = writerStatusWith([{ file: 'GROK_R2.json', fileId: 'ID-R2', terminalStatus: 'PARTIAL_HOLD', finishedAt: ago(120) }].concat(successes(10, 100)), files);
+  assert.equal(s.recentHolds.length, 1);
+  assert.equal(s.recentHolds[0].recovered, true);
+  assert.deepEqual(A.writerWarnings_(healthy(s), Date.now()), []);
+});
+
+test('monitor: HOLD_ABANDONED and HOLD_UNMOVED behind newer runs still warn; recovery applies only to PARTIAL_HOLD', () => {
+  const s = writerStatusWith([
+    { file: 'A.json', fileId: 'ID-A', terminalStatus: 'HOLD_ABANDONED', finishedAt: ago(300) },
+    { file: 'U.json', fileId: 'ID-U', terminalStatus: 'HOLD_UNMOVED', finishedAt: ago(290) }
+  ].concat(successes(9, 200)), { 'ID-A': queueFile('ID-A', R2), 'ID-U': queueFile('ID-U', R2) });
+  assert.deepEqual(A.writerWarnings_(healthy(s), Date.now()).map(x => x.code).sort(), ['HOLD_ABANDONED', 'HOLD_UNMOVED']);
+});
+
+test('monitor: when the receipt index cannot be read, every recent hold still warns', () => {
+  const saved = global.readIndex_;
+  const files = { 'ID-R2': queueFile('ID-R2', R2) };
+  const log = [{ file: 'GROK_R2.json', fileId: 'ID-R2', terminalStatus: 'PARTIAL_HOLD', finishedAt: ago(120) }].concat(successes(9, 100));
+  const savedG = { DriveApp: global.DriveApp, MimeType: global.MimeType, findOrCreate_: global.findOrCreate_ };
+  try {
+    global.MimeType = { GOOGLE_DOCS: 'x' };
+    global.DriveApp = { getFileById: id => files[id] };
+    global.findOrCreate_ = () => ({ getBlob: () => ({ getDataAsString: () => log.map(e => JSON.stringify(e)).join('\n') }) });
+    global.readIndex_ = () => { throw new Error('index unavailable'); };
+    const s = A.writerStatus_();
+    const codes = A.writerWarnings_(Object.assign({}, s, { queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 } }), Date.now()).map(x => x.code);
+    assert.ok(codes.includes('PARTIAL_HOLD'), 'an unproven recovery never hides the hold');
+    assert.ok(codes.includes('STATUS_PART_UNAVAILABLE'));
+  } finally {
+    global.readIndex_ = saved; for (const k of Object.keys(savedG)) { if (savedG[k] === undefined) delete global[k]; else global[k] = savedG[k]; }
+    if (saved === undefined) delete global.readIndex_;
   }
 });
 
