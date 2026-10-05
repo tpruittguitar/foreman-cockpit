@@ -3,6 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script>
+/* Layout on phones: the phone layout by default; the desktop layout (1280px wide, pinch to zoom) when chosen with the
+   header toggle, or when Safari's "Request Desktop Website" is on (it reports a Mac on a phone-sized touch screen). */
+(function(){try{var d=document.documentElement,touch=navigator.maxTouchPoints>0,phone=touch&&Math.min(screen.width,screen.height)<=500,pref='';
+  try{pref=localStorage.getItem('px.layout')||''}catch(e){}
+  if(!phone)return;d.classList.add('touch-phone');
+  if(pref==='desktop'||(pref!=='mobile'&&/Macintosh/.test(navigator.userAgent))){d.classList.add('force-desktop');document.querySelector('meta[name=viewport]').setAttribute('content','width=1280,viewport-fit=cover')}
+}catch(e){}})();
+</script>
 <title>Pipeline Explorer</title>
 <style>
 :root{--bg:#000;--panel:#0a0a0a;--panel2:#111;--line:#232323;--line2:#343434;--text:#e6e6e6;--dim:#9a9a9a;--faint:#5c5c5c;--white:#fff;--ng:#a9d77d;--nc:#00e5ff;--nm:#ff2d75;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
@@ -198,47 +207,28 @@ tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-targ
 @media(max-width:760px){.today-wrap{padding:10px}.today-actions{grid-template-columns:1fr 1fr;gap:5px}.today-actions button{padding:12px}.today-grid{grid-template-columns:1fr}.compare-dialog{padding:8px}.compare-dialog button{min-height:36px}}
 .score-layout{display:grid;grid-template-columns:minmax(360px,42%) minmax(0,58%);gap:14px;padding:14px}.score-layout section{min-width:0}.score-layout h3{font:12px var(--mono);color:#61d9c4;margin:0 0 8px}.score-map{position:relative;background:#050805;border:1px solid #344139;min-height:220px;margin:8px 0 8px;overflow:hidden}.score-map svg{display:block;width:100%;height:auto}.score-map [data-heat-name]{cursor:crosshair}.score-heat-label{position:absolute;z-index:3;pointer-events:none;background:#030703f5;border:1px solid #c2ccc2;box-shadow:0 0 10px #000;color:#e2ebe2;padding:4px 7px;font:11.3px/1.2 var(--mono);white-space:nowrap}.score-heat-label strong{display:block;font-weight:600}.score-heat-label span{display:block;color:#aebca5;font-size:10.8px;margin-top:2px}.score-points{width:100%;border-collapse:collapse;font:11.3px var(--mono)}.score-points th,.score-points td{padding:4px;border:1px solid #28332d;text-align:left}.score-points input{width:100%;min-width:0;box-sizing:border-box;background:#070a08;color:#dce5df;border:1px solid #344139}.score-points input[type=checkbox]{width:auto;background:transparent}.score-points button{padding:2px 6px}.score-heat-legend{display:flex;align-items:center;gap:8px;margin:0 0 12px;color:#aab7ad;font:11.3px var(--mono)}.score-heat-gradient{height:8px;flex:1;min-width:120px;border:1px solid #354139;background:linear-gradient(90deg,#c9362b 0%,#f28e3d 25%,#f6d66a 50%,#8fcf63 75%,#20a05a 100%)}.score-layout textarea{font:11.7px var(--mono);box-sizing:border-box;background:#070a08;color:#dce5df;border:1px solid #344139;padding:7px}@media(max-width:900px){.score-layout{grid-template-columns:1fr}}@media(max-width:760px){.score-layout{padding:8px;gap:8px}.score-points{font-size:10.8px}.score-points th,.score-points td{padding:3px}}
 #view-scoring #score-keywords,#view-scoring #score-keywords + .tip,#view-scoring .score-layout section h3:nth-of-type(2){display:none}.ats-profile{max-width:900px}.ats-profile textarea{width:100%;min-height:260px;resize:vertical;font:12px/1.5 var(--mono);background:#070a08;color:#dce5df;border:1px solid #344139;padding:10px}
-/* Mobile map: full-width, useful touch target; desktop unchanged. */
+/* Phones and touch screens only; desktop with a mouse is unchanged. */
+.map-expand{display:none}
+@media(pointer:coarse){.job-map{touch-action:none}}
+@media(pointer:coarse) and (max-width:980px){input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px!important}}
 @media(max-width:760px), (pointer:coarse) and (max-width:980px){
-  #view-pipeline.on{
-    display:flex;
-    flex-direction:column;
-    overflow:auto;
-    min-height:0
-  }
-  #dash{
-    flex:0 0 auto;
-    grid-template-rows:auto minmax(360px,55dvh) auto auto;
-    min-height:0;
-    height:auto;
-    max-height:none
-  }
-  #job-map-card{
-    grid-column:1/-1!important;
-    grid-row:2!important;
-    min-height:360px;
-    height:55dvh
-  }
-  .dash-card.w{grid-column:1/-1!important}
-  .dash-card.w:nth-last-child(2){grid-row:3!important}
-  .dash-card.w:last-child{grid-row:4!important}
-  #worksplit{
-    flex:0 0 auto;
-    height:75dvh!important;
-    min-height:320px
-  }
-  .map-head .map-mode{display:flex}
-  .map-head .tip{display:block}
-  .job-map{inset:38px 2px 67px}
+  .pipeline-tools{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .pipeline-tools::-webkit-scrollbar{display:none}
+  .pipeline-tools>*,.pipeline-tools .bulkbar{flex:none;flex-wrap:nowrap}
+  #search{flex:1 0 150px}
+  .map-expand{display:inline-block}
+  body:not(.map-full) #job-map-card .map-head .map-mode,body:not(.map-full) #job-map-card .map-actions [data-mapaction=recenter],body:not(.map-full) #job-map-card .map-actions [data-mapaction=reset]{display:none}
 }
-
-@media(max-width:760px) and (max-height:520px),
-(pointer:coarse) and (max-width:980px) and (max-height:520px){
-  #job-map-card{min-height:300px;height:52dvh}
-  #dash{grid-template-rows:auto minmax(300px,52dvh) auto auto}
-  .map-head .map-mode{display:flex}
-  .map-head .tip{display:none}
-}
+body.map-full #job-map-card{position:fixed!important;inset:0!important;z-index:80;height:auto!important;min-height:0!important;max-height:none!important;margin:0;border:0;background:#050505}
+body.map-full #job-map-card .map-head{top:calc(6px + env(safe-area-inset-top))}
+body.map-full #job-map-card .map-head .tip{display:block}
+body.map-full #job-map-card .map-mode{display:flex}
+body.map-full #job-map-card .job-map{inset:calc(48px + env(safe-area-inset-top)) 4px calc(78px + env(safe-area-inset-bottom))!important}
+body.map-full #job-map-card .map-actions{right:6px;bottom:calc(42px + env(safe-area-inset-bottom))}
+body.map-full #job-map-card .map-zoom{right:6px;bottom:calc(6px + env(safe-area-inset-bottom))}
+body.map-full #job-map-card .map-legend{display:flex;left:6px;bottom:calc(10px + env(safe-area-inset-bottom))}
+#layout-toggle[hidden]{display:none}
+@media(max-width:760px) and (max-height:520px), (pointer:coarse) and (max-width:980px) and (max-height:520px){#layout-toggle{font-size:0;padding:0;min-width:34px}#layout-toggle:after{content:'\1F5A5';font-size:15px}.force-desktop #layout-toggle:after{content:'\1F4F1'}.brand{letter-spacing:1px}}
 </style>
 </head>
 <body>
@@ -252,8 +242,13 @@ tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-targ
     <button data-tab="today">Today</button><button data-tab="pipeline" class="on">Pipeline</button><button data-tab="intake">Manual Intake</button><button data-tab="companies">Target Companies</button><button data-tab="reports">Reports</button><button data-tab="quality">Scout Analysis</button><button data-tab="rules">Rules</button><button data-tab="documents">Job Documents</button><button data-tab="columns">Columns</button><button data-tab="scoring">Scoring</button>
   </nav>
   <button id="compare-open">Compare · 0/3</button><button id="density-toggle">Compact</button><button id="refresh" class="neon">Refresh</button>
-  <button id="settings" title="Writer setup">⚙</button>
+  <button id="settings" title="Writer setup">⚙</button><button id="layout-toggle" hidden title="Switch between the phone and desktop layouts">Desktop</button>
 </header>
+<script>
+(function(){var d=document.documentElement,b=document.getElementById('layout-toggle');if(!b||!d.classList.contains('touch-phone'))return;
+  b.hidden=false;b.textContent=d.classList.contains('force-desktop')?'Mobile':'Desktop';b.setAttribute('aria-label',d.classList.contains('force-desktop')?'Switch to the phone layout':'Switch to the desktop layout');
+  b.onclick=function(){try{localStorage.setItem('px.layout',d.classList.contains('force-desktop')?'mobile':'desktop')}catch(e){}location.reload()}})();
+</script>
 <div id="load-alert" role="alert" aria-live="assertive"></div>
 <div id="writer-alert" role="alert"></div>
 <div class="bar" id="presets"></div>
@@ -881,7 +876,7 @@ function renderDashboard(){
   var dr=distinctRows_(),by={};dr.forEach(function(r){by[r.BUCKET]=(by[r.BUCKET]||0)+1});var applied=by.APPLIED||0,ready=by.READY_TO_PURSUE||0,intake=(by.SCOUT_INTAKE||0)+(by.DISCOVERY_LEAD||0),manual=(by.MANUAL_RESEARCH||0)+(by.BLOCKED||0)+(by.TIM_DECISION_REQUIRED||0),total=dr.length;
   function card(t,v,sub,span){return '<div class="dash-card '+(span||'k')+'"><h4>'+t+'</h4><b>'+v+'</b><div class="tip">'+sub+'</div></div>'}
   var h=card('Master',total,'distinct roles')+card('Applied',applied,'protected applicant state')+card('Ready',ready,'pursuit candidates')+card('Awaiting AI',intake,'Scout intake + discovery leads');
-  h+='<div class="dash-card" id="job-map-card"><div class="map-head"><div class="map-title"><h4>Job Location Map</h4><div class="tip" id="map-sub">Select a job to view location</div></div><div class="map-mode"><button data-mapmode="selected" class="'+(S.mapMode==='selected'?'on':'')+'">Selected</button><button data-mapmode="visible" class="'+(S.mapMode==='visible'?'on':'')+'">Current View</button></div></div><div class="job-map" id="job-map"><div class="map-empty">Select a job to view location</div></div><div class="map-legend"><span><i class="map-dot"></i>Primary</span><span><i class="map-dot secondary"></i>Additional</span><span><i class="map-dot home"></i>Home</span></div><div class="map-loc-status" id="map-loc-status"></div><div class="map-actions"><button data-mapaction="recenter" title="Center the selected job at the current zoom">Recenter</button><button data-mapaction="reset" title="Show the full map at 100%">Reset</button></div><div class="map-zoom" aria-label="Map zoom controls"><button data-mapzoom="out" aria-label="Zoom map out">−</button><button id="map-zoom-level" data-mapzoom="reset" title="Reset map to 100%">100%</button><button data-mapzoom="in" aria-label="Zoom map in">+</button></div></div>';
+  h+='<div class="dash-card" id="job-map-card"><div class="map-head"><div class="map-title"><h4>Job Location Map</h4><div class="tip" id="map-sub">Select a job to view location</div></div><div class="map-mode"><button data-mapmode="selected" class="'+(S.mapMode==='selected'?'on':'')+'">Selected</button><button data-mapmode="visible" class="'+(S.mapMode==='visible'?'on':'')+'">Current View</button></div></div><div class="job-map" id="job-map"><div class="map-empty">Select a job to view location</div></div><div class="map-legend"><span><i class="map-dot"></i>Primary</span><span><i class="map-dot secondary"></i>Additional</span><span><i class="map-dot home"></i>Home</span></div><div class="map-loc-status" id="map-loc-status"></div><div class="map-actions"><button class="map-expand" data-mapaction="expand" title="Show the map full screen">'+(document.body.classList.contains('map-full')?'Close map':'Expand')+'</button><button data-mapaction="recenter" title="Center the selected job at the current zoom">Recenter</button><button data-mapaction="reset" title="Show the full map at 100%">Reset</button></div><div class="map-zoom" aria-label="Map zoom controls"><button data-mapzoom="out" aria-label="Zoom map out">−</button><button id="map-zoom-level" data-mapzoom="reset" title="Reset map to 100%">100%</button><button data-mapzoom="in" aria-label="Zoom map in">+</button></div></div>';
   var compact=phoneLayout()||window.innerHeight<=620;
   h+='<div class="dash-card w attention-card"><h4 title="Active roles only. Gaps overlap. Fit evidence missing means no stored fit evaluation is recorded; RAW_FIT can still be viewer-derived from the scoring model. Click a bar to inspect those roles.">Research bottlenecks · overlapping gaps</h4>'+attentionChart_(compact)+'</div>';
   h+='<div class="dash-card w"><h4>Next actions</h4>'+PipelineCharts.bars('Next actions',workloadData().filter(function(x){return !compact||x.value>0}).slice(0,compact?3:6),{compact:compact})+'</div>';
@@ -889,7 +884,7 @@ function renderDashboard(){
   $('mapfilters').querySelectorAll('[data-mapfilter]').forEach(function(b){b.classList.toggle('on',b.dataset.mapfilter===S.mapMode);b.setAttribute('aria-pressed',b.dataset.mapfilter===S.mapMode?'true':'false');b.onclick=function(){setMapMode_(b.dataset.mapfilter)}});
   $('dash').querySelectorAll('[data-mapmode]').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-mapmode')===S.mapMode)});
   $('dash').querySelectorAll('[data-mapzoom]').forEach(function(b){b.onclick=function(){var action=b.getAttribute('data-mapzoom');if(action==='reset')animateMap_({zoom:1,x:480,y:255});else zoomMap_((mapView.targetZoom||mapView.zoom)*(action==='in'?1.25:.8))}});
-  $('dash').querySelectorAll('[data-mapaction]').forEach(function(b){b.onclick=function(){if(b.dataset.mapaction==='reset')animateMap_({zoom:1,x:480,y:255});else recenterMap_()}});
+  $('dash').querySelectorAll('[data-mapaction]').forEach(function(b){b.onclick=function(){if(b.dataset.mapaction==='expand'){var full=document.body.classList.toggle('map-full');b.textContent=full?'Close map':'Expand';requestAnimationFrame(applyMapView_);return}if(b.dataset.mapaction==='reset')animateMap_({zoom:1,x:480,y:255});else recenterMap_()}});
   $('dash').querySelectorAll('[data-mapmode]').forEach(function(b){b.onclick=function(){setMapMode_(b.getAttribute('data-mapmode'))}});
   renderJobMap();
 }
@@ -1001,15 +996,28 @@ function selectMapPin_(p){if(!p)return;var ids=(p.rowIds||[]).filter(function(id
 function restoreMapOverview_(){closeMapPicker_();var v=mapView.returnView||mapView.overview;if(!v)v=Object.assign(mapSnapshot_(),{mode:S.mapMode==='selected'?'visible':S.mapMode,zoom:1,x:480,y:255});mapView.returnView=null;mapView.overview=null;S.focus=null;mapView.focus=null;$('drawer').classList.remove('on');S.mapMode=v.mode;LS.set('mapMode',v.mode);S.preset=v.preset;S.search=v.search;S.filters=v.filters;S.sort=v.sort;S.chartFilter=v.chartFilter||null;pushHash();renderPresets();render();$('gridwrap').scrollTop=v.scroll;animateMap_({zoom:v.zoom,x:v.x,y:v.y})}
 function recenterMap_(){var primary=mapLocationsForRow_(rowById(S.focus))[0],hit=mapView.found.filter(function(p){return primary&&p.label===primary.label})[0];function center(p){if(!p||!isFinite(p.lat)||!isFinite(p.lon))return;var q=projectUS_(+p.lat,+p.lon,stateCodeFromText_(p.label));animateMap_({zoom:mapView.targetZoom||mapView.zoom,x:q.x,y:q.y})}if(hit)center(hit);else if(primary)geocodePlace_(primary).then(center);else animateMap_({zoom:mapView.targetZoom||mapView.zoom,x:480,y:255})}
 function bindMapWheel_(){
-  var box=$('job-map');if(!box||box._wheelBound)return;box._wheelBound=true;var drag=null,suppressClick=false;
-  box.addEventListener('pointerdown',function(e){if(e.pointerType!=='mouse'||e.button!==0||mapView.zoom<=1)return;cancelAnimationFrame(mapView.animation);mapView.targetZoom=mapView.zoom;drag={id:e.pointerId,x:e.clientX,y:e.clientY,cx:mapView.x,cy:mapView.y,moved:false};box.setPointerCapture(e.pointerId)});
+  var box=$('job-map');if(!box||box._wheelBound)return;box._wheelBound=true;var drag=null,suppressClick=false,touches={},pinch=null,lastPointer='mouse';
+  // Touch: one finger pans a zoomed map, two fingers pinch-zoom around their midpoint. Mouse behaviour is unchanged.
+  function touchPoints(){return Object.keys(touches).map(function(k){return touches[k]})}
+  function pinchState(){var p=touchPoints();return {d:Math.max(1,Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)),x:(p[0].x+p[1].x)/2,y:(p[0].y+p[1].y)/2}}
+  box.addEventListener('pointerdown',function(e){lastPointer=e.pointerType;
+    if(e.pointerType==='touch'){touches[e.pointerId]={x:e.clientX,y:e.clientY};var n=touchPoints().length;
+      if(n===2){drag=null;cancelAnimationFrame(mapView.animation);var p0=pinchState();pinch={d:p0.d,zoom:mapView.zoom,x:p0.x,y:p0.y};box.classList.add('panning');return}
+      if(n>2||mapView.zoom<=1)return}
+    else if(e.pointerType!=='mouse'||e.button!==0||mapView.zoom<=1)return;
+    cancelAnimationFrame(mapView.animation);mapView.targetZoom=mapView.zoom;drag={id:e.pointerId,x:e.clientX,y:e.clientY,cx:mapView.x,cy:mapView.y,moved:false};box.setPointerCapture(e.pointerId)});
   box.addEventListener('pointermove',function(e){
+    if(touches[e.pointerId]){touches[e.pointerId]={x:e.clientX,y:e.clientY};if(pinch&&touchPoints().length===2){var p=pinchState(),b=box.getBoundingClientRect(),base=Math.min(box.clientWidth/960,box.clientHeight/510),zoom=Math.max(1,Math.min(8,pinch.zoom*p.d/pinch.d)),dx=(p.x-b.left-box.clientWidth/2)/base,dy=(p.y-b.top-box.clientHeight/2)/base;
+      mapView.x+=dx/mapView.zoom-dx/zoom-(p.x-pinch.x)/(base*zoom);mapView.y+=dy/mapView.zoom-dy/zoom-(p.y-pinch.y)/(base*zoom);mapView.zoom=mapView.targetZoom=zoom;pinch.x=p.x;pinch.y=p.y;suppressClick=true;applyMapView_();return}}
     if(drag&&drag.id===e.pointerId){var dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(!drag.moved&&Math.hypot(dx,dy)<4)return;drag.moved=true;box.classList.add('panning');var scale=Math.min(box.clientWidth/960,box.clientHeight/510)*mapView.zoom;mapView.x=drag.cx-dx/scale;mapView.y=drag.cy-dy/scale;applyMapView_();return}
     if(e.pointerType==='touch'||mapView.found.length<2)return;var i=nearestMapPin_(e.clientX,e.clientY);if(mapView.active!==i){mapView.active=i;renderMapTargets_(mapView.found,i)}
   });
-  function finish(e){if(!drag||drag.id!==e.pointerId)return;suppressClick=drag.moved;drag=null;box.classList.remove('panning');if(box.hasPointerCapture(e.pointerId))box.releasePointerCapture(e.pointerId);setTimeout(function(){suppressClick=false},0)}
+  function finish(e){
+    if(touches[e.pointerId]){delete touches[e.pointerId];if(pinch&&touchPoints().length<2){pinch=null;box.classList.remove('panning');suppressClick=true;setTimeout(function(){suppressClick=false},350);if(mapView.zoom<=1.02)animateMap_({zoom:1,x:480,y:255},200);return}}
+    if(!drag||drag.id!==e.pointerId)return;suppressClick=drag.moved;drag=null;box.classList.remove('panning');if(box.hasPointerCapture(e.pointerId))box.releasePointerCapture(e.pointerId);setTimeout(function(){suppressClick=false},0)}
   box.addEventListener('pointerup',finish);box.addEventListener('pointercancel',finish);box.addEventListener('lostpointercapture',finish);
-  box.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();if(suppressClick)return;var button=e.target.closest&&e.target.closest('.map-target'),i=e.detail?nearestMapPin_(e.clientX,e.clientY):null;if(i==null&&button)i=+button.dataset.pin;if(i!=null)selectMapPin_(mapView.found[i]);else restoreMapOverview_()},true);
+  // A tap on empty map restores the overview for a mouse only; on touch that is too easy to hit by accident, so Reset does it.
+  box.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();if(suppressClick)return;var button=e.target.closest&&e.target.closest('.map-target'),i=e.detail?nearestMapPin_(e.clientX,e.clientY):null;if(i==null&&button)i=+button.dataset.pin;if(i!=null)selectMapPin_(mapView.found[i]);else if(lastPointer!=='touch')restoreMapOverview_()},true);
   box.addEventListener('dragstart',function(e){e.preventDefault()});
   box.addEventListener('pointerleave',function(){if(!drag&&mapView.found.length>1){mapView.active=null;renderMapTargets_(mapView.found,null)}});
   box.addEventListener('wheel',function(e){e.preventDefault();if(drag)return;var delta=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?box.clientHeight:1);zoomMap_((mapView.targetZoom||mapView.zoom)*Math.exp(-Math.max(-200,Math.min(200,delta))*.002),e.clientX,e.clientY)},{passive:false});
