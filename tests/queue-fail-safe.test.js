@@ -241,6 +241,20 @@ test('monitor: long and abandoned claims, backlog, missing trigger, unverified w
   assert.deepEqual(by, { CLAIM_RUNNING_LONG: 'warn', CLAIM_ABANDONED: 'critical', QUEUE_HOLD: 'warn', QUEUE_BACKLOG: 'warn', TRIGGER_MISSING: 'critical', WRITE_UNVERIFIED: 'critical', HOLD_ABANDONED: 'warn', STATUS_PART_UNAVAILABLE: 'warn' });
 });
 
+test('monitor: recovered PARTIAL_HOLD stays in history but no longer raises an active warning', () => {
+  const now = Date.parse('2026-10-05T07:00:00Z');
+  const w = A.writerWarnings_({
+    queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 },
+    recentRuns: [
+      { file: 'OLD.json', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:30:00Z', recovered: true },
+      { file: 'LIVE.json', terminalStatus: 'PARTIAL_HOLD', finishedAt: '2026-10-05T06:40:00Z', recovered: false }
+    ], errors: []
+  }, now);
+  assert.equal(w.length, 1);
+  assert.equal(w[0].code, 'PARTIAL_HOLD');
+  assert.match(w[0].message, /LIVE\.json/);
+});
+
 test('monitor: an idle, healthy writer has no warnings', () => {
   assert.deepEqual(A.writerWarnings_({ freeze: null, queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, recentRuns: [{ file: 'X', terminalStatus: 'SUCCESS', finishedAt: '2026-10-05T03:59:00Z' }], errors: [] }, Date.parse('2026-10-05T04:00:00Z')), []);
 });
