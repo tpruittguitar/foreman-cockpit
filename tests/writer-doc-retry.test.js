@@ -1,6 +1,10 @@
 // Transient Google Docs access: read-only master/receipt opens retry with bounded backoff; everything else still fails closed.
 const test = require('node:test'), assert = require('node:assert/strict');
 const W = require('../apps-script/Code.gs');
+// Each call is its own Apps Script execution (fresh globals), as in production.
+const freshExec = b => { W.resetExecution_(); return W.dispatchWrite_(b); };
+// Durable verification happens in a LATER execution (separate request / queue tick), never in the write itself.
+const verifyLater = () => { W.resetExecution_(); return W.verifyPendingWrites_(); };
 const MASTER = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI';
 const INACCESSIBLE = 'The document is inaccessible. Please try again later.';
 
@@ -11,9 +15,9 @@ function services(fail, opts) {
   const para = t => { let s = t; return { getText: () => s, setText: v => { s = v; } }; };
   const master = ['COUNTS: TOTAL=2 SCOUT_INTAKE=2 UNACCOUNTED=0', rowLine(1, 'V2F-AAAA00000001'), rowLine(2, 'V2F-BBBB00000002'), 'END V2_CURRENT_POPULATION_MASTER (2 rows)'].map(para);
   const receipts = []; let events = '', saves = 0, mod = 0; const opens = { MASTER: 0, RECEIPTS: 0 }, sleeps = [];
-  const files = { PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS: { getId: () => 'RECEIPTS' }, 'PIPELINE_EVENT_LOG.jsonl': { getId: () => 'EVENTS', getBlob: () => ({ getDataAsString: () => events }), setContent: v => { events = v; } } };
+  const files = { PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS: { getId: () => 'RECEIPTS', getMimeType: () => 'application/vnd.google-apps.document' }, 'PIPELINE_EVENT_LOG.jsonl': { getId: () => 'EVENTS', getBlob: () => ({ getDataAsString: () => events }), setContent: v => { events = v; } } };
   const iter = l => { let i = 0; return { hasNext: () => i < l.length, next: () => l[i++] }; };
-  const folder = { getFilesByName: n => iter(files[n] ? [files[n]] : []), createFile: n => { throw new Error('unexpected createFile ' + n); } };
+  const folder = { getFilesByName: n => iter(files[n] ? [files[n]] : []), createFile: (n, c) => { if (n === 'PIPELINE_RECEIPT_INDEX.json') { let v = c; return files[n] = { getId: () => 'INDEX', getMimeType: () => 'text/plain', getBlob: () => ({ getDataAsString: () => v }), setContent: x => { v = x; } }; } throw new Error('unexpected createFile ' + n); } };
   const maybeFail = key => { const q = (fail || {})[key] || []; const e = q[opens[key]++]; if (e) throw new Error(e); };
   global.Utilities = { sleep: ms => sleeps.push(ms) };
   global.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
@@ -55,49 +59,53 @@ test('withDocRetry_: a deterministic error is thrown immediately, unchanged, wit
 
 test('batch: transient master-open failures are recovered and the write commits exactly once with telemetry', () => {
   const s = services({ MASTER: [INACCESSIBLE, INACCESSIBLE] });
-  const r = W.dispatchWrite_({ action: 'batch', requests: [enrich('RETRY-OK-1', 'V2F-AAAA00000001')] });
+  const r = freshExec({ action: 'batch', requests: [enrich('RETRY-OK-1', 'V2F-AAAA00000001')] });
   assert.equal(r.ok, true);assert.equal(r.mode, 'BATCH_RULING_SINGLE_COMMIT');assert.equal(s.saves(), 1);
   assert.match(s.row('V2F-AAAA00000001'), /CLAUDE_NOTE=note RETRY-OK-1/);
   assert.equal(r.docAccess.status, 'RECOVERED_BY_RETRY');assert.equal(r.docAccess.retries, 2);
   const read = r.docAccess.ops.find(o => o.op === 'MASTER_READ');assert.equal(read.attempts, 3);assert.equal(read.error, INACCESSIBLE);
-  assert.equal(r.docAccess.ops.find(o => o.op === 'MASTER_READBACK').status, 'INITIAL_SUCCESS');
+  assert.equal(r.docAccess.ops.find(o => o.op === 'MASTER_READBACK'), undefined, 'no same-execution readback');
+  assert.equal(verifyLater().decided[0].decision, 'COMPLETE');
   assert.deepEqual(Object.keys(W.completedReceiptRequestIds_(s.receipts())), ['RETRY-OK-1']);
 });
 
-test('batch: a transient readback failure after commit is recovered so the write is verified, not left unreceipted', () => {
+test('batch: a transient failure on the independent verification read is recovered so the write is verified, not left unreceipted', () => {
   const s = services({ MASTER: [null, INACCESSIBLE] });
-  const r = W.dispatchWrite_({ action: 'batch', requests: [enrich('RB-1', 'V2F-AAAA00000001')] });
-  assert.equal(r.ok, true);assert.equal(s.saves(), 1);assert.equal(r.docAccess.ops.find(o => o.op === 'MASTER_READBACK').status, 'RECOVERED_BY_RETRY');
+  const r = freshExec({ action: 'batch', requests: [enrich('RB-1', 'V2F-AAAA00000001')] });
+  assert.equal(r.ok, true);assert.equal(s.saves(), 1);assert.equal(r.verification, 'PENDING');
+  W.resetExecution_(); W.verifyPendingWrites_();
   assert.equal(W.completedReceiptRequestIds_(s.receipts())['RB-1'], true);
 });
 
 test('batch: retry exhaustion on the initial master read fails closed with no write and no receipt', () => {
   const s = services({ MASTER: [INACCESSIBLE, INACCESSIBLE, INACCESSIBLE, INACCESSIBLE] });
-  assert.throws(() => W.dispatchWrite_({ action: 'batch', requests: [enrich('EXH-1', 'V2F-AAAA00000001')] }), /The document is inaccessible\. Please try again later\. \[MASTER_READ: retry exhausted after 4 attempts\]/);
+  assert.throws(() => freshExec({ action: 'batch', requests: [enrich('EXH-1', 'V2F-AAAA00000001')] }), /The document is inaccessible\. Please try again later\. \[MASTER_READ: retry exhausted after 4 attempts\]/);
   assert.equal(s.saves(), 0);assert.equal(s.receipts(), '');assert.doesNotMatch(s.row('V2F-AAAA00000001'), /CLAUDE_NOTE/);assert.equal(s.opens.MASTER, 4);
 });
 
 test('batch: a transient receipts read is retried; replay protection still sees completed requests', () => {
   const s = services({ RECEIPTS: [INACCESSIBLE] });
-  const r = W.dispatchWrite_({ action: 'batch', requests: [enrich('RC-1', 'V2F-AAAA00000001')] });
+  const r = freshExec({ action: 'batch', requests: [enrich('RC-1', 'V2F-AAAA00000001')] });
   assert.equal(r.ok, true);assert.equal(r.docAccess.ops.find(o => o.op === 'RECEIPTS_READ').status, 'RECOVERED_BY_RETRY');
-  const again = W.dispatchWrite_({ action: 'batch', requests: [enrich('RC-1', 'V2F-AAAA00000001')] });
+  const again = freshExec({ action: 'batch', requests: [enrich('RC-1', 'V2F-AAAA00000001')] });
   assert.equal(again.results[0].mode, 'ALREADY_APPLIED');assert.equal(s.saves(), 1, 'replayed request not re-applied');
 });
 
 test('optimistic concurrency conflicts, identity failures and protected-state refusals are never retried', () => {
   let s = services(null, { concurrentEdit: true });
-  let r = W.dispatchWrite_({ action: 'batch', requests: [enrich('OCC-1', 'V2F-AAAA00000001')] });
+  let r = freshExec({ action: 'batch', requests: [enrich('OCC-1', 'V2F-AAAA00000001')] });
   assert.equal(r.mode, 'BATCH_RULING_RETRY');assert.match(r.error, /master changed during request/);assert.equal(s.saves(), 0);assert.deepEqual(s.sleeps, []);
-  s = services();r = W.dispatchWrite_({ action: 'batch', requests: [enrich('ID-1', 'V2F-NOPE00000000')] });
+  s = services();r = freshExec({ action: 'batch', requests: [enrich('ID-1', 'V2F-NOPE00000000')] });
   assert.equal(r.ok, false);assert.match(r.results[0].error, /identity not unique/);assert.deepEqual(s.sleeps, []);assert.equal(s.opens.MASTER, 1);
-  s = services();r = W.dispatchWrite_({ action: 'batch', requests: [enrich('BAD-1', 'V2F-AAAA00000001', { fields: { BUCKET: 'APPLIED' } })] });
+  s = services();r = freshExec({ action: 'batch', requests: [enrich('BAD-1', 'V2F-AAAA00000001', { fields: { BUCKET: 'APPLIED' } })] });
   assert.equal(r.ok, false);assert.match(r.results[0].error, /cannot (be )?set/);assert.deepEqual(s.sleeps, []);assert.equal(s.saves(), 0);
 });
 
 test('single ruling path: transient master open recovered; readback still independent', () => {
   const s = services({ MASTER: [INACCESSIBLE] });
-  const r = W.dispatchWrite_(enrich('SINGLE-1', 'V2F-BBBB00000002'));
-  assert.equal(r.ok, true, r.error);assert.equal(r.docAccess.status, 'RECOVERED_BY_RETRY');assert.equal(s.opens.MASTER, 3, 'read (2 attempts) + independent readback');
-  assert.equal(r.receipt.READBACK_VERIFIED, 'YES');
+  const r = freshExec(enrich('SINGLE-1', 'V2F-BBBB00000002'));
+  assert.equal(r.ok, true, r.error);assert.equal(r.docAccess.status, 'RECOVERED_BY_RETRY');assert.equal(s.opens.MASTER, 2, 'read (2 attempts); no same-execution readback');
+  assert.equal(r.receipt.READBACK_VERIFIED, 'PENDING');assert.equal(r.verification, 'PENDING');
+  assert.equal(verifyLater().decided[0].decision, 'COMPLETE');assert.equal(s.opens.MASTER, 3, 'the readback happens in a later execution');
+  assert.equal(W.completedReceiptRequestIds_(s.receipts())['SINGLE-1'], true);
 });

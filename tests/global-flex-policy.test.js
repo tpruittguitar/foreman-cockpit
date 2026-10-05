@@ -2,6 +2,10 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const R=require('../pipeline-rules');
 const P=require('../pipeline-policy');
 const W=require('../apps-script/Code.gs');
+// Each call is its own Apps Script execution (fresh globals), as in production.
+const freshExec = b => { W.resetExecution_(); return W.dispatchWrite_(b); };
+// Durable verification happens in a LATER execution (separate request / queue tick), never in the write itself.
+const verifyLater = () => { W.resetExecution_(); return W.verifyPendingWrites_(); };
 
 test('FLEX policy defaults preserve current production behavior',()=>{
   const p=R.flexPolicy('SECTION=OTHER\nX=1\n');
@@ -159,9 +163,9 @@ function services(rowCount,rulesText){
   const master=['COUNTS: TOTAL='+rowCount+' SCOUT_INTAKE='+rowCount+' UNACCOUNTED=0',...rows,'END V2_CURRENT_POPULATION_MASTER ('+rowCount+' rows)'].map(para);
   const receipts=[];let events='',opens={};
   const doc=(body)=>({getBody:()=>body,saveAndClose(){}});
-  const files={PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS:{getId:()=>'RECEIPTS'},'PIPELINE_EVENT_LOG.jsonl':{getId:()=>'EVENTS',getBlob:()=>({getDataAsString:()=>events}),setContent:v=>{events=v}}};
+  const files={PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS: { getId: () => 'RECEIPTS', getMimeType: () => 'application/vnd.google-apps.document' },'PIPELINE_EVENT_LOG.jsonl':{getId:()=>'EVENTS',getBlob:()=>({getDataAsString:()=>events}),setContent:v=>{events=v}}};
   const iter=l=>{let i=0;return {hasNext:()=>i<l.length,next:()=>l[i++]}};
-  const folder={getFilesByName:n=>iter(files[n]?[files[n]]:[]),createFile:n=>{throw new Error('unexpected createFile '+n)}};
+  const folder={getFilesByName:n=>iter(files[n]?[files[n]]:[]),createFile:(n,c)=>{if(n==='PIPELINE_RECEIPT_INDEX.json'){let v=c;return files[n]={getId:()=>'INDEX',getMimeType:()=>'text/plain',getBlob:()=>({getDataAsString:()=>v}),setContent:x=>{v=x}}}throw new Error('unexpected createFile '+n)}};
   global.LockService={getScriptLock:()=>({waitLock(){},releaseLock(){}})};
   global.DriveApp={getFileById:id=>({getLastUpdated:()=>new Date('2026-10-04T20:00:00Z'),getParents:()=>iter([folder]),getId:()=>id})};
   global.DocumentApp={openById:id=>{opens[id]=(opens[id]||0)+1;
@@ -176,7 +180,7 @@ const degree=(i,rid)=>({action:'ruling',ruling:{primaryId:'V2F-ROW'+String(i).pa
 
 test('A 30-row all-ruling batch reads the canonical Rules document once and applies its policy to every row',()=>{
   const s=services(30,rules);
-  const r=W.dispatchWrite_({action:'batch',requests:Array.from({length:30},(_,i)=>degree(i+1,'BATCH-'))});
+  const r=freshExec({action:'batch',requests:Array.from({length:30},(_,i)=>degree(i+1,'BATCH-'))});
   assert.equal(r.mode,'BATCH_RULING_SINGLE_COMMIT');assert.equal(r.ok,true);assert.equal(r.processed,30);
   assert.equal(s.opens[RULES],1,'rules read once per batch');
   for(let i=1;i<=30;i++){const p=pl(s.row('V2F-ROW'+String(i).padStart(8,'0')));assert.equal(p.FLEX_CLASS,'NO_FLEX');assert.equal(p.FLEX_MODIFIER,'-4')}
@@ -184,14 +188,14 @@ test('A 30-row all-ruling batch reads the canonical Rules document once and appl
 
 test('A single ruling reads the canonical Rules document once',()=>{
   const s=services(2,rules);
-  const r=W.dispatchWrite_(degree(1,'SINGLE-'));
+  const r=freshExec(degree(1,'SINGLE-'));
   assert.equal(r.ok,true,r.error);assert.equal(s.opens[RULES],1);
   assert.equal(pl(s.row('V2F-ROW00000001')).FLEX_MODIFIER,'-4');
 });
 
 test('Writer surfaces CANONICAL_STRUCTURED policy provenance in batch result and receipts',()=>{
   const s=services(1,rules);
-  const r=W.dispatchWrite_({action:'batch',requests:[degree(1,'PROV-')]});
+  const r=freshExec({action:'batch',requests:[degree(1,'PROV-')]});
   assert.equal(r.ok,true);
   assert.equal(r.flexPolicySource,'CANONICAL_STRUCTURED');
   assert.equal(r.flexPolicyWarning,'');
@@ -200,7 +204,7 @@ test('Writer surfaces CANONICAL_STRUCTURED policy provenance in batch result and
 
 test('Writer surfaces DEFAULT_FALLBACK when canonical FLEX policy cannot be read',()=>{
   const s=services(1,null);
-  const r=W.dispatchWrite_({action:'batch',requests:[degree(1,'FALLBACK-')]});
+  const r=freshExec({action:'batch',requests:[degree(1,'FALLBACK-')]});
   assert.equal(r.ok,true);
   assert.equal(r.flexPolicySource,'DEFAULT_FALLBACK');
   assert.match(r.flexPolicyWarning,/Canonical FLEX policy read failed/);
@@ -213,7 +217,7 @@ test('Writer surfaces DEFAULT_FALLBACK when canonical FLEX policy cannot be read
 test('Writer surfaces CANONICAL_DEFAULTS when canonical rules are readable but structured FLEX keys are absent',()=>{
   const readable='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose only\nSECTION=OTHER\nX=1';
   const s=services(1,readable);
-  const r=W.dispatchWrite_({action:'batch',requests:[degree(1,'DEFAULTS-')]});
+  const r=freshExec({action:'batch',requests:[degree(1,'DEFAULTS-')]});
   assert.equal(r.ok,true);
   assert.equal(r.flexPolicySource,'CANONICAL_DEFAULTS');
   assert.match(r.flexPolicyWarning,/No structured FLEX policy keys found/);
@@ -265,19 +269,21 @@ test('Section-less rules get keys and generated prose together',()=>{
 
 test('Batch receipts carry FLEX_POLICY_SOURCE for every row',()=>{
   const s=services(2,rules);
-  const r=W.dispatchWrite_({action:'batch',requests:[degree(1,'RCPT-'),degree(2,'RCPT-')]});
+  const r=freshExec({action:'batch',requests:[degree(1,'RCPT-'),degree(2,'RCPT-')]});
   assert.equal(r.mode,'BATCH_RULING_SINGLE_COMMIT');assert.equal(s.opens[RULES],1);
   assert.equal((s.receipts().match(/FLEX_POLICY_SOURCE=CANONICAL_STRUCTURED/g)||[]).length,2);
-  assert.equal(Object.keys(W.completedReceiptRequestIds_(s.receipts())).sort().join(),'RCPT-1,RCPT-2','receipts still parse as COMPLETE');
+  verifyLater();
+  assert.equal((s.receipts().match(/FLEX_POLICY_SOURCE=CANONICAL_STRUCTURED/g)||[]).length,4,'provisional + verified receipts both carry provenance');
+  assert.equal(Object.keys(W.completedReceiptRequestIds_(s.receipts())).sort().join(),'RCPT-1,RCPT-2','verified receipts parse as COMPLETE');
 });
 
 test('Single ruling result and receipt carry provenance; fallback warning reaches the receipt',()=>{
   let s=services(1,rules);
-  let r=W.dispatchWrite_(degree(1,'SP-'));
+  let r=freshExec(degree(1,'SP-'));
   assert.equal(r.ok,true,r.error);assert.equal(r.flexPolicySource,'CANONICAL_STRUCTURED');assert.equal(r.receipt.FLEX_POLICY_SOURCE,'CANONICAL_STRUCTURED');
   assert.match(s.receipts(),/FLEX_POLICY_SOURCE=CANONICAL_STRUCTURED/);
   s=services(1,null);
-  r=W.dispatchWrite_(degree(1,'SF-'));
+  r=freshExec(degree(1,'SF-'));
   assert.equal(r.ok,true,r.error);assert.equal(r.flexPolicySource,'DEFAULT_FALLBACK');assert.equal(s.opens[RULES],1);
   assert.match(s.receipts(),/FLEX_POLICY_SOURCE=DEFAULT_FALLBACK/);
   assert.match(s.receipts(),/FLEX_POLICY_WARNING=Canonical FLEX policy read failed: simulated canonical rules outage/);
@@ -286,7 +292,7 @@ test('Single ruling result and receipt carry provenance; fallback warning reache
 
 test('Upsert reads the canonical Rules document once and its receipt carries provenance',()=>{
   const s=services(1,'TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose only\nSECTION=OTHER\nX=1');
-  const r=W.dispatchWrite_({action:'upsert_application',event:{TARGET_PRIMARY_ID:'V2F-ROW00000001',STATE:'APPLIED',EVENT_DATE:'2026-10-02',EVIDENCE:'Gmail 1cd "Thanks for applying"',actor:'FORGE',requestId:'UP-1'}});
+  const r=freshExec({action:'upsert_application',event:{TARGET_PRIMARY_ID:'V2F-ROW00000001',STATE:'APPLIED',EVENT_DATE:'2026-10-02',EVIDENCE:'Gmail 1cd "Thanks for applying"',actor:'FORGE',requestId:'UP-1'}});
   assert.equal(r.ok,true,r.error);assert.equal(r.mode,'UPDATE');
   assert.equal(s.opens[RULES],1,'rules read once per upsert');
   assert.equal(r.receipt.FLEX_POLICY_SOURCE,'CANONICAL_DEFAULTS');
