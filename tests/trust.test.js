@@ -30,3 +30,25 @@ test("Tim's ruling: salary posted in the job description is verified; doubt and 
   // an explicit SALARY_CONF=VERIFIED is never downgraded (live QinetiQ row shape)
   assert.equal(T.salary({PAY_POSTED:'$189,000-$238,000',SALARY_BASE_POSTED:'$189,000-$238,000',SALARY_LABEL:'ESTIMATED',SALARY_BASIS:'EMPLOYER_POSTED',SALARY_CONF:'VERIFIED'}),'VERIFIED');
 });
+test('Salary cells show the figures, not a tag; anything not VERIFIED is marked approximate',()=>{
+  assert.deepEqual(T.salaryRange({PAY_POSTED:'$189,080-$283,630 base (employer posting)'}),{text:'$189k–$284k',approx:false,label:'VERIFIED',source:'PAY_POSTED'});
+  assert.equal(T.salaryRange({SALARY_LABEL:'POSTED',SALARY_BASE_EST:'$147760-$221640',SALARY_BASIS:'EMPLOYER_POSTED'}).text,'$148k–$222k');
+  const est=T.salaryRange({SALARY_LABEL:'ESTIMATED',SALARY_BASE_LOW:'140000',SALARY_BASE_HIGH:'190000',SALARY_MIDPOINT:'165000',SALARY_CONF:'LOW'});
+  assert.equal(est.text,'$140k–$190k');assert.equal(est.approx,true);assert.equal(est.label,'ESTIMATED · LOW');
+  assert.equal(T.salaryRange({PAY_POSTED:'$125K-$150K Ladders-claimed (not employer-posted)',SALARY_LABEL:'ESTIMATED'}).approx,true);
+  assert.equal(T.salaryRange({SALARY_MIDPOINT:'185000'}).text,'$185k mid');
+  assert.equal(T.salaryRange({PAY_POSTED:'From $170,000'}).text,'$170k');
+  assert.deepEqual(T.salaryRange({}),{text:'',approx:false,label:'UNKNOWN',source:''});
+});
+test("Tim's ruling: FLEX known from the job description is verified; unretrieved or inferred wording is not",()=>{
+  assert.equal(T.flex({FLEX_CLASS:'NO_FLEX',FLEX_BASIS:"First-party posting states Bachelor's required, no equivalent-experience route stated."}),'VERIFIED');
+  assert.equal(T.flex({FLEX_CLASS:'HIGH_FLEX',FLEX_BASIS:'Full employer posting reviewed, no degree mentioned.'}),'VERIFIED');
+  assert.equal(T.flex({FLEX:'NO',DEGREE_TEXT:"Bachelor's degree required"}),'VERIFIED');
+  assert.equal(T.flex({FLEX_CLASS:'SOFT_FLEX',FLEX_BASIS:'Degree text for this exact requisition was not retrieved.'}),'CLASSIFIED · UNVERIFIED');
+  assert.equal(T.flex({FLEX_CLASS:'NO_FLEX',FLEX_BASIS:'Aggregator text only, full employer JD not read, leans NO_FLEX'}),'CLASSIFIED · UNVERIFIED');
+  assert.equal(T.flex({FLEX_CLASS:'STRICT',DEGREE_REQ:'BS required',FLEX_CONF:'LOW'}),'CLASSIFIED · UNVERIFIED');
+  assert.equal(T.flex({FLEX_CLASS:'SOFT_FLEX',FLEX_BASIS:'ESTIMATED from similar roles'}),'ESTIMATED');
+  assert.deepEqual(T.flexInfo({FLEX_CLASS:'HIGH_FLEX',DEGREE_TEXT:'No degree requirement in posting'}),{text:'HIGH_FLEX',approx:false,label:'VERIFIED'});
+  assert.deepEqual(T.flexInfo({FLEX_CLASS:'HIGH_FLEX'}),{text:'HIGH_FLEX',approx:true,label:'CLASSIFIED · UNVERIFIED'});
+  assert.deepEqual(T.flexInfo({}),{text:'',approx:true,label:'UNKNOWN'});
+});
