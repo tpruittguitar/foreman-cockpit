@@ -30,9 +30,19 @@ master well under Google's 1,024,000-character limit for a Google Doc without cr
 
 ## Consumers
 
-- **Explorer:** reads `GET action=master&hydrate=1`. That is the live master with evidence merged back, plus the archived rows
-  (marked `ARCHIVE_STATE=ARCHIVED_TERMINAL`) under their bucket headings, with COUNTS and END recomputed over both. Every
-  existing view and rule works unchanged, and archived rows are labelled read-only.
+- **Explorer:** builds the same hydrated view in the browser (`pipeline-loader.js`) from three separate reads, because the
+  single `GET action=master&hydrate=1` response (about 1.65 MB on 2026-10-05) is no longer served by Google:
+  - `master` (the canonical master);
+  - `archive` and `migration_status`, then `document_text` for the companion named in the migration state.
+
+  The merge is the Writer's own `hydrateLines_`, copied verbatim; a test fails if the copy drifts. The result is the live
+  master with evidence merged back, plus the archived rows (marked `ARCHIVE_STATE=ARCHIVED_TERMINAL`) under their bucket
+  headings, with COUNTS and END recomputed over both. Every existing view and rule works unchanged, and archived rows are
+  labelled read-only.
+  - **Fail closed on freshness:** if the canonical master cannot be fetched and validated, a cached copy is shown only under a
+    STALE · FETCH FAILED banner, and saving is disabled.
+  - **Archive or evidence failure:** reported separately. The master stays current; a row's narrative can then be loaded on
+    demand with `GET action=evidence&primaryId=…`.
 - **Scout:** no change. It keeps sending `SCOUT_NOTES` and other intake facts; the Writer routes narrative to the companion
   and dedupes intake against live rows plus the archive. A declined, closed or rejected job is reported as
   `EXISTING_MATCH`, never re-admitted.
