@@ -4,7 +4,7 @@ if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipel
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
  * single fixed master, with read-back verification (FORGE_AMENDMENT_58 Authorized State Writer contract).
  *
- * Actions (GET):  ping | master | state | receipts | rules | runs | canonical_rules | scoring | events | interview_notes | documents | request_result | receipt_index | verify_pending | automation | process_queue | submit (payload=<JSON write body>)
+ * Actions (GET):  ping | writer_status | master | state | receipts | rules | runs | canonical_rules | scoring | events | interview_notes | documents | request_result | receipt_index | verify_pending | automation | process_queue | submit (payload=<JSON write body>)
  * Actions (POST): state | ruling | intake | upsert_application | interview_note | approve_resume | save_rules | save_scoring_model | undo_ruling | install_automation | batch | rotate_receipts | correct_receipts
  * Master writes return verification:'PENDING'. COMPLETE is only ever recorded by a LATER execution's fresh read (see "durable write verification").
  * Drive queue:    any AI may drop a JSON write body into AI_Coordination/WRITER_QUEUE; Automation.gs applies it about every 1 minute.
@@ -48,13 +48,17 @@ var INTAKE_ALLOWED_BUCKETS = ['SCOUT_INTAKE', 'DISCOVERY_LEAD'];
 var PROTECTED_APPLICANT = ['APPLIED', 'REJECTED_BY_EMPLOYER'];
 var FINAL_BUCKETS = ['READY_TO_PURSUE', 'APPLIED', 'REJECTED_BY_EMPLOYER', 'DECLINED_BY_TIM', 'DUPLICATE', 'CLOSED_DEAD', 'INVALID_DISCOVERY'];
 
+/** Identity of the deployed Writer code. deploy.sh replaces this line with the deployed commit, subject and PR number;
+ *  the repo copy is the placeholder below. Reported by ping and writer_status so the Explorer can show which PR is live. */
+var WRITER_BUILD = { commit: 'source', pr: null, subject: '', deployedAt: '' };
+
 /* ================= HTTP ================= */
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, actions: ['master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['writer_status','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived'] });
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
     if (a === 'archive') { var stA = readMigrationState_(); return out_(stA && stA.archiveId ? { ok: true, archiveId: stA.archiveId, mode: stA.mode, text: DriveApp.getFileById(stA.archiveId).getBlob().getDataAsString() } : { ok: true, archiveId: '', text: '' }); }
     if (a === 'evidence') return out_(readEvidence_(p.primaryId || ''));
@@ -75,6 +79,7 @@ function doGet(e) {
     if (a === 'scoring') return out_(readScoringModel_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
     if (a === 'automation') return out_(automationStatus_());
+    if (a === 'writer_status') return out_(writerStatus_());
     if (a === 'process_queue') return out_(processWriterQueue());
     return out_({ ok: false, error: 'unknown action ' + a });
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err), errorStack: errorStack_(err) }); }
@@ -96,7 +101,7 @@ function dispatchWrite_(req) {
   req = req || {};
   var a = String(req.action || '');
   if (a === 'intake') return applyIntakeToMaster_(req);
-  if (a === 'ruling') return applyRulingToMaster_(req.ruling || {});
+  if (a === 'ruling') { var shapeErr = requestShapeError_(req); if (shapeErr) return { ok: false, mode: 'REJECTED_SCHEMA', error: shapeErr }; return applyRulingToMaster_(req.ruling); }
   if (a === 'data_discovery') return applyDataDiscoveryRequest_(req);
   if (a === 'upsert_application') return applyUpsertToMaster_(req.event || req);
   if (a === 'interview_note') return saveInterviewNote_(req.note || req);
@@ -115,17 +120,70 @@ function dispatchWrite_(req) {
     var list = Array.isArray(req.requests) ? req.requests : [];
     if (!list.length) return { ok: false, error: 'batch needs requests[]' };
     if (list.length > 50) return { ok: false, error: 'batch too large (max 50 requests)' };
-    var allRulings = list.every(function (sub) { return sub && sub.action === 'ruling' && sub.ruling; });
+    // Shape check first, before anything opens the master: a malformed sub-request rejects the whole batch at once.
+    var malformed = [];
+    list.forEach(function (sub, ix) {
+      var err = !sub || typeof sub !== 'object' ? 'request must be a JSON object'
+        : sub.action === 'batch' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
+        : requestShapeError_(sub);
+      if (err) malformed.push({ index: ix, ok: false, error: err });
+    });
+    if (malformed.length) return { ok: false, mode: 'REJECTED_SCHEMA', attempted: 0, error: malformed.length + ' of ' + list.length + ' requests are malformed; nothing was applied', results: malformed };
+    var allRulings = list.every(function (sub) { return sub.action === 'ruling'; });
     if (allRulings) return applyRulingBatchToMaster_(list);
-    var out = [];
-    for (var i = 0; i < list.length; i++) {
-      var sub = list[i] || {};
-      if (sub.action === 'batch' || WRITE_ACTIONS.indexOf(sub.action) < 0) { out.push({ index: i, ok: false, error: 'unsupported action in batch: ' + sub.action }); continue; }
-      try { var r = dispatchWrite_(sub); r.index = i; out.push(r); } catch (e) { out.push({ index: i, ok: false, error: String(e && e.message || e) }); }
-    }
-    return { ok: out.every(function (r) { return r.ok; }), mode: 'SERIAL_MIXED_BATCH', results: out };
+    return serialBatch_(list);
   }
   return { ok: false, error: 'unknown action ' + a + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
+}
+
+/** Absolute time (ms) after which a serial batch starts no further sub-request; 0 means no deadline. The queue worker sets
+ *  it so a claimed request stops cleanly, with a RESULT, before the 6-minute Apps Script limit can kill the execution. */
+var WRITE_DEADLINE_AT_ = 0;
+function setWriteDeadline_(t) { WRITE_DEADLINE_AT_ = +t || 0; }
+
+/** Pure: request-shape check that needs no master read. Returns an error string, or '' when the shape is acceptable. */
+function requestShapeError_(req) {
+  if (String(req && req.action || '') !== 'ruling') return '';
+  var r = req.ruling;
+  if (!r || typeof r !== 'object' || Array.isArray(r)) {
+    var flat = ['primaryId', 'primary_id', 'requestId', 'request_id', 'kind', 'fields', 'actor'].filter(function (k) { return req[k] !== undefined; });
+    return 'ruling fields must be nested: {"action":"ruling","ruling":{"primaryId":"…","requestId":"…","kind":"…","actor":"…","fields":{…}}}' + (flat.length ? '; found at top level: ' + flat.join(', ') : '');
+  }
+  if (!String(r.primaryId || '').trim()) return 'ruling.primaryId is required' + (r.primary_id !== undefined ? ' (found primary_id; the key is primaryId)' : '');
+  return '';
+}
+
+/**
+ * Mixed batch: sub-requests run one at a time in this execution. It stops before a sub-request when the deadline has
+ * passed or when the write fence refuses it (a second master write in one execution is always fenced). A fence on the first
+ * sub-request means nothing ran, so the whole batch is returned as the fence and stays queued. Otherwise the batch ends
+ * PARTIAL: the RESULT lists what ran and carries the not-attempted remainder, which is never re-run automatically.
+ */
+function serialBatch_(list) {
+  var out = [], stoppedBy = '', stopReason = '';
+  for (var i = 0; i < list.length; i++) {
+    if (WRITE_DEADLINE_AT_ && Date.now() >= WRITE_DEADLINE_AT_) {
+      if (!out.length) return { ok: false, mode: 'WRITE_FENCE', retryAfterMs: 60000, error: 'queue time budget reached before the batch started; it stays queued' };
+      stoppedBy = 'TIME_BUDGET'; stopReason = 'queue time budget reached before request ' + i; break;
+    }
+    var r;
+    try { r = dispatchWrite_(list[i]) || { ok: false, error: 'no result' }; }
+    catch (e) { r = { ok: false, error: String(e && e.message || e), errorStack: errorStack_(e) }; }
+    if (r.mode === 'WRITE_FENCE') {
+      if (!out.length) return r;
+      stoppedBy = 'WRITE_FENCE'; stopReason = r.error || 'write fence'; break;
+    }
+    r.index = i; out.push(r);
+  }
+  var notAttempted = [];
+  for (var j = out.length; j < list.length; j++) notAttempted.push(j);
+  var res = { ok: !notAttempted.length && out.every(function (x) { return x.ok; }), mode: 'SERIAL_MIXED_BATCH', results: out, attempted: out.length };
+  if (notAttempted.length) {
+    res.partial = true; res.stoppedBy = stoppedBy; res.notAttempted = notAttempted;
+    res.error = 'PARTIAL: ran ' + out.length + ' of ' + list.length + ' requests (' + stopReason + '); the remainder was not attempted and is not re-run automatically';
+    res.remainder = { action: 'batch', requests: notAttempted.map(function (k) { return list[k]; }) };
+  }
+  return res;
 }
 
 
@@ -1969,4 +2027,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

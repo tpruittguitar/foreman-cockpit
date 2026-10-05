@@ -11,7 +11,16 @@ Every canonical change to `V2_CURRENT_POPULATION_MASTER.txt` (Drive `19y5xtspYk3
 Save one file into **AI_Coordination/WRITER_QUEUE** (folder `1IVyEKPxqY_7uL9GG9RV9Gu9raEco0AZ7`; results land in `processed` `1kVgPtqqUtxoRyTC72Wb59kInHJMZGV0a` or `failed` `1hMcqUNYe5m6yjHmYkbdd9CcvqOwgEzZ1`). The file is a plain-text or Google Doc file whose content is one JSON write body (see "Write bodies" below). Use a descriptive name, such as `GROK07_2026-10-02_0600ET_intake.json`.
 
 - A trigger claims and applies the queue about every 1 minute. A GET with `action=process_queue` applies it immediately when that endpoint is available.
-- A successful request moves to `WRITER_QUEUE/processed`. A failed one moves to `WRITER_QUEUE/failed`. Either way a `RESULT__<name>.json` file appears beside it with the writer's full response.
+- A successful request moves to `WRITER_QUEUE/processed`. Anything else moves to `WRITER_QUEUE/failed`. Either way a `RESULT__<name>.json` file appears beside it with the writer's full response and a `terminalStatus`:
+  - `SUCCESS`: applied.
+  - `FAILED`: nothing in the RESULT applied unless its per-request results say so. This includes `REJECTED_SCHEMA`: the body was malformed and nothing was attempted.
+  - `PARTIAL_HOLD`: a mixed batch stopped part-way, either at the write fence (one master write per execution) or at the time budget. `results` shows what ran; `remainder` is the untouched rest, ready to resubmit as its own file. It is never re-run automatically.
+  - `HOLD_ABANDONED`: the execution that claimed the file died before finishing, for example at the 6-minute Apps Script limit. The RESULT lists each request ID's receipt-index state. Reconcile those IDs against the receipts and the master before resubmitting; the worker never re-runs an abandoned claim.
+  - `HOLD_UNMOVED`: the RESULT was written but the move failed, so the file stays in the queue as `HOLD__<name>` and is never claimed again.
+- A file named `PROCESSING__<name>` is being applied. One older than 8 minutes was abandoned, and the next tick finalizes it as `HOLD_ABANDONED`.
+- The worker claims new files only in the first 90 seconds of an execution, and a mixed batch starts no request after 4.5 minutes. One claim therefore cannot run into the 6-minute limit.
+- A batch made only of rulings is applied as one master write. A batch that mixes actions runs one request at a time, and only its first master write can land in that execution. Keep master writes of different kinds in separate files.
+- The Explorer's **WRITER** badge (GET `action=writer_status`) shows the freeze, running claims and their age, queued and held files, unverified writes, the trigger, the last queue results and the deployed Writer PR. It raises an alert strip when something needs attention.
 - Every run is also logged in `WRITER_QUEUE_LOG.jsonl` in AI_Coordination.
 - Code fences, a BOM and smart quotes are tolerated. Any `key` field is ignored, because Drive access is the authorization.
 
@@ -35,14 +44,14 @@ Keep GET payloads small, roughly one ruling or 1 to 5 intake records. Use the qu
 
 ## Reads (GET)
 
-`?action=ping&key=<current-private-writer-credential>`, `?action=master&key=<current-private-writer-credential>` (full master text plus modifiedTime), `?action=rules&key=<current-private-writer-credential>`, `?action=runs&key=<current-private-writer-credential>`, `?action=receipts&key=<current-private-writer-credential>`, and `?action=automation&key=<current-private-writer-credential>` (queue status).
+`?action=ping&key=<current-private-writer-credential>`, `?action=master&key=<current-private-writer-credential>` (full master text plus modifiedTime), `?action=rules&key=<current-private-writer-credential>`, `?action=runs&key=<current-private-writer-credential>`, `?action=receipts&key=<current-private-writer-credential>`, and `?action=automation&key=<current-private-writer-credential>` (queue status), and `?action=writer_status&key=<current-private-writer-credential>` (monitor snapshot with warnings; `ping` and `writer_status` also report the deployed Writer's commit and PR as `build`).
 
 ## Write bodies
 
 | action | use | body |
 |---|---|---|
 | `intake` | Scout discoveries, creating new SCOUT_INTAKE / DISCOVERY_LEAD rows | `{"action":"intake","run":{"SCOUT_RUN_ID":"…","GROSS_FOUND":N},"records":[{COMPANY,TITLE,LOCATION,REQ_ID,SOURCE_URL,SOURCE_PROVIDER,DISCOVERY_SOURCE,DISCOVERED_AT_ET,IDENTITY_CONFIDENCE,INITIAL_UNKNOWN_FIELDS,…}]}`, per docs/SCOUT_INTAKE_CONTRACT.md |
-| `ruling` | change one existing row by exact PRIMARY_ID | `{"action":"ruling","ruling":{"primaryId":"V2S-…","kind":"…","actor":"FORGE","requestId":"…","note":"…","fields":{…}}}` |
+| `ruling` | change one existing row by exact PRIMARY_ID | `{"action":"ruling","ruling":{"primaryId":"V2S-…","kind":"…","actor":"FORGE","requestId":"…","note":"…","fields":{…}}}`. The fields must be nested inside `ruling` and use camelCase (`primaryId`, `requestId`). A flat or snake_case ruling (`"primary_id"` beside `"action"`) is rejected as `REJECTED_SCHEMA`, and a batch containing one is rejected whole. |
 | `upsert_application` | email-confirmed application or rejection (Tim directive 2026-09-29) | `{"action":"upsert_application","event":{"COMPANY":"…","TITLE":"…","STATE":"APPLIED"\|"REJECTED_BY_EMPLOYER","EVENT_DATE":"YYYY-MM-DD","EVIDENCE":"Gmail <id> <sender> \"<subject>\"","REQ_ID":"…","LOCATION":"…","SOURCE_URL":"…","TARGET_PRIMARY_ID":"(optional)"}}` |
 | `batch` | up to 25 of the above, applied in order | `{"action":"batch","requests":[…]}` |
 

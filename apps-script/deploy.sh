@@ -31,6 +31,28 @@ for f in "$HERE"/*.gs; do
 done
 grep -qE "^var PASSPHRASE *= *'CHANGE-ME'" "$WORK/out/Code.js" && { echo "placeholder survived; aborting" >&2; exit 1; }
 
+# Stamp the deployed identity (commit, PR, subject) into WRITER_BUILD so ping/writer_status report which PR is live.
+# The PR comes from DEPLOY_PR, else from a squash-merge subject ending "(#NN)"; a dirty tree is marked "+dirty".
+python3 - "$HERE" "$WORK/out/Code.js" <<'PY'
+import json, re, subprocess, sys, datetime, os
+here, target = sys.argv[1], sys.argv[2]
+git = lambda *a: subprocess.run(['git', '-C', here] + list(a), capture_output=True, text=True).stdout.strip()
+commit = git('rev-parse', '--short', 'HEAD') or 'unknown'
+if git('status', '--porcelain', '--', '.'): commit += '+dirty'
+subject = git('log', '-1', '--format=%s')
+m = re.search(r'\(#(\d+)\)\s*$', subject)
+pr = int(os.environ['DEPLOY_PR']) if os.environ.get('DEPLOY_PR', '').isdigit() else (int(m.group(1)) if m else None)
+b = {'commit': commit, 'pr': pr, 'subject': subject[:120], 'deployedAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}
+line = 'var WRITER_BUILD = ' + json.dumps(b) + ';'
+src = open(target).read().split('\n')
+hits = [i for i, l in enumerate(src) if re.match(r'^var WRITER_BUILD *= *', l)]
+if len(hits) != 1: sys.exit('expected exactly one WRITER_BUILD line in Code.gs, found %d; aborting' % len(hits))
+src[hits[0]] = line
+open(target, 'w').write('\n'.join(src))
+print('stamped ' + line)
+PY
+node --check "$WORK/out/Code.js"
+
 $API set-content "$SCRIPT_ID" "$WORK/out"
 if [ "${1:-}" = "--head" ]; then echo "set HEAD only; live web app unchanged"; exit 0; fi
 VER="$($API version "$SCRIPT_ID" "$DESC")"
