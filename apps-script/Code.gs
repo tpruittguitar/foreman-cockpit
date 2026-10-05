@@ -130,9 +130,9 @@ function applyRulingBatchToMaster_(requests) {
   t.LOCK_WAIT_MS = Date.now() - lockStart;
   try {
     var readStart = Date.now();
-    var file = DriveApp.getFileById(MASTER_ID), modBefore = file.getLastUpdated().toISOString();
-    var doc = DocumentApp.openById(MASTER_ID), body = doc.getBody(), paras = body.getParagraphs(), lines = [];
-    for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
+    DOC_ACCESS_ = [];
+    var modBefore = masterModified_();
+    var M = openMaster_(), doc = M.doc, body = M.body, paras = M.paras, lines = M.lines;
     t.MASTER_READ_MS = Date.now() - readStart;
 
     var planStart = Date.now(), byPid = {}, duplicatePid = {}, seenBatchPid = {}, results = [], receipts = [], events = [], changed = [];
@@ -172,13 +172,13 @@ function applyRulingBatchToMaster_(requests) {
     t.PLAN_MS = Date.now() - planStart;
     if (!changed.length) {
       t.TOTAL_MS = Date.now() - started;
-      return { ok: results.every(function (x) { return x.ok; }), mode: 'BATCH_RULING_NO_WRITE', results: results, timings: t, flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
+      return { ok: results.every(function (x) { return x.ok; }), mode: 'BATCH_RULING_NO_WRITE', results: results, timings: t, docAccess: docAccessSummary_(), flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
     }
 
-    var modCheck = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
+    var modCheck = masterModified_();
     if (modCheck !== modBefore) {
       t.TOTAL_MS = Date.now() - started;
-      return { ok: false, mode: 'BATCH_RULING_RETRY', error: 'master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', results: results, timings: t };
+      return { ok: false, mode: 'BATCH_RULING_RETRY', error: 'master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', results: results, timings: t, docAccess: docAccessSummary_() };
     }
 
     var writeStart = Date.now();
@@ -192,9 +192,9 @@ function applyRulingBatchToMaster_(requests) {
     doc.saveAndClose();
     t.MASTER_WRITE_MS = Date.now() - writeStart;
 
-    var rbStart = Date.now(), p2 = DocumentApp.openById(MASTER_ID).getBody().getParagraphs(), backByPid = {}, countsBack = null;
+    var rbStart = Date.now(), p2 = readMasterLines_('MASTER_READBACK'), backByPid = {}, countsBack = null;
     for (var m = 0; m < p2.length; m++) {
-      var tt = p2[m].getText();
+      var tt = p2[m];
       if (/^COUNTS:/.test(tt)) countsBack = tt;
       if (/^\d+ \| /.test(tt)) {
         var cc = tt.split(' | '), id = cc.length > 1 ? cc[1].trim() : '';
@@ -228,7 +228,7 @@ function applyRulingBatchToMaster_(requests) {
     appendEvents_(events);
     t.EVENT_MS = Date.now() - eventStart;
     t.TOTAL_MS = Date.now() - started;
-    return { ok: results.every(function (x) { return x && x.ok; }), mode: 'BATCH_RULING_SINGLE_COMMIT', processed: changed.length, counts: newCounts, results: results, timings: t, flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
+    return { ok: results.every(function (x) { return x && x.ok; }), mode: 'BATCH_RULING_SINGLE_COMMIT', processed: changed.length, counts: newCounts, results: results, timings: t, docAccess: docAccessSummary_(), flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
   } finally { lock.releaseLock(); }
 }
 
@@ -267,7 +267,7 @@ function completedReceiptRequestIds_(text) {
 
 function appendReceipts_(list) {
   if (!list || !list.length) return;
-  var file = findOrCreate_(RECEIPTS_DOC_NAME, 'doc'), doc = DocumentApp.openById(file.getId()), body = doc.getBody();
+  var file = findOrCreate_(RECEIPTS_DOC_NAME, 'doc'), doc = withDocRetry_('RECEIPTS_OPEN', function () { return DocumentApp.openById(file.getId()); }), body = doc.getBody();
   for (var i = 0; i < list.length; i++) {
     var r = list[i], lines = Object.keys(r).map(function (k) { return k + '=' + (typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]); });
     body.appendParagraph(lines.join('\n') + '\nEND ' + r.RECEIPT);
@@ -306,11 +306,67 @@ function findRequestResult_(requestId) {
   return { ok:true, found:false, requestId:rid };
 }
 
+/* ================= transient Google document access ================= */
+/* Bounded retry for READ-ONLY opens/reads of the master and receipts documents. Writes, saves and appends are never retried.
+ * Only transient Docs/Drive service errors are retried (after ~1s, 2s, 4s: at most 3 retries); any other error, or exhaustion,
+ * throws exactly as before, so every caller still fails closed. DOC_ACCESS_ records per-operation telemetry for the result. */
+var DOC_RETRY_DELAYS_MS = [1000, 2000, 4000];
+var DOC_ACCESS_ = [];
+function docSleep_(ms) { Utilities.sleep(ms); }
+function isTransientDocError_(e) {
+  var m = String(e && e.message || e);
+  if (/lock timeout/i.test(m)) return false;
+  return /document is inaccessible|please try again later|service error|service unavailable|server error|internal error|backend error|temporarily unavailable/i.test(m);
+}
+function withDocRetry_(op, fn) {
+  var started = Date.now(), attempt = 0, first = '';
+  for (;;) {
+    attempt++;
+    try {
+      var v = fn();
+      DOC_ACCESS_.push({ op: op, attempts: attempt, status: attempt === 1 ? 'INITIAL_SUCCESS' : 'RECOVERED_BY_RETRY', ms: Date.now() - started, error: first });
+      return v;
+    } catch (e) {
+      var msg = String(e && e.message || e);
+      if (!first) first = msg;
+      if (!isTransientDocError_(e)) { DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'DETERMINISTIC_FAILURE', ms: Date.now() - started, error: msg }); throw e; }
+      if (attempt > DOC_RETRY_DELAYS_MS.length) {
+        DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'RETRY_EXHAUSTED', ms: Date.now() - started, error: msg });
+        throw new Error(msg + ' [' + op + ': retry exhausted after ' + attempt + ' attempts]');
+      }
+      docSleep_(DOC_RETRY_DELAYS_MS[attempt - 1]);
+    }
+  }
+}
+function docAccessSummary_() {
+  var rank = { INITIAL_SUCCESS: 0, RECOVERED_BY_RETRY: 1, DETERMINISTIC_FAILURE: 2, RETRY_EXHAUSTED: 3 }, status = 'INITIAL_SUCCESS', retries = 0;
+  DOC_ACCESS_.forEach(function (x) { retries += x.attempts - 1; if (rank[x.status] > rank[status]) status = x.status; });
+  return { status: status, retries: retries, ops: DOC_ACCESS_.slice() };
+}
+function masterModified_() { return withDocRetry_('MASTER_META', function () { return DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString(); }); }
+/** Fresh open of the master for a transaction: the handle used for writes plus a snapshot of every paragraph's text. */
+function openMaster_() {
+  return withDocRetry_('MASTER_READ', function () {
+    var doc = DocumentApp.openById(MASTER_ID), body = doc.getBody(), paras = body.getParagraphs(), lines = [];
+    for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
+    return { doc: doc, body: body, paras: paras, lines: lines };
+  });
+}
+/** Independent fresh read of every master paragraph's text (post-write readback or read-only consumers). */
+function readMasterLines_(op) {
+  return withDocRetry_(op || 'MASTER_READBACK', function () {
+    var p = DocumentApp.openById(MASTER_ID).getBody().getParagraphs(), out = [];
+    for (var i = 0; i < p.length; i++) out.push(p[i].getText());
+    return out;
+  });
+}
+
 /* ================= master read ================= */
 function readMaster_() {
+  DOC_ACCESS_ = [];
   var file = DriveApp.getFileById(MASTER_ID);
-  var text = DocumentApp.openById(MASTER_ID).getBody().getText();
-  return { ok: true, id: MASTER_ID, title: file.getName(), modifiedTime: file.getLastUpdated().toISOString(), fetchedAt: new Date().toISOString(), bytes: text.length, text: text };
+  var text = withDocRetry_('MASTER_READ', function () { return DocumentApp.openById(MASTER_ID).getBody().getText(); });
+  return { ok: true, docAccess: docAccessSummary_(), id: MASTER_ID, title: file.getName(), modifiedTime: file.getLastUpdated().toISOString(), fetchedAt: new Date().toISOString(), bytes: text.length, text: text };
 }
 
 /* ================= ruling (one existing row, exact PRIMARY_ID) ================= */
@@ -318,11 +374,9 @@ function applyRulingToMaster_(ruling) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    var file = DriveApp.getFileById(MASTER_ID);
-    var modBefore = file.getLastUpdated().toISOString();
-    var doc = DocumentApp.openById(MASTER_ID);
-    var body = doc.getBody();
-    var paras = body.getParagraphs();
+    DOC_ACCESS_ = [];
+    var modBefore = masterModified_();
+    var M = openMaster_(), doc = M.doc, body = M.body, paras = M.paras;
     var pid = String(ruling.primaryId || '').trim();
     if (!pid) return fail_('no PRIMARY_ID in request', ruling);
     var hits = [];
@@ -335,7 +389,7 @@ function applyRulingToMaster_(ruling) {
     var flexPolicy = readFlexPolicy_();
     var res = mutateRow(before, ruling, flexPolicy);
     if (!res.ok) return fail_(res.error, ruling);
-    var modCheck = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
+    var modCheck = masterModified_();
     if (modCheck !== modBefore) return fail_('master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', ruling);
     paras[hits[0]].setText(res.after);
     var lines = [];
@@ -343,9 +397,9 @@ function applyRulingToMaster_(ruling) {
     var newCounts = recomputeCountsLine(lines), newEnd = recomputeEndLine(lines);
     for (var k = 0; k < paras.length; k++) { var tk = paras[k].getText(); if (/^COUNTS:/.test(tk)) paras[k].setText(newCounts); else if (newEnd && /^END V2_CURRENT_POPULATION_MASTER/.test(tk)) paras[k].setText(newEnd); }
     doc.saveAndClose();
-    var p2 = DocumentApp.openById(MASTER_ID).getBody().getParagraphs();
+    var p2 = readMasterLines_('MASTER_READBACK');
     var readback = null, countsBack = null;
-    for (var m = 0; m < p2.length; m++) { var tt = p2[m].getText(); if (tt === res.after) readback = tt; if (/^COUNTS:/.test(tt)) countsBack = tt; }
+    for (var m = 0; m < p2.length; m++) { var tt = p2[m]; if (tt === res.after) readback = tt; if (/^COUNTS:/.test(tt)) countsBack = tt; }
     var verified = readback === res.after && countsBack === newCounts;
     var receipt = {
       RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: ruling.requestId || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
@@ -358,7 +412,7 @@ function applyRulingToMaster_(ruling) {
     };
     appendReceipt_(receipt);
     appendEvent_({ type: 'TIM_RULING', primaryId: pid, actor: ruling.actor || 'TIM', ts: receipt.EXECUTED_AT, requestId: ruling.requestId || '', kind: ruling.kind || '', code: ruling.code || '', note: ruling.note || '', before: before, after: res.after, verified: verified });
-    return { ok: verified, receipt: receipt, before: before, after: res.after, counts: newCounts, flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
+    return { ok: verified, receipt: receipt, before: before, after: res.after, counts: newCounts, docAccess: docAccessSummary_(), flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
   } finally { lock.releaseLock(); }
 }
 /* ================= AI data-discovery request queue ================= */
@@ -370,9 +424,9 @@ function applyDataDiscoveryRequest_(req) {
   if (list.length > 50) return { ok:false, error:'data_discovery batch too large (max 50)' };
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
-    var paras = DocumentApp.openById(MASTER_ID).getBody().getParagraphs(), rows = {};
+    var paras = readMasterLines_('MASTER_READ'), rows = {};
     for (var i=0;i<paras.length;i++) {
-      var t=paras[i].getText(); if (!/^\d+ \| /.test(t)) continue;
+      var t=paras[i]; if (!/^\d+ \| /.test(t)) continue;
       var c=t.split(' | '); if (c.length < FIXED_N + 1) continue;
       rows[c[1].trim()] = { primaryId:c[1].trim(), company:c[2].trim(), title:c[3].trim(), bucket:c[4].trim(), req:c[7].trim(), location:c[8].trim() };
     }
@@ -402,16 +456,16 @@ function applyUpsertToMaster_(ev) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var modBefore = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
-    var doc = DocumentApp.openById(MASTER_ID), body = doc.getBody(), paras = body.getParagraphs(), lines = [];
-    for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
+    DOC_ACCESS_ = [];
+    var modBefore = masterModified_();
+    var M = openMaster_(), doc = M.doc, body = M.body, paras = M.paras, lines = M.lines.slice();
     var now = new Date().toISOString();
     var flexPolicy = readFlexPolicy_();
     var plan = planUpsertApplication(lines, ev, { now: now, flexPolicy: flexPolicy });
     var base = { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: (ev && ev.requestId) || plan.upsertKey || '', EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: (ev && ev.COMPANY) || '', TITLE: (ev && ev.TITLE) || '', STATE: (ev && (ev.STATE || ev.state)) || '', MODE: plan.mode, TARGET_FILE_ID: MASTER_ID, MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: now, FLEX_POLICY_SOURCE: flexPolicy._SOURCE || 'UNKNOWN', FLEX_POLICY_WARNING: flexPolicy._WARNING || '' };
     if (!plan.ok) { base.COMPLETION_STATUS = plan.mode === 'HOLD' ? 'HOLD' : 'FAILED'; base.REASON = plan.error; base.POSSIBLE_MATCHES = plan.possibleMatches || []; try { appendReceipt_(base); } catch (e) {} return { ok: false, mode: plan.mode, error: plan.error, possibleMatches: plan.possibleMatches || [], receipt: base }; }
     if (plan.mode === 'ALREADY_APPLIED') { base.COMPLETION_STATUS = 'NO_CHANGE_REQUIRED'; base.PRIMARY_ID = plan.primaryId; return { ok: true, mode: plan.mode, primaryId: plan.primaryId, receipt: base }; }
-    if (DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString() !== modBefore) return { ok: false, mode: 'RETRY', error: 'master changed during request; retry' };
+    if (masterModified_() !== modBefore) return { ok: false, mode: 'RETRY', error: 'master changed during request; retry' };
     var expect;
     if (plan.mode === 'UPDATE') { paras[plan.index].setText(plan.after); expect = plan.after; }
     else {
@@ -422,12 +476,12 @@ function applyUpsertToMaster_(ev) {
     var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
     for (var k = 0; k < p1.length; k++) { var tk = p1[k].getText(); if (/^COUNTS:/.test(tk)) p1[k].setText(newCounts); else if (newEnd && /^END V2_CURRENT_POPULATION_MASTER/.test(tk)) p1[k].setText(newEnd); }
     doc.saveAndClose();
-    var p2 = DocumentApp.openById(MASTER_ID).getBody().getParagraphs(), found = 0, countsBack = null;
-    for (var m = 0; m < p2.length; m++) { var tt = p2[m].getText(); if (tt === expect) found++; if (/^COUNTS:/.test(tt)) countsBack = tt; }
+    var p2 = readMasterLines_('MASTER_READBACK'), found = 0, countsBack = null;
+    for (var m = 0; m < p2.length; m++) { var tt = p2[m]; if (tt === expect) found++; if (/^COUNTS:/.test(tt)) countsBack = tt; }
     var verified = found === 1 && countsBack === newCounts;
     base.PRIMARY_ID = plan.primaryId; base.MATCHED_BY = plan.matchedBy || ''; base.UPSERT_KEY = plan.upsertKey; base.READBACK_VERIFIED = verified ? 'YES' : 'NO'; base.COUNTS_AFTER = newCounts; base.COMPLETION_STATUS = verified ? 'COMPLETE' : 'FAILED';
     appendReceipt_(base);
-    return { ok: verified, mode: plan.mode, primaryId: plan.primaryId, matchedBy: plan.matchedBy || '', row: expect, counts: newCounts, endLine: newEnd, receipt: base };
+    return { ok: verified, mode: plan.mode, primaryId: plan.primaryId, matchedBy: plan.matchedBy || '', row: expect, counts: newCounts, endLine: newEnd, docAccess: docAccessSummary_(), receipt: base };
   } finally { lock.releaseLock(); }
 }
 
@@ -436,17 +490,14 @@ function applyIntakeToMaster_(req) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var file = DriveApp.getFileById(MASTER_ID);
-    var modBefore = file.getLastUpdated().toISOString();
-    var doc = DocumentApp.openById(MASTER_ID);
-    var body = doc.getBody();
-    var paras = body.getParagraphs();
-    var lines = [];
-    for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
+    DOC_ACCESS_ = [];
+    var modBefore = masterModified_();
+    var M = openMaster_(), doc = M.doc, body = M.body, paras = M.paras;
+    var lines = M.lines.slice();
     var rules = readRules_();
     var plan = planIntake(lines, req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_() });
     if (!plan.ok) return { ok: false, error: plan.error, results: plan.results || [] };
-    var modCheck = DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString();
+    var modCheck = masterModified_();
     if (modCheck !== modBefore) return { ok: false, error: 'master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', results: [] };
     // append: before END marker if present, else at end. Rows are grouped under their own bucket headings.
     var endIdx = -1;
@@ -463,12 +514,12 @@ function applyIntakeToMaster_(req) {
     for (var k = 0; k < p1.length; k++) { var tk = p1[k].getText(); if (/^COUNTS:/.test(tk)) p1[k].setText(newCounts); else if (newEnd && /^END V2_CURRENT_POPULATION_MASTER/.test(tk)) p1[k].setText(newEnd); }
     doc.saveAndClose();
     // read back every inserted line
-    var p2 = DocumentApp.openById(MASTER_ID).getBody().getParagraphs();
+    var p2 = readMasterLines_('MASTER_READBACK');
     var have = {};
-    for (var m = 0; m < p2.length; m++) have[p2[m].getText()] = true;
+    for (var m = 0; m < p2.length; m++) have[p2[m]] = true;
     var missing = plan.newLines.filter(function (l) { return !have[l]; });
     var countsBack = null;
-    for (var c = 0; c < p2.length; c++) if (/^COUNTS:/.test(p2[c].getText())) countsBack = p2[c].getText();
+    for (var c = 0; c < p2.length; c++) if (/^COUNTS:/.test(p2[c])) countsBack = p2[c];
     var verified = missing.length === 0 && countsBack === newCounts;
     if (!verified) plan.results.forEach(function (r) { if (r.result === 'SCOUT_INTAKE_WRITTEN' || r.result === 'DISCOVERY_LEAD_WRITTEN') { r.result = 'WRITE_FAILED'; r.detail = 'readback did not verify'; } });
     var counters = runCounters_(req.run || {}, plan, rules, verified);
@@ -1262,12 +1313,12 @@ function readRuns_() { var it = folder_().getFilesByName(RUNS_FILE_NAME); if (!i
 function appendRun_(rec) { var f = findOrCreate_(RUNS_FILE_NAME, 'text', ''); var cur = f.getBlob().getDataAsString(); f.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + JSON.stringify(rec) + '\n'); }
 function appendReceipt_(r) {
   var file = findOrCreate_(RECEIPTS_DOC_NAME, 'doc');
-  var doc = DocumentApp.openById(file.getId()); var body = doc.getBody();
+  var doc = withDocRetry_('RECEIPTS_OPEN', function () { return DocumentApp.openById(file.getId()); }); var body = doc.getBody();
   var lines = Object.keys(r).map(function (k) { return k + '=' + (typeof r[k] === 'object' ? JSON.stringify(r[k]) : r[k]); });
   body.appendParagraph(lines.join('\n') + '\nEND ' + r.RECEIPT); body.appendParagraph('');
   doc.saveAndClose();
 }
-function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; return DocumentApp.openById(it.next().getId()).getBody().getText(); }
+function readReceipts_() { var it = folder_().getFilesByName(RECEIPTS_DOC_NAME); if (!it.hasNext()) return ''; var id = it.next().getId(); return withDocRetry_('RECEIPTS_READ', function () { return DocumentApp.openById(id).getBody().getText(); }); }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, RULES_DOC_ID: RULES_DOC_ID, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, FINAL_BUCKETS: FINAL_BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
