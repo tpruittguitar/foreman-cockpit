@@ -1,7 +1,7 @@
 # Active Pipeline Authority
 
 STATUS=ACTIVE
-LAST_REVIEWED=2026-10-04
+LAST_REVIEWED=2026-10-05
 
 This is the repository pointer for every AI, scheduler and human working on Pipeline Explorer. It prevents older prompts and archived artifacts from being mistaken for current rules.
 
@@ -23,6 +23,13 @@ If a remembered prompt, cached model, project instruction, task-board file, amen
 - A new row without a usable URL is held for `SOURCE_URL_REQUIRED`; that is an intake identity safeguard, not a general ban on updating existing rows.
 - Identity ambiguity, writer failure, and an explicit protected-state conflict are the only normal reasons to hold a requested mutation. A queue submission is not complete until `RESULT__`/writer response and fresh master readback verify it.
 - The queue is transport only and is processed about every minute. It is not a population, task board or replacement master.
+- **Write durability (since 2026-10-05).** A master write returns `verification: PENDING`. It is durable only when a later execution has recorded `COMPLETE` (`GET action=request_result&requestId=…` or `receipt_index`). `FAILED` with `FINDING=MASTER_NOT_PERSISTED` means resubmit under a new request ID.
+- **Archive and evidence companion (option A, once the live cutover is recorded in the master header line `EVIDENCE_COMPANION_2026-10-05`).**
+  - **The master is still the one population.** It holds every live row and every decision-driving field: identity, bucket/disposition, application state, salary, FLEX, degree, fit score/confidence, liveness and URLs.
+  - **Terminal history** (`CLOSED_DEAD`, `DUPLICATE`, `DECLINED_BY_TIM`, `REJECTED_BY_EMPLOYER`) is kept verbatim in `V2_TERMINAL_ARCHIVE.txt`. It is read-only. The Writer still dedupes intake and upserts against it. To change an archived row, `POST restore_archived` first.
+  - **Narrative and evidence prose** (notes, analyses, evidence quotes, prior/legacy audit text) of live rows is kept in `V2_EVIDENCE_COMPANION.jsonl`, keyed by `PRIMARY_ID`. A row's `EVIDENCE_REF=EVC1:<n>` names its head record. Never treat the companion as a population.
+  - **Read the full picture** with `GET action=master&hydrate=1` (live rows with evidence merged, plus the archive) or `GET action=evidence&primaryId=…`.
+  - **Keep submitting** narrative fields such as `SCOUT_NOTES` and `FIT_EVIDENCE` as before; the Writer routes them to the companion. Details: `docs/MASTER_ARCHIVE_EVIDENCE_COMPANION.md`.
 
 ## Obsolete material that must not control a run
 
