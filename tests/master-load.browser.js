@@ -22,10 +22,14 @@ const HTML404='<!DOCTYPE html><html><head><title>Page Not Found</title></head><b
       if(req.method()==='POST'){posts.push(req.postData());return r.fulfill({json:{ok:true}})}
       gets.push(a);if(u.searchParams.has('hydrate'))gets.push('HYDRATE_PARAM');
       if(fail[a]==='html')return r.fulfill({status:404,contentType:'text/html',body:HTML404});
+      if(fail[a]==='html-once'&&gets.filter(x=>x===a).length===1)return r.fulfill({status:404,contentType:'text/html',body:HTML404});
+      if(fail[a]==='html-once')delete fail[a];
       if(fail[a])return r.fulfill({json:fail[a]});
       const body=a==='master'?{ok:true,id:'M',fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-05T03:49:50Z',text:MASTER}:a==='archive'?{ok:true,archiveId:'ARCH',text:ARCHIVE}:a==='migration_status'?{ok:true,state:MIG}:a==='document_text'?{ok:true,fileId:u.searchParams.get('fileId'),text:COMPANION}:a==='evidence'?{ok:true,primaryId:u.searchParams.get('primaryId'),fields:{SCOUT_NOTES:'on-demand narrative'}}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true};
       await r.fulfill({json:body});});
-    await page.goto(base+'/pipeline.html');await page.waitForTimeout(1200);
+    // Failures now retry for real (3 s + 8 s) before the page settles, so wait for the settled state, not a fixed time.
+    await page.goto(base+'/pipeline.html');
+    await page.waitForFunction(()=>{const f=document.body.dataset.freshness;return f&&f!=='loading'&&!/loading archive\/evidence/.test(document.getElementById('readout').textContent)},null,{timeout:40000});await page.waitForTimeout(300);
     const out={page,errors,posts,gets,alert:await page.locator('#load-alert').innerText(),alertVisible:await page.locator('#load-alert').isVisible(),readout:await page.locator('#readout').innerText(),freshness:await page.evaluate(()=>document.body.dataset.freshness),rows:await page.locator('#grid tbody tr[data-id]').count()};
     console.log(name.padEnd(28),JSON.stringify({freshness:out.freshness,alert:out.alert.slice(0,70),readout:out.readout.slice(-90),rows:out.rows,posts:posts.length}));
     return out;
@@ -36,6 +40,10 @@ const HTML404='<!DOCTYPE html><html><head><title>Page Not Found</title></head><b
   await s.page.locator('[data-tab="pipeline"]').click();await s.page.waitForTimeout(200);
   assert.ok(s.gets.includes('master'));assert.ok(!s.gets.includes('HYDRATE_PARAM'),'the oversized hydrated read is never requested');assert.ok(s.gets.includes('archive')&&s.gets.includes('document_text')&&s.gets.includes('migration_status'));
   assert.equal(s.errors.length,0,s.errors.join('\n'));const liveCache=await s.page.evaluate(()=>localStorage.getItem('px.cache'));await s.page.close();
+  // one transient HTML 404 on the master: retried after 3 s and recovered; LIVE, no warning, no write
+  s=await scenario('master 404 once (retried)',{master:'html-once'});
+  assert.equal(s.freshness,'live');assert.equal(s.alertVisible,false);assert.match(s.readout,/Connected/);
+  assert.equal(s.gets.filter(a=>a==='master').length,2,'master read twice');assert.equal(s.posts.length,0);assert.equal(s.errors.length,0,s.errors.join('\n'));await s.page.close();
   // master fails (Google HTML 404) with a cache: STALE everywhere, never Connected, save does not POST
   s=await scenario('master 404 + cache',{master:'html'},JSON.parse(liveCache));
   assert.equal(s.freshness,'stale');assert.ok(s.alertVisible);assert.match(s.alert,/STALE · FETCH FAILED/);assert.match(s.alert,/NOT the live master/);

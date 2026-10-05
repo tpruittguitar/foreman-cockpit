@@ -44,7 +44,12 @@ function writer(over) {
   return { get, calls };
 }
 function memCache(initial) { let v = initial || null, writes = 0; return { read: () => v, write: x => { v = x; writes++; }, get value() { return v; }, get writes() { return writes; } }; }
-async function run(w, cache) { const updates = []; const final = await L.load({ get: w.get, cache: cache || memCache(), onUpdate: v => updates.push(v) }); return { final, updates }; }
+// Retries sleep through an injected clock so failure scenarios run instantly; the delays asked for are recorded.
+async function run(w, cache, extra) {
+  const updates = [], slept = [], retries = [];
+  const final = await L.load(Object.assign({ get: w.get, cache: cache || memCache(), onUpdate: v => updates.push(v), sleep: ms => { slept.push(ms); return Promise.resolve(); }, onRetry: r => retries.push(r) }, extra || {}));
+  return { final, updates, slept, retries };
+}
 const htmlRejection = () => { throw new SyntaxError("Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON"); };
 
 // 1 + 9
@@ -176,7 +181,7 @@ test('on-demand row evidence uses the read-only evidence action', async () => {
 test('ported hydration functions and constants are identical to apps-script/Code.gs', () => {
   const code = fs.readFileSync(path.join(repo, 'apps-script/Code.gs'), 'utf8'), port = fs.readFileSync(path.join(repo, 'pipeline-loader.js'), 'utf8');
   const fn = (src, name) => { const i = src.search(new RegExp('\\n\\s*function ' + name.replace('$', '\\$') + '\\(')); assert.ok(i >= 0, name); let j = src.indexOf('{', i), d = 0, k = j; for (; k < src.length; k++) { if (src[k] === '{') d++; else if (src[k] === '}' && !--d) break; } return src.slice(i, k + 1).split('\n').map(l => l.trim()).join('\n').trim(); };
-  ['parsePayload', 'buildPayload', 'rowParts_', 'evidenceRefOf_', 'parseCompanion_', 'resolveEvidence_', 'parseArchive_', 'rowKey_', 'hydrateLines_', 'recomputeCountsLine', 'recomputeEndLine', 'liveArchiveState_']
+  ['parsePayload', 'buildPayload', 'rowParts_', 'evidenceRefOf_', 'parseCompanion_', 'resolveEvidence_', 'parseArchive_', 'rowKey_', 'hydrateLines_', 'recomputeCountsLine', 'recomputeEndLine', 'liveArchiveState_', 'isTransientDocError_']
     .forEach(n => assert.equal(fn(port, n), fn(code, n), n + ' drifted from Code.gs'));
   ['FIXED_N', 'BUCKETS', 'ARCHIVE_BUCKETS'].forEach(n => { const re = new RegExp('^\\s*var ' + n + ' = .*$', 'm'); assert.equal(port.match(re)[0].trim(), code.match(re)[0].trim(), n); });
 });
@@ -205,4 +210,98 @@ test('REQ precedence does not bypass the rest of the identity rule', () => {
   assert.equal(hasResolvedIdentity_(idRow('UNCAPTURED', { REQ_ID: '376', IDENTITY_CONFIDENCE: 'LOW' })), false);
   assert.equal(hasResolvedIdentity_(idRow('UNCAPTURED', { REQ_ID: '376', POSSIBLE_MATCHES: 'V2I-X' })), false);
   assert.equal(hasResolvedIdentity_(Object.assign(idRow('UNCAPTURED', { REQ_ID: '376' }), { LOCATION: '' })), false);
+});
+
+// ---------- bounded retries: transient failures only, each component on its own ----------
+function counted(fail, action) {
+  const calls = { n: 0 }, base = writer();
+  return { calls, get: (a, extra) => { if (a === action) { calls.n++; const r = fail(calls.n); if (r) return Promise.resolve().then(r); } return base.get(a, extra); } };
+}
+const htmlPage = () => { throw new SyntaxError("Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON"); };
+const net = () => { throw new TypeError('Failed to fetch'); };
+
+test('retry: delays are 3 s then 8 s by default, and only two retries', () => {
+  assert.deepEqual(L.RETRY_DELAYS_MS, [3000, 8000]);
+});
+
+test('retry: an HTML error page on the master is retried; a later success is LIVE and records the attempts', async () => {
+  const w = counted(n => n === 1 ? htmlPage : null, 'master');
+  const { final, slept, retries } = await run(w);
+  assert.equal(final.freshness, 'LIVE'); assert.equal(w.calls.n, 2);
+  assert.deepEqual(slept, [3000]); assert.equal(retries[0].action, 'master'); assert.equal(retries[0].attempt, 1);
+  assert.equal(final.meta.masterAttempts, 2);
+  assert.equal(final.text, writerView());
+});
+
+test('retry: two failures then success uses both delays (3 s, 8 s)', async () => {
+  const w = counted(n => n <= 2 ? htmlPage : null, 'master');
+  const { final, slept } = await run(w);
+  assert.equal(final.freshness, 'LIVE'); assert.equal(w.calls.n, 3); assert.deepEqual(slept, [3000, 8000]);
+});
+
+test('retry: exhausted after 3 attempts -> existing fail-closed behaviour (STALE with cache, NONE without)', async () => {
+  const w1 = counted(() => htmlPage, 'master');
+  const r1 = await run(w1, memCache({ text: 'CACHED', meta: { fetchedAt: '2026-10-05T01:00:00Z' } }));
+  assert.equal(r1.final.freshness, 'STALE'); assert.equal(w1.calls.n, 3); assert.deepEqual(r1.slept, [3000, 8000]);
+  assert.match(r1.final.error, /HTML error page.*\(after 3 attempts\)/);
+  const w2 = counted(() => net, 'master');
+  const r2 = await run(w2);
+  assert.equal(r2.final.freshness, 'NONE'); assert.equal(w2.calls.n, 3); assert.match(r2.final.error, /Failed to fetch \(after 3 attempts\)/);
+});
+
+test('retry: a network error is transient and retried', async () => {
+  const w = counted(n => n === 1 ? net : null, 'master');
+  const { final } = await run(w);
+  assert.equal(final.freshness, 'LIVE'); assert.equal(w.calls.n, 2);
+});
+
+test('no retry: a legitimate Writer ok:false (bad key) fails at once', async () => {
+  const w = counted(() => () => ({ ok: false, error: 'bad key' }), 'master');
+  const { final, slept } = await run(w);
+  assert.equal(final.freshness, 'NONE'); assert.equal(w.calls.n, 1); assert.deepEqual(slept, []); assert.equal(final.error, 'bad key');
+});
+
+test('retry: an ok:false the Writer itself classifies transient is retried', async () => {
+  const w = counted(n => n === 1 ? () => ({ ok: false, error: 'Service unavailable. Please try again later.' }) : null, 'master');
+  const { final } = await run(w);
+  assert.equal(final.freshness, 'LIVE'); assert.equal(w.calls.n, 2);
+  const lock = counted(() => () => ({ ok: false, error: 'Lock timeout: another process was holding the lock for too long. Please try again later.' }), 'master');
+  const r = await run(lock);
+  assert.equal(lock.calls.n, 1, 'lock timeouts are not transient by the Writer rule'); assert.equal(r.final.freshness, 'NONE');
+});
+
+test('no retry: structurally invalid JSON (parses, but no COUNTS line) fails at once', async () => {
+  const w = counted(() => () => ({ ok: true, text: MASTER.split('\n').filter(l => !/^COUNTS:/.test(l)).join('\n') }), 'master');
+  const { final, slept } = await run(w);
+  assert.equal(final.freshness, 'NONE'); assert.equal(w.calls.n, 1); assert.deepEqual(slept, []);
+});
+
+test('independence: a fresh master is published at once and kept while evidence retries, then evidence merges', async () => {
+  const w = counted(n => n <= 2 ? htmlPage : null, 'document_text');
+  const { final, updates } = await run(w);
+  assert.equal(updates[0].freshness, 'LIVE'); assert.equal(updates[0].text, MASTER, 'master shown before evidence retries finish');
+  assert.equal(w.calls.n, 3);
+  assert.equal(final.freshness, 'LIVE'); assert.equal(final.evidence.state, 'OK'); assert.equal(final.text, writerView());
+  assert.ok(updates.every(u => u.freshness === 'LIVE'), 'no update ever drops the fresh master');
+});
+
+test('independence: archive exhausted -> archive FAILED after 3 attempts; master LIVE and evidence merged regardless', async () => {
+  const w = counted(() => htmlPage, 'archive');
+  const { final } = await run(w);
+  assert.equal(w.calls.n, 3); assert.equal(final.freshness, 'LIVE');
+  assert.equal(final.archive.state, 'FAILED'); assert.match(final.archive.error, /after 3 attempts/);
+  assert.equal(final.evidence.state, 'OK');
+});
+
+test('retry: migration status retries on its own; archive and evidence then load', async () => {
+  const w = counted(n => n === 1 ? net : null, 'migration_status');
+  const { final } = await run(w);
+  assert.equal(w.calls.n, 2); assert.equal(final.archive.state, 'OK'); assert.equal(final.evidence.state, 'OK');
+});
+
+test('retry paths stay read-only', async () => {
+  const seen = [], base = writer();
+  let n = 0;
+  await run({ get: (a, e) => { seen.push(a); if (++n % 2) return Promise.reject(new TypeError('Failed to fetch')); return base.get(a, e); } });
+  assert.ok(seen.length > 4); seen.forEach(a => assert.ok(L.READ_ACTIONS.includes(a), a));
 });

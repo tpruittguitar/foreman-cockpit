@@ -450,9 +450,9 @@ function load(fromCache){
   if(!hasWriter()){S.connection.state='Not configured';readout('Protected master · configure your writer to connect');switchTab('settings');return}
   S.connection.state='Checking';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'PENDING'},evidence:{state:'PENDING'}};renderLoadAlert_();
   if(hasWriter()&&!src){syncStateDown();loadCanonicalScoring_();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality();if(S.tab==='today')renderToday()}}).catch(function(){});gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
-  var seq=S.loadSeq=(S.loadSeq||0)+1,lastText=null;
+  var seq=S.loadSeq=(S.loadSeq||0)+1,lastText=null;S.loadRetry=null;
   // Three separate reads merged in the browser (PipelineLoader); the canonical master alone decides freshness.
-  return PipelineLoader.load({get:gsGet,cache:{read:function(){return LS.get('cache',null)},write:function(v){LS.set('cache',v)}},onUpdate:function(v){
+  return PipelineLoader.load({get:gsGet,onRetry:function(r){if(seq!==S.loadSeq)return;S.loadRetry=r;if(r.action==='master'||!S.master||(S.load&&S.load.freshness==='LOADING'))readout('<b>fetching…</b> retry '+r.attempt+' of '+r.of+' ('+esc(r.action)+': '+esc(r.reason)+')');else renderReadout()},cache:{read:function(){return LS.get('cache',null)},write:function(v){LS.set('cache',v)}},onUpdate:function(v){
     if(seq!==S.loadSeq)return;
     S.load=v;
     if(v.freshness==='LIVE'){S.connection.state='Connected';S.connection.lastRead=v.meta.fetchedAt||new Date().toISOString();S.connection.error=''}
@@ -476,7 +476,7 @@ function renderLoadAlert_(){
   el.className=cls?'on '+cls:'';el.innerHTML=h;var b=$('load-retry');if(b)b.onclick=function(){load()};
 }
 function freshnessLabel_(){var v=S.load||{};if(v.freshness==='STALE')return '<span class="bad">STALE · FETCH FAILED · cached '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+'</span>';if(v.freshness==='LOADING')return 'Loading current master…';
-  var parts=[esc(S.connection.state)];if(v.archive&&v.archive.state==='PENDING'||v.evidence&&v.evidence.state==='PENDING')parts.push('loading archive/evidence…');if(v.archive&&v.archive.state==='FAILED')parts.push('<span class="bad">ARCHIVE UNAVAILABLE</span>');if(v.evidence&&v.evidence.state==='FAILED')parts.push('<span class="bad">EVIDENCE UNAVAILABLE</span>');
+  var parts=[esc(S.connection.state)];if(v.archive&&v.archive.state==='PENDING'||v.evidence&&v.evidence.state==='PENDING')parts.push('loading archive/evidence…'+(S.loadRetry&&S.loadRetry.action!=='master'?' (retrying '+esc(S.loadRetry.action)+' '+S.loadRetry.attempt+'/'+S.loadRetry.of+')':''));if(v.archive&&v.archive.state==='FAILED')parts.push('<span class="bad">ARCHIVE UNAVAILABLE</span>');if(v.evidence&&v.evidence.state==='FAILED')parts.push('<span class="bad">EVIDENCE UNAVAILABLE</span>');
   return parts.join(' · ')+' · read '+esc(S.connection.lastRead?new Date(S.connection.lastRead).toLocaleTimeString():'not verified');}
 function apply(text,meta,fromCache){
   var m=PipelineParser.parse(text);S.master=m;S.text=text;S.meta=meta||{};S.meta.fromCache=!!fromCache;

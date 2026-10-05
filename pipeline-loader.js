@@ -5,6 +5,9 @@
    Fail closed on freshness: if the canonical master cannot be fetched and validated, nothing is presented as current. A
    cached copy may be shown only with freshness STALE; archive/evidence failures are reported separately and never mark the
    canonical master stale. The loader only reads: it accepts only the read actions in READ_ACTIONS.
+   Each read retries on its own (default 3 s, then 8 s) when the failure is transient: a network error, an HTML or other
+   non-JSON response, or a Writer ok:false whose error isTransientDocError_ (the Writer's own rule) calls transient. A
+   response that parses but is structurally invalid, or any other ok:false, is never retried.
    Works as a browser global (window.PipelineLoader) and as a CommonJS module (tests). */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -108,9 +111,15 @@
     return has ? 'END V2_CURRENT_POPULATION_MASTER (' + n + ' rows)' : null;
   }
   function liveArchiveState_(st) { return !!(st && st.mode === 'LIVE' && st.archiveId && st.status !== 'ABANDONED'); }
+  function isTransientDocError_(e) {
+    var m = String(e && e.message || e);
+    if (/lock timeout/i.test(m)) return false;
+    return /document is inaccessible|please try again later|service error|service unavailable|server error|internal error|backend error|temporarily unavailable/i.test(m);
+  }
   /* ---------- end verbatim ---------- */
 
   var READ_ACTIONS = ['master', 'archive', 'migration_status', 'document_text', 'evidence'];
+  var RETRY_DELAYS_MS = [3000, 8000];
 
   /** Pure: why a Writer master response is not a usable canonical master, or '' when it is. */
   function masterResponseError(j) {
@@ -142,9 +151,26 @@
    */
   function load(opts) {
     var cache = opts.cache || { read: function () { return null; }, write: function () {} }, onUpdate = opts.onUpdate || function () {};
+    var delays = opts.retryDelaysMs || RETRY_DELAYS_MS, onRetry = opts.onRetry || function () {};
+    var sleep = opts.sleep || function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+    /** One read with its own bounded retries; resolves with the response or rejects with the last error (attempts noted). */
     function get(action, extra) {
       if (READ_ACTIONS.indexOf(action) < 0) return Promise.reject(new Error('loader refused non-read action ' + action));
-      return Promise.resolve().then(function () { return opts.get(action, extra || ''); });
+      var attempt = 0;
+      function retry(reason) { onRetry({ action: action, attempt: attempt, of: delays.length, reason: reason }); return sleep(delays[attempt - 1]).then(once); }
+      function once() {
+        attempt++;
+        return Promise.resolve().then(function () { return opts.get(action, extra || ''); }).then(function (j) {
+          if (j && j.ok === false && isTransientDocError_(j.error) && attempt <= delays.length) return retry('transient Writer error: ' + j.error);
+          if (j && typeof j === 'object' && attempt > 1) j.readAttempts = attempt;
+          if (j && j.ok === false && isTransientDocError_(j.error)) j.error = j.error + ' (after ' + attempt + ' attempts)';
+          return j;
+        }, function (e) {
+          if (attempt <= delays.length) return retry(errText(e));
+          throw new Error(errText(e) + (attempt > 1 ? ' (after ' + attempt + ' attempts)' : ''));
+        });
+      }
+      return once();
     }
     var startedAt = new Date().toISOString();
     var masterP = get('master').then(function (j) { var e = masterResponseError(j); return e ? { ok: false, error: e } : { ok: true, j: j }; }, function (e) { return { ok: false, error: 'master read failed: ' + errText(e) }; });
@@ -177,7 +203,7 @@
         onUpdate(failed);
         return failed;
       }
-      var j = m.j, base = { id: j.id, fetchedAt: j.fetchedAt, modifiedTime: j.modifiedTime || '', canonicalBytes: j.text.length };
+      var j = m.j, base = { id: j.id, fetchedAt: j.fetchedAt, modifiedTime: j.modifiedTime || '', canonicalBytes: j.text.length, masterAttempts: j.readAttempts || 1 };
       var view = { freshness: 'LIVE', error: '', startedAt: startedAt, text: j.text, fromCache: false, meta: base, archive: { state: 'PENDING' }, evidence: { state: 'PENDING' } };
       function publish() {
         var a = view.archive.state === 'OK' ? view.archive.rows : null, r = view.evidence.state === 'OK' ? view.evidence.recs : null;
@@ -195,6 +221,6 @@
   function rowEvidence(getFn, pid) {
     return Promise.resolve().then(function () { return getFn('evidence', '&primaryId=' + encodeURIComponent(pid)); });
   }
-  return { load: load, composeView: composeView, masterResponseError: masterResponseError, rowEvidence: rowEvidence, READ_ACTIONS: READ_ACTIONS,
+  return { load: load, composeView: composeView, masterResponseError: masterResponseError, rowEvidence: rowEvidence, READ_ACTIONS: READ_ACTIONS, RETRY_DELAYS_MS: RETRY_DELAYS_MS, isTransientDocError_: isTransientDocError_,
     hydrateLines_: hydrateLines_, parseArchive_: parseArchive_, parseCompanion_: parseCompanion_, resolveEvidence_: resolveEvidence_, liveArchiveState_: liveArchiveState_ };
 }));
