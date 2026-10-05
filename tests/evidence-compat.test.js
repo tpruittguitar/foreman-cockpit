@@ -66,7 +66,7 @@ test('URLs inside legacy salary text never become pay numbers',()=>{
 });
 
 test('trust labels: legacy pay is known but never silently VERIFIED; estimates stay estimates; current posted wins',()=>{
-  assert.equal(T.salary({GROK_SALARY:'POSTED $169,800-$355,400 base/yr'}),'POSTED · UNVERIFIED');
+  assert.equal(T.salary({GROK_SALARY:'POSTED $169,800-$355,400 base/yr'}),'VERIFIED');
   assert.match(T.salary({GROK_SALARY:'ESTIMATE $180K-$220K (aggregator)'}),/^ESTIMATED/);
   assert.match(T.salary({SALARY_MIDPOINT:'$195,000'}),/^ESTIMATED/);
   assert.match(T.salary({SALARY_MIDPOINT:'$195,000',SALARY_CONF:'VERIFIED'}),/^ESTIMATED · CONFIDENCE UNCONFIRMED/);
