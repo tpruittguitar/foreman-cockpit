@@ -31,10 +31,25 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   // 2. Defaults: auto zoom on, 600%, dense boost on.
   await openLayers();assert(await page.locator('#map-autozoom').isChecked());assert.equal(await page.locator('#map-selzoom').inputValue(),'6');assert(await page.locator('#map-dense').isChecked());await closeLayers();
   await pick('V2X-299323199555');assert.equal(await label(),'600%','an ordinary location is acquired at 600%');
-  // 3. Dense-area boost: Tullahoma sits ~6 km from Huntsville (other jobs in the current view), so selecting it zooms deeper (capped at 1000%).
-  await pick('V2X-3EB07714AE24');const boosted=await zoom();assert(boosted>6&&boosted<=10.001,'a crowded pin is boosted past 600% (got '+boosted+')');
+  // 3. Nothing checked: the Selected layer shows the single selected job, so a lone pin is not boosted.
+  const shown=()=>page.locator('.map-target:not([hidden])').count(),drawn=()=>page.locator('.map-target').count();
+  const check=async(id,on)=>{const cb=page.locator('#grid tbody tr[data-id="'+id+'"] .row-select');on?await cb.check():await cb.uncheck();await page.waitForTimeout(1100)};
+  await pick('V2X-3EB07714AE24');assert.equal(await label(),'600%','a single job is acquired at 600%');assert.equal(await drawn(),1,'only the selected job is drawn when nothing is checked');
+  // Checked jobs: every checked job is drawn and the map frames them all. Tullahoma and Huntsville are ~6 km apart, so the dense boost separates them (capped at 1000%).
+  await check('V2X-A4CCD49EE686',true);const boosted=await zoom();
+  assert.equal(await drawn(),2,'the checked job is drawn with the selected one');assert.equal(await shown(),2,'both are on screen');assert(boosted>6&&boosted<=10.001,'a crowded selection is boosted past 600% (got '+boosted+')');
+  assert.match(await page.locator('#map-sub').innerText(),/1 selected job/);
+  // A far-away checked job (Louisville, CO): the map zooms out to keep every selected pin on screen.
+  await check('V2X-299323199555',true);assert.equal(await drawn(),3);assert.equal(await shown(),3,'all checked jobs stay on screen');assert(await zoom()<6,'framing zooms out for spread-out selections');
+  // Checked jobs filtered out of the queue (or scrolled off it) still show on the map.
+  await page.locator('#search').fill('Tullahoma');await page.waitForTimeout(1100);assert.equal(await page.locator('#grid tbody tr[data-id="V2X-A4CCD49EE686"]').count(),0,'Huntsville row is filtered out of the queue');
+  assert.equal(await drawn(),3,'checked jobs outside the current view are still drawn');assert.equal(await shown(),3);
+  await page.locator('#search').fill('');await page.waitForTimeout(1100);
+  // Clearing the checks returns to the single selected job.
+  await check('V2X-299323199555',false);await check('V2X-A4CCD49EE686',false);assert.equal(await drawn(),1,'no checks: back to the single job');
+  // Dense boost off: a checked crowded pair is framed at the selection zoom, no deeper.
   await openLayers();await page.locator('#map-dense').uncheck();await closeLayers();
-  await pick('V2X-A4CCD49EE686');assert.equal(await label(),'600%','with the boost off a crowded pin stays at the base zoom');
+  await check('V2X-A4CCD49EE686',true);await pick('V2X-3EB07714AE24');assert.equal(await label(),'600%','with the boost off a crowded selection stays at the base zoom');await check('V2X-A4CCD49EE686',false);
   // 4. Selection zoom preset.
   await openLayers();await page.locator('#map-selzoom').selectOption('3');await closeLayers();
   await pick('V2X-299323199555');assert.equal(await label(),'300%','the selection zoom preference applies');

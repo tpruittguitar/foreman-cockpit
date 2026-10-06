@@ -803,8 +803,8 @@ function render(){
   $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
   fixSticky();
   $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
-  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView)setTimeout(function(){dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}}});
-  $('grid').querySelectorAll('.row-select').forEach(function(cb){cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets()}});
+  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView)setTimeout(function(){dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}}});
+  $('grid').querySelectorAll('.row-select').forEach(function(cb){cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets();mapSelectionChanged_()}});
   applyColumnWidths();enableColumnResize();fitRows_();
   if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();if(S.tab==='columns')renderColumns();if(S.tab==='scoring')renderScoring();document.querySelectorAll('[data-chart-filter]').forEach(function(el){el.setAttribute('aria-pressed',S.chartFilter&&JSON.parse(el.dataset.chartFilter).label===S.chartFilter.label?'true':'false')});
 }
@@ -1251,24 +1251,34 @@ function bindMapWheel_(){
 }
 
 // Dense-area boost: deepen the selection zoom only as far as needed to put the nearest distinct pin in the current view >= 28px away (capped at 1000%).
-function cachedPlace_(l,cache){if(l.lat!=null&&l.lon!=null)return l;var key=String(l.label||'').toLowerCase().trim(),c=cache[key],sc=stateCodeFromText_(l.label);if(c&&c.lat!=null&&c.lon!=null&&(!sc||String(c.state||'').toUpperCase()===sc))return c;var o=GEO_CITY_OVERRIDES[key];return o?{lat:o[0],lon:o[1]}:null}
-function denseZoom_(q,base,r){/* Dense-area boost: other jobs in the current view located within about 28px of the selected pin at the selection zoom push the zoom just far enough to separate them, capped at MAP_MAX_ZOOM. Uses pin distances only (cached geocodes and the built-in city table); no places are hard-coded. */var box=$('job-map');if(!box||!box.clientWidth)return base;var s=Math.min(box.clientWidth/960,box.clientHeight/510),SEP=28,minD=Infinity,cache=LS.get('geoCache',{}),reach=Math.max(box.clientWidth,box.clientHeight)/(s*base);
-  filteredRows().forEach(function(x){if(r&&x.id===r.id)return;mapLocationsForRow_(x).forEach(function(l){if(l.home)return;var p=cachedPlace_(l,cache);if(!p)return;var t=projectUS_(+p.lat,+p.lon,stateCodeFromText_(l.label)),d=Math.hypot(t.x-q.x,t.y-q.y);if(d<.35||d>reach)return;if(d<minD)minD=d})});
+function pinPoint_(p){return projectUS_(+p.lat,+p.lon,stateCodeFromText_(p.label))}
+function denseZoom_(qs,base,found,labels){/* Dense-area boost: counts only pins drawn on the map. Zooms just far enough that the nearest drawn neighbour of the anchor pin(s) sits about 28px away, capped at MAP_MAX_ZOOM; no places are hard-coded. */var box=$('job-map');if(!box||!box.clientWidth)return base;var s=Math.min(box.clientWidth/960,box.clientHeight/510),SEP=28,minD=Infinity,reach=Math.max(box.clientWidth,box.clientHeight)/(s*base);
+  qs.forEach(function(q,i){(found||[]).forEach(function(p){if(p.home||p.type==='home'||p.label===labels[i])return;var t=pinPoint_(p),d=Math.hypot(t.x-q.x,t.y-q.y);if(d<.35||d>reach)return;if(d<minD)minD=d})});
   if(!isFinite(minD)||minD*s*base>=SEP)return base;return Math.min(MAP_MAX_ZOOM,Math.max(base,SEP/(minD*s)))}
+function frameSelection_(found,r,key){/* Checked jobs: frame every drawn job pin, no deeper than the selection zoom (or the dense boost) allows while keeping all of them on screen. */var box=$('job-map');if(!box||!box.clientWidth)return;var pins=found.filter(function(p){return !(p.home||p.type==='home')}),pts=pins.map(pinPoint_);if(!pts.length)return;
+  var xs=pts.map(function(q){return q.x}),ys=pts.map(function(q){return q.y}),x0=Math.min.apply(null,xs),x1=Math.max.apply(null,xs),y0=Math.min.apply(null,ys),y1=Math.max.apply(null,ys),s=Math.min(box.clientWidth/960,box.clientHeight/510),PAD=72;
+  var fit=Math.min((box.clientWidth-2*PAD)/Math.max((x1-x0)*s,1e-6),(box.clientHeight-2*PAD)/Math.max((y1-y0)*s,1e-6)),base=mapView.rowFocusZoom||S.mapSelZoom||6,auto=S.mapAutoZoom!==false;
+  var want=S.mapDenseBoost!==false?denseZoom_(pts,base,pins,pins.map(function(p){return p.label})):base,zoom=auto?Math.max(1,Math.min(fit,want,MAP_MAX_ZOOM)):(mapView.targetZoom||mapView.zoom);
+  var primary=r&&mapLocationsForRow_(r)[0],hitIndex=primary?found.findIndex(function(p){return p.label===primary.label}):-1;
+  mapView.focus=key;mapView.hasFocused=true;mapView.rowFocusZoom=null;mapView.selZoom=zoom;if(hitIndex>=0)mapView.active=hitIndex;
+  animateMap_({zoom:zoom,x:(x0+x1)/2,y:(y0+y1)/2},auto?650:520,function(){if(hitIndex>=0)pulsePin_(found[hitIndex].label)})}
 function pulsePin_(label){var box=$('job-map');if(!box)return;var i=mapView.found.findIndex(function(p){return p.label===label}),b=i>=0&&box.querySelector('.map-target[data-pin="'+i+'"]');if(!b)return;b.classList.remove('acquire');void b.offsetWidth;b.classList.add('acquire');setTimeout(function(){b.classList.remove('acquire')},900)}
-function mapRows_(mode){mode=mode||S.mapMode;if(mode==='visible')return filteredRows();if(mode==='selected')return S.focus&&rowById(S.focus)?[rowById(S.focus)]:[];return S.rows.filter(function(r){if(mode==='applied')return r.BUCKET==='APPLIED';if(mode==='ready')return r.BUCKET==='READY_TO_PURSUE';if(mode==='scout')return r.BUCKET==='SCOUT_INTAKE';if(mode==='active')return ['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED'].indexOf(r.BUCKET)>=0;return false})}
+/* Selected map layer: with checked rows, every checked job is drawn (including rows scrolled out of the queue or outside the current view) and the map frames them all; with none, the single selected job. */
+function checkedRows_(){return Object.keys(S.checked).filter(function(k){return S.checked[k]}).map(rowById).filter(Boolean)}
+function mapSelectionChanged_(){if(S.mapMode==='selected')renderJobMap()}
+function mapRows_(mode){mode=mode||S.mapMode;if(mode==='visible')return filteredRows();if(mode==='selected'){var sel=checkedRows_(),f=S.focus&&rowById(S.focus);if(!sel.length)return f?[f]:[];return f&&sel.indexOf(f)<0?[f].concat(sel):sel}return S.rows.filter(function(r){if(mode==='applied')return r.BUCKET==='APPLIED';if(mode==='ready')return r.BUCKET==='READY_TO_PURSUE';if(mode==='scout')return r.BUCKET==='SCOUT_INTAKE';if(mode==='active')return ['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED'].indexOf(r.BUCKET)>=0;return false})}
 function visibleMapLocations_(){
   var out=[],seen={};mapRows_().forEach(function(r){mapLocationsForRow_(r).forEach(function(x){var k=x.label.toLowerCase();if(seen[k]){if(seen[k].rowIds.indexOf(r.id)<0)seen[k].rowIds.push(r.id)}else{seen[k]=x;out.push(x)}})});return out;
 }
 function renderJobMap(){
   var box=$('job-map'),sub=$('map-sub'),stat=$('map-loc-status');if(!box)return;
   bindMapWheel_();var request=++mapView.request;
-  var r=S.focus?rowById(S.focus):null,locs=S.mapMode==='selected'?mapLocationsForRow_(r):visibleMapLocations_();
-  if(S.mapMode==='selected'&&!r){mapView.found=[];mapView.active=null;box.innerHTML=mapBaseSvg_('');applyMapView_();sub.textContent='Select a job to place its location';stat.textContent='';return}
+  var r=S.focus?rowById(S.focus):null,nChecked=S.mapMode==='selected'?checkedRows_().length:0,multi=nChecked>0,locs=S.mapMode==='selected'&&!multi?mapLocationsForRow_(r):visibleMapLocations_();
+  if(S.mapMode==='selected'&&!r&&!multi){mapView.found=[];mapView.active=null;box.innerHTML=mapBaseSvg_('');applyMapView_();sub.textContent='Select a job to place its location';stat.textContent='';return}
   if(!locs.length){mapView.found=[];mapView.active=null;box.innerHTML='<div class="map-empty">'+(S.mapMode==='selected'?'Location not yet verified':'No mapped jobs in this group')+'</div>';sub.textContent=S.mapMode==='selected'&&r?(r.COMPANY+' · '+r.TITLE):mapRows_().length+' jobs';stat.textContent='NO LOCATION';return}
-  sub.textContent=S.mapMode==='selected'?(r.COMPANY+' · '+r.TITLE):mapRows_().length+(S.mapMode==='visible'?' rows in current view':' jobs · '+({applied:'Applied',active:'Active work',scout:'Scout intake',ready:'Ready'}[S.mapMode]||''));
+  sub.textContent=multi?(nChecked+' selected job'+(nChecked===1?'':'s')+(r?' · '+r.COMPANY+' · '+r.TITLE:'')):S.mapMode==='selected'?(r.COMPANY+' · '+r.TITLE):mapRows_().length+(S.mapMode==='visible'?' rows in current view':' jobs · '+({applied:'Applied',active:'Active work',scout:'Scout intake',ready:'Ready'}[S.mapMode]||''));
   if(!box.querySelector('svg'))box.innerHTML=mapBaseSvg_('');stat.textContent='LOCATING…';
-  var focusId=S.focus,mode=S.mapMode;
+  var focusId=S.focus,mode=S.mapMode,frameKey=multi?'multi:'+(focusId||'')+':'+checkedRows_().map(function(x){return x.id}).sort().join(','):focusId;
   Promise.all(locs.map(geocodePlace_)).then(function(found){
     if(request!==mapView.request||!$('job-map')||S.mapMode!==mode||(mode==='selected'&&S.focus!==focusId))return;
     found=found.filter(function(x){return isFinite(x.lat)&&isFinite(x.lon)});
@@ -1276,7 +1286,8 @@ function renderJobMap(){
     var approx=found.filter(function(x){return x.approx}).length;
     $('job-map').innerHTML=mapBaseSvg_(found.map(pinSvg_).join(''));
     mapView.found=found;mapView.active=found.length===1?0:null;applyMapView_();
-    if(r&&(mode==='selected'||mode==='visible')&&mapView.focus!==focusId){var primary=mapLocationsForRow_(r)[0],hit=found.filter(function(p){return primary&&p.label===primary.label})[0];if(hit){var q=projectUS_(+hit.lat,+hit.lon,stateCodeFromText_(hit.label)),base=mapView.rowFocusZoom||S.mapSelZoom||6,auto=S.mapAutoZoom!==false,zoom=auto?(S.mapDenseBoost!==false?denseZoom_(q,base,r):base):(mapView.targetZoom||mapView.zoom);mapView.focus=focusId;mapView.hasFocused=true;mapView.rowFocusZoom=null;mapView.selZoom=zoom;animateMap_({zoom:zoom,x:q.x,y:q.y},auto?650:520,function(){pulsePin_(hit.label)})}}
+    if(multi&&mapView.focus!==frameKey){frameSelection_(found,r,frameKey)}
+    else if(!multi&&r&&(mode==='selected'||mode==='visible')&&mapView.focus!==focusId){var primary=mapLocationsForRow_(r)[0],hit=found.filter(function(p){return primary&&p.label===primary.label})[0];if(hit){var q=projectUS_(+hit.lat,+hit.lon,stateCodeFromText_(hit.label)),base=mapView.rowFocusZoom||S.mapSelZoom||6,auto=S.mapAutoZoom!==false,zoom=auto?(S.mapDenseBoost!==false?denseZoom_([q],base,found,[hit.label]):base):(mapView.targetZoom||mapView.zoom);mapView.focus=focusId;mapView.hasFocused=true;mapView.rowFocusZoom=null;mapView.selZoom=zoom;animateMap_({zoom:zoom,x:q.x,y:q.y},auto?650:520,function(){pulsePin_(hit.label)})}}
     $('map-loc-status').textContent=approx?(approx+' APPROX'):(found.length+' PIN'+(found.length===1?'':'S'));
   });
 }
