@@ -56,6 +56,12 @@ Old hashes or saved tabs named `interview`, `timeline` or `compensation` map to 
 
 Table: BUCKET shows a coloured pill, OVERALL_RATING a score badge with its band, and two computed columns are new: LINK (icon to the preferred posting link, opens in a new tab) and AGE (days since DATE_ADDED). Saved column sets get LINK after TITLE and AGE after DATE_ADDED once.
 
+## Analytics and Scout (PR E)
+
+Reports keeps three charts: Every pipeline state, Base compensation mix (bins now follow the scoring model at $160k / $220k / $320k) and Discovery sources. Gone as duplicates: Work waiting for action (the Pipeline band has Next actions), Where the opportunities are (the map covers it) and Why Tim declined (its table stays). Every chart reads **live rows** by default; the line under the heading says how many archived (terminal) roles are hidden, and "Include archive" flips it for this device. Each chart's data builder carries a `// source:` comment naming the payload fields it reads.
+
+Scout analysis drops the Rolling 7-day rates bars (the windows panel still lists the rates) and gains "New since your last visit": rows still counted as new on this device, each opening the Job Workspace.
+
 ## URL state
 
 The hash now also carries the open job (`j`) and full-screen map (`m`). Opening a link with `j` focuses that row, opens the job panel and scrolls it into view; `m:1` restores the full-screen map. Existing hashes (`t`, `p`, `s`, `f`) are unchanged.
