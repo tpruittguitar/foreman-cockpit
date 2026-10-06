@@ -255,6 +255,23 @@ test('monitor: recovered PARTIAL_HOLD stays in history but no longer raises an a
   assert.match(w[0].message, /LIVE\.json/);
 });
 
+test('monitor: FAILED runs in the last 24 h raise one notice, never a warn, and older ones are ignored', () => {
+  const now = Date.parse('2026-10-06T07:00:00Z');
+  const base = { queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, recentRuns: [], recentHolds: [], errors: [] };
+  const w = A.writerWarnings_(Object.assign({}, base, { recentFailed: [
+    { file: 'NEW.json', terminalStatus: 'FAILED', finishedAt: '2026-10-06T06:50:00Z', error: 'NEVER_CONSIDER NC-001 HIGH' },
+    { file: 'MID.json', terminalStatus: 'FAILED', finishedAt: '2026-10-06T01:00:00Z', error: '' },
+    { file: 'OLD.json', terminalStatus: 'FAILED', finishedAt: '2026-10-04T01:00:00Z', error: '' }
+  ] }), now);
+  assert.equal(w.length, 1);
+  assert.equal(w[0].code, 'FAILED');
+  assert.equal(w[0].level, 'notice');
+  assert.match(w[0].message, /^2 request\(s\) FAILED/);
+  assert.match(w[0].message, /NEW\.json.*NC-001/);
+  assert.equal(A.writerWarnings_(Object.assign({}, base, { recentFailed: [] }), now).length, 0);
+  assert.equal(A.writerWarnings_(base, now).length, 0, 'older status shapes without recentFailed raise nothing');
+});
+
 // The live GROK_RECON_20261005_0223ET shapes: request IDs sit under event.requestId / ruling.requestId.
 const upsert = rid => ({ action: 'upsert_application', event: { COMPANY: 'Co', STATE: 'APPLIED', requestId: rid } });
 const dupRuling = rid => ({ action: 'ruling', ruling: { primaryId: 'V2I-X', kind: 'DUPLICATE', requestId: rid } });
