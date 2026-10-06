@@ -75,8 +75,13 @@ button:not(:disabled):active{transform:scale(.985)}
 .map-target{left:0!important;top:0!important;transition:transform 160ms var(--forge-ease),opacity 140ms ease,filter 160ms ease}
 .map-target:hover{transform:translate(-50%,-50%) scale(1.14)}
 .map-target.active{--target:var(--forge-green);transform:translate(-50%,-50%) scale(1.32);filter:drop-shadow(0 0 6px currentColor)}
-.map-target:after{content:"";position:absolute;inset:-6px;border:1.5px solid var(--target,#a9d77d);border-radius:50%;opacity:0;pointer-events:none}
-.map-target.acquire:after{animation:forge-acquire 760ms var(--forge-ease) 1}
+/* Pin states. Checked (selected) = amber square frame; open job (focused) = enlarged green with glow; both = focused look plus the frame.
+   The acquisition ring lives on the reticle so the pin's own :before/:after crosshair stays intact. */
+.map-target.checked{opacity:1}
+.map-target.checked .map-reticle:before{content:"";position:absolute;inset:-5px;border:1px solid var(--forge-amber);pointer-events:none}
+.map-target.focused{--target:var(--forge-green);opacity:1;transform:translate(-50%,-50%) scale(1.32);filter:drop-shadow(0 0 6px currentColor)}
+.map-reticle:after{content:"";position:absolute;inset:-6px;border:1.5px solid var(--target,#a9d77d);border-radius:50%;opacity:0;pointer-events:none}
+.map-target.acquire .map-reticle:after{animation:forge-acquire 760ms var(--forge-ease) 1}
 @keyframes forge-acquire{0%{opacity:.95;transform:scale(2.4)}70%{opacity:.6;transform:scale(.9)}100%{opacity:0;transform:scale(1.15)}}
 .map-target.priority-hot{--target:var(--forge-amber)}
 .map-target-label{animation:forge-pop 220ms var(--forge-ease) both;border-color:#8d9995;background:#020404f5;box-shadow:0 18px 50px #0006}

@@ -107,6 +107,17 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   const hb=await pinOf('Huntsville, AL').boundingBox();await page.mouse.move(hb.x+hb.width/2,hb.y+hb.height/2);await page.waitForTimeout(150);
   const g2=await page.locator('#gridwrap').boundingBox();await page.mouse.move(g2.x+20,g2.y+20);await page.waitForTimeout(150);
   assert.deepEqual(await activeLabels(),['Louisville, CO'],'after hovering another pin the focused one keeps the active treatment');
+  const pinState=(n)=>pinOf(n).evaluate(e=>({checked:e.classList.contains('checked'),focused:e.classList.contains('focused')}));
+  assert.deepEqual(await pinState('Louisville, CO'),{checked:true,focused:true},'checked + open: both states, focused look');
+  assert.deepEqual(await pinState('Huntsville, AL'),{checked:true,focused:false},'checked only: selected state');
+  // 8.3b Three checked jobs + a different, unchecked open job: four pins, count stays three, checks unchanged.
+  const before=(await checkedIds()).sort();await pick('V2X-3EB07714AE24');
+  assert.equal(await drawn(),4,'three checked + one focused-only job render four pins');assert.equal(await shown(),4,'all four on screen');
+  assert.match(await page.locator('#map-sub').innerText(),/^3 selected jobs\b/,'the count reports checkbox selections only');
+  assert.deepEqual(await pinState('Tullahoma, TN'),{checked:false,focused:true},'the open, unchecked job gets the focused treatment only');
+  for(const n of ['Huntsville, AL','Louisville, CO','Costa Mesa, CA'])assert.deepEqual(await pinState(n),{checked:true,focused:false},n+' keeps the selected treatment');
+  assert.deepEqual((await checkedIds()).sort(),before,'opening an unchecked job leaves the checkbox selection unchanged');
+  assert.equal(await page.locator('#grid tbody tr[data-id="V2X-3EB07714AE24"] .row-select').isChecked(),false);
   // 8.4 Clustered selection: only Huntsville + Tullahoma checked, so the boost reacts to that rendered pair.
   await check('V2X-299323199555',false);await check('V2X-F5344DCB7B12',false);await check('V2X-3EB07714AE24',true);await pick('V2X-3EB07714AE24');
   assert.equal(await drawn(),2,'the rendered set is the clustered pair');const cz=await zoom();assert(cz>6&&cz<=10.001,'crowded selected pins boost past 600% (got '+cz+')');assert.equal(await shown(),2);
