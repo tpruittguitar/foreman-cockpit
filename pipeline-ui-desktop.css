@@ -61,7 +61,10 @@
   #grid th,#grid td{height:27px;min-height:27px;padding:2px 9px;vertical-align:middle;border-bottom:1px solid #1a201f}
   #grid th{height:32px;font:10.5px var(--mono);letter-spacing:1.3px;color:#b5beba;box-shadow:0 1px 0 #303837}
   #grid td{font-size:13px}#grid td.mono{font-size:12px}
-  body:not([data-density=comfortable]) #grid td{height:27px;padding-top:2px;padding-bottom:2px}
+  /* row height comes from fitRows_(): 19 rows where the queue has room, else 16, else 15 (rows down to 20px on the shortest windows) */
+  body:not([data-density=comfortable]) #grid td{height:var(--row-h,27px);font-size:var(--row-font,13px);padding-top:1px;padding-bottom:1px}
+  body:not([data-density=comfortable]) #grid td .rowlink,body:not([data-density=comfortable]) #grid td .score-badge{vertical-align:middle}body:not([data-density=comfortable]) #grid td .rowlink{height:min(22px,calc(var(--row-h,27px) - 4px))}body:not([data-density=comfortable]) #grid td .row-select{width:min(18px,calc(var(--row-h,27px) - 6px));height:min(18px,calc(var(--row-h,27px) - 6px));margin:0;vertical-align:middle}
+  header #search:focus{max-width:740px}
   body[data-density=comfortable] #grid td{height:36px;padding-top:6px;padding-bottom:6px}
 }
 /* Narrower desktops: the header sheds extras in steps (Refresh stays in the rail footer) */

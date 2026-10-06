@@ -78,3 +78,8 @@
   .qv-panel{left:0!important;right:0;top:auto!important;bottom:0;width:auto;max-height:78vh;border-radius:12px 12px 0 0;padding-bottom:calc(14px + env(safe-area-inset-bottom));transform-origin:bottom center;animation:forge-sheet-in 240ms var(--forge-ease) both}
   .qv-panel .chip{min-height:38px;display:inline-flex;align-items:center}
 }
+@media(max-width:760px),(pointer:coarse) and (max-width:980px){
+  #job-map-card .map-prefs{font-size:14px}
+  #job-map-card .map-prefs select{font-size:16px;min-height:40px}
+  #job-map-card .map-prefs input{width:20px;height:20px}
+}
