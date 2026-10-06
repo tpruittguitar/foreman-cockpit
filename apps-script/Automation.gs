@@ -239,6 +239,8 @@ function writerStatus_() {
     // Warnings follow the 24-hour policy window, not queue traffic: every HOLD-type result that finished
     // inside the window is kept, however many runs came after it. An unparseable finishedAt counts as recent.
     s.recentHolds = runs.filter(function (r) { var t = Date.parse(r.finishedAt); return /HOLD/.test(r.terminalStatus) && (isNaN(t) || now - t < STATUS_RECENT_HOLD_MS); }).reverse();
+    // FAILED runs (usually a governance rejection: nothing was written) inside the same window, newest first.
+    s.recentFailed = runs.filter(function (r) { var t = Date.parse(r.finishedAt); return r.terminalStatus === 'FAILED' && (isNaN(t) || now - t < STATUS_RECENT_HOLD_MS); }).reverse();
     // PARTIAL_HOLD is an audit fact, not necessarily an active fault. If every request in the
     // original failed batch carries a request ID that is now COMPLETE in the durable receipt index,
     // keep it in history but mark it recovered so the Explorer no longer raises an active warning.
@@ -288,6 +290,10 @@ function writerWarnings_(s, now) {
   (Array.isArray(s.recentHolds) ? s.recentHolds : (s.recentRuns || [])).forEach(function (r) {
     if (/HOLD/.test(r.terminalStatus) && !r.recovered && age(r.finishedAt) < STATUS_RECENT_HOLD_MS) w.push({ level: 'warn', code: r.terminalStatus, message: r.file + ' ended ' + r.terminalStatus + ' at ' + r.finishedAt + '. See its RESULT in WRITER_QUEUE/failed before resubmitting.' });
   });
+  // One notice for FAILED runs in the window. Notice level never raises s.level: a FAILED run wrote nothing, but
+  // whoever submitted it should know it was refused and why.
+  var failed = (Array.isArray(s.recentFailed) ? s.recentFailed : []).filter(function (r) { return age(r.finishedAt) < STATUS_RECENT_HOLD_MS; });
+  if (failed.length) { var f0 = failed[0]; w.push({ level: 'notice', code: 'FAILED', message: failed.length + ' request(s) FAILED in the last 24 h; nothing was written for them. Latest: ' + f0.file + ' at ' + f0.finishedAt + (f0.error ? ': ' + f0.error : '') + '. See WRITER_QUEUE/failed.' }); }
   (s.errors || []).forEach(function (e) { w.push({ level: 'warn', code: 'STATUS_PART_UNAVAILABLE', message: e }); });
   return w;
 }
