@@ -1,0 +1,24 @@
+/* Forge cockpit UI — mobile composition */
+@media(max-width:760px),(pointer:coarse) and (max-width:980px){
+  html,body{background:#020303}
+  header{min-height:0;padding:5px 10px;border-bottom-color:var(--forge-line-strong)}
+  .brand{font-size:13px;letter-spacing:1.9px}#readout{color:#909a97}
+  #view-pipeline.on{grid-template-rows:42% 58%}
+  #dash{padding:4px;gap:4px}
+  .decide-strip{gap:2px}
+  .decide{min-width:72px;border-color:transparent;border-right:1px solid var(--forge-line);border-radius:0;background:transparent;text-align:center;align-items:center}
+  .decide b{font-size:16px}.decide small{font-size:8.2px}
+  #job-map-card{border-color:var(--forge-line)}
+  #grid th{height:27px;min-height:27px;padding:3px 5px;font-size:8.8px}
+  #grid td,body:not([data-density=comfortable]) #grid td{height:31px;min-height:31px;padding:4px 5px;font-size:10.5px}
+  #grid tbody tr.focus td:first-child{box-shadow:inset 3px 0 0 var(--forge-amber),inset 0 -1px 0 #ffc21cbd}
+  #drawer{background:#020404}#drawer .dh{padding:10px 12px}.wh-title h2{font-size:20px!important}
+  #detail-tabs{padding:0 4px;overflow-x:auto;scrollbar-width:none}#detail-tabs::-webkit-scrollbar{display:none}
+  #detail-tabs button{min-height:42px;padding:0 16px;font-size:11px}
+  #drawer .db{padding:10px 12px calc(78px + env(safe-area-inset-bottom))}
+  .detail-grid{gap:7px}.detail-card{padding:10px}
+  #bottombar{height:calc(64px + env(safe-area-inset-bottom));background:#030505;border-top-color:var(--forge-line-strong)}
+  #bottombar button{color:#a3adaa;font-size:10px}#bottombar button.cur{color:var(--forge-amber);border-top-color:var(--forge-amber)}
+  #sheet .sheet-in{background:#060808;border-top-color:var(--forge-line-strong);border-radius:12px 12px 0 0;animation:forge-sheet-in 220ms var(--forge-ease) both}
+  @keyframes forge-sheet-in{from{opacity:0;transform:translateY(28px) scale(.99)}to{opacity:1;transform:none}}
+}
