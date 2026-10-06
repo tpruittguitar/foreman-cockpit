@@ -41,4 +41,22 @@ ok(plan.ok, 'plan ok');
 ok(plan.results[0].result === 'SCOUT_INTAKE_WRITTEN' && plan.results[1].result === 'SCOUT_INTAKE_WRITTEN', 'distinct Glassdoor jobs are admitted, not EXISTING_MATCH to the Glassdoor-sourced row (' + plan.results[0].result + ', ' + plan.results[1].result + ')');
 ok(plan.results[2].result === 'EXISTING_MATCH' && plan.results[2].PRIMARY_ID === anchorId && plan.results[2].matchedBy === 'SOURCE_URL', 'the same Glassdoor job id still matches its existing row by SOURCE_URL');
 
+// dedupe index: the URL fields the Writer writes on new rows take part; the never-written JOB_URL / CANONICAL_URL do not
+{
+  const line=(inv,pid,payload)=>inv+' | '+pid+' | Acme Corp | Director of Quality | SCOUT_INTAKE | UNRESOLVED/SCOUT_INTAKE | - | UNKNOWN | Dallas, TX | '+payload;
+  const idx=W.indexExisting([
+    line(901,'V2X-INDEX000001','DATE_ADDED=2026-10-05; COMPANY_SOURCE_URL=https://www.glassdoor.com/job-listing/director-of-quality-acme-JV_IC1139977_KO0,19_KE20,24.htm?jl=1009876543210&src=GD_JOB_AD; SOURCE_URL=https://www.linkedin.com/jobs/view/4473365262'),
+    line(902,'V2X-INDEX000002','DATE_ADDED=2026-10-05; INITIATING_URL=https://jobs.example.org/role/55?utm_source=mail; INTAKE_SOURCE_URL=https://job-boards.greenhouse.io/acme/jobs/7777777002'),
+    line(903,'V2X-INDEX000003','DATE_ADDED=2026-10-05; JOB_URL=https://jobs.example.org/legacy/1; CANONICAL_URL=https://jobs.example.org/legacy/2')
+  ]);
+  ok(idx.length===3,'three indexed rows');
+  ok(idx[0].urls.indexOf('glassdoor.com/job/1009876543210')>=0,'COMPANY_SOURCE_URL (Glassdoor jl) is indexed');
+  ok(idx[0].urls.indexOf('linkedin.com/jobs/view/4473365262')>=0,'SOURCE_URL still indexed');
+  ok(idx[1].urls.indexOf(C('https://jobs.example.org/role/55'))>=0,'INITIATING_URL is indexed without its tracking query');
+  ok(idx[1].urls.indexOf('job-boards.greenhouse.io/acme/jobs/7777777002')>=0,'INTAKE_SOURCE_URL is indexed');
+  ok(idx[2].urls.length===0,'JOB_URL and CANONICAL_URL (no writer, 0 live rows) no longer feed dedupe');
+  const m=W.matchExisting({COMPANY:'Other Co',TITLE:'Something Else',LOCATION:'Austin, TX',REQ_ID:'',SOURCE_URL:'https://www.glassdoor.com/Job/x/joblisting.htm?jobListingId=1009876543210'},idx);
+  ok(m.kind!=='none'&&m.rows.some(r=>r.id==='V2X-INDEX000001'),'a rediscovery through the company source URL matches the existing row');
+}
+
 console.log(fails ? ('\n' + fails + ' FAILED') : '\nALL PASS'); process.exit(fails ? 1 : 0);

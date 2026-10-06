@@ -55,7 +55,7 @@ master well under Google's 1,024,000-character limit for a Google Doc without cr
   `EXISTING_MATCH`, never re-admitted.
 - **Claude, Forge, Grok:**
   - Decision fields are still inline in the master.
-  - For narrative, read `GET action=master&hydrate=1` or `GET action=evidence&primaryId=…`.
+  - For narrative, read `GET action=evidence&primaryId=…` per row (do not use `hydrate=1`; see above).
   - Keep writing narrative fields in `ENRICH` rulings as before; the Writer externalizes them.
   - A ruling on an archived row fails closed with `ARCHIVED_ROW`; `POST restore_archived {primaryId}` moves it back,
     verified like any write.

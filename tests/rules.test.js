@@ -6,7 +6,6 @@ const text = fs.readFileSync(path.join(__dirname, 'fixtures', 'TIM_NEVER_CONSIDE
 const R = W.parseRulesText(text);
 const canonicalText = fs.readFileSync(path.join(__dirname, 'fixtures', 'TIM_PIPELINE_RULES_CANONICAL.sample.txt'), 'utf8');
 const CR = W.parseCanonicalNeverConsiderRules(canonicalText);
-ok(W.RULES_DOC_ID === '1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE', 'runtime RULES_DOC_ID compatibility alias points at TIM_PIPELINE_RULES_CANONICAL');
 ok(CR.source === 'TIM_PIPELINE_RULES_CANONICAL' && CR.status === 'ACTIVE' && CR.defaultAction === 'ALLOW_INTAKE', 'active canonical rules parse as runtime Never-Consider authority');
 ok(CR.header.RULESET_VERSION === '2' && CR.header.OWNER === 'Tim Pruitt', 'canonical rules header/version preserved');
 ok(CR.rules.length === 4 && CR.activeIds.join(',') === 'NC-001,NC-002,NC-003,NC-004', 'canonical NEVER_CONSIDER section yields NC-001..NC-004');
