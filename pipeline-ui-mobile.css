@@ -3,7 +3,6 @@
   html,body{background:#020303}
   header{min-height:0;padding:5px 10px;border-bottom-color:var(--forge-line-strong)}
   .brand{font-size:13px;letter-spacing:1.9px}#readout{color:#909a97}
-  #view-pipeline.on{grid-template-rows:42% 58%}
   #dash{padding:4px;gap:4px}
   .decide-strip{gap:2px}
   .decide{min-width:72px;border-color:transparent;border-right:1px solid var(--forge-line);border-radius:0;background:transparent;text-align:center;align-items:center}

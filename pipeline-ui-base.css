@@ -20,7 +20,7 @@ button:not(:disabled):hover{transform:translateY(-1px)}button:not(:disabled):act
 #rail .rail-brand{height:46px;padding:0 22px}#rail button{height:58px;padding:0 23px;gap:18px;font-size:13px}
 #rail .rail-group.cur>button{color:var(--forge-amber);border-left-color:var(--forge-amber);background:linear-gradient(90deg,#ffc21c12,transparent 70%)}
 #rail button svg{width:24px;height:24px}#rail button:hover svg{transform:translateX(2px) scale(1.09)}
-#job-map-card{background:radial-gradient(ellipse at center,#18252652,transparent 60%),#020404;border:1px solid var(--forge-line-strong);overflow:hidden}
+#job-map-card{background:radial-gradient(ellipse at center,#18252652,transparent 60%),#000;border:1px solid var(--forge-line-strong);overflow:hidden}
 #job-map-card:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.12;background:linear-gradient(transparent 49%,#ffffff0d 50%,transparent 51%) 0 0/100% 5px}
 .map-outline{fill:#080b0b;stroke:#77817e;stroke-width:.85}.map-state-label{fill:#7c8784}
 .map-target{transition:transform 140ms var(--forge-ease),opacity 140ms ease,filter 140ms ease}
@@ -42,5 +42,6 @@ button:not(:disabled):hover{transform:translateY(-1px)}button:not(:disabled):act
 #readout .good,.writer-badge.ok,.pill.ok{color:var(--forge-green);border-color:var(--forge-green)}
 #readout .bad,.pill.bad{color:var(--forge-red);border-color:var(--forge-red)}
 td.b-APPLIED{color:var(--forge-green)}td.b-BLOCKED,td.b-TIM_DECISION_REQUIRED{color:var(--forge-amber)}
-#rail .rail-in,#rail button svg,#drawer,#d-body>*,.map-target,.map-target-label,button,.chip,.decide,#grid tbody tr{will-change:transform,opacity}
+/* will-change only on the two surfaces that slide; on every row and button it creates hundreds of compositor layers */
+#rail .rail-in,#drawer{will-change:transform,opacity}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
