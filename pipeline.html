@@ -629,8 +629,10 @@ function isNew(r){if(S.seen[r.id])return false;if(r.dateAdded){var age=(Date.now
 function ruling(r){return S.rulings[r.id]||null}
 var EXPECT_BUCKET={DECLINE:'DECLINED_BY_TIM',APPLIED:'APPLIED',MANUAL_RESEARCH:'MANUAL_RESEARCH',DUPLICATE:'DUPLICATE',CLOSED_DEAD:'CLOSED_DEAD',INVALID_DISCOVERY:'INVALID_DISCOVERY'};
 function rulingState(r){var ru=ruling(r);if(!ru)return null;var status=ru.writeStatus||(ru.receipt?'READBACK_UNCONFIRMED':'LOCAL_DRAFT');if(status==='VERIFIED'&&(!PipelineTrust.matches(r,ru)||S.meta.fromCache))return {s:S.meta.fromCache?'LAST VERIFIED · CACHED':'MASTER CHANGED',ru:ru};return {s:status==='VERIFIED'?'CANONICAL':status.replace(/_/g,' '),ru:ru}}
-function scoringCfg_(){var cfg=S.scoring||PipelineScoring.defaults();var text=S.canonicalRules&&S.canonicalRules.text;if(text&&typeof PipelineRules!=='undefined'&&PipelineRules.flexPolicy)cfg=Object.assign({},cfg,{flexPolicy:PipelineRules.flexPolicy(text),publishedRevision:(S.scoringCanonicalMeta&&(S.scoringCanonicalMeta.publishedRevision||S.scoringCanonicalMeta.revision))||cfg.publishedRevision||0});return cfg}
-function scoreFor_(r){if(!r)return null;var cfg=scoringCfg_(),fp=PipelineScoring.fingerprint(cfg);if(scoreCache.fp!==fp)scoreCache={fp:fp,rows:{}};if(scoreCache.rows[r.id])return scoreCache.rows[r.id];return scoreCache.rows[r.id]=PipelineScoring.scoreRow(r,cfg)}
+/* Config + fingerprint are rebuilt only when an input object is replaced. Every scoring edit path reassigns S.scoring / S.canonicalRules / S.scoringCanonicalMeta (none mutate them in place), so identity is a sound key; this keeps per-cell score lookups O(1) instead of re-parsing the Rules text and re-stringifying the model on every table cell. */
+var scoreCfgMemo_=null;
+function scoringCfg_(){var scoring=S.scoring||null,text=(S.canonicalRules&&S.canonicalRules.text)||'',meta=S.scoringCanonicalMeta||null,m=scoreCfgMemo_;if(m&&m.scoring===scoring&&m.text===text&&m.meta===meta)return m.cfg;var cfg=scoring||PipelineScoring.defaults();if(text&&typeof PipelineRules!=='undefined'&&PipelineRules.flexPolicy)cfg=Object.assign({},cfg,{flexPolicy:PipelineRules.flexPolicy(text),publishedRevision:(meta&&(meta.publishedRevision||meta.revision))||cfg.publishedRevision||0});scoreCfgMemo_={scoring:scoring,text:text,meta:meta,cfg:cfg,fp:PipelineScoring.fingerprint(cfg)};return cfg}
+function scoreFor_(r){if(!r)return null;var cfg=scoringCfg_(),fp=scoreCfgMemo_.fp;if(scoreCache.fp!==fp)scoreCache={fp:fp,rows:{}};if(scoreCache.rows[r.id])return scoreCache.rows[r.id];return scoreCache.rows[r.id]=PipelineScoring.scoreRow(r,cfg)}
 function scoreCell_(v){return v==null?'—':String(Math.round(v))}
 
 function val(r,c){
@@ -1164,10 +1166,11 @@ function stateFallback_(label){
 function geocodePlace_(loc){
   if(loc.lat!=null&&loc.lon!=null)return Promise.resolve(loc);
   var key=String(loc.label||'').toLowerCase().trim(),cache=LS.get('geoCache',{}),cached=cache[key],sc=stateCodeFromText_(loc.label),city=String(loc.label||'').split(',')[0].trim();
+  /* PipelineScoring.point() reads px.geoCache, so every write here drops cached derived scores; the next render rescores the row at its new coordinates. */
   /* A cached city result is usable only when it agrees with the row's state. This prevents an old ambiguous-city hit (for example Kingston, NY) from moving Kingston, GA to the wrong map region. */
   if(cached&&cached.lat!=null&&cached.lon!=null&&(!sc||(cached.state&&String(cached.state).toUpperCase()===sc)))return Promise.resolve(Object.assign({},loc,cached));
-  if(cached&&sc){delete cache[key];LS.set('geoCache',cache)}
-  if(GEO_CITY_OVERRIDES[key]){var o=GEO_CITY_OVERRIDES[key],hit={lat:o[0],lon:o[1],state:sc,approx:false,source:'local city cache'};cache[key]=hit;LS.set('geoCache',cache);return Promise.resolve(Object.assign({},loc,hit))}
+  if(cached&&sc){delete cache[key];LS.set('geoCache',cache);scoreCache={fp:"",rows:{}}}
+  if(GEO_CITY_OVERRIDES[key]){var o=GEO_CITY_OVERRIDES[key],hit={lat:o[0],lon:o[1],state:sc,approx:false,source:'local city cache'};cache[key]=hit;LS.set('geoCache',cache);scoreCache={fp:"",rows:{}};return Promise.resolve(Object.assign({},loc,hit))}
   if(!city||city.length<2){var fb=stateFallback_(loc.label);return Promise.resolve(Object.assign({},loc,fb||{}))}
   var url='https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=10&language=en&format=json&countryCode=US';
   return fetch(url,{cache:'force-cache'}).then(function(r){if(!r.ok)throw new Error('geocode '+r.status);return r.json()}).then(function(j){
@@ -1175,7 +1178,7 @@ function geocodePlace_(loc){
     for(var i=0;i<rs.length;i++){if(!want||String(rs[i].admin1||'').toLowerCase()===want.toLowerCase()){hit=rs[i];break}}
     if(!hit)hit=rs[0];
     if(!hit)throw new Error('no geocode');
-    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,approx:false,source:'city geocode'};cache[key]=val;LS.set('geoCache',cache);return Object.assign({},loc,val);
+    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,approx:false,source:'city geocode'};cache[key]=val;LS.set('geoCache',cache);scoreCache={fp:"",rows:{}};return Object.assign({},loc,val);
   }).catch(function(){var fb=stateFallback_(loc.label);return Object.assign({},loc,fb||{})});
 }
 function projectUS_(lat,lon,state){return PipelineMap.project(lat,lon,state)}

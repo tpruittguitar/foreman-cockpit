@@ -43,6 +43,15 @@ const changed=Object.assign({},policy,{HIGH_FLEX_MODIFIER:15});
 assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{flexPolicy:changed})));
 assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{publishedRevision:10})));
 assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{weights:Object.assign({},cfg.weights,{experience:20})})));
+// Every scoring input the model reads must move the fingerprint (audit 2026-10-06).
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{modelVersion:'2026-10-07.1'})),'model version');
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{salary:Object.assign({},cfg.salary,{floor:cfg.salary.floor+1})})),'salary floor');
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{salary:Object.assign({},cfg.salary,{stateFactors:{TN:0.9}})})),'salary state factor');
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{geo:Object.assign({},cfg.geo,{power:3})})),'geo power');
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{geo:{power:2,controlPoints:cfg.geo.controlPoints.map((p,i)=>i?p:Object.assign({},p,{score:(p.score||0)+1}))}})),'geo control point');
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{resumeKeywords:cfg.resumeKeywords+', torque'})),'resume keywords');
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{flexPolicy:Object.assign({},policy,{NOT_STATED_CLASS:'SOFT_FLEX'})})),'FLEX class mapping');
+assert.equal(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{flexPolicy:Object.assign({},policy)})),'equal inputs give an equal fingerprint');
 function cacheFor(config){return {fp:S.fingerprint(config),rows:{}};}
 let cache=cacheFor(cfg);
 cache.rows.row=governed;
