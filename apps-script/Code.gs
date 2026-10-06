@@ -1598,6 +1598,10 @@ function canonUrl(u) {
   var host = m[1].toLowerCase().replace(/^www\./, ''), path = (m[2] || '/').replace(/\/+$/, '').toLowerCase();
   var lj = u.match(/linkedin\.com\/jobs\/view\/(?:[^\/?#]*-)?(\d{6,})/i); if (lj) return 'linkedin.com/jobs/view/' + lj[1];
   var ij = u.match(/indeed\.com\/.*[?&]jk=([a-z0-9]+)/i); if (ij) return 'indeed.com/jk/' + ij[1];
+  // Glassdoor and Greenhouse-embedded career pages carry the job id in the query; host+path alone names every job on that page
+  var gd = u.match(/glassdoor\.[a-z.]+\/[^#]*[?&](?:jobListingId|jl)=(\d+)/i); if (gd) return 'glassdoor.com/job/' + gd[1];
+  if (/(^|\.)glassdoor\./.test(host) && /joblisting\.htm$/.test(path)) return '';
+  var gh = u.match(/[?&]gh_jid=(\d+)/i); if (gh) return host + path + '?gh_jid=' + gh[1];
   return host + path;
 }
 function urlsIn(text) { var out = []; String(text || '').replace(/https?:\/\/[^\s"<>|;]+/gi, function (m) { var c = canonUrl(m); if (c) out.push(c); }); return out; }
