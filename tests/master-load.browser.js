@@ -9,6 +9,8 @@ const MASTER=(()=>{const l=plan.target.concat(['END V2_CURRENT_POPULATION_MASTER
 const ARCHIVE='V2_TERMINAL_ARCHIVE\n====\n'+plan.archive.join('\n'),COMPANION=[JSON.stringify({type:'HEADER'})].concat(plan.records.map(r=>JSON.stringify(r))).join('\n');
 const MIG={mode:'LIVE',status:'CUTOVER_COMPLETE',archiveId:'ARCH',companionId:'COMP'};
 const HTML404='<!DOCTYPE html><html><head><title>Page Not Found</title></head><body>Sorry, unable to open the file at this time.</body></html>';
+// Navigate the way a user does: the rail on desktop (hover to reveal sub-items), the bottom bar or its More sheet on phones.
+async function go(page,tab){const rail=page.locator('#rail');if(await rail.isVisible()){await rail.hover();if((await page.locator('#rail .rail-in').boundingBox()).width<100){await page.locator('#rail [data-group-btn]').first().click();await page.waitForTimeout(250)}const b=page.locator('#rail [data-tab="'+tab+'"], #rail [data-go="'+tab+'"]').first();await b.click();await page.mouse.move(700,450);await page.waitForTimeout(150);return}const bb=page.locator('#bottombar [data-go="'+tab+'"]');if(await bb.count()){await bb.click();await page.waitForTimeout(150);return}await page.locator('#bottombar [data-go="more"]').click();await page.locator('#sheet [data-go="'+tab+'"]').click();await page.waitForTimeout(150)}
 (async()=>{
   const server=require('http').createServer((req,res)=>{const u=new URL(req.url,'http://x');try{res.setHeader('Content-Type',u.pathname.endsWith('.js')?'application/javascript':u.pathname.endsWith('.json')?'application/json':'text/html');res.end(fs.readFileSync(repo+u.pathname))}catch(e){res.statusCode=404;res.end('')}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
@@ -37,7 +39,7 @@ const HTML404='<!DOCTYPE html><html><head><title>Page Not Found</title></head><b
   // all reads succeed: no alert, Connected, archived rows present
   let s=await scenario('all reads ok',{});
   assert.equal(s.freshness,'live');assert.equal(s.alertVisible,false);assert.match(s.readout,/Connected/);assert.doesNotMatch(s.readout,/STALE/);
-  await s.page.locator('[data-tab="pipeline"]').click();await s.page.waitForTimeout(200);
+  await go(s.page,'pipeline');await s.page.waitForTimeout(200);
   assert.ok(s.gets.includes('master'));assert.ok(!s.gets.includes('HYDRATE_PARAM'),'the oversized hydrated read is never requested');assert.ok(s.gets.includes('archive')&&s.gets.includes('document_text')&&s.gets.includes('migration_status'));
   assert.equal(s.errors.length,0,s.errors.join('\n'));const liveCache=await s.page.evaluate(()=>localStorage.getItem('px.cache'));await s.page.close();
   // one transient HTML 404 on the master: retried after 3 s and recovered; LIVE, no warning, no write
@@ -48,7 +50,7 @@ const HTML404='<!DOCTYPE html><html><head><title>Page Not Found</title></head><b
   s=await scenario('master 404 + cache',{master:'html'},JSON.parse(liveCache));
   assert.equal(s.freshness,'stale');assert.ok(s.alertVisible);assert.match(s.alert,/STALE · FETCH FAILED/);assert.match(s.alert,/NOT the live master/);
   assert.match(s.readout,/STALE · FETCH FAILED/);assert.doesNotMatch(s.readout,/Connected/);
-  await s.page.locator('[data-tab="pipeline"]').click();await s.page.waitForTimeout(200);assert.ok(await s.page.locator('#grid tbody tr[data-id]').count()>0,'stale rows remain viewable');
+  await go(s.page,'pipeline');await s.page.waitForTimeout(200);assert.ok(await s.page.locator('#grid tbody tr[data-id]').count()>0,'stale rows remain viewable');
   await s.page.locator('#grid tbody tr[data-id]').first().click();await s.page.locator('#edit-note').fill('test note');await s.page.locator('#save-decision').click();await s.page.waitForTimeout(400);
   assert.equal(s.posts.length,0,'no write while stale');assert.match(await s.page.locator('#edit-status').innerText(),/disabled|not loaded|Writes/i);
   await s.page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/master-load-stale.png'});
@@ -66,7 +68,7 @@ const HTML404='<!DOCTYPE html><html><head><title>Page Not Found</title></head><b
   s=await scenario('evidence 404',{document_text:'html'});
   assert.equal(s.freshness,'live');assert.match(s.alert,/EVIDENCE UNAVAILABLE/);assert.match(s.readout,/EVIDENCE UNAVAILABLE/);
   const pidWithRef=plan.target.find(l=>/EVIDENCE_REF=EVC1:\d+/.test(l)).split(' | ')[1].trim();
-  await s.page.locator('[data-tab="pipeline"]').click();await s.page.locator('#search').fill(pidWithRef);await s.page.waitForTimeout(300);
+  await go(s.page,'pipeline');await s.page.locator('#search').fill(pidWithRef);await s.page.waitForTimeout(300);
   await s.page.locator('#grid tbody tr[data-id]').first().click();await s.page.waitForTimeout(200);
   await s.page.locator('#row-evidence-load').click();await s.page.waitForTimeout(400);
   assert.match(await s.page.locator('#d-body').innerText(),/on-demand narrative/);assert.ok(s.gets.includes('evidence'));assert.equal(s.posts.length,0);
