@@ -1,0 +1,96 @@
+/* Forge cockpit UI — desktop composition (approved 16:9 reference).
+   Left column: Job decision queue over the Job location map. Right column: the Job workspace, full height and always on screen.
+   Density amendment: the queue keeps dense 27px rows (18–20+ visible at 2560×1440) instead of the reference's ~10 large rows. */
+@media(min-width:981px),(min-width:761px) and (pointer:fine){
+  /* Header: menu, brand, search, status cells, tools */
+  header{display:flex;flex-wrap:nowrap;align-items:center;gap:10px;min-height:64px;padding:0 14px 0 6px;border-bottom:1px solid var(--forge-line-strong);box-shadow:0 8px 26px #0003}
+  header .menu-btn{order:0;min-width:44px;min-height:44px}
+  header .brand{order:1;display:flex;flex-direction:column;justify-content:center;padding:0 22px 0 14px;margin-right:6px;border-right:1px solid var(--forge-line);font:600 22px/1 var(--sans);letter-spacing:3.5px;white-space:nowrap}
+  header .brand small{display:block;margin-top:6px;font:10.5px/1 var(--mono);letter-spacing:3.2px;color:var(--forge-dim)}
+  header #crumb{order:2;font:10.5px var(--mono);letter-spacing:1.4px;color:var(--forge-faint);white-space:nowrap}
+  header #search{order:3;flex:1 1 520px;max-width:640px;height:42px;font-size:14px}
+  header .writer-identity{order:5;margin-left:auto}
+  header .build-identity{order:4}
+  header .hstat{order:6}
+  header #compare-open,header #density-toggle,header #refresh{order:7;min-height:34px;padding:0 10px;font-size:11px;background:transparent;border-color:var(--forge-line);color:var(--forge-dim)}
+  header #compare-open{margin-left:8px}
+  header #bell{order:8;margin-left:6px;border-left:1px solid var(--forge-line);border-radius:0;padding-left:8px;min-width:46px}
+  header #settings{order:9;min-width:38px;min-height:38px;border-color:transparent;background:transparent;font-size:19px}
+  header #layout-toggle{order:10}
+
+  /* Rail: 96px, label under each icon; hover or the menu button opens the sub-items */
+  #rail{width:96px}#rail .rail-in{width:96px;padding-top:6px;border-right:1px solid var(--forge-line-strong)}
+  #rail.open .rail-in{width:268px}
+  #rail .rail-brand{height:44px;justify-content:center;padding:0}
+  #rail button{height:52px;padding:0 22px;gap:16px;font-size:13.5px}
+  #rail:not(.open) .rail-brand .rl{display:none}
+  #rail:not(.open) .rail-group>button,#rail:not(.open) .rail-foot button{flex-direction:column;justify-content:center;align-items:center;gap:7px;height:84px;padding:0}
+  #rail:not(.open) .rl{opacity:1;font:13px/1 var(--sans);color:inherit}
+  #rail:not(.open) .rail-foot button{height:62px}
+  @media(hover:hover){
+    #rail:hover .rail-in{width:268px}
+    #rail:hover .rail-brand .rl{display:inline}
+    #rail:hover .rail-group>button,#rail:hover .rail-foot button{flex-direction:row;justify-content:flex-start;height:52px;padding:0 22px;gap:16px}
+    #rail:hover .rl{font-size:14px}
+  }
+
+  /* Pipeline view: queue + map | workspace */
+  #view-pipeline.on,#view-pipeline.on:has(#drawer.on){display:grid!important;grid-template-columns:minmax(0,1fr) clamp(520px,35%,900px)!important;grid-template-rows:auto minmax(0,1.12fr) minmax(0,1fr)!important;column-gap:10px;row-gap:0;padding:10px;overflow:hidden!important}
+  #dash{display:contents!important}
+  #queue-head{grid-column:1;grid-row:1}
+  #worksplit{grid-column:1;grid-row:2;height:auto!important;min-height:0;border:1px solid var(--forge-line);border-top:0}
+  #job-map-card{grid-column:1!important;grid-row:3!important;min-height:0!important;max-height:none!important;height:auto!important;margin-top:10px}
+  #drawer{grid-column:2!important;grid-row:1/4!important;position:relative!important;inset:auto!important;width:auto!important;min-width:0!important;max-width:none!important;display:flex!important;background:var(--forge-panel)}
+  #drawer.on{animation:forge-drawer-in 240ms var(--forge-ease) both}
+  @keyframes forge-drawer-in{from{opacity:.2;transform:translateX(16px)}to{opacity:1;transform:none}}
+
+  /* Map card: title top-left, legend bottom-left, controls stacked on the right */
+  #job-map-card .map-head{left:14px;top:12px}
+  #job-map-card .map-legend{display:flex!important;left:14px;bottom:12px;gap:18px;font:14px var(--sans)}
+  #job-map-card .map-legend .map-dot{width:12px;height:12px}
+  #job-map-card .map-zoom{display:flex;flex-direction:column-reverse;right:12px;top:12px;bottom:auto;gap:6px;border:0;background:transparent}
+  #job-map-card .map-zoom button{min-width:46px;min-height:44px;border:1px solid var(--forge-line-strong);background:#060808;font-size:18px}
+  #job-map-card .map-zoom #map-zoom-level{min-height:28px;font:11px var(--mono);color:var(--forge-dim)}
+  #job-map-card .map-layers{position:absolute;right:12px;top:184px;z-index:5;min-width:46px;min-height:44px;border:1px solid var(--forge-line-strong);background:#060808}
+  #job-map-card.layers-open #mapfilters{right:66px;top:12px;left:auto}
+  #job-map-card .map-actions{right:70px;bottom:12px}
+
+  /* Table density: at least 18 rows at 2560×1440 inside the queue panel */
+  #gridwrap{scrollbar-color:#46504e #070909;scrollbar-width:thin;overscroll-behavior:contain}
+  #grid{font-size:12px;line-height:1.05}
+  #grid th,#grid td{height:27px;min-height:27px;padding:2px 9px;vertical-align:middle;border-bottom:1px solid #1a201f}
+  #grid th{height:32px;font:10.5px var(--mono);letter-spacing:1.3px;color:#b5beba;box-shadow:0 1px 0 #303837}
+  #grid td{font-size:13px}#grid td.mono{font-size:12px}
+  /* row height comes from fitRows_(): 19 rows where the queue has room, else 16, else 15 (rows down to 20px on the shortest windows) */
+  body:not([data-density=comfortable]) #grid td{height:var(--row-h,27px);font-size:var(--row-font,13px);padding-top:1px;padding-bottom:1px}
+  body:not([data-density=comfortable]) #grid td .rowlink,body:not([data-density=comfortable]) #grid td .score-badge{vertical-align:middle}body:not([data-density=comfortable]) #grid td .rowlink{height:min(22px,calc(var(--row-h,27px) - 4px))}body:not([data-density=comfortable]) #grid td .row-select{width:min(18px,calc(var(--row-h,27px) - 6px));height:min(18px,calc(var(--row-h,27px) - 6px));margin:0;vertical-align:middle}
+  header #search:focus{max-width:740px}
+  body[data-density=comfortable] #grid td{height:36px;padding-top:6px;padding-bottom:6px}
+}
+/* Narrower desktops: the header sheds extras in steps (Refresh stays in the rail footer) */
+@media(max-width:1599px) and (min-width:761px){
+  header #crumb{display:none}
+  header .brand{font-size:18px;letter-spacing:2.4px;padding:0 14px 0 10px}
+  header .brand small{font-size:9px;letter-spacing:2.2px}
+}
+@media(max-width:1279px) and (min-width:761px){
+  header #refresh{display:none}
+  header .brand{font-size:15px;letter-spacing:1.6px}
+  header .brand small{letter-spacing:1.4px}
+  header .hcell,header .writer-badge{padding:0 9px}
+}
+@media(max-width:1279px) and (min-width:761px){
+  #view-pipeline.on,#view-pipeline.on:has(#drawer.on){grid-template-columns:minmax(0,1fr) clamp(340px,38%,520px)!important}
+}
+@media(max-width:1023px) and (min-width:761px){
+  header{gap:5px;padding-right:8px}
+  header #search{min-width:80px}
+  header #bell{display:none}
+  header .brand{font-size:13px;letter-spacing:1px;padding:0 8px}
+  header .brand small{display:none}
+  header #compare-open,header #density-toggle{padding:0 6px}
+}
+@media(min-width:2200px) and (min-height:1200px){
+  #grid td{font-size:13.5px}
+  #drawer .wh-title h2,#drawer #d-title{font-size:32px!important}
+}

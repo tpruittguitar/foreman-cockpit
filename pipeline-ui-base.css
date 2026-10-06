@@ -1,0 +1,221 @@
+/* Forge cockpit UI — shared visual layer. Presentation only: no selector here changes what a control does. */
+:root{
+ --forge-bg:#030404;--forge-panel:#070909;--forge-panel2:#0a0d0d;--forge-line:#232a29;--forge-line-strong:#3a4442;
+ --forge-text:#f2f4f3;--forge-dim:#a1aaa7;--forge-faint:#6f7976;--forge-green:#20f27a;--forge-cyan:#40d8ff;
+ --forge-amber:#ffc21c;--forge-red:#ff3547;--forge-ease:cubic-bezier(.16,1,.3,1)
+}
+html,body{background:var(--forge-bg);color:var(--forge-text)}
+body{background:radial-gradient(1100px 600px at 72% -10%,rgba(30,74,72,.10),transparent 66%),linear-gradient(180deg,#020303,#050707)}
+header,#rail .rail-in,#bottombar,#drawer,.dash-card,.detail-card,.panel,#gridwrap,#job-map-card{background-color:rgba(5,7,7,.98);border-color:var(--forge-line)}
+
+/* Header pieces shared by both layouts */
+.menu-btn,.icon-btn{display:inline-flex;align-items:center;justify-content:center;min-width:38px;min-height:38px;padding:0;border:1px solid transparent;background:transparent;color:var(--forge-text);border-radius:4px}
+.menu-btn:hover,.icon-btn:hover{border-color:var(--forge-line-strong);color:#fff}
+header .brand{color:#fff}
+header .brand small{text-transform:uppercase}
+.hstat{display:flex;align-items:stretch}
+.hcell,header .writer-badge{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:2px;padding:0 14px;border:0;border-left:1px solid var(--forge-line);background:transparent;border-radius:0;text-transform:none;letter-spacing:0;min-height:38px}
+.hcell small,header .writer-badge small{font:10px var(--mono);letter-spacing:1.6px;text-transform:uppercase;color:var(--forge-dim)}
+.hcell b,header .writer-badge b{font:600 17px/1.05 var(--sans);color:#fff;letter-spacing:.2px}
+.hcell.bad b{color:var(--forge-red)}
+header .writer-badge .sys-dot{display:none}
+header .writer-badge.ok,header .writer-badge.ok b{color:var(--forge-green);border-color:var(--forge-line)}
+header .writer-badge.warn b{color:var(--forge-amber)}
+header .writer-badge.critical{background:#3a0a0e}header .writer-badge.critical b{color:#fff}
+header #search{border:1px solid var(--forge-line-strong);background:#020303 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23c9d1ce' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16 16l4.5 4.5'/%3E%3C/svg%3E") no-repeat 12px center;padding-left:40px;border-radius:4px;transition:border-color 140ms ease,box-shadow 220ms var(--forge-ease)}
+header #search:focus{border-color:var(--forge-cyan);box-shadow:0 0 0 1px #40d8ff2e,0 0 24px #40d8ff14;outline:0}
+/* the long readout stays in the DOM for assistive tech and tests; the status cells show it visually */
+header #readout{position:absolute!important;width:1px!important;height:1px!important;min-width:0!important;max-width:1px!important;padding:0!important;margin:0!important;overflow:hidden!important;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;flex:none!important}
+
+button,.chip,.wchip,.bpill,.score-badge{border-radius:3px}
+button{transition:transform 140ms var(--forge-ease),border-color 140ms ease,color 140ms ease,background-color 140ms ease,box-shadow 220ms var(--forge-ease)}
+button:not(:disabled):active{transform:scale(.985)}
+
+/* Queue header (Job decision queue) */
+.queue-head{display:flex;align-items:center;gap:16px;min-width:0;background:var(--forge-panel);border:1px solid var(--forge-line);border-bottom:0;padding:10px 14px}
+.qh-title{margin:0;font:600 17px/1 var(--sans);letter-spacing:2.2px;text-transform:uppercase;color:#fff;white-space:nowrap}
+.qh-title .mono{font-size:15px;color:var(--forge-dim);letter-spacing:0}
+.queue-head .decide-strip{margin-left:auto;display:flex;gap:0;overflow:visible}
+.queue-head .decide{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:92px;padding:2px 14px;border:0;border-left:1px solid var(--forge-line);border-radius:0;background:transparent}
+.queue-head .decide:first-child{border-left:0}
+.queue-head .decide b{order:-1;font:600 24px/1 var(--sans);color:#fff}
+.queue-head .decide small{font:10.5px var(--mono);letter-spacing:1.4px;text-transform:uppercase;color:var(--forge-dim);margin-top:4px;white-space:nowrap}
+.queue-head .decide .delta{display:none}
+.queue-head .decide[data-decide=research] b{color:var(--forge-green)}
+.queue-head .decide.warn b{color:var(--forge-amber)}
+.queue-head .decide.on{box-shadow:inset 0 -2px 0 var(--forge-amber)}
+.queue-head .decide:hover{background:#0b0f0f}
+.qh-tools{display:flex;align-items:center;gap:6px}
+.qh-view{display:inline-flex;align-items:center;gap:10px;min-height:36px;padding:0 12px;border:1px solid var(--forge-line-strong);background:#050707;color:#fff;font:13.5px var(--sans);text-transform:none;letter-spacing:.2px;max-width:220px}
+.qh-view span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qh-view i{font-style:normal;color:var(--forge-dim)}
+.qh-filter{position:relative}
+.qh-filter b{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--forge-amber);color:#000;font:700 10px/16px var(--mono)}
+.qh-search{display:none}
+
+/* View & filters panel: the existing preset chips, bulk tools and secondary counts */
+.qv-panel{position:fixed;z-index:95;width:min(620px,calc(100vw - 16px));max-height:min(70vh,640px);overflow:auto;background:#060808;border:1px solid var(--forge-line-strong);box-shadow:0 24px 60px #000c;padding:10px 12px 12px;transform-origin:top right;animation:forge-panel-in 200ms var(--forge-ease) both}
+.qv-panel[hidden]{display:none}
+@keyframes forge-panel-in{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+.qv-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.qv-h b{font:11px var(--mono);letter-spacing:1.6px;text-transform:uppercase;color:var(--forge-dim)}
+#qv-tiles .decide-strip{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:10px}
+#qv-tiles .decide{min-width:0}
+.qv-panel #presets{display:flex;flex-direction:column;gap:8px;padding:0;border:0;background:transparent}
+.qv-panel .preset-list{display:flex;flex-wrap:wrap;gap:5px}
+.qv-panel .pipeline-tools{display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--forge-line);padding-top:8px}
+.qv-panel #predicate{font:10.5px var(--mono);color:var(--forge-faint)}
+
+/* Map card */
+#job-map-card{background:radial-gradient(ellipse at center,#18252652,transparent 60%),#000;border:1px solid var(--forge-line);overflow:hidden}
+#job-map-card:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.1;background:linear-gradient(transparent 49%,#ffffff0d 50%,transparent 51%) 0 0/100% 5px}
+#job-map-card .map-head h4{font:600 15px/1 var(--sans);letter-spacing:2px;text-transform:uppercase;color:#fff}
+.map-outline{fill:#080b0b;stroke:#77817e;stroke-width:.85}.map-state-label{fill:#7c8784}
+/* Pins are placed with the translate property (compositor-friendly); transform keeps centring and scale */
+.map-target{left:0!important;top:0!important;transition:transform 160ms var(--forge-ease),opacity 140ms ease,filter 160ms ease}
+.map-target:hover{transform:translate(-50%,-50%) scale(1.14)}
+.map-target.active{--target:var(--forge-green);transform:translate(-50%,-50%) scale(1.32);filter:drop-shadow(0 0 6px currentColor)}
+/* Pin states. Checked (selected) = amber square frame; open job (focused) = enlarged green with glow; both = focused look plus the frame.
+   The acquisition ring lives on the reticle so the pin's own :before/:after crosshair stays intact. */
+.map-target.checked{opacity:1}
+.map-target.checked .map-reticle:before{content:"";position:absolute;inset:-5px;border:1px solid var(--forge-amber);pointer-events:none}
+.map-target.focused{--target:var(--forge-green);opacity:1;transform:translate(-50%,-50%) scale(1.32);filter:drop-shadow(0 0 6px currentColor)}
+.map-reticle:after{content:"";position:absolute;inset:-6px;border:1.5px solid var(--target,#a9d77d);border-radius:50%;opacity:0;pointer-events:none}
+.map-target.acquire .map-reticle:after{animation:forge-acquire 760ms var(--forge-ease) 1}
+@keyframes forge-acquire{0%{opacity:.95;transform:scale(2.4)}70%{opacity:.6;transform:scale(.9)}100%{opacity:0;transform:scale(1.15)}}
+.map-target.priority-hot{--target:var(--forge-amber)}
+.map-target-label{animation:forge-pop 220ms var(--forge-ease) both;border-color:#8d9995;background:#020404f5;box-shadow:0 18px 50px #0006}
+@keyframes forge-pop{from{opacity:0;transform:translateY(5px) scale(.975)}to{opacity:1;transform:none}}
+#job-map-card #mapfilters{display:none!important}
+#job-map-card.layers-open #mapfilters{display:flex!important;position:absolute;z-index:9;max-height:calc(100% - 24px);overflow:auto;flex-direction:column;align-items:stretch;gap:4px;padding:8px;background:#060808f2;border:1px solid var(--forge-line-strong);box-shadow:0 16px 40px #000b;animation:forge-panel-in 180ms var(--forge-ease) both;transform-origin:top right}
+#job-map-card.layers-open #mapfilters button{margin:0;justify-content:space-between;display:flex;gap:10px}
+
+/* Job workspace: role title, meta line, score ring, sticky action footer */
+#drawer{display:flex;flex-direction:column;border:1px solid var(--forge-line);box-shadow:none}
+#drawer .dh{display:contents}
+#drawer .wh-top{order:1;display:flex;align-items:flex-start;gap:12px;padding:14px 16px 6px;position:relative}
+#drawer .wh-title{flex:1;min-width:0}
+#drawer .wh-title h2,#drawer #d-title{font:600 28px/1.1 var(--sans)!important;color:#fff;letter-spacing:.2px;margin:0}
+.ws-meta{margin-top:6px;font:15px/1.3 var(--sans);color:#d9dfdd}
+.ws-meta i{font-style:normal;color:var(--forge-faint);margin:0 9px}
+#drawer .wh-title .sub{margin-top:4px;font:10.5px var(--mono);color:var(--forge-faint)}
+#drawer .wh-nav{display:flex;flex-direction:column;gap:4px;order:3}
+#drawer .wh-nav button,#drawer #d-close{min-width:30px;min-height:28px;padding:0 6px}
+#drawer #d-close{order:4}
+.ws-ring{--ring:var(--forge-dim);order:2;flex:none;position:relative;width:96px;height:96px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:conic-gradient(var(--ring) calc(var(--pct) * 1%),#1a2120 0);transition:background 300ms ease}
+.ws-ring:before{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--forge-panel)}
+.ws-ring b,.ws-ring small{position:relative}
+.ws-ring b{font:600 30px/1 var(--sans);color:#fff}
+.ws-ring small{font:11px/1.2 var(--sans);color:#e5ebe9;margin-top:3px}
+.ws-ring.strong{--ring:var(--forge-green);background:conic-gradient(from 210deg,var(--forge-cyan),var(--forge-green) calc(var(--pct) * 1%),#1a2120 0)}
+.ws-ring.good{--ring:var(--forge-green)}
+.ws-ring.watch{--ring:var(--forge-amber)}
+.ws-ring.weak{--ring:#8d9693}
+.ws-ring.nogo,.ws-ring.stricthold{--ring:var(--forge-red)}
+#drawer .wh-chips{order:2;padding:2px 16px 10px;display:flex;flex-wrap:wrap;gap:5px}
+#drawer .wh-chips .score-badge{display:none}
+#detail-tabs{order:3;margin:0 12px;padding:0;gap:0;border:1px solid var(--forge-line);background:#040606;position:relative;flex:none}
+#detail-tabs button{position:relative;flex:1;min-height:42px;padding:0 10px;border:0;border-right:1px solid var(--forge-line);color:#c3ccc9;background:transparent;font:13px var(--sans);letter-spacing:1px;text-transform:uppercase}
+#detail-tabs button:last-child{border-right:0}
+/* one indicator slides between tabs (position set from the active tab after each render) */
+#detail-tabs:after{content:"";position:absolute;left:0;bottom:-1px;height:2px;width:var(--tab-w,0);transform:translateX(var(--tab-x,0));background:var(--forge-green);box-shadow:0 0 12px #20f27a59;transition:transform 260ms var(--forge-ease),width 260ms var(--forge-ease);pointer-events:none}
+#detail-tabs button.on{color:var(--forge-green);box-shadow:inset 0 0 0 1px #20f27a80}
+#drawer #d-body{order:4;flex:1;min-height:0;overflow:auto;padding:12px 16px}
+#d-body>*{animation:forge-detail-in 220ms var(--forge-ease) both}
+@keyframes forge-detail-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+#drawer .wh-actions{order:5;flex:none;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;padding:12px 16px 14px;border-top:1px solid var(--forge-line);background:#050707}
+#drawer .wh-actions>span{display:contents}
+#drawer .wh-actions>span[style]{display:none}
+#drawer .wh-actions button{min-height:42px;font:600 14px var(--sans);letter-spacing:1px;text-transform:uppercase;background:transparent}
+#drawer .wh-actions #ws-open{grid-column:span 4;order:1;background:#d9dddc;border-color:#d9dddc;color:#050606}
+#drawer .wh-actions #ws-packet{grid-column:span 4;order:2;border-color:#e6e9e8;color:#fff}
+#drawer .wh-actions #ws-cover{grid-column:span 4;order:3;border-color:var(--forge-amber);color:var(--forge-amber)}
+#drawer .wh-actions [data-decide-key]{grid-column:span 3}
+#drawer .wh-actions [data-decide-key="1"]{order:4;border-color:var(--forge-green);color:var(--forge-green)}
+#drawer .wh-actions [data-decide-key="2"]{order:5;border-color:#e6e9e8;color:#fff}
+#drawer .wh-actions [data-decide-key="4"]{order:6;border-color:var(--forge-amber);color:var(--forge-amber)}
+#drawer .wh-actions [data-decide-key="3"]{order:7;border-color:var(--forge-red);color:var(--forge-red)}
+#drawer .wh-actions button:disabled{opacity:.42}
+#drawer:not(.on)>*{display:none!important}
+#drawer:not(.on){align-items:center;justify-content:center}
+#drawer:not(.on):before{content:"Select a job in the queue or on the map";font:12px var(--mono);letter-spacing:1.4px;text-transform:uppercase;color:var(--forge-faint)}
+
+/* Overview cockpit summary */
+.ck-over{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px 22px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--forge-line)}
+.ck-over h3{margin:0 0 10px;font:600 14px/1 var(--sans);letter-spacing:1.8px;text-transform:uppercase;color:#e9eeec}
+.ck-over h3 .faint{font:10px var(--mono);letter-spacing:1px;margin-left:6px}
+.ck-kd{padding-right:18px;border-right:1px solid var(--forge-line)}
+.ck-kd ul,.ck-checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.ck-kd li{display:flex;align-items:center;gap:14px;font:15px/1.25 var(--sans);color:#eef2f0;min-width:0}
+.ck-kd li svg{flex:none;color:#dfe5e3}
+.ck-kd li span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ck-kd a{color:var(--forge-amber);text-decoration:underline;text-underline-offset:3px}
+.ck-checks li{position:relative;padding-left:30px;font:15px/1.3 var(--sans);color:#eef2f0}
+.ck-checks li:before{position:absolute;left:2px;top:-1px;font:700 16px/1.2 var(--sans)}
+.ck-checks li.ok:before{content:"✓";color:var(--forge-green)}
+.ck-checks li.bad:before{content:"✕";color:var(--forge-red)}
+.ck-checks li.unk{color:var(--forge-faint)}.ck-checks li.unk:before{content:"○";color:var(--forge-faint)}
+.ck-sum,.ck-next{grid-column:1/-1;margin-top:14px}
+.ck-sum p{margin:0;font:15px/1.5 var(--sans);color:#dce2e0}
+.ck-next{display:flex;align-items:baseline;gap:22px;padding-top:12px;border-top:1px solid var(--forge-line)}
+.ck-next h3{margin:0;white-space:nowrap}.ck-next p{margin:0;font:15px/1.4 var(--sans);color:#eef2f0}
+.detail-card{border-color:var(--forge-line);background:#060808}.detail-card h3{color:#d8dfdc}
+
+/* Table: dense rows, horizontal rules only, status as coloured text, focused row outlined in amber */
+#grid th,#grid td{border-right:0!important}
+#grid th{color:#b9c2bf;background:#050707}
+#grid td .bpill{border:0;padding:0;background:transparent;font:inherit;letter-spacing:0}
+#grid td .bpill.b-READY_TO_PURSUE,#grid td .bpill.b-APPLIED{color:var(--forge-green)}
+#grid td .bpill.b-TIM_DECISION_REQUIRED,#grid td .bpill.b-MANUAL_RESEARCH,#grid td .bpill.b-BLOCKED{color:var(--forge-amber)}
+#grid td .bpill.b-SCOUT_INTAKE,#grid td .bpill.b-DISCOVERY_LEAD{color:#cfe3ff}
+#grid td .bpill.b-DECLINED_BY_TIM,#grid td .bpill.b-REJECTED_BY_EMPLOYER{color:#d77b82}
+#grid td .bpill.b-CLOSED_DEAD,#grid td .bpill.b-DUPLICATE,#grid td .bpill.b-INVALID_DISCOVERY{color:var(--forge-faint)}
+#grid td .score-badge{border:0;background:transparent;padding:0;min-width:0;font-family:var(--sans);font-weight:600;font-size:inherit}
+#grid td .score-badge+.faint{display:none}
+#grid tbody tr.focus td{background:#ffc21c1c!important;color:#ffd760;box-shadow:inset 0 1px 0 var(--forge-amber),inset 0 -1px 0 var(--forge-amber)}
+#grid tbody tr.focus td:first-child{box-shadow:inset 4px 0 0 var(--forge-amber),inset 0 1px 0 var(--forge-amber),inset 0 -1px 0 var(--forge-amber)}
+#grid tbody tr.focus td:last-child{box-shadow:inset -1px 0 0 var(--forge-amber),inset 0 1px 0 var(--forge-amber),inset 0 -1px 0 var(--forge-amber)}
+#grid tbody tr{transition:background-color 140ms ease,box-shadow 160ms var(--forge-ease)}
+#grid tbody tr:hover td{background:#0d1212}
+#grid tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 #8fa29d}
+
+/* Rail: icon with its label underneath; hover (or the menu button) still opens the sub-items */
+#rail .rail-group.cur>button{color:var(--forge-amber);border-left-color:var(--forge-amber);background:linear-gradient(90deg,#ffc21c12,transparent 70%)}
+#rail button svg{width:26px;height:26px}
+#rail button:hover svg{transform:translateY(-1px) scale(1.08)}
+
+/* Chips, tiles and buttons in panels */
+.score-badge.strong,.bpill.b-READY_TO_PURSUE{border-color:var(--forge-green);color:var(--forge-green)}
+.bpill.b-TIM_DECISION_REQUIRED{border-color:var(--forge-amber);color:var(--forge-amber)}
+#readout .good,.pill.ok{color:var(--forge-green);border-color:var(--forge-green)}
+#readout .bad,.pill.bad{color:var(--forge-red);border-color:var(--forge-red)}
+
+/* will-change only on the two surfaces that slide; on every row and button it creates hundreds of compositor layers */
+#rail .rail-in,#drawer{will-change:transform,opacity}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}}
+
+/* Short display labels for the cockpit columns; the column keys (data-c, Columns view, filters, sorting) are unchanged */
+#grid th[data-c=OVERALL_RATING],#grid th[data-c=BUCKET],#grid th[data-c=SALARY_BASE_EST],#grid th[data-c=FLEX_CLASS],#grid th[data-c=EXPERIENCE_FIT],#grid th[data-c=LINK]{font-size:0!important}
+#grid th[data-c=OVERALL_RATING]:before{content:"SCORE"}#grid th[data-c=BUCKET]:before{content:"STATUS"}#grid th[data-c=SALARY_BASE_EST]:before{content:"COMP"}#grid th[data-c=FLEX_CLASS]:before{content:"FLEX"}#grid th[data-c=EXPERIENCE_FIT]:before{content:"FIT"}#grid th[data-c=LINK]:before{content:"LINK"}
+#grid th[data-c]:before{font:10.5px var(--mono);letter-spacing:1.3px}
+#grid th .fx{font-size:10px}
+
+/* Full-screen map (both layouts): zoom stack and layers bottom-right, Close/Recenter/Reset to their left */
+body.map-full #job-map-card .map-zoom{top:auto!important;bottom:calc(10px + env(safe-area-inset-bottom))!important;right:8px!important}
+body.map-full #job-map-card .map-layers{top:auto!important;bottom:calc(150px + env(safe-area-inset-bottom))!important;right:8px!important}
+body.map-full #job-map-card.layers-open #mapfilters{top:auto!important;bottom:calc(150px + env(safe-area-inset-bottom))!important;right:62px!important}
+body.map-full #job-map-card .map-actions{right:62px!important;bottom:calc(12px + env(safe-area-inset-bottom))!important}
+#drawer #d-title{white-space:normal!important;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+
+/* Map behaviour preferences (in the layers popover) */
+#job-map-card .map-prefs{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding-top:8px;border-top:1px solid var(--forge-line);font:12px var(--sans);color:#d6dcda;text-transform:none;letter-spacing:0}
+#job-map-card .map-prefs label{display:flex;align-items:center;gap:8px;white-space:nowrap}
+#job-map-card .map-prefs select{min-height:28px;background:#050707;color:#fff;border:1px solid var(--forge-line-strong)}
+#job-map-card .map-prefs select:disabled{opacity:.45}
+/* Fit signals carry their state as text, so unknown never reads as a claim */
+.ck-checks li small{margin-left:8px;font:10.5px var(--mono);letter-spacing:.6px;text-transform:uppercase;color:var(--forge-faint)}
+.ck-checks li.ok small{color:#7fdca8}.ck-checks li.bad small{color:#e48a92}
+/* Secondary header tools stay quieter than search and the status cells */
+header #compare-open,header #density-toggle,header #refresh{opacity:.72}
+header #compare-open:hover,header #density-toggle:hover,header #refresh:hover{opacity:1}
+header #search{transition:border-color 140ms ease,box-shadow 220ms var(--forge-ease),max-width 220ms var(--forge-ease)}
