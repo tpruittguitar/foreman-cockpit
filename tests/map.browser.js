@@ -11,7 +11,7 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   const ctx=await browser.newContext({viewport:{width:1440,height:900}}),page=await ctx.newPage(),errors=[],posts=[];
   page.on('pageerror',e=>errors.push(e.message));
   // Pre-baselined profile with nothing seen, so any seen mark comes from this session. Tullahoma, TN is cached ~6 km from Huntsville, AL so the two form a dense pair; Huntsville has three fixture rows at one spot.
-  await page.addInitScript(()=>{if(sessionStorage.getItem('seeded'))return;sessionStorage.setItem('seeded','1');localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));localStorage.setItem('px.baselined','true');localStorage.setItem('px.seen','{}');localStorage.setItem('px.geoCache',JSON.stringify({'tullahoma, tn':{lat:34.775,lon:-86.55,state:'TN',approx:false,source:'test'}}))});
+  await page.addInitScript(()=>{if(sessionStorage.getItem('seeded'))return;sessionStorage.setItem('seeded','1');localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));localStorage.setItem('px.baselined','true');localStorage.setItem('px.seen','{}');localStorage.setItem('px.geoCache',JSON.stringify({'tullahoma, tn':{lat:34.775,lon:-86.55,state:'TN',approx:false,source:'test'},'costa mesa, ca':{lat:33.6411,lon:-117.9187,state:'CA',approx:false,source:'test'},'louisville, co':{lat:39.9778,lon:-105.1319,state:'CO',approx:false,source:'test'}}))});
   await page.route('**/writer*',r=>{const q=r.request(),a=new URL(q.url()).searchParams.get('action');if(q.method()==='POST')posts.push(q.postData());return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:{ok:true}})});
   await page.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));
   await page.goto(base+'/pipeline.html');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(900);
@@ -81,6 +81,38 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   // Recenter keeps the zoom; Reset glides back to the full-US overview.
   await page.locator('[data-mapaction="recenter"]').click();await page.waitForTimeout(800);assert(Math.abs(await zoom()-manual)<.01,'Recenter keeps the current zoom');
   await page.locator('[data-mapaction="reset"]').click();await page.waitForTimeout(800);assert.equal(await label(),'100%');assert.equal(await page.locator('#job-map').getAttribute('data-center-x'),'480.000');
+
+  // 8. Selected layer = the explicit checkbox selection, independent of table scrolling.
+  const pinOf=(name)=>page.locator('.map-target[aria-label="'+name+'"]');
+  const checkedIds=()=>page.$$eval('#grid tbody .row-select',c=>c.filter(x=>x.checked).map(x=>x.dataset.id));
+  const offScreen=(id)=>page.evaluate(id=>{const w=document.getElementById('gridwrap').getBoundingClientRect(),h=document.querySelector('#grid thead').getBoundingClientRect().bottom,r=document.querySelector('#grid tbody tr[data-id="'+id+'"]').getBoundingClientRect();return r.top>=w.bottom||r.bottom<=h},id);
+  const scrollTable=(top)=>page.locator('#gridwrap').evaluate((e,t)=>{e.scrollTop=t?0:e.scrollHeight},top);
+  assert.deepEqual(await checkedIds(),[],'start with no checkbox selections');
+  // 8.1 No checkbox selections + focused row: exactly one pin, the focused one, at the selection zoom. Huntsville is in the current view
+  // ~6 km away but is not rendered, so it must not drive a boost.
+  await pick('V2X-3EB07714AE24');assert.equal(await drawn(),1,'no checks: exactly one selected pin');assert(await pinOf('Tullahoma, TN').evaluate(e=>e.classList.contains('active')),'the focused pin is highlighted');
+  assert.equal(await label(),'600%','unrendered Current View neighbours do not boost a single pin');
+  // 8.2 Three checked jobs, one of them scrolled off the table viewport: all three render.
+  await check('V2X-F5344DCB7B12',true);await scrollTable(true);await page.waitForTimeout(200);assert(await offScreen('V2X-F5344DCB7B12'),'Costa Mesa row is scrolled off-screen');
+  await check('V2X-A4CCD49EE686',true);await check('V2X-299323199555',true);await scrollTable(true);await page.waitForTimeout(200);assert(await offScreen('V2X-F5344DCB7B12'));
+  await pick('V2X-A4CCD49EE686');await scrollTable(true);await page.waitForTimeout(300);assert(await offScreen('V2X-F5344DCB7B12'),'still scrolled off after focusing');
+  for(const n of ['Huntsville, AL','Louisville, CO','Costa Mesa, CA'])assert.equal(await pinOf(n).count(),1,n+' pin renders');
+  assert.equal(await drawn(),3,'exactly the three checked jobs render');assert.equal(await shown(),3,'and all three are on screen');
+  // 8.3 Focus one of the three: all three remain, checks are kept, the layer stays Selected, the focused pin gets the active treatment.
+  await pick('V2X-299323199555');assert.equal(await drawn(),3);assert.equal(await shown(),3);
+  assert.deepEqual((await checkedIds()).sort(),['V2X-299323199555','V2X-A4CCD49EE686','V2X-F5344DCB7B12'],'focusing a row does not clear the checkbox selection');
+  assert.equal(await page.locator('[data-mapfilter="selected"]').getAttribute('aria-pressed'),'true','the layer stays Selected');
+  const activeLabels=async()=>page.$$eval('.map-target.active',b=>b.map(x=>x.getAttribute('aria-label')));
+  assert.deepEqual(await activeLabels(),['Louisville, CO'],'only the focused pin is active');
+  const hb=await pinOf('Huntsville, AL').boundingBox();await page.mouse.move(hb.x+hb.width/2,hb.y+hb.height/2);await page.waitForTimeout(150);
+  const g2=await page.locator('#gridwrap').boundingBox();await page.mouse.move(g2.x+20,g2.y+20);await page.waitForTimeout(150);
+  assert.deepEqual(await activeLabels(),['Louisville, CO'],'after hovering another pin the focused one keeps the active treatment');
+  // 8.4 Clustered selection: only Huntsville + Tullahoma checked, so the boost reacts to that rendered pair.
+  await check('V2X-299323199555',false);await check('V2X-F5344DCB7B12',false);await check('V2X-3EB07714AE24',true);await pick('V2X-3EB07714AE24');
+  assert.equal(await drawn(),2,'the rendered set is the clustered pair');const cz=await zoom();assert(cz>6&&cz<=10.001,'crowded selected pins boost past 600% (got '+cz+')');assert.equal(await shown(),2);
+  // 8.5 Clearing the checkbox selections returns to single focused-job behaviour.
+  await check('V2X-3EB07714AE24',false);await check('V2X-A4CCD49EE686',false);assert.deepEqual(await checkedIds(),[]);
+  assert.equal(await drawn(),1,'back to exactly one pin');assert.equal(await label(),'600%','single-job acquisition at the selection zoom');assert.deepEqual(await activeLabels(),['Tullahoma, TN']);
 
   // 7. Explicit selection still behaves as before: it marks the row seen (the existing state sync may follow).
   await pick('V2X-A4CCD49EE686');assert(await page.evaluate(()=>!!JSON.parse(localStorage.getItem('px.seen')||'{}')['V2X-A4CCD49EE686']),'an explicit selection marks the row seen as before');

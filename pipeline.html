@@ -1194,7 +1194,7 @@ function mapPinSummary_(p){var rows=(p.rowIds||[]).map(rowById).filter(Boolean);
 function renderMapTargets_(found,active){
   var box=$('job-map');if(!box)return;var width=box.clientWidth,height=box.clientHeight,buttons=box.querySelectorAll('.map-target');
   if(buttons.length!==found.length||box._points!==found){buttons.forEach(function(e){e.remove()});found.forEach(function(p,i){var button=document.createElement('button');button.className='map-target '+(p.type||'secondary');button.dataset.pin=i;button.innerHTML='<i class="map-reticle"></i>';button.classList.toggle('priority-hot',(p.rowIds||[]).some(function(id){var r=rowById(id);return r&&attentionFor_(r).strong}));button.setAttribute('aria-label',p.label+(p.approx?' (approximate state location)':''));
-    function show(){mapView.active=i;renderMapTargets_(found,i)}function hide(){if(found.length>1){mapView.active=null;renderMapTargets_(found,null)}}
+    function show(){mapView.active=i;renderMapTargets_(found,i)}function hide(){if(found.length>1){mapView.active=restingPin_();renderMapTargets_(found,mapView.active)}}
     button.onpointerenter=function(e){if(e.pointerType!=='touch')show()};button.onpointerleave=function(e){if(e.pointerType!=='touch')hide()};button.onfocus=show;button.onblur=hide;box.appendChild(button);
   });box._points=found;buttons=box.querySelectorAll('.map-target')}
   buttons.forEach(function(button,i){var p=found[i],q=mapScreenPoint_(projectUS_(+p.lat,+p.lon,stateCodeFromText_(p.label)));button.style.translate=q.x+'px '+q.y+'px';button.hidden=q.x<-15||q.x>width+15||q.y<-15||q.y>height+15;button.classList.toggle('active',i===active);button.setAttribute('aria-pressed',i===active?'true':'false')});
@@ -1237,7 +1237,7 @@ function bindMapWheel_(){
     if(touches[e.pointerId]){touches[e.pointerId]={x:e.clientX,y:e.clientY};if(pinch&&touchPoints().length===2){var p=pinchState(),b=box.getBoundingClientRect(),base=Math.min(box.clientWidth/960,box.clientHeight/510),zoom=Math.max(1,Math.min(MAP_MAX_ZOOM,pinch.zoom*p.d/pinch.d)),dx=(p.x-b.left-box.clientWidth/2)/base,dy=(p.y-b.top-box.clientHeight/2)/base;
       mapView.x+=dx/mapView.zoom-dx/zoom-(p.x-pinch.x)/(base*zoom);mapView.y+=dy/mapView.zoom-dy/zoom-(p.y-pinch.y)/(base*zoom);mapView.zoom=mapView.targetZoom=zoom;pinch.x=p.x;pinch.y=p.y;suppressClick=true;applyMapView_();return}}
     if(drag&&drag.id===e.pointerId){var dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(!drag.moved&&Math.hypot(dx,dy)<4)return;drag.moved=true;box.classList.add('panning');var scale=Math.min(box.clientWidth/960,box.clientHeight/510)*mapView.zoom;mapView.x=drag.cx-dx/scale;mapView.y=drag.cy-dy/scale;applyMapView_();return}
-    if(e.pointerType==='touch'||mapView.found.length<2)return;var i=nearestMapPin_(e.clientX,e.clientY);if(mapView.active!==i){mapView.active=i;renderMapTargets_(mapView.found,i)}
+    if(e.pointerType==='touch'||mapView.found.length<2)return;var i=nearestMapPin_(e.clientX,e.clientY);if(i==null)i=restingPin_();if(mapView.active!==i){mapView.active=i;renderMapTargets_(mapView.found,i)}
   });
   function finish(e){
     if(touches[e.pointerId]){delete touches[e.pointerId];if(pinch&&touchPoints().length<2){pinch=null;box.classList.remove('panning');suppressClick=true;setTimeout(function(){suppressClick=false},350);if(mapView.zoom<=1.02)animateMap_({zoom:1,x:480,y:255},200);return}}
@@ -1246,11 +1246,13 @@ function bindMapWheel_(){
   // A tap on empty map restores the overview for a mouse only; on touch that is too easy to hit by accident, so Reset does it.
   box.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();if(suppressClick)return;var button=e.target.closest&&e.target.closest('.map-target'),i=e.detail?nearestMapPin_(e.clientX,e.clientY):null;if(i==null&&button)i=+button.dataset.pin;if(i!=null)selectMapPin_(mapView.found[i]);else if(lastPointer!=='touch')restoreMapOverview_()},true);
   box.addEventListener('dragstart',function(e){e.preventDefault()});
-  box.addEventListener('pointerleave',function(){if(!drag&&mapView.found.length>1){mapView.active=null;renderMapTargets_(mapView.found,null)}});
+  box.addEventListener('pointerleave',function(){if(!drag&&mapView.found.length>1){mapView.active=restingPin_();renderMapTargets_(mapView.found,mapView.active)}});
   box.addEventListener('wheel',function(e){e.preventDefault();if(drag)return;var delta=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?box.clientHeight:1);zoomMap_((mapView.targetZoom||mapView.zoom)*Math.exp(-Math.max(-200,Math.min(200,delta))*.001),e.clientX,e.clientY)},{passive:false});
 }
 
 // Dense-area boost: deepen the selection zoom only as far as needed to put the nearest distinct pin in the current view >= 28px away (capped at 1000%).
+/* With several pins drawn, the focused job's pin is where the highlight rests when nothing is hovered (Selected layer only). */
+function restingPin_(){return mapView.focusPin!=null&&mapView.found[mapView.focusPin]?mapView.focusPin:null}
 function pinPoint_(p){return projectUS_(+p.lat,+p.lon,stateCodeFromText_(p.label))}
 function denseZoom_(qs,base,found,labels){/* Dense-area boost: counts only pins drawn on the map. Zooms just far enough that the nearest drawn neighbour of the anchor pin(s) sits about 28px away, capped at MAP_MAX_ZOOM; no places are hard-coded. */var box=$('job-map');if(!box||!box.clientWidth)return base;var s=Math.min(box.clientWidth/960,box.clientHeight/510),SEP=28,minD=Infinity,reach=Math.max(box.clientWidth,box.clientHeight)/(s*base);
   qs.forEach(function(q,i){(found||[]).forEach(function(p){if(p.home||p.type==='home'||p.label===labels[i])return;var t=pinPoint_(p),d=Math.hypot(t.x-q.x,t.y-q.y);if(d<.35||d>reach)return;if(d<minD)minD=d})});
@@ -1285,7 +1287,7 @@ function renderJobMap(){
     if(!found.length){$('job-map').innerHTML='<div class="map-empty">Location not yet verified</div>';$('map-loc-status').textContent='GEOCODE NEEDED';return}
     var approx=found.filter(function(x){return x.approx}).length;
     $('job-map').innerHTML=mapBaseSvg_(found.map(pinSvg_).join(''));
-    mapView.found=found;mapView.active=found.length===1?0:null;applyMapView_();
+    mapView.found=found;var fp=r&&mode==='selected'?mapLocationsForRow_(r)[0]:null,fi=fp?found.findIndex(function(p){return p.label===fp.label}):-1;mapView.focusPin=fi>=0?fi:null;mapView.active=mapView.focusPin!=null?mapView.focusPin:found.length===1?0:null;applyMapView_();
     if(multi&&mapView.focus!==frameKey){frameSelection_(found,r,frameKey)}
     else if(!multi&&r&&(mode==='selected'||mode==='visible')&&mapView.focus!==focusId){var primary=mapLocationsForRow_(r)[0],hit=found.filter(function(p){return primary&&p.label===primary.label})[0];if(hit){var q=projectUS_(+hit.lat,+hit.lon,stateCodeFromText_(hit.label)),base=mapView.rowFocusZoom||S.mapSelZoom||6,auto=S.mapAutoZoom!==false,zoom=auto?(S.mapDenseBoost!==false?denseZoom_([q],base,found,[hit.label]):base):(mapView.targetZoom||mapView.zoom);mapView.focus=focusId;mapView.hasFocused=true;mapView.rowFocusZoom=null;mapView.selZoom=zoom;animateMap_({zoom:zoom,x:q.x,y:q.y},auto?650:520,function(){pulsePin_(hit.label)})}}
     $('map-loc-status').textContent=approx?(approx+' APPROX'):(found.length+' PIN'+(found.length===1?'':'S'));
