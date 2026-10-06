@@ -62,6 +62,14 @@ Reports keeps three charts: Every pipeline state, Base compensation mix (bins no
 
 Scout analysis drops the Rolling 7-day rates bars (the windows panel still lists the rates) and gains "New since your last visit": rows still counted as new on this device, each opening the Job Workspace.
 
+## Polish and removals (PR F)
+
+Motion: one easing, 160–200 ms, on chips, tiles, tabs, rows and cards; the Job Workspace slides in; views and panel bodies fade. `prefers-reduced-motion` switches it all off. Desktop with a mouse gets about 10% more padding in bars, the band, the workspace and the chart grid.
+
+Removed, each traced to zero consumers in the 2026-10-06 audit: the `keyGroup` key-group tables, the viewport-row map scheduler and its scroll listener, `renderATSProfile` and the empty `view-ats` panel (the `t=ats` link still opens Job documents), the legacy `.map-mode`, map tip, coast-glow, writer-warn, barline, ATS-profile and security-note styles, the pulse keyframes, and a duplicated landscape media block.
+
+Fixes: the SOURCE_URL column is a real link; the interview card reads its posting link through the shared link policy; the Posting tab shows `CLAUDE_REVIEW_EVIDENCE_URL` when a row carries it; preset chip counts count distinct roles; the Explorer's scoring `MODEL_VERSION` matches `SCORING_MODEL.md` (2026-10-04.1).
+
 ## URL state
 
 The hash now also carries the open job (`j`) and full-screen map (`m`). Opening a link with `j` focuses that row, opens the job panel and scrolls it into view; `m:1` restores the full-screen map. Existing hashes (`t`, `p`, `s`, `f`) are unchanged.

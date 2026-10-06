@@ -17,7 +17,7 @@
     'nashville, tn':[36.1627,-86.7816],'knoxville, tn':[35.9606,-83.9207],'chicago, il':[41.8781,-87.6298]
   };
   var MODEL_ID='TIM_WEIGHTED_JOB_RATING';
-  var MODEL_VERSION='2026-10-03.1';
+  var MODEL_VERSION='2026-10-04.1';
   var DEFAULT_WEIGHTS={experience:25,flex:23,compensation:20,geo:23,ats:0,title:5,culture:2,ownership:2};
   var DEFAULT_KEYWORDS=['manufacturing','quality','operations','production','industrialization','launch','startup','greenfield','plant','process engineering','manufacturing engineering','torque','fastening','tool systems','tooling','dc electric','automation','robotics','ev','battery','supplier quality','continuous improvement','apqp','equipment','commissioning','validation','root cause','change control','plant floor','leader'];
   function defaults(){return normalize({modelId:MODEL_ID,modelVersion:MODEL_VERSION,weights:DEFAULT_WEIGHTS,geo:{power:2,controlPoints:[
