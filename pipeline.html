@@ -14,26 +14,26 @@
 </script>
 <title>Pipeline Explorer</title>
 <style>
-:root{--bg:#000;--panel:#0a0a0a;--panel2:#111;--line:#232323;--line2:#343434;--text:#e6e6e6;--dim:#9a9a9a;--faint:#5c5c5c;--white:#fff;--ng:#a9d77d;--nc:#00e5ff;--nm:#ff2d75;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+:root{--bg:#0a0b0d;--panel:#0d0f12;--panel2:#121417;--raised:#17191d;--line:#1e2126;--line2:#2a2e34;--text:#e8e9eb;--dim:#9aa0a6;--faint:#5c6066;--white:#fff;--ok:#5fd38a;--caution:#e0b24a;--attn:#f08a3c;--fault:#e5484d;--focus:#5fc9c0;--new:#b8f36a;--brand:#e8603c;--ng:var(--new);--nc:var(--focus);--nm:var(--caution);--ease:cubic-bezier(.2,.7,.2,1);--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
 *{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:11.7px/1.35 var(--sans);-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
-button{background:var(--panel2);border:1px solid var(--line2);border-radius:2px;padding:4px 9px;cursor:pointer;letter-spacing:.4px;text-transform:uppercase;font-size:11.3px}
-button:hover{border-color:var(--white)}button.on{border-color:var(--white);color:var(--white);box-shadow:inset 0 0 0 1px #fff2}
-button.neon{border-color:var(--nc);color:var(--nc)}button.danger{border-color:var(--nm);color:var(--nm)}
+button{background:var(--panel2);border:1px solid var(--line2);border-radius:2px;padding:4px 9px;cursor:pointer;letter-spacing:.4px;text-transform:uppercase;font-size:11.3px;transition:background 160ms var(--ease),border-color 160ms var(--ease),color 160ms var(--ease),transform 120ms var(--ease)}button:active{transform:scale(.97)}button:disabled{opacity:.45;cursor:default;transform:none}
+button:hover{border-color:var(--focus)}button.on{border-color:var(--white);color:var(--white);box-shadow:inset 0 0 0 1px #fff2}
+button.neon,.btn.neon{background:var(--text);border-color:var(--text);color:#0a0b0d;font-weight:600}button.neon:hover{background:#fff;border-color:#fff}button.ok{border-color:var(--ok);border-left-width:3px;background:#0f1a13;color:#9fe6b8}button.caution{border-color:var(--caution);border-left-width:3px;background:#1a1507;color:#f0cf7a}button.fault,button.danger{background:var(--fault);border-color:var(--fault);color:#fff;font-weight:600}button.quiet{background:transparent;color:var(--dim)}
 input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea{background:#050505;border:1px solid var(--line2);border-radius:2px;padding:4px 6px;color:var(--text);color-scheme:dark}
 a{color:var(--nc);text-decoration:none}
 .mono{font-family:var(--mono)}.dim{color:var(--dim)}.faint{color:var(--faint)}.u{text-transform:uppercase;letter-spacing:1.4px;font-size:10.8px;color:var(--dim)}
 #app{display:flex;flex-direction:column;height:100%}
 header{flex:none;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0d0d0d,#050505);background-image:repeating-linear-gradient(0deg,transparent 0 23px,#ffffff08 23px 24px),repeating-linear-gradient(90deg,transparent 0 23px,#ffffff08 23px 24px);padding:6px 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .brand{font-weight:700;letter-spacing:3px;font-size:12px;color:var(--white)}.brand small{display:block;font-weight:400;letter-spacing:1px;font-size:10.8px;color:var(--faint)}
-.build-identity{position:relative;flex:none}.build-badge{font:10.8px var(--mono);text-transform:none;letter-spacing:0;padding:3px 6px;color:var(--dim);border-color:var(--line2);white-space:nowrap}.build-badge.latest{color:var(--ng);border-color:var(--ng)}.build-badge.behind{color:var(--nm);border-color:var(--nm)}.build-badge.unknown{color:var(--nm);border-color:var(--nm)}
+.build-identity{position:relative;flex:none}.build-badge{font:10.8px var(--mono);text-transform:none;letter-spacing:0;padding:3px 6px;color:var(--dim);border-color:var(--line2);white-space:nowrap}.build-badge.latest{color:var(--ok);border-color:var(--ok)}.build-badge.behind{color:var(--caution);border-color:var(--caution)}.build-badge.unknown{color:var(--dim);border-color:var(--line2)}
 .build-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:310px;max-width:min(430px,90vw);padding:9px;background:#080808;border:1px solid var(--line2);box-shadow:0 8px 30px #000;color:var(--text);font:11.3px/1.45 var(--sans)}.build-panel[hidden]{display:none}.build-panel h3{margin:0 0 7px;font-size:10.8px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}.build-panel .build-row{display:grid;grid-template-columns:105px minmax(0,1fr);gap:4px 8px;margin:3px 0}.build-panel .build-key{color:var(--faint);font-family:var(--mono);text-transform:uppercase;font-size:10.8px}.build-panel .build-value{min-width:0;overflow-wrap:anywhere}.build-panel .build-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.build-panel .build-status{margin-top:7px;color:var(--dim)}
-.writer-identity{position:relative;flex:none}.writer-badge.ok{color:var(--ng);border-color:var(--ng)}.writer-badge.warn{color:#f5b041;border-color:#f5b041}.writer-badge.critical{color:#fff;background:var(--nm);border-color:var(--nm)}
-.writer-warn{margin:4px 0;padding:3px 6px;border-left:2px solid #f5b041;color:var(--text)}.writer-warn.critical{border-left-color:var(--nm)}.writer-warn b{font:10.8px var(--mono);color:var(--dim);margin-right:4px}.writer-runs{margin:4px 0 0;padding:0;list-style:none}.writer-runs li{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px;margin:2px 0}.writer-runs .pill{font-size:10.2px;text-align:center}.pill.warn{border-color:#f5b041;color:#f5b041}
-#load-alert{display:none;padding:6px 10px;font:11.7px/1.45 var(--sans);color:#fff;background:#3a000f;border-bottom:2px solid var(--nm)}#load-alert.on{display:block}#load-alert.stale,#load-alert.none{background:repeating-linear-gradient(135deg,#3a000f 0 14px,#24000a 14px 28px)}#load-alert.partial{background:#2a1d00;border-bottom-color:#f5b041}#load-alert b{font:11.3px var(--mono);letter-spacing:1.2px;margin-right:6px}#load-alert button{margin-left:8px;font-size:10.8px;padding:1px 6px}body[data-freshness=stale] #readout,body[data-freshness=none] #readout{color:var(--nm)}
-#writer-alert{display:none;padding:4px 10px;background:#2a0010;border-bottom:1px solid var(--nm);color:#fff;font:11.3px/1.4 var(--sans);cursor:pointer}#writer-alert.on{display:block}#writer-alert.warn{background:#2a1d00;border-bottom-color:#f5b041}#writer-alert b{font:10.8px var(--mono);letter-spacing:1px;margin-right:6px}
+.writer-identity{position:relative;flex:none}.writer-badge{display:inline-flex;align-items:center;gap:6px}.writer-badge.ok{color:var(--ok);border-color:var(--ok)}.writer-badge.warn{color:var(--caution);border-color:var(--caution)}.writer-badge.critical{color:#fff;background:var(--fault);border-color:var(--fault)}.sys-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none;box-shadow:0 0 0 2px var(--panel)}.sys-dot.FAULT{background:var(--fault)}.sys-dot.DEGRADED,.sys-dot.CAUTION{background:var(--caution)}.sys-dot.NOTICE{background:var(--dim)}.writer-badge.critical .sys-dot{background:#fff}
+.writer-warn{margin:4px 0;padding:3px 6px;border-left:2px solid var(--caution);color:var(--text)}.writer-warn.critical{border-left-color:var(--fault)}.writer-warn b{font:10.8px var(--mono);color:var(--dim);margin-right:4px}.writer-runs{margin:4px 0 0;padding:0;list-style:none}.writer-runs li{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px;margin:2px 0}.writer-runs .pill{font-size:10.2px;text-align:center}.pill.warn{border-color:var(--caution);color:var(--caution)}.pill.notice{border-color:var(--line2);color:var(--dim)}
+#load-alert,#writer-alert{display:none;align-items:center;gap:10px;padding:7px 10px;font:11.7px/1.45 var(--sans);color:var(--text);background:#1a1507;border-bottom:1px solid var(--caution);border-left:4px solid var(--caution);animation:strip-in 220ms var(--ease) both}#load-alert.on,#writer-alert.on{display:flex}#load-alert.fault,#writer-alert.fault{background:#2a1215;border-color:var(--fault)}#load-alert .lvl,#writer-alert .lvl{font:10.2px var(--mono);letter-spacing:1.6px;color:#f0cf7a;flex:none}.fault .lvl{color:#ff8a8e!important}#load-alert .msg,#writer-alert .msg{flex:1;min-width:0}#load-alert b,#writer-alert b{font:11px var(--mono);letter-spacing:1px;margin-right:6px}#load-alert button,#writer-alert button{font-size:10.8px;padding:1px 6px;flex:none}.strip-x{background:transparent!important;border:0!important;color:var(--dim)!important;font-size:14px!important;padding:0 4px!important;line-height:1}.strip-x:hover{color:var(--text)!important}body[data-freshness=stale] #readout,body[data-freshness=none] #readout{color:var(--caution)}@keyframes strip-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+/* #writer-alert shares #load-alert styling (severity strips) */
 #readout{font-family:var(--mono);font-size:11.3px;color:var(--dim);flex:1;min-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#readout b{color:var(--white);font-weight:600}#readout .bad{color:var(--nm)}#readout .good{color:var(--ng)}
+#readout b{color:var(--white);font-weight:600}#readout .bad{color:var(--caution)}#readout .good{color:var(--ok)}
 nav{display:flex;gap:2px}nav button{border-color:transparent;color:var(--dim)}nav button.on{border-color:var(--line2);color:var(--white)}
 .bar{flex:none;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:5px 10px;border-bottom:1px solid var(--line);background:var(--panel)}
 .chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line2);border-radius:2px;padding:2px 7px;font-size:11.3px;color:var(--dim);cursor:pointer;background:#070707}
@@ -49,7 +49,7 @@ th .fx{color:var(--faint);margin-left:4px;font-size:10.8px}th.sorted{color:var(-
 td.sticky,th.sticky{position:sticky;z-index:2;background:#050505}th.sticky{z-index:4}
 tbody tr:hover td{background:#0e0e0e}tbody tr.focus td{background:#101416;box-shadow:inset 0 -1px 0 var(--nc)}
 tbody tr.seen td{color:#c9c9c9}td.mono{font-family:var(--mono);font-size:11.5px}
-.g{font-family:var(--mono);margin-right:4px}.g.new{color:var(--ng)}.g.rule{color:var(--nc)}.g.pend{color:var(--nm)}.g.err{color:var(--nm)}
+.g{font-family:var(--mono);margin-right:4px}.g.new{color:var(--new)}.g.rule{color:var(--focus)}.g.pend{color:var(--caution)}.g.err{color:var(--fault)}
 td.b-READY_TO_PURSUE{color:var(--white)}td.b-APPLIED{color:var(--white)}td.b-DECLINED_BY_TIM,td.b-DUPLICATE,td.b-CLOSED_DEAD,td.b-INVALID_DISCOVERY{color:var(--faint)}td.b-BLOCKED,td.b-TIM_DECISION_REQUIRED{color:var(--nc)}
 td.b-SCOUT_INTAKE{color:var(--ng);font-weight:600}td.b-DISCOVERY_LEAD{color:var(--ng);opacity:.75}
 .chip.hot{border-color:var(--ng);color:var(--ng)}.sec{border:1px solid var(--line);margin:8px 0;padding:6px 8px}.sec h4{margin:0 0 4px;font-size:10.8px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}.sec.scout h4{color:var(--ng)}.sec.claude h4{color:#b58cff}.sec.forge h4{color:var(--white)}.sec.tim h4{color:var(--nc)}
@@ -70,7 +70,7 @@ td.b-SCOUT_INTAKE{color:var(--ng);font-weight:600}td.b-DISCOVERY_LEAD{color:var(
 #autobar{flex:none;border-top:1px solid var(--line);background:var(--panel);padding:4px 10px;font-family:var(--mono);font-size:11.3px;color:var(--dim);display:flex;gap:14px;align-items:center;overflow:hidden;cursor:pointer;white-space:nowrap}
 #autobar b{color:var(--white);font-weight:600}#autobar .t{color:var(--ng)}#autobar .soon{color:var(--nm)}
 .tip{color:var(--faint);font-size:11.1px}
-.pill{display:inline-block;padding:1px 6px;border:1px solid var(--line2);border-radius:2px;font-family:var(--mono);font-size:11.1px}.pill.ok{border-color:var(--ng);color:var(--ng)}.pill.bad{border-color:var(--nm);color:var(--nm)}
+.pill{display:inline-block;padding:1px 6px;border:1px solid var(--line2);border-radius:2px;font-family:var(--mono);font-size:11.1px}.pill.ok{border-color:var(--ok);color:var(--ok)}.pill.bad{border-color:var(--fault);color:#ff8a8e}
 textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:11.3px}
 @media (max-width:760px), (pointer:coarse) and (max-width:980px){body{font-size:11.5px}header{padding:3px 6px;gap:6px}.brand{font-size:11.3px;letter-spacing:2px}.brand small{display:none}.build-panel{position:fixed;right:6px;top:48px;max-width:calc(100vw - 12px)}nav button,#refresh{padding:2px 6px;font-size:10.8px}th,td{padding:2px 5px;height:20px;max-width:200px}#readout{font-size:10.8px;order:5;flex-basis:100%}#drawer{width:100%}.kv{grid-template-columns:110px 1fr}#autobar{font-size:10.8px;gap:10px;padding:3px 6px}.bar{padding:3px 6px;gap:4px}.chip{padding:1px 5px;font-size:11.1px}#predicate{display:none}#search{width:120px!important}#markseen{padding:2px 6px;font-size:10.8px}}
 @media (max-height:520px){header{padding:3px 6px;gap:6px}.brand{font-size:11.3px}.brand small{display:none}nav button,#refresh{padding:2px 6px;font-size:10.8px}#readout{font-size:10.8px}#predicate{display:none}.bar{padding:3px 6px;gap:4px}.chip{padding:1px 5px;font-size:11.1px}#autobar{padding:2px 6px;font-size:10.8px}th,td{height:20px;padding:2px 5px}}
@@ -92,7 +92,7 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:11.3px}
 .detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.detail-card{border:1px solid var(--line);border-radius:6px;background:#0a0a0a;padding:9px;min-width:0}.detail-card.full{grid-column:1/-1}.detail-card h3{margin:0 0 7px;font-size:10.8px;letter-spacing:1.3px;text-transform:uppercase;color:var(--dim)}
 .edit-grid{display:grid;grid-template-columns:140px 1fr;gap:6px 8px;align-items:center}.edit-grid label{color:var(--dim);font-size:11.3px}.edit-grid textarea{min-height:78px;resize:vertical}
 .enrich-grid{display:grid;grid-template-columns:130px minmax(0,1fr);gap:6px 8px;align-items:center}.enrich-grid label{color:var(--dim);font-size:11.3px}.enrich-grid input,.enrich-grid select,.enrich-grid textarea{min-width:0;width:100%;box-sizing:border-box}.enrich-grid textarea{min-height:58px;resize:vertical}.gap-list{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 8px}.gap-list span{border:1px solid var(--nm);color:var(--nm);padding:2px 5px;font:10.8px var(--mono);text-transform:uppercase}.research-note{border-left:2px solid var(--nc);padding-left:7px;color:var(--dim);font-size:11.3px;line-height:1.4}
-.approx{color:var(--dim);margin-right:1px}.conf{display:inline-block;margin-left:5px;padding:1px 5px;border:1px solid var(--line2);border-radius:8px;font:10.8px var(--mono)}.conf.VERIFIED,.conf.HIGH{color:var(--ng);border-color:var(--ng)}.conf.ESTIMATED,.conf.MED,.conf.MEDIUM{color:var(--nc);border-color:var(--nc)}.conf.UNKNOWN,.conf.LOW{color:var(--nm);border-color:var(--nm)}
+.approx{color:var(--dim);margin-right:1px}.conf{display:inline-block;margin-left:5px;padding:1px 5px;border:1px solid var(--line2);border-radius:8px;font:10.8px var(--mono)}.conf.VERIFIED,.conf.HIGH{color:var(--ng);border-color:var(--ng)}.conf.ESTIMATED,.conf.MED,.conf.MEDIUM{color:var(--nc);border-color:var(--nc)}.conf.UNKNOWN,.conf.LOW{color:var(--caution);border-color:var(--caution)}
 .changed{color:var(--nc);font-size:10.8px;margin-left:4px}.pin{font-size:14px;color:var(--faint)}.pin.on{color:#fff}
 .timeline{border-left:1px solid var(--line2);margin-left:6px;padding-left:12px}.event{margin:0 0 12px;position:relative}.event:before{content:"";position:absolute;left:-16px;top:4px;width:7px;height:7px;border-radius:50%;background:#aaa}.event .ts{font:10.8px var(--mono);color:var(--faint)}.event .ev{font-size:11.5px}
 .doc-workspace{display:grid;grid-template-columns:minmax(360px,44%) minmax(0,56%);height:calc(100vh - 118px);min-height:540px;overflow:hidden}
@@ -179,7 +179,7 @@ th{position:sticky} th{min-width:70px} td,th{max-width:none}
 .map-target-label{width:max-content;max-width:220px!important;padding:4px 6px;font-size:10.8px;line-height:1.2}.map-target-label strong{font-size:10.8px}.map-target-label span{margin-top:2px;font-size:10.8px;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.map-target-label .map-company{color:#d4dccd}.map-target-label .map-role{color:#aebca5}.map-target-label .map-salary{color:#c7ac64}.map-target-label .map-shared{font-size:9.6px}.map-picker-salary{display:block;color:#c7ac64;margin-top:3px}@media(max-width:760px){.map-target-label{max-width:calc(100% - 8px)!important}}@media(max-height:520px){.map-target-label{padding:2px 4px}.map-target-label strong,.map-target-label span{font-size:9.6px;line-height:1.1;margin-top:1px}}
 
 /* Instrument theme: white/gray hierarchy; bright accent is reserved for strong attention matches. */
-:root{--ng:#c4ccc5;--nc:#e4ebe5;--nm:#c7b8ac;--faint:#858c86;--line:#272d28;--line2:#404841}
+/* palette consolidated into the single :root above (PR A) */
 button,input,select,textarea,.chip,.pill,.panel,.detail-card,.rules-content .panel,.rules-nav,.chart-card,.map-mode{border-radius:0}
 header{background-color:#050705;background-image:repeating-linear-gradient(0deg,transparent 0 23px,#ffffff03 23px 24px),repeating-linear-gradient(90deg,transparent 0 23px,#ffffff03 23px 24px)}
 .dash-card,.dash-card.w,.chart-card,.chart-card:nth-child(2n),.chart-card:nth-child(3n){background:#090c09;border:1px solid #333b34;box-shadow:none;position:relative}
@@ -195,8 +195,8 @@ tbody tr.priority-hot td{color:#e7eee7;background:#10180b}tbody tr.priority-hot 
 .map-target:before{width:6px;left:calc(50% - 3px)}.map-target:after{height:6px;top:calc(50% - 3px)}.map-target-label,.map-target-label.secondary,.map-target-label.home{border-color:#c2ccc2;color:#e2ebe2;box-shadow:none;background:#030703f5}.map-target-label .map-salary{color:#edf3ed}.map-target-label.priority-hot{border-color:#b8f36a;color:#b8f36a}.map-target-leader{background:#a1afa1}.map-job-picker{border-color:#b5c4b5}.map-job-picker strong,.map-picker-salary{color:#dce8dc}
 
 /* Restrained color carries meaning: lime priority, teal action/selection, amber held work. */
-:root{--ng:#b8f36a;--nc:#61d9c4;--nm:#e9b06c}
-button.neon,.btn.neon{color:#b8f36a;border-color:#709447;background:#13200d}nav button.on{color:#61d9c4;border-color:#61d9c4}button:hover{border-color:#61d9c4}.chip.on,#mapfilters button.on{color:#61d9c4;border-color:#4b9b8d;background:#10201d}
+/* semantic tokens live in :root: --ok --caution --attn --fault --focus --new; --ng/--nc/--nm alias them */
+nav button.on{color:#61d9c4;border-color:#61d9c4}.chip.on,#mapfilters button.on{color:#61d9c4;border-color:#4b9b8d;background:#10201d}
 #readout .good,.sec.scout h4{color:#61cdbb}td.b-READY_TO_PURSUE{color:#b8f36a}td.b-APPLIED{color:#61cdbb}td.b-BLOCKED,td.b-TIM_DECISION_REQUIRED{color:#e9b06c}.g.new,td.b-SCOUT_INTAKE,td.b-DISCOVERY_LEAD{color:#81b9dd}
 tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-target.active{--target:#61d9c4;opacity:1}.map-target.priority-hot.active{--target:#b8f36a}.map-target-label{border-color:#61b5a5}.chart-card:before{border-color:var(--accent)}
 .intake-wrap{padding:16px;max-width:1500px;margin:auto}.intake-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.intake-head h2{font:16px var(--mono);margin:0 0 8px}.intake-stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:16px 0}.intake-stat{padding:12px;background:#0a1010;border:1px solid #35423f}.intake-stat b{display:block;font:23px var(--mono);color:#61d9c4;margin-bottom:5px}.intake-table-wrap{overflow:auto;margin-top:12px}.intake-table{width:100%;border-collapse:collapse;font:11.7px var(--mono)}.intake-table th,.intake-table td{padding:12px 8px;text-align:left;vertical-align:top;border-bottom:1px solid #303b37;max-width:350px;white-space:normal}.intake-table th{color:#96b6ac}.intake-table a{color:#81b9dd}.intake-status{display:inline-block;padding:3px 5px;border:1px solid #56625c;color:#bbcbc3}.intake-status.RESEARCHING{color:#61d9c4;border-color:#61d9c4}.intake-status.ADDED,.intake-status.EXISTING{color:#b8f36a;border-color:#749a4a}.intake-status.NEEDS_INFO,.intake-status.FAILED{color:#e9b06c;border-color:#aa7944}.intake-table details{margin-top:6px}.intake-table li{margin:6px 0;line-height:1.5}.intake-worker{padding:8px 0;color:#96b6ac;font:11.7px var(--mono)}
@@ -229,14 +229,15 @@ body.map-full #job-map-card .map-zoom{right:6px;bottom:calc(6px + env(safe-area-
 body.map-full #job-map-card .map-legend{display:flex;left:6px;bottom:calc(10px + env(safe-area-inset-bottom))}
 #layout-toggle[hidden]{display:none}
 @media(max-width:760px) and (max-height:520px), (pointer:coarse) and (max-width:980px) and (max-height:520px){#layout-toggle{font-size:0;padding:0;min-width:34px}#layout-toggle:after{content:'\1F5A5';font-size:15px}.force-desktop #layout-toggle:after{content:'\1F4F1'}.brand{letter-spacing:1px}}
+/* System drawer (PR A): one place for master freshness, Writer state, build identity and the 24-hour notice history. */#writer-panel.build-panel{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);max-width:none;border:0;border-left:1px solid var(--line2);box-shadow:-12px 0 32px #000c;padding:12px 14px calc(12px + env(safe-area-inset-bottom));overflow:auto;z-index:60;animation:drawer-in 220ms var(--ease) both}@keyframes drawer-in{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}.sys-head{display:flex;align-items:center;gap:8px;margin:0 0 8px}.sys-head h3{margin:0;flex:1}.sys-x{background:transparent;border:0;color:var(--dim);font-size:15px;padding:2px 6px}.notice{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;padding:7px 9px;margin:6px 0;border:1px solid var(--line);border-left:3px solid var(--dim);border-radius:2px;animation:strip-in 220ms var(--ease) both}.notice .lvl{font:10px var(--mono);letter-spacing:1.2px;color:var(--dim)}.notice .lvl small{display:block;color:var(--faint);letter-spacing:0;margin-top:3px;font-size:9.6px}.notice.FAULT{border-left-color:var(--fault);background:#1a0e10}.notice.FAULT .lvl{color:#ff8a8e}.notice.DEGRADED{border-left-color:var(--caution);background:#15120a}.notice.DEGRADED .lvl,.notice.CAUTION .lvl{color:#f0cf7a}.notice.CAUTION{border-left-color:var(--caution)}.notice .t{font-size:11.5px;min-width:0}.notice .t small{display:block;color:var(--dim);margin-top:2px;overflow-wrap:anywhere}.notice.dismissed{opacity:.55}.notice .t em{font-style:normal;color:var(--faint);font:9.6px var(--mono);margin-left:6px}@media (prefers-reduced-motion:reduce){#writer-panel.build-panel,.notice,#load-alert,#writer-alert{animation:none}button{transition:none}}
 </style>
 </head>
 <body>
 <div id="app">
 <header>
   <div class="brand">PIPELINE EXPLORER<small id="brandsub">canonical master · viewer + Tim rulings</small></div>
-  <div class="build-identity"><button id="build-badge" class="build-badge" type="button" aria-expanded="false" title="Deployment identity">BUILD · checking</button><div id="build-panel" class="build-panel" hidden></div></div>
-  <div class="writer-identity"><button id="writer-badge" class="build-badge writer-badge" type="button" aria-expanded="false" title="Writer state: freeze, queue, claims, unverified writes">WRITER · checking</button><div id="writer-panel" class="build-panel" hidden></div></div>
+  <div class="build-identity" hidden><button id="build-badge" class="build-badge" type="button" aria-expanded="false" title="Deployment identity">BUILD · checking</button><div id="build-panel" class="build-panel" hidden></div></div>
+  <div class="writer-identity"><button id="writer-badge" class="build-badge writer-badge" type="button" aria-expanded="false" title="System: master, Writer, build and notices"><span class="sys-dot"></span>WRITER · checking</button><div id="writer-panel" class="build-panel" hidden></div></div>
   <div id="readout">no data</div>
   <nav>
     <button data-tab="today">Today</button><button data-tab="pipeline" class="on">Pipeline</button><button data-tab="intake">Manual Intake</button><button data-tab="companies">Target Companies</button><button data-tab="reports">Reports</button><button data-tab="quality">Scout Analysis</button><button data-tab="rules">Rules</button><button data-tab="documents">Job Documents</button><button data-tab="columns">Columns</button><button data-tab="scoring">Scoring</button>
@@ -323,6 +324,7 @@ function renderBuildIdentity_(){
   var commit=i.commit||'not recorded',branch=i.branch||'not recorded',context=i.context||'not recorded',commitLink=buildCommitUrl_(commit);
   p.innerHTML='<h3>Deployment identity</h3><div class="build-row"><span class="build-key">status</span><span class="build-value">'+buildStatusHtml_()+'</span></div><div class="build-row"><span class="build-key">frontend PR</span><span class="build-value">'+prLink_(i.pr,i.subject)+'</span></div><div class="build-row"><span class="build-key">writer code</span><span class="build-value">'+writerBuildHtml_()+'</span></div><div class="build-row"><span class="build-key">frontend commit</span><span class="build-value mono"><a href="'+commitLink+'" target="_blank" rel="noopener">'+esc(commit)+'</a></span></div><div class="build-row"><span class="build-key">branch</span><span class="build-value">'+esc(branch)+'</span></div><div class="build-row"><span class="build-key">deploy context</span><span class="build-value">'+esc(context)+'</span></div><div class="build-row"><span class="build-key">built</span><span class="build-value">'+esc(buildTime_(i.builtAt))+'</span></div><div class="build-row"><span class="build-key">backend</span><span class="build-value">'+esc(S.connection?S.connection.state:'not checked')+'</span></div><div class="build-panel build-status">'+esc((S.buildLatest&&S.buildLatest.message)||'The badge identifies the exact frontend build; backend status is checked separately when the writer connects.')+'</div><div class="build-actions"><button id="build-check" type="button">Check main</button><a class="button" href="https://github.com/tpruittguitar/foreman-cockpit/commits/main" target="_blank" rel="noopener">Open main history</a></div>';
   var check=$('build-check');if(check)check.onclick=function(){checkLatestBuild_(true)};
+  if(!S.renderingWriter_){S.renderingWriter_=true;try{renderWriterStatus_()}finally{S.renderingWriter_=false}}
 }
 function checkLatestBuild_(manual){
   var i=S.buildInfo||{};
@@ -335,33 +337,70 @@ function writerBuildHtml_(){var w=S.writerStatus;if(!hasWriter())return 'writer 
 /* ---- writer state monitor: GET writer_status every 60 s while visible; badge, panel and an alert strip ---- */
 function writerAge_(ms){ms=Math.max(0,+ms||0);return ms<90000?Math.round(ms/1000)+' s':ms<5400000?Math.round(ms/60000)+' min':(ms/3600000).toFixed(1)+' h';}
 function writerRow_(k,v){return '<div class="build-row"><span class="build-key">'+esc(k)+'</span><span class="build-value">'+v+'</span></div>';}
+/* Severity model (PR A). FAULT: currently broken and needs Tim. DEGRADED: running on reduced data. CAUTION: held work, no strip. NOTICE: historical or informational (governance FAILED runs, build behind). */
+var NOTICE_LEVELS=['FAULT','DEGRADED','CAUTION','NOTICE'];
+function noticeLevel_(code,level){code=String(code||'').toUpperCase();level=String(level||'').toLowerCase();
+  if(code==='FROZEN_UNEXPECTED'||code==='TRIGGER_MISSING'||code==='CLAIM_ABANDONED'||code==='WRITER_UNREACHABLE')return 'FAULT';
+  if(code==='WRITE_UNVERIFIED')return level==='critical'?'FAULT':'CAUTION';
+  if(code==='FROZEN_FOR_MIGRATION')return level==='critical'?'DEGRADED':'CAUTION';
+  if(code==='QUEUE_BACKLOG')return 'DEGRADED';
+  if(code==='STATUS_PART_UNAVAILABLE'||code==='MONITOR_UNAVAILABLE'||code==='BUILD_BEHIND'||code==='FAILED'||code==='REJECTED_SCHEMA')return 'NOTICE';
+  if(/HOLD/.test(code)||code==='CLAIM_RUNNING_LONG')return 'CAUTION';
+  return level==='critical'?'FAULT':level==='warn'?'CAUTION':'NOTICE';}
+function noticeKey_(n){return (n.source||'')+':'+(n.code||'')+':'+String(n.title||'').slice(0,80)+':'+String(n.text||'').slice(0,80)}
+function dismissed_(){var d=LS.get('dismissed',{}),now=Date.now(),ch=false;Object.keys(d).forEach(function(k){if(!(now-d[k]<86400000)){delete d[k];ch=true}});if(ch)LS.set('dismissed',d);return d}
+function dismissNotice_(key){var d=dismissed_();d[key]=Date.now();LS.set('dismissed',d);renderLoadAlert_();renderWriterStatus_()}
+function loadNotices_(){var v=S.load||{},out=[],m=S.master;
+  if(v.freshness==='NONE')out.push({source:'load',level:'FAULT',code:'MASTER_UNREADABLE',title:'FETCH FAILED · NO DATA',text:'The current canonical master could not be loaded ('+(v.error||'')+') and no cached copy exists on this device.',retry:true});
+  else if(v.freshness==='STALE')out.push({source:'load',level:'DEGRADED',code:'MASTER_STALE',title:'STALE · FETCH FAILED',text:'The current canonical master could not be loaded ('+(v.error||'')+'). You are looking at a cached copy fetched '+fmtTime_(v.meta&&v.meta.fetchedAt)+'. It is NOT the live master; saving is disabled until a fresh read succeeds.',retry:true});
+  else if(v.freshness==='LIVE'){
+    if(v.archive&&v.archive.state==='FAILED')out.push({source:'load',level:'DEGRADED',code:'ARCHIVE_UNAVAILABLE',title:'ARCHIVE UNAVAILABLE',text:'Archived (terminal) rows are not shown: '+(v.archive.error||'')+'. The canonical master itself is current ('+fmtTime_(v.meta&&v.meta.fetchedAt)+').',retry:true});
+    if(v.evidence&&v.evidence.state==='FAILED')out.push({source:'load',level:'DEGRADED',code:'EVIDENCE_UNAVAILABLE',title:'EVIDENCE UNAVAILABLE',text:'Narrative fields are not merged ('+(v.evidence.error||'')+'); decline-candidate detection and AI context may be incomplete. A row\'s narrative can be loaded on demand in its detail drawer. The canonical master itself is current ('+fmtTime_(v.meta&&v.meta.fetchedAt)+').',retry:true});
+    if(m&&m.checksum&&!m.checksum.ok)out.push({source:'load',level:'DEGRADED',code:'COUNTS_MISMATCH',title:'COUNTS MISMATCH',text:m.checksum.diffs.map(function(d){return d.bucket+' '+d.declared+'≠'+d.parsed}).join(', ')+' — the header COUNTS line disagrees with the rows.'});
+  }
+  return out;}
+function writerNotices_(){var w=S.writerStatus,out=[],now=Date.now();if(!hasWriter()||!w)return out;
+  if(w.fetchError)out.push({source:'writer',level:'FAULT',code:'WRITER_UNREACHABLE',title:'Writer unreachable',text:w.fetchError,at:w.checkedAt});
+  else if(w.unsupported)out.push({source:'writer',level:'NOTICE',code:'MONITOR_UNAVAILABLE',title:'Writer monitor unavailable',text:'The deployed Writer predates writer_status. Deploy the Writer to enable monitoring.',at:w.checkedAt});
+  else{(w.warnings||[]).forEach(function(x){out.push({source:'writer',level:noticeLevel_(x.code,x.level),code:x.code,title:String(x.code||'').replace(/_/g,' '),text:x.message||'',at:w.checkedAt})});
+    (w.recentRuns||[]).forEach(function(r){var t=String(r.terminalStatus||'');if(t!=='FAILED'&&t!=='REJECTED_SCHEMA')return;var at=Date.parse(r.finishedAt);if(!(now-at<86400000))return;out.push({source:'queue',level:'NOTICE',code:t,title:t+' · '+(r.file||''),text:r.error||'no error text recorded',at:at})});}
+  var bl=S.buildLatest;if(bl&&bl.status==='behind')out.push({source:'build',level:'NOTICE',code:'BUILD_BEHIND',title:'Frontend behind GitHub main',text:bl.message||'',at:now});
+  return out;}
+function topLevel_(list){var best=null;list.forEach(function(n){var i=NOTICE_LEVELS.indexOf(n.level);if(i>=0&&(best==null||i<best))best=i});return best==null?'':NOTICE_LEVELS[best]}
+function stripHtml_(n,withRetry){return '<span class="lvl">'+esc(n.level)+'</span><span class="msg"><b>'+esc(n.title)+'</b>'+esc(n.text)+'</span>'+(withRetry&&n.retry?'<button id="load-retry" type="button">Retry now</button>':'')+'<button class="strip-x" type="button" data-dismiss="'+esc(noticeKey_(n))+'" aria-label="Dismiss (stays in the System drawer)" title="Dismiss · stays listed in the System drawer">✕</button>';}
+function bindDismiss_(el){el.querySelectorAll('[data-dismiss]').forEach(function(b){b.onclick=function(e){e.stopPropagation();dismissNotice_(b.getAttribute('data-dismiss'))}})}
+function noticeListHtml_(list,dis){if(!list.length)return '<div class="build-status">No notices in the last 24 hours.</div>';return list.map(function(n){var k=noticeKey_(n),d=!!dis[k];return '<div class="notice '+esc(n.level)+(d?' dismissed':'')+'"><span class="lvl">'+esc(n.level)+'<small>'+esc(n.at?new Date(n.at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}):'')+'</small></span><span class="t">'+esc(n.title)+(d?'<em>dismissed</em>':'')+'<small>'+esc(n.text)+'</small></span></div>'}).join('')}
 function renderWriterStatus_(){
   var b=$('writer-badge'),p=$('writer-panel'),al=$('writer-alert');if(!b||!p)return;
-  var w=S.writerStatus,lvl='',label,html='<h3>Writer state</h3>',alertMsg='';
-  if(!hasWriter()){label='not configured';html+='<div class="build-status">Configure the writer in settings to monitor it.</div>';}
-  else if(!w){label='checking';html+='<div class="build-status">Checking…</div>';}
-  else if(w.unsupported){label='monitor unavailable';lvl='warn';html+='<div class="build-status">The deployed Writer predates <span class="mono">writer_status</span>. Deploy the Writer to enable monitoring.</div>';}
-  else if(w.fetchError){label='unreachable';lvl='warn';html+='<div class="writer-warn"><b>UNREACHABLE</b>'+esc(w.fetchError)+'</div>';}
-  else{
-    lvl=w.level||'ok';var fz=w.freeze&&w.freeze.frozen?w.freeze:null,q=w.queue||{},proc=q.processing||[],u=w.unverified||{},now=w.checkedAt||Date.now();
-    label=fz?'FROZEN':proc.length?'PROCESSING '+proc.length:q.pending?'QUEUED '+q.pending:'IDLE';
-    (w.warnings||[]).slice().sort(function(a,c){return (c.level==='critical')-(a.level==='critical')}).forEach(function(x){html+='<div class="writer-warn '+esc(x.level)+'"><b>'+esc(x.code)+'</b>'+esc(x.message)+'</div>';if(!alertMsg)alertMsg='<b>WRITER '+esc(x.level==='critical'?'ALERT':'WARNING')+'</b>'+esc(x.message);});
-    html+=writerRow_('writes',fz?'<span class="pill bad">FROZEN</span> '+esc(fz.reason||'')+' · by '+esc(fz.by||'?')+(fz.at?' · '+esc(buildTime_(fz.at)):''):'<span class="pill ok">ACCEPTING</span>');
-    html+=writerRow_('live code',writerBuildHtml_());
-    html+=writerRow_('processing',proc.length?proc.map(function(x){return esc(x.file)+' · '+writerAge_(x.ageMs);}).join('<br>'):'none');
-    html+=writerRow_('queued',q.pending?q.pending+' · oldest '+writerAge_(Date.parse(w.now)-Date.parse(q.oldestPendingAt)):'none')+(q.hold&&q.hold.length?writerRow_('held',esc(q.hold.join(', '))):'');
+  var w=S.writerStatus,lvl='',label,html='',dis=dismissed_();
+  var wn=writerNotices_(),ln=loadNotices_(),all=ln.concat(wn);all.sort(function(a,c){return NOTICE_LEVELS.indexOf(a.level)-NOTICE_LEVELS.indexOf(c.level)||(c.at||0)-(a.at||0)});
+  var top=topLevel_(all),strip=wn.filter(function(n){return (n.level==='FAULT'||n.level==='DEGRADED')&&!dis[noticeKey_(n)]})[0];
+  if(!hasWriter()){label='not configured';}
+  else if(!w){label='checking';}
+  else if(w.unsupported){label='monitor unavailable';lvl='warn';}
+  else if(w.fetchError){label='unreachable';lvl='critical';}
+  else{var fz=w.freeze&&w.freeze.frozen?w.freeze:null,q=w.queue||{},proc=q.processing||[];label=fz?'FROZEN':proc.length?'PROCESSING '+proc.length:q.pending?'QUEUED '+q.pending:'IDLE';lvl=top==='FAULT'?'critical':top==='DEGRADED'||top==='CAUTION'?'warn':'ok';}
+  var i=S.buildInfo||{},short=i.commitShort||(i.commit&&i.commit!=='local'?String(i.commit).slice(0,7):'unknown'),v=S.load||{},m=S.master;
+  html+='<div class="sys-head"><h3>System</h3><button class="sys-x" type="button" id="sys-close" aria-label="Close">✕</button></div>';
+  html+=writerRow_('master',v.freshness==='LIVE'?'<span class="pill ok">LIVE</span> '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+(m&&m.checksum?(m.checksum.ok?' · COUNTS OK':' · <span class="pill bad">COUNTS MISMATCH</span>'):''):v.freshness==='STALE'?'<span class="pill warn">STALE CACHE</span> '+esc(fmtTime_(v.meta&&v.meta.fetchedAt)):v.freshness==='NONE'?'<span class="pill bad">NO DATA</span>':esc(v.freshness||'loading'));
+  html+=writerRow_('writer',!hasWriter()?'not configured':!w?'checking…':w.unsupported?'monitor unavailable':w.fetchError?'<span class="pill bad">UNREACHABLE</span>':(label+(w.freeze&&w.freeze.frozen?' · '+esc(w.freeze.reason||'')+' · by '+esc(w.freeze.by||'?'):'')));
+  html+=writerRow_('live code',writerBuildHtml_());
+  html+=writerRow_('frontend',buildStatusHtml_()+' <span class="mono"><a href="'+buildCommitUrl_(i.commit||'')+'" target="_blank" rel="noopener">'+esc(short)+'</a></span>'+(i.pr?' · '+prLink_(i.pr,i.subject):''));
+  if(w&&!w.unsupported&&!w.fetchError){var q2=w.queue||{},proc2=q2.processing||[],u=w.unverified||{};
+    html+=writerRow_('processing',proc2.length?proc2.map(function(x){return esc(x.file)+' · '+writerAge_(x.ageMs);}).join('<br>'):'none');
+    html+=writerRow_('queued',q2.pending?q2.pending+' · oldest '+writerAge_(Date.parse(w.now)-Date.parse(q2.oldestPendingAt)):'none')+(q2.hold&&q2.hold.length?writerRow_('held',esc(q2.hold.join(', '))):'');
     html+=writerRow_('unverified',u.count?u.count+' write(s) · oldest '+writerAge_(Date.parse(w.now)-Date.parse(u.oldestWrittenAt)):'none');
     html+=writerRow_('trigger',w.triggerInstalled===false?'<span class="pill bad">MISSING</span>':w.triggerInstalled?'installed':'unknown');
-    if(w.migration)html+=writerRow_('migration',esc((w.migration.mode||'')+' '+(w.migration.status||'')));
-    var runs=(w.recentRuns||[]).slice(0,6);
-    if(runs.length)html+='<h3 style="margin-top:8px">Recent queue results</h3><ul class="writer-runs">'+runs.map(function(r){var t=r.terminalStatus||'',cls=t==='SUCCESS'?'ok':/HOLD/.test(t)?'warn':'bad';return '<li><span class="pill '+cls+'">'+esc(t)+'</span><span title="'+esc(r.error||'')+'">'+esc(r.file)+' · '+esc(buildTime_(r.finishedAt))+(r.totalMs?' · '+writerAge_(r.totalMs):'')+'</span></li>';}).join('')+'</ul>';
-    html+='<div class="build-status">Checked '+esc(new Date(now).toLocaleTimeString())+'. Refreshes every minute while this page is open.</div>';
-  }
-  html+='<div class="build-actions"><button id="writer-refresh" type="button">Refresh now</button></div>';
-  b.textContent='WRITER · '+label+(lvl==='critical'?' · !!':lvl==='warn'?' · !':'');
+    if(w.migration)html+=writerRow_('migration',esc((w.migration.mode||'')+' '+(w.migration.status||'')));}
+  html+='<h3 style="margin-top:10px">Notices · last 24 h</h3>'+noticeListHtml_(all,dis);
+  if(w&&w.recentRuns&&w.recentRuns.length){var runs=w.recentRuns.slice(0,6);html+='<h3 style="margin-top:10px">Recent queue results</h3><ul class="writer-runs">'+runs.map(function(r){var t=r.terminalStatus||'',cls=t==='SUCCESS'?'ok':/HOLD/.test(t)?'warn':'notice';return '<li><span class="pill '+cls+'">'+esc(t)+'</span><span title="'+esc(r.error||'')+'">'+esc(r.file)+' · '+esc(buildTime_(r.finishedAt))+(r.totalMs?' · '+writerAge_(r.totalMs):'')+(r.error?'<br><span class="dim">'+esc(String(r.error).slice(0,160))+'</span>':'')+'</span></li>';}).join('')+'</ul>';}
+  html+='<div class="build-status">'+(w&&w.checkedAt?'Checked '+esc(new Date(w.checkedAt).toLocaleTimeString())+'. Refreshes every minute while this page is open.':'')+'</div>';
+  html+='<div class="build-actions"><button id="writer-refresh" type="button">Refresh now</button><button id="build-check" type="button">Check latest build</button></div>';
+  var count=all.filter(function(n){return n.level!=='NOTICE'}).length;
+  b.innerHTML='<span class="sys-dot '+esc(top)+'"></span>WRITER · '+esc(label)+(count?' · '+count:'');
   b.className='build-badge writer-badge '+lvl;
-  p.innerHTML=html;var rf=$('writer-refresh');if(rf)rf.onclick=function(e){e.stopPropagation();loadWriterStatus_(true)};
-  if(al){if(alertMsg&&(lvl==='critical'||lvl==='warn')){al.className='on '+lvl;al.innerHTML=alertMsg+' <span style="opacity:.7">· details: WRITER badge</span>';}else{al.className='';al.innerHTML='';}}
+  p.innerHTML=html;var rf=$('writer-refresh');if(rf)rf.onclick=function(e){e.stopPropagation();loadWriterStatus_(true)};var bc=$('build-check');if(bc)bc.onclick=function(e){e.stopPropagation();checkLatestBuild_(true)};var sx=$('sys-close');if(sx)sx.onclick=function(e){e.stopPropagation();p.hidden=true;b.setAttribute('aria-expanded','false')};
+  if(al){if(strip){al.className='on '+(strip.level==='FAULT'?'fault':'degraded');al.innerHTML=stripHtml_(strip,false);bindDismiss_(al);}else{al.className='';al.innerHTML='';}}
 }
 function loadWriterStatus_(manual){
   if(!S.writerBound){var wb=$('writer-badge'),wp=$('writer-panel'),al=$('writer-alert');if(wb&&wp){wb.onclick=function(e){e.stopPropagation();var show=wp.hidden;wp.hidden=!show;wb.setAttribute('aria-expanded',show?'true':'false');if(show)loadWriterStatus_(true)};if(al)al.onclick=function(e){e.stopPropagation();wp.hidden=false;wb.setAttribute('aria-expanded','true')};document.addEventListener('click',function(e){if(!e.target.closest('.writer-identity')&&!e.target.closest('#writer-alert')){wp.hidden=true;wb.setAttribute('aria-expanded','false')}});document.addEventListener('visibilitychange',function(){if(!document.hidden)loadWriterStatus_()});setInterval(function(){if(!document.hidden)loadWriterStatus_()},60000);S.writerBound=true}}
@@ -459,16 +498,11 @@ function load(fromCache){
 }
 function fmtTime_(iso){var d=new Date(iso||'');return isNaN(d.getTime())?'unknown time':d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}
 function renderLoadAlert_(){
-  var el=$('load-alert');if(!el)return;var v=S.load||{},cls='',h='';document.body.dataset.freshness=String(v.freshness||'').toLowerCase();
-  var retry=' <button id="load-retry" type="button">Retry now</button>';
-  if(v.freshness==='STALE'){cls='stale';h='<b>STALE · FETCH FAILED</b>The current canonical master could not be loaded ('+esc(v.error)+'). You are looking at a <u>cached copy fetched '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+'</u>. It is NOT the live master; saving is disabled until a fresh read succeeds.'+retry}
-  else if(v.freshness==='NONE'){cls='none';h='<b>FETCH FAILED · NO DATA</b>The current canonical master could not be loaded ('+esc(v.error)+') and no cached copy exists on this device.'+retry}
-  else if(v.freshness==='LIVE'){
-    var bad=[];if(v.archive&&v.archive.state==='FAILED')bad.push('<b>ARCHIVE UNAVAILABLE</b>Archived (terminal) rows are not shown: '+esc(v.archive.error)+'.');
-    if(v.evidence&&v.evidence.state==='FAILED')bad.push('<b>EVIDENCE UNAVAILABLE</b>Narrative fields are not merged ('+esc(v.evidence.error)+'); decline-candidate detection and AI context may be incomplete. A row\'s narrative can be loaded on demand in its detail drawer.');
-    if(bad.length){cls='partial';h=bad.join('<br>')+' The canonical master itself is current ('+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+').'+retry}
-  }
-  el.className=cls?'on '+cls:'';el.innerHTML=h;var b=$('load-retry');if(b)b.onclick=function(){load()};
+  var el=$('load-alert');if(!el)return;var v=S.load||{};document.body.dataset.freshness=String(v.freshness||'').toLowerCase();
+  var dis=dismissed_(),list=loadNotices_().filter(function(n){return !dis[noticeKey_(n)]}),n=list[0];
+  if(!n){el.className='';el.innerHTML='';return}
+  if(list.length>1){n={source:'load',level:topLevel_(list),code:'MULTI',title:list.map(function(x){return x.title}).join(' · '),text:list.map(function(x){return x.text}).join(' '),retry:true};}
+  el.className='on '+(n.level==='FAULT'?'fault':'degraded');el.innerHTML=stripHtml_(n,true);var b=$('load-retry');if(b)b.onclick=function(){load()};bindDismiss_(el);
 }
 function freshnessLabel_(){var v=S.load||{};if(v.freshness==='STALE')return '<span class="bad">STALE · FETCH FAILED · cached '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+'</span>';if(v.freshness==='LOADING')return 'Loading current master…';
   var parts=[esc(S.connection.state)];if(v.archive&&v.archive.state==='PENDING'||v.evidence&&v.evidence.state==='PENDING')parts.push('loading archive/evidence…'+(S.loadRetry&&S.loadRetry.action!=='master'?' (retrying '+esc(S.loadRetry.action)+' '+S.loadRetry.attempt+'/'+S.loadRetry.of+')':''));if(v.archive&&v.archive.state==='FAILED')parts.push('<span class="bad">ARCHIVE UNAVAILABLE</span>');if(v.evidence&&v.evidence.state==='FAILED')parts.push('<span class="bad">EVIDENCE UNAVAILABLE</span>');
@@ -620,7 +654,7 @@ function defaultSort(a,b){var pa=S.pins[a.id]?0:1,pb=S.pins[b.id]?0:1;if(pa!==pb
 function filteredRows(){var rows=S.rows.filter(passes);if(S.sort){var c=S.sort.col,dir=S.sort.dir==='desc'?-1:1;rows.sort(function(a,b){var x=cmp(c==='COMP_MID'?(a.compMid==null?'':String(a.compMid)):val(a,c),c==='COMP_MID'?(b.compMid==null?'':String(b.compMid)):val(b,c));return x*dir||defaultSort(a,b)})}else rows.sort(defaultSort);return rows}
 /* ---------- rendering ---------- */
 function readout(h){$('readout').innerHTML=h}
-function renderReadout(){
+function renderReadout(){renderWriterStatus_();
   var m=S.master;if(!m)return;var ck=m.checksum.ok?'<span class="good">COUNTS OK</span>':'<span class="bad">COUNTS MISMATCH '+esc(m.checksum.diffs.map(function(d){return d.bucket+' '+d.declared+'≠'+d.parsed}).join(', '))+'</span>';
   var t=m.title.split('(')[0].trim().slice(0,48);
   var rr=distinctRows_(),rb={};rr.forEach(function(r){rb[r.BUCKET]=(rb[r.BUCKET]||0)+1});var ready=rb.READY_TO_PURSUE||0,need=rb.TIM_DECISION_REQUIRED||0;
