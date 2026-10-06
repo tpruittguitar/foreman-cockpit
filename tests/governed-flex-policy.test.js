@@ -1,0 +1,53 @@
+const assert=require('node:assert/strict');
+const P=require('../pipeline-policy');
+const S=require('../pipeline-scoring');
+const R=require('../pipeline-rules');
+
+const rulesV3=['TIM_PIPELINE_RULES_CANONICAL','SECTION=DEGREE_FLEX','FLEX_POLICY_VERSION=1','HIGH_FLEX_MODIFIER=30','SOFT_FLEX_MODIFIER=20','NO_FLEX_MODIFIER=-15','STRICT_MODIFIER=-30','NOT_STATED_CLASS=HIGH_FLEX','EQUIVALENCY_CLASS=SOFT_FLEX','HARD_DEGREE_CLASS=NO_FLEX','SINGLE_PATH_CLASS=STRICT','FRESH_DEGREE_OVERRIDES_STALE_CLASS=YES','SECTION=TITLE_SCOPE_FIT','- title rules'].join('\n');
+const policy=R.flexPolicy(rulesV3);
+assert.equal(policy.HIGH_FLEX_MODIFIER,30);
+assert.equal(policy.SOFT_FLEX_MODIFIER,20);
+assert.equal(policy.NO_FLEX_MODIFIER,-15);
+assert.equal(policy.STRICT_MODIFIER,-30);
+assert.equal(P.assess({FLEX_CLASS:'HIGH_FLEX'},70,policy).adjustedFit,100);
+assert.equal(P.assess({FLEX_CLASS:'SOFT_FLEX'},70,policy).adjustedFit,90);
+assert.equal(P.assess({FLEX_CLASS:'NO_FLEX'},70,policy).adjustedFit,55);
+assert.equal(P.assess({FLEX_CLASS:'STRICT'},70,policy).adjustedFit,40);
+assert.equal(P.assess({FLEX_CLASS:'STRICT'},70,policy).decision,'STRICT_HOLD');
+assert.equal(P.flex({FLEX_CLASS:'STRICT',TIM_FLEX_OVERRIDE:'YES'},policy).blocked,false);
+assert.equal(P.flex({FLEX_CLASS:'STRICT',TIM_FLEX_OVERRIDE:'YES'},policy).modifier,-30);
+assert.equal(P.assess({FLEX_CLASS:'HIGH_FLEX'},70).adjustedFit,85);
+assert.equal(R.flexPolicy('no section').HIGH_FLEX_MODIFIER,15);
+
+const cfg=Object.assign({},S.defaults(),{flexPolicy:policy,publishedRevision:9});
+const row={TITLE:'Director of Manufacturing',LOCATION:'Cleveland, TN',payload:{SCOPE_FIT_RAW:70,FLEX_CLASS:'HIGH_FLEX'}};
+const governed=S.scoreRow(row,cfg);
+const fallback=S.scoreRow(row,S.defaults());
+assert.equal(governed.assessment.flex.modifier,30);
+assert.equal(governed.assessment.adjustedFit,100);
+assert.equal(governed.parts.experience.score,70);
+assert.equal(governed.parts.experience.rawScore,70);
+assert.notEqual(governed.parts.experience.score,governed.assessment.adjustedFit);
+assert.equal(governed.parts.flex.weight,23);
+assert.equal(governed.parts.experience.weight,25);
+assert.equal(governed.overall,fallback.overall);
+assert.equal(governed.parts.flex.score,80);
+const strict=S.scoreRow({TITLE:'Director',LOCATION:'Cleveland, TN',payload:{SCOPE_FIT_RAW:70,FLEX_CLASS:'STRICT'}},cfg);
+const unlocked=S.scoreRow({TITLE:'Director',LOCATION:'Cleveland, TN',payload:{SCOPE_FIT_RAW:70,FLEX_CLASS:'STRICT',TIM_FLEX_OVERRIDE:'YES'}},cfg);
+assert.equal(strict.band,'STRICT HOLD');
+assert.equal(strict.assessment.flex.modifier,-30);
+assert.notEqual(unlocked.band,'STRICT HOLD');
+assert.equal(unlocked.assessment.flex.modifier,-30);
+
+const changed=Object.assign({},policy,{HIGH_FLEX_MODIFIER:15});
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{flexPolicy:changed})));
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{publishedRevision:10})));
+assert.notEqual(S.fingerprint(cfg),S.fingerprint(Object.assign({},cfg,{weights:Object.assign({},cfg.weights,{experience:20})})));
+function cacheFor(config){return {fp:S.fingerprint(config),rows:{}};}
+let cache=cacheFor(cfg);
+cache.rows.row=governed;
+const next=Object.assign({},cfg,{publishedRevision:10});
+if(cache.fp!==S.fingerprint(next))cache={fp:S.fingerprint(next),rows:{}};
+assert.equal(cache.rows.row,undefined);
+assert.equal(S.scoreRow(row,next).parts.experience.score,70);
+console.log('PASS governed policy, raw experience component, separate FLEX weight, cache fingerprint');
