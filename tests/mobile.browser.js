@@ -7,6 +7,8 @@ const repo=path.resolve(__dirname,'..');
 const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8');
 const IPHONE={viewport:{width:390,height:844},deviceScaleFactor:3,isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'};
 const MAC_UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+// Navigate the way a user does: the rail on desktop (hover to reveal sub-items), the bottom bar or its More sheet on phones.
+async function go(page,tab){const rail=page.locator('#rail');if(await rail.isVisible()){await rail.hover();if((await page.locator('#rail .rail-in').boundingBox()).width<100){await page.locator('#rail [data-group-btn]').first().click();await page.waitForTimeout(250)}const b=page.locator('#rail [data-tab="'+tab+'"], #rail [data-go="'+tab+'"]').first();await b.click();await page.mouse.move(700,450);await page.waitForTimeout(150);return}const bb=page.locator('#bottombar [data-go="'+tab+'"]');if(await bb.count()){await bb.click();await page.waitForTimeout(150);return}await page.locator('#bottombar [data-go="more"]').click();await page.locator('#sheet [data-go="'+tab+'"]').click();await page.waitForTimeout(150)}
 (async()=>{
   const server=require('http').createServer((req,res)=>{const u=new URL(req.url,'http://x');try{res.setHeader('Content-Type',u.pathname.endsWith('.js')?'application/javascript':u.pathname.endsWith('.json')?'application/json':'text/html');res.end(fs.readFileSync(repo+u.pathname))}catch(e){res.statusCode=404;res.end('')}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
@@ -16,7 +18,7 @@ const MAC_UA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.
     await page.addInitScript(([l])=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));if(l&&!sessionStorage.getItem('seeded')){sessionStorage.setItem('seeded','1');localStorage.setItem('px.layout',l)}},[layout||'']);
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{sha:'x'}}));
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html');await page.locator('[data-tab="pipeline"]').first().click();await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(400);
+    await page.goto(base+'/pipeline.html');await go(page,'pipeline');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(400);
     return {ctx,page,errors};
   }
   // iPhone portrait: the table sits inside the pipeline view and its first row is on screen
