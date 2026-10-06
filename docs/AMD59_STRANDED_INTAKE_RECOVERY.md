@@ -123,3 +123,7 @@ On Tim's authorization the recovery was executed through the existing writer dep
 Master 569 → 600 rows. Independent Drive readback: header COUNTS equal actual row buckets, END marker matches, 0 pre-existing rows altered, 31 new rows each present once with intake metadata, no new repeated PRIMARY_IDs, no rows for the deferred U-01..U-04 or H-01. Receipt: `MASTER_CHANGE_APPLIED_AMD59_STRANDED_INTAKE_RECOVERY_2026-10-01_214542.txt` (Drive `1nEJzgET3_AEg7wX7fYPcvUcJM1McK2co`).
 
 Open defect found: GET requests to the live writer (`action=ping`, `action=master`) fail with `ReferenceError: req is not defined (line 37, file Code)`. POST is unaffected. The live Code.gs differs from `main` at that line and needs correcting in the Apps Script editor.
+
+---
+
+**2026-10-06:** `apps-script/Amd59RecoveryWorker.gs` was removed from the repository (never deployed; the deploy script had skipped it since 2026-10-02). This document stays as the record of the recovery; the file's history is in git.

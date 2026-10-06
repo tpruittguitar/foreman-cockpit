@@ -28,7 +28,7 @@ If a remembered prompt, cached model, project instruction, task-board file, amen
   - **The master is still the one population.** It holds every live row and every decision-driving field: identity, bucket/disposition, application state, salary, FLEX, degree, fit score/confidence, liveness and URLs.
   - **Terminal history** (`CLOSED_DEAD`, `DUPLICATE`, `DECLINED_BY_TIM`, `REJECTED_BY_EMPLOYER`) is kept verbatim in `V2_TERMINAL_ARCHIVE.txt`. It is read-only. The Writer still dedupes intake and upserts against it. To change an archived row, `POST restore_archived` first.
   - **Narrative and evidence prose** (notes, analyses, evidence quotes, prior/legacy audit text) of live rows is kept in `V2_EVIDENCE_COMPANION.jsonl`, keyed by `PRIMARY_ID`. A row's `EVIDENCE_REF=EVC1:<n>` names its head record. Never treat the companion as a population.
-  - **Read the full picture** with `GET action=master&hydrate=1` (live rows with evidence merged, plus the archive) or `GET action=evidence&primaryId=…`.
+  - **Read the full picture** with three reads: `GET action=master` (live rows), `GET action=archive` (terminal rows) and `GET action=evidence&primaryId=…` (one row's narrative). The single `hydrate=1` response is too large for Google to serve and must not be relied on; the Explorer composes the same view client-side.
   - **Keep submitting** narrative fields such as `SCOUT_NOTES` and `FIT_EVIDENCE` as before; the Writer routes them to the companion. Details: `docs/MASTER_ARCHIVE_EVIDENCE_COMPANION.md`.
 
 ## Obsolete material that must not control a run

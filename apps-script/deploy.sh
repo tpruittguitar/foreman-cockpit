@@ -25,7 +25,6 @@ mkdir -p "$WORK/out"
 cp "$WORK/live/appsscript.json" "$WORK/out/appsscript.json"
 for f in "$HERE"/*.gs; do
   n="$(basename "$f" .gs)"
-  case "$n" in Amd59RecoveryWorker) continue;; esac   # one-time recovery (completed 2026-10-02); kept in repo for audit only
   awk -v line="$LIVE_PASS_LINE" '/^var PASSPHRASE *= *\x27/ && !done { print line; done=1; next } { print }' "$f" > "$WORK/out/$n.js"
   cp "$WORK/out/$n.js" "$WORK/check.js"; node --check "$WORK/check.js"
 done

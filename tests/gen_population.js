@@ -15,7 +15,7 @@ function generate(n, seed) {
     const id = 'V2F-' + crypto.createHash('md5').update('row' + i + seed).digest('hex').slice(0, 12).toUpperCase();
     const req = (i % 3 === 0) ? 'LI-' + (4400000000 + i * 7919) : (i % 3 === 1 ? 'GH-' + (5000000000 + i * 104729) : 'UNCAPTURED');
     const url = (i % 4 === 0) ? 'https://www.linkedin.com/jobs/view/' + (4400000000 + i * 7919) : (i % 4 === 1 ? 'https://job-boards.greenhouse.io/company' + i + '/jobs/' + (5000000000 + i * 104729) : '');
-    const payload = ['PACKET_SUPPORT_ONLY', 'DATE_ADDED=2026-09-' + (10 + (i % 19)).toString().padStart(2, '0'), 'NOTIFICATION_SOURCE=LinkedIn', 'FLEX=' + ['YES', 'NO', 'SOFT'][i % 3], 'SALARY_BASE_EST=$' + (150 + i % 100) + 'K-$' + (200 + i % 100) + 'K'];
+    const payload = ['DATE_ADDED=2026-09-' + (10 + (i % 19)).toString().padStart(2, '0'), 'NOTIFICATION_SOURCE=LinkedIn', 'FLEX=' + ['YES', 'NO', 'SOFT'][i % 3], 'SALARY_BASE_EST=$' + (150 + i % 100) + 'K-$' + (200 + i % 100) + 'K'];
     if (url) payload.push('SOURCE=' + url);
     if (i % 17 === 0) payload.push('SALARY_ANCHORS=n2 bands: A $180k-$220k https://example.invalid/a' + i + ' | B $170k-$210k https://example.invalid/b' + i);
     rows.push({ b, line: [i, id, 'Company ' + (i % 137) + (i % 137 === 0 ? ' Inc.' : ''), (i % 137 === 3 ? 'Director of Quality' : ['Director of Manufacturing', 'Plant Manager', 'VP Operations', 'Director of Quality', 'Head of Production'][i % 5] + (i % 11 === 0 ? ' - Site ' + i : '')), b, 'RESOLVED/' + b, i % 9 === 0 ? 'NEW_2026-09-30' : '-', req, ['Huntsville, AL', 'Austin, TX', 'Chattanooga, TN', 'NOT_STATED', 'Atlanta, GA'][(i * 7 + (i % 3)) % 5], payload.join('; ')].join(' | ') });
