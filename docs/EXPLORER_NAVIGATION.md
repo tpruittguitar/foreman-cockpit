@@ -38,6 +38,24 @@ The Pipeline view is a band over a table, with the Job Workspace as a full-heigh
 - **Table** below the band; **Job Workspace** opens as the right column on desktop (the band and table shrink), and over the table on a phone, leaving the band visible.
 - Short screens (under 520px tall, landscape phones) show the band as a single row: tiles and map, no charts.
 
+## Job Workspace (PR D)
+
+Opening a row opens the Job Workspace (the right column on desktop, over the table on a phone). Its header carries prev/next (same as J/K), the title, a chip row (bucket, rating, FLEX class, pay, location, pending ruling), decision buttons (Pursue · Hold · Decline · Research, same as keys 1–4: they prepare the Tim decision form; Save submits) and actions: Open posting (a plain named browser window, never automated), Copy packet (plain-text summary of the row for a note or an AI prompt, marked viewer-derived) and Draft cover letter, which stays disabled until Tim decides on the Phase 5 AI-workflow recommendation.
+
+| Old tab | New tab | What moved |
+| --- | --- | --- |
+| Overview | Overview | Tim decision, Current state, Duplicate warning, AI context, on-demand evidence, write status |
+| Overview (lower cards) | Fit & Score | Opportunity rating, FLEX-adjusted fit, Compensation, Research gaps + enrichment, Attention signals |
+| Overview › Source links | Posting | Source links, posting facts (req, posted, found via, identity, degree/experience/clearance text), posting snapshot when a row stores one, posting viewer: Open external for any link; "Show here" embeds only Greenhouse, Lever and Ashby boards, with an 8 s watchdog |
+| Interview | Application | Application state (bucket, disposition, status check/evidence, decline reason, anti-resurrection, reopen trigger, verify later, archive) plus the interview notes |
+| Compensation | Fit & Score | the same card |
+| — | Documents | library files whose name carries the company or PRIMARY_ID, with a link to the full library |
+| Timeline | History | this device's ruling and write status, added/first-loaded dates, then the v5 event timeline |
+
+Old hashes or saved tabs named `interview`, `timeline` or `compensation` map to the new tabs.
+
+Table: BUCKET shows a coloured pill, OVERALL_RATING a score badge with its band, and two computed columns are new: LINK (icon to the preferred posting link, opens in a new tab) and AGE (days since DATE_ADDED). Saved column sets get LINK after TITLE and AGE after DATE_ADDED once.
+
 ## URL state
 
 The hash now also carries the open job (`j`) and full-screen map (`m`). Opening a link with `j` focuses that row, opens the job panel and scrolls it into view; `m:1` restores the full-screen map. Existing hashes (`t`, `p`, `s`, `f`) are unchanged.
