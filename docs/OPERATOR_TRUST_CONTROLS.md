@@ -45,3 +45,20 @@ A FAILURE EVENT is not an INCIDENT. `pipeline-incidents.js` groups events into i
 - **Health** counts ACTIVE incidents only: 0 critical + 0 warning = **LIVE**; 0 critical + at least 1 warning = **LIVE / WARNING**; at least 1 critical = **DEGRADED**. Recovered and historical incidents never degrade health. The header badge dot and count, the rail dot and the drawer's health row all follow this; the red strip shows the top active critical Writer incident.
 - **Display.** Each incident shows severity, attempt count (or number of status checks for a condition), first and latest failure time, latest file and error, and, once resolved, its resolution and recovery evidence.
 - **Storage.** Incidents persist per device (`px.incidents`). Queue incidents and acknowledgements also travel in the shared Explorer state file, so another device sees the same incidents; live conditions are recomputed from the current status on each device. Only failures the Explorer has observed (the Writer reports a 24-hour window) can become incidents.
+
+## Stored policy values: controlled refresh (2026-10-07)
+
+The master already stores three values the Writer derives from the canonical FLEX policy: `FLEX_MODIFIER`, `ADJUSTED_FIT` and `PURSUIT_STATUS`. The Writer sets them only when it writes FLEX or fit evidence for a row, so when the policy changes (rules v3: HIGH +30, SOFT +20, NO −15, STRICT −30, previously +15 / +6 / −10 / −10) older rows keep the old numbers. On 2026-10-07 the live master had 133 active-work rows in that state (219 up to date; 33 applied or closed rows also out of date). The Explorer recalculates for display, but agents read the master.
+
+The Scoring screen reports how many active rows differ, and **Review refresh…** shows exactly what would be written, with these controls:
+
+- **Opt-in.** Nothing runs by itself. Nothing is written until Tim presses Apply.
+- **Scope.** Active-work rows only (READY_TO_PURSUE, SCOUT_INTAKE, DISCOVERY_LEAD, MANUAL_RESEARCH, TIM_DECISION_REQUIRED, BLOCKED). Applied, rejected and closed rows are left alone. A row is selected only when a value it already stores differs; a value that is simply absent is not touched.
+- **Same code as the Writer.** The plan uses the Writer's own derivation (`pipeline-policy`), and the unit tests run the Writer's `mutateRow` on the same rows to prove the prediction matches what is written (352 of 352 live rows agreed, with no class or bucket change).
+- **Only a re-derivation.** Each request is an ENRICH that repeats the row's stored FLEX class (actor `EXPLORER`), so the Writer re-derives the three values. It never changes a class, bucket, state, note or evidence.
+- **Preconditions.** The master read is live (not cached), the Writer status is known and not frozen, there are no unverified master writes and the queue is idle. Any failure disables Apply.
+- **Small, verified batches.** At most 25 rows per batch through the normal `batch` path. Each batch must succeed before the next is sent; the first failure stops everything, with earlier batches staying written. A Stop button ends it after the current batch.
+- **Safe to rerun.** Request ids are `PX-REFRESH-<policy id>-<PRIMARY_ID>`, and a rerun plans only the rows still out of date.
+- **Independent check.** When it finishes the Explorer re-reads the master and reports how many rows are still out of date; it only says "verified" after a live read shows none.
+
+Calculated ratings (`OVERALL_RATING` and the component scores) are not part of this. They depend on the whole scoring model, would need every row rewritten after each model change, and stay calculated in the Explorer (see SCORING_MODEL.md).
