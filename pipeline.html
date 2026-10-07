@@ -261,6 +261,7 @@ header{background:var(--panel);background-image:none;padding:0 14px;min-height:4
 @media (prefers-reduced-motion:reduce){#rail .rail-in,#rail .rl,#rail button svg{transition:none}#sheet .sheet-in{animation:none}}
 /* System drawer (PR A): one place for master freshness, Writer state, build identity and the 24-hour notice history. */#writer-panel.build-panel{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);max-width:none;border:0;border-left:1px solid var(--line2);box-shadow:-12px 0 32px #000c;padding:12px 14px calc(12px + env(safe-area-inset-bottom));overflow:auto;z-index:60;animation:drawer-in 220ms var(--ease) both}@keyframes drawer-in{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}.sys-head{display:flex;align-items:center;gap:8px;margin:0 0 8px}.sys-head h3{margin:0;flex:1}.sys-x{background:transparent;border:0;color:var(--dim);font-size:15px;padding:2px 6px}.notice{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;padding:7px 9px;margin:6px 0;border:1px solid var(--line);border-left:3px solid var(--dim);border-radius:2px;animation:strip-in 220ms var(--ease) both}.notice .lvl{font:10px var(--mono);letter-spacing:1.2px;color:var(--dim)}.notice .lvl small{display:block;color:var(--faint);letter-spacing:0;margin-top:3px;font-size:9.6px}.notice.FAULT{border-left-color:var(--fault);background:#1a0e10}.notice.FAULT .lvl{color:#ff8a8e}.notice.DEGRADED{border-left-color:var(--caution);background:#15120a}.notice.DEGRADED .lvl,.notice.CAUTION .lvl{color:#f0cf7a}.notice.CAUTION{border-left-color:var(--caution)}.notice .t{font-size:11.5px;min-width:0}.notice .t small{display:block;color:var(--dim);margin-top:2px;overflow-wrap:anywhere}.notice.dismissed{opacity:.55}
 .score-review{border:1px solid var(--line2);border-left:3px solid var(--caution);background:var(--panel);padding:12px 14px;margin:0 0 12px}.score-review h3{margin:0 0 6px}.score-review h4{margin:12px 0 4px;font:10.5px var(--mono);letter-spacing:1.2px;color:var(--dim);text-transform:uppercase}.score-review ul{margin:0;padding-left:18px}.score-review li{font-size:12px;margin:2px 0}.score-review table{width:100%;border-collapse:collapse;font-size:12px}.score-review th,.score-review td{padding:3px 6px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.score-review td.num,.score-review th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.score-review .up{color:var(--ok)}.score-review .dn{color:var(--fault)}.score-review .mark{color:var(--caution)}.score-review .row{margin-top:12px}.score-review .sr-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.score-review .sr-two>div{min-width:0}.score-review .sr-two table{table-layout:fixed}.score-review .sr-two th.num:first-child,.score-review .sr-two td.num:first-child{width:34px}.score-review .sr-two th.num:last-child,.score-review .sr-two td.num:last-child{width:68px}.score-review td{overflow-wrap:anywhere}@media(max-width:760px){.score-review .sr-two{grid-template-columns:1fr}}.notice .t em{font-style:normal;color:var(--faint);font:9.6px var(--mono);margin-left:6px}@media (prefers-reduced-motion:reduce){#writer-panel.build-panel,.notice,#load-alert,#writer-alert{animation:none}button{transition:none}}
+.notice.incident .t small.inc-res{color:var(--text)}.notice.incident .t small.inc-ev{color:var(--ok)}.notice.incident .inc-ack{margin-top:6px;min-height:28px;padding:0 10px;font-size:10.5px}.inc-hist summary{cursor:pointer;color:var(--dim);font:10.5px var(--mono);letter-spacing:1px;margin:10px 0 4px}.sys-health{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.inc-none{color:var(--dim);font-size:11.5px;margin:4px 0 8px}#inc-ack-all{margin:2px 0 8px;font-size:10.5px}.notice .t em{font-style:normal;color:var(--faint);font:9.6px var(--mono);margin-left:6px}@media (prefers-reduced-motion:reduce){#writer-panel.build-panel,.notice,#load-alert,#writer-alert{animation:none}button{transition:none}}
 
 /* Pipeline layout (PR C): band = decide strip | research gaps | next actions | map; the Job Workspace is a full-height column on the right; the table sits below the band. */
 #view-pipeline.on{display:grid;grid-template-columns:minmax(0,1fr) 0px;grid-template-rows:35% 65%;overflow:hidden}
@@ -389,6 +390,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-charts.js"></script>
 <script src="pipeline-attention.js"></script>
 <script src="pipeline-trust.js"></script>
+<script src="pipeline-incidents.js"></script>
 <script src="pipeline-policy.js"></script>
 <script src="pipeline-scoring.js"></script>
 <script src="pipeline-scoring-preview.js"></script>
@@ -414,7 +416,7 @@ var DATE_KEYS={DATE_ADDED:1,MASTER_LOADED_AT:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
 var mapView={zoom:1,x:480,y:255,focus:null,hasFocused:false,animation:0,request:0,found:[],active:null,overview:null,returnView:null};
 var scoreCache={fp:"",rows:{}};
-var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),chartsArchive:!!LS.get('chartsArchive',false),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,buildInfo:null,buildLatest:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,targetCompanies:null,events:{},interview:{}};
+var S={cfg:LS.get('cfg',{url:'',key:''}),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),incidents:LS.get('incidents',null)||PipelineIncidents.empty(),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),chartsArchive:!!LS.get('chartsArchive',false),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,buildInfo:null,buildLatest:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,targetCompanies:null,events:{},interview:{}};
 function buildTime_(value){if(!value)return 'not recorded';var d=new Date(value);return isNaN(d.getTime())?String(value):d.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
 function buildCommitUrl_(commit){return commit&&commit!=='local'?'https://github.com/tpruittguitar/foreman-cockpit/commit/'+encodeURIComponent(commit):'https://github.com/tpruittguitar/foreman-cockpit/commits/main';}
 function buildStatusHtml_(){var x=S.buildLatest||{};if(x.status==='latest')return '<span class="pill ok">LATEST MAIN</span>';if(x.status==='behind')return '<span class="pill bad">BEHIND MAIN</span>';if(x.status==='preview')return '<span class="pill" style="color:var(--nm);border-color:var(--nm)">PREVIEW / NOT MAIN</span>';return '<span class="pill">CHECK UNAVAILABLE</span>';}
@@ -449,7 +451,7 @@ function noticeLevel_(code,level){code=String(code||'').toUpperCase();level=Stri
   if(code==='STATUS_PART_UNAVAILABLE'||code==='MONITOR_UNAVAILABLE'||code==='BUILD_BEHIND'||code==='FAILED'||code==='REJECTED_SCHEMA')return 'NOTICE';
   if(/HOLD/.test(code)||code==='CLAIM_RUNNING_LONG')return 'CAUTION';
   return level==='critical'?'FAULT':level==='warn'?'CAUTION':'NOTICE';}
-function noticeKey_(n){return (n.source||'')+':'+(n.code||'')+':'+String(n.title||'').slice(0,80)+':'+String(n.text||'').slice(0,80)}
+function noticeKey_(n){if(n.key)return n.key;return (n.source||'')+':'+(n.code||'')+':'+String(n.title||'').slice(0,80)+':'+String(n.text||'').slice(0,80)}
 function dismissed_(){var d=LS.get('dismissed',{}),now=Date.now(),ch=false;Object.keys(d).forEach(function(k){if(!(now-d[k]<86400000)){delete d[k];ch=true}});if(ch)LS.set('dismissed',d);return d}
 function dismissNotice_(key){var d=dismissed_();d[key]=Date.now();LS.set('dismissed',d);renderLoadAlert_();renderWriterStatus_()}
 function loadNotices_(){var v=S.load||{},out=[],m=S.master;
@@ -472,18 +474,50 @@ function topLevel_(list){var best=null;list.forEach(function(n){var i=NOTICE_LEV
 function stripHtml_(n,withRetry){return '<span class="lvl">'+esc(n.level)+'</span><span class="msg"><b>'+esc(n.title)+'</b>'+esc(n.text)+'</span>'+(withRetry&&n.retry?'<button id="load-retry" type="button">Retry now</button>':'')+'<button class="strip-x" type="button" data-dismiss="'+esc(noticeKey_(n))+'" aria-label="Dismiss (stays in the System drawer)" title="Dismiss · stays listed in the System drawer">✕</button>';}
 function bindDismiss_(el){el.querySelectorAll('[data-dismiss]').forEach(function(b){b.onclick=function(e){e.stopPropagation();dismissNotice_(b.getAttribute('data-dismiss'))}})}
 function noticeListHtml_(list,dis){if(!list.length)return '<div class="build-status">No notices in the last 24 hours.</div>';return list.map(function(n){var k=noticeKey_(n),d=!!dis[k];return '<div class="notice '+esc(n.level)+(d?' dismissed':'')+'"><span class="lvl">'+esc(n.level)+'<small>'+esc(n.at?new Date(n.at).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}):'')+'</small></span><span class="t">'+esc(n.title)+(d?'<em>dismissed</em>':'')+'<small>'+esc(n.text)+'</small></span></div>'}).join('')}
+/* Incidents (pipeline-incidents.js). FAILURE EVENT != INCIDENT: queue failures and live conditions are grouped into
+   incidents; top-level health counts ACTIVE incidents only (LIVE / LIVE · WARNING / DEGRADED). Queue run outcomes are
+   handled as events, so the Writer's own per-run warnings (FAILED, PARTIAL_HOLD, HOLD_*) are not also counted as conditions. */
+var RUN_CODES_=/^(FAILED|REJECTED_SCHEMA|PARTIAL_HOLD|HOLD_.*)$/;
+function incidentSeverity_(level){return level==='FAULT'||level==='DEGRADED'?'critical':level==='CAUTION'?'warning':''}
+function incidentObservation_(){var w=S.writerStatus,obs={runs:[],unverifiedCount:null,writer:null,load:null};
+  if(hasWriter()&&w&&!w.unsupported){
+    if(w.fetchError)obs.writer={name:'writer',authoritative:false,evidence:'writer_status',token:w.checkedAt,at:w.checkedAt,conditions:[{component:'writer',code:'WRITER_UNREACHABLE',severity:'critical',title:'Writer unreachable',text:w.fetchError,operation:''}]};
+    else{obs.runs=[].concat(w.recentRuns||[],w.recentHolds||[],w.recentFailed||[]);obs.unverifiedCount=w.unverified&&typeof w.unverified.count==='number'?w.unverified.count:null;
+      obs.writer={name:'writer',authoritative:true,evidence:'writer_status',token:w.checkedAt,at:w.checkedAt,conditions:(w.warnings||[]).filter(function(x){return !RUN_CODES_.test(String(x.code||'').toUpperCase())}).map(function(x){return {component:'writer',code:x.code,severity:incidentSeverity_(noticeLevel_(x.code,x.level)),title:String(x.code||'').replace(/_/g,' '),text:x.message||''}})}}}
+  var v=S.load||{};if(v.freshness&&v.freshness!=='LOADING')obs.load={name:'load',authoritative:true,evidence:'Master read',token:'load#'+S.loadSeq,conditions:loadNotices_().map(function(n){return {component:'master-load',code:n.code,severity:incidentSeverity_(n.level),title:n.title,text:n.text,operation:''}})};
+  return obs}
+function observeIncidents_(){var before=JSON.stringify(PipelineIncidents.forSync(S.incidents));
+  if(PipelineIncidents.observe(S.incidents,incidentObservation_(),Date.now())){LS.set('incidents',S.incidents);if(JSON.stringify(PipelineIncidents.forSync(S.incidents))!==before)syncStateUp()}}
+function incidentTime_(iso){var t=Date.parse(iso||'');if(isNaN(t))return '—';var d=new Date(t),same=new Date().toDateString()===d.toDateString();return (same?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' ')+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}
+function incidentHtml_(i){var res=i.status!=='ACTIVE',lvl=res?'NOTICE':i.severity==='critical'?'FAULT':'CAUTION',n=i.kind==='event'?(i.attempts||1):(i.checks||1);
+  return '<div class="notice incident '+lvl+'" data-incident="'+esc(i.id)+'"><span class="lvl">'+esc(res?i.status:i.severity==='critical'?'CRITICAL':'WARNING')+'<small>'+(i.kind==='event'?n+' attempt'+(n===1?'':'s'):n+' check'+(n===1?'':'s'))+'</small></span><span class="t">'+esc(i.title)
+   +'<small>First failure '+esc(incidentTime_(i.firstAt))+' · latest '+esc(incidentTime_(i.latestAt))+(i.kind==='event'&&i.latestFile?' · '+esc(i.latestFile):'')+'</small>'
+   +(i.latestError?'<small>'+esc(String(i.latestError).slice(0,220))+'</small>':'')
+   +(res?'<small class="inc-res">'+esc(i.resolution||'')+(i.resolvedAt?' · '+esc(incidentTime_(i.resolvedAt)):'')+'</small>'+(i.recoveryEvidence?'<small class="inc-ev">Recovery evidence: '+esc(i.recoveryEvidence)+'</small>':'')
+     :'<small class="inc-res">Unresolved · needs corrective action</small>'+(i.kind==='event'?'<button type="button" class="inc-ack" data-ack="'+esc(i.id)+'">Acknowledge · no action needed</button>':''))
+   +'</span></div>'}
+function incidentsHtml_(hv,hh){var ev=hv.active.filter(function(i){return i.kind==='event'}).length,h='';
+  h+='<h3 style="margin-top:10px">Active incidents · '+hv.active.length+'</h3>'+(hv.active.length?hv.active.map(incidentHtml_).join(''):'<div class="inc-none">No active incidents.</div>');
+  if(ev>1)h+='<button type="button" id="inc-ack-all">Acknowledge all '+ev+' queue incidents</button>';
+  h+='<h3 style="margin-top:10px">Recovered · last 24 h</h3>'+(hv.recovered.length?hv.recovered.map(incidentHtml_).join(''):'<div class="inc-none">None.</div>');
+  if(hv.historical.length)h+='<details class="inc-hist"><summary>Historical · '+hv.historical.length+'</summary>'+hv.historical.map(incidentHtml_).join('')+'</details>';
+  return h}
+function ackIncident_(id){if(PipelineIncidents.acknowledge(S.incidents,id,'TIM',Date.now())){LS.set('incidents',S.incidents);syncStateUp();renderWriterStatus_()}}
 function renderWriterStatus_(){
   var b=$('writer-badge'),p=$('writer-panel'),al=$('writer-alert');if(!b||!p)return;
   var w=S.writerStatus,lvl='',label,html='',dis=dismissed_();
   var wn=writerNotices_(),ln=loadNotices_(),all=ln.concat(wn);all.sort(function(a,c){return NOTICE_LEVELS.indexOf(a.level)-NOTICE_LEVELS.indexOf(c.level)||(c.at||0)-(a.at||0)});
-  var top=topLevel_(all),strip=wn.filter(function(n){return (n.level==='FAULT'||n.level==='DEGRADED')&&!dis[noticeKey_(n)]})[0];
+  observeIncidents_();var hv=PipelineIncidents.view(S.incidents,Date.now()),hh=PipelineIncidents.health(S.incidents),top=hh.critical?'FAULT':hh.warning?'CAUTION':'';
+  var info=all.filter(function(n){return n.level==='NOTICE'&&n.source!=='queue'&&!RUN_CODES_.test(String(n.code||'').toUpperCase())});
+  var strip=hv.active.filter(function(i){return i.severity==='critical'&&i.component!=='master-load'&&!dis['inc:'+i.id]}).map(function(i){return {key:'inc:'+i.id,level:'FAULT',title:i.title,text:' '+(i.latestError||'')}})[0];
   if(!hasWriter()){label='not configured';}
   else if(!w){label='checking';}
   else if(w.unsupported){label='monitor unavailable';lvl='warn';}
   else if(w.fetchError){label='unreachable';lvl='critical';}
-  else{var fz=w.freeze&&w.freeze.frozen?w.freeze:null,q=w.queue||{},proc=q.processing||[];label=fz?'FROZEN':proc.length?'PROCESSING '+proc.length:q.pending?'QUEUED '+q.pending:'IDLE';lvl=top==='FAULT'?'critical':top==='DEGRADED'||top==='CAUTION'?'warn':'ok';}
+  else{var fz=w.freeze&&w.freeze.frozen?w.freeze:null,q=w.queue||{},proc=q.processing||[];label=fz?'FROZEN':proc.length?'PROCESSING '+proc.length:q.pending?'QUEUED '+q.pending:'IDLE';lvl=hh.critical?'critical':hh.warning?'warn':'ok';}
   var i=S.buildInfo||{},short=i.commitShort||(i.commit&&i.commit!=='local'?String(i.commit).slice(0,7):'unknown'),v=S.load||{},m=S.master;
   html+='<div class="sys-head"><h3>System</h3><button class="sys-x" type="button" id="sys-close" aria-label="Close">✕</button></div>';
+  html+=writerRow_('health','<span class="sys-health"><span class="pill '+(hh.critical?'bad':hh.warning?'warn':'ok')+'" id="sys-health">'+esc(hh.state)+'</span>'+(hh.critical||hh.warning?'<span>'+hh.critical+' critical · '+hh.warning+' warning active</span>':'<span class="dim">no active incidents</span>')+'</span>');
   html+=writerRow_('master',v.freshness==='LIVE'?'<span class="pill ok">LIVE</span> '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+(m&&m.checksum?(m.checksum.ok?' · COUNTS OK':' · <span class="pill bad">COUNTS MISMATCH</span>'):''):v.freshness==='STALE'?'<span class="pill warn">STALE CACHE</span> '+esc(fmtTime_(v.meta&&v.meta.fetchedAt)):v.freshness==='NONE'?'<span class="pill bad">NO DATA</span>':esc(v.freshness||'loading'));
   html+=writerRow_('writer',!hasWriter()?'not configured':!w?'checking…':w.unsupported?'monitor unavailable':w.fetchError?'<span class="pill bad">UNREACHABLE</span>':(label+(w.freeze&&w.freeze.frozen?' · '+esc(w.freeze.reason||'')+' · by '+esc(w.freeze.by||'?'):'')));
   html+=writerRow_('live code',writerBuildHtml_());
@@ -495,14 +529,15 @@ function renderWriterStatus_(){
     html+=writerRow_('unverified',u.count?u.count+' write(s) · oldest '+writerAge_(Date.parse(w.now)-Date.parse(u.oldestWrittenAt)):'none');
     html+=writerRow_('trigger',w.triggerInstalled===false?'<span class="pill bad">MISSING</span>':w.triggerInstalled?'installed':'unknown');
     if(w.migration)html+=writerRow_('migration',esc((w.migration.mode||'')+' '+(w.migration.status||'')));}
-  html+='<h3 style="margin-top:10px">Notices · last 24 h</h3>'+noticeListHtml_(all,dis);
+  html+=incidentsHtml_(hv,hh);
+  html+='<h3 style="margin-top:10px">Information · last 24 h</h3>'+noticeListHtml_(info,dis);
   if(w&&w.recentRuns&&w.recentRuns.length){var runs=w.recentRuns.slice(0,6);html+='<h3 style="margin-top:10px">Recent queue results</h3><ul class="writer-runs">'+runs.map(function(r){var t=r.terminalStatus||'',cls=t==='SUCCESS'?'ok':/HOLD/.test(t)?'warn':'notice';return '<li><span class="pill '+cls+'">'+esc(t)+'</span><span title="'+esc(r.error||'')+'">'+esc(r.file)+' · '+esc(buildTime_(r.finishedAt))+(r.totalMs?' · '+writerAge_(r.totalMs):'')+(r.error?'<br><span class="dim">'+esc(String(r.error).slice(0,160))+'</span>':'')+'</span></li>';}).join('')+'</ul>';}
   html+='<div class="build-status">'+(w&&w.checkedAt?'Checked '+esc(new Date(w.checkedAt).toLocaleTimeString())+'. Refreshes every minute while this page is open.':'')+'</div>';
   html+='<div class="build-actions"><button id="writer-refresh" type="button">Refresh now</button><button id="build-check" type="button">Check latest build</button></div>';
-  var count=all.filter(function(n){return n.level!=='NOTICE'}).length;
+  var count=hh.critical+hh.warning;
   b.innerHTML='<span class="sys-dot '+esc(top)+'"></span><small>Writer</small><b>'+esc(String(label).toLowerCase())+(count?' · '+count:'')+'</b>';renderHeaderStatus_();var rd=$('rail-dot');if(rd)rd.className='sys-dot '+esc(top);
-  b.className='build-badge writer-badge '+lvl;
-  p.innerHTML=html;var rf=$('writer-refresh');if(rf)rf.onclick=function(e){e.stopPropagation();loadWriterStatus_(true)};var bc=$('build-check');if(bc)bc.onclick=function(e){e.stopPropagation();checkLatestBuild_(true)};var sx=$('sys-close');if(sx)sx.onclick=function(e){e.stopPropagation();p.hidden=true;b.setAttribute('aria-expanded','false')};
+  b.className='build-badge writer-badge '+lvl;b.title='Health: '+hh.state+(count?' · '+count+' active incident'+(count===1?'':'s'):'');
+  p.innerHTML=html;p.querySelectorAll('[data-ack]').forEach(function(x){x.onclick=function(e){e.stopPropagation();ackIncident_(x.getAttribute('data-ack'))}});var aa=$('inc-ack-all');if(aa)aa.onclick=function(e){e.stopPropagation();if(!confirm('Acknowledge every active queue incident as needing no corrective action? Live conditions stay active until they clear.'))return;hv.active.filter(function(i){return i.kind==='event'}).forEach(function(i){PipelineIncidents.acknowledge(S.incidents,i.id,'TIM',Date.now())});LS.set('incidents',S.incidents);syncStateUp();renderWriterStatus_()};var rf=$('writer-refresh');if(rf)rf.onclick=function(e){e.stopPropagation();loadWriterStatus_(true)};var bc=$('build-check');if(bc)bc.onclick=function(e){e.stopPropagation();checkLatestBuild_(true)};var sx=$('sys-close');if(sx)sx.onclick=function(e){e.stopPropagation();p.hidden=true;b.setAttribute('aria-expanded','false')};
   if(al){if(strip){al.className='on '+(strip.level==='FAULT'?'fault':'degraded');al.innerHTML=stripHtml_(strip,false);bindDismiss_(al);}else{al.className='';al.innerHTML='';}}
 }
 function loadWriterStatus_(manual){
@@ -677,8 +712,9 @@ var syncTimer=null;
 function syncStateDown(){gsGet('state').then(function(j){if(!j.ok||!j.state)return;var st=j.state;var changed=false;
   Object.keys(st.seen||{}).forEach(function(k){if(!S.seen[k]){S.seen[k]=st.seen[k];changed=true}});
   Object.keys(st.rulings||{}).forEach(function(k){var a=S.rulings[k],b=st.rulings[k];if(!a||(b.ts||'')>(a.ts||'')){S.rulings[k]=b;changed=true}});
+  if(st.incidents){var mi=PipelineIncidents.merge(S.incidents,st.incidents);if(mi.changed){S.incidents=mi.store;LS.set('incidents',S.incidents);renderWriterStatus_()}}
   if(changed){LS.set('seen',S.seen);LS.set('rulings',S.rulings);if(S.master)render()}}).catch(function(){})}
-function syncStateUp(){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){gsPost({action:'state',state:{seen:S.seen,rulings:S.rulings,updatedAt:new Date().toISOString()}}).catch(function(){})},1500)}
+function syncStateUp(){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){gsPost({action:'state',state:{seen:S.seen,rulings:S.rulings,incidents:PipelineIncidents.forSync(S.incidents),updatedAt:new Date().toISOString()}}).catch(function(){})},1500)}
 /* ---------- column model ---------- */
 var COLS=[],COLTYPE={};
 function buildColumnModel(){
