@@ -22,6 +22,15 @@ Every signal the Explorer shows is classified before it is drawn, so a historica
 
 A strip is dismissible per instance (`px.dismissed`, keyed by source, code and message, pruned after 24 hours). Dismissing hides the strip only: the header status dot keeps the highest active level and the System drawer keeps the entry, marked dismissed, until the condition clears. The WRITER badge opens the System drawer: master freshness and COUNTS, Writer state (queue, processing, unverified writes, trigger, freeze, migration), live Writer code, frontend build identity, the 24-hour notice history with each FAILED run's error text, and the recent queue results. The separate BUILD badge is folded into it. Colour never carries state alone: each level is also named in text.
 
+## Scoring changes and agent score fields (2026-10-07)
+
+Scores are calculated, not stored. The Explorer derives every rating from the published scoring model, the canonical FLEX policy and the evidence on each row; the master holds no calculated scores (a count of the live master found none). Two controls keep it that way.
+
+- **Review before publish.** A change to the scoring model is reviewed (what changed, how many jobs move, the top 10 before and after, the biggest moves) before it can be published, and published as a verified, numbered revision that can be restored. See SCORING_MODEL.md. This is Explorer-only and needs no Writer deploy.
+- **Agents write evidence, not scores.** The Writer rejects an ENRICH, ruling or upsert that sets `OVERALL_RATING`, `EXPERIENCE_FIT`, `GEO_SCORE`, `NET_COMP_SCORE`, `RATING_CONFIDENCE` or `FLEX_RATING_IMPACT` (`SCORE_OUTPUT_FIELD`, nothing written, every offending field named). Evidence inputs the scorer reads (`TITLE_SCORE`, `ATS_MATCH_SCORE`, `CULTURE_SCORE`, `OWNERSHIP_SCORE`, `LEVEL_FIT`, `SCOPE_FIT_RAW`) and agent-prefixed fields (`CLAUDE_*`, `GROK_*`) stay writable. Intake accepts only a fixed set of fact fields, so a calculated score sent with a new job is ignored and the job still enters. `FLEX_MODIFIER`, `ADJUSTED_FIT` and `PURSUIT_STATUS` are unchanged: the Writer derives them from the canonical FLEX policy and replaces an agent's value. This rule needs the Writer deployed (Tim's deploy); until then the Writer accepts the fields as before.
+
+Suggested wording for the agent instructions and the canonical rules (Tim to adopt; not edited here): "Submit evidence, never calculated scores. Do not write OVERALL_RATING, EXPERIENCE_FIT, GEO_SCORE, NET_COMP_SCORE, RATING_CONFIDENCE or FLEX_RATING_IMPACT to the master; the Explorer calculates them from the published scoring model and the Writer rejects them. Record your own score opinion in the run report or under your own prefix. Batches are limited to 50 requests."
+
 ## Incidents and top-level health (Tim's rule, 2026-10-06)
 
 A FAILURE EVENT is not an INCIDENT. `pipeline-incidents.js` groups events into incidents; the System drawer and the header status show incidents, not raw events. This replaces the per-event notice history above for queue failures and live conditions.

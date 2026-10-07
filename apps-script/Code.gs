@@ -1448,6 +1448,14 @@ var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'D
 /** Keys an ENRICH may never set: bucket/disposition reasons, application/rejection state, and anything Tim-ruled (TIM_*). Those change only through ruling kinds or upsert_application. */
 var ENRICH_DENY = ['DECLINE_REASON_CODE', 'DECLINE_REASON_CODE_PRIOR', 'DECLINE_REASON_TEXT', 'REOPEN_TRIGGER', 'DUP_OF', 'INVALID_REASON', 'RESEARCH_REQUEST', 'POSTING_STATE',
   'APP_DATE', 'APP_STATUS_EVIDENCE', 'APPLICATION_STATUS', 'APPLICATION_RECEIPT_GMAIL_ID', 'REJECTION_DATE', 'REJECTION_EVIDENCE', 'STATE_SEMANTICS', 'ANTI_RESURRECTION', 'UPSERT_KEY'];
+/** Calculated score fields. The Explorer derives these from the published scoring model and the evidence on each row; they are never
+ *  stored in the master, so an agent that writes one would create a second copy that drifts from the model. Agents submit evidence
+ *  instead (FLEX_CLASS or its degree evidence, SCOPE_FIT_RAW, salary evidence, location, TITLE_SCORE / ATS_MATCH_SCORE / CULTURE_SCORE /
+ *  OWNERSHIP_SCORE where they are evidence inputs). FLEX_MODIFIER, ADJUSTED_FIT and PURSUIT_STATUS are not listed: the Writer derives and
+ *  overwrites them from the canonical FLEX policy on every evidence write. An agent's own opinion belongs under its own prefix (CLAUDE_*, GROK_*). */
+var SCORE_OUTPUT_KEYS = ['OVERALL_RATING', 'EXPERIENCE_FIT', 'GEO_SCORE', 'NET_COMP_SCORE', 'RATING_CONFIDENCE', 'FLEX_RATING_IMPACT'];
+function scoreOutputKeys_(keys) { return (keys || []).map(function (k) { return String(k).trim().toUpperCase(); }).filter(function (k) { return SCORE_OUTPUT_KEYS.indexOf(k) >= 0; }); }
+function scoreOutputError_(found) { return 'SCORE_OUTPUT_FIELD: ' + found.join(', ') + ' ' + (found.length === 1 ? 'is a calculated score' : 'are calculated scores') + '. The Explorer derives scores from the published scoring model; submit the evidence fields instead (FLEX_CLASS or degree evidence, SCOPE_FIT_RAW, salary evidence, location, link). An agent-specific opinion may go under its own prefix (CLAUDE_*, GROK_*).'; }
 function isEnrichDenied_(k) { k = String(k).trim().toUpperCase(); return /^TIM_/.test(k) || ENRICH_DENY.indexOf(k) >= 0; }
 var INTAKE_PRESERVE = ['INTAKE_KEY', 'SCOUT_RUN_ID', 'DISCOVERED_AT_ET', 'DISCOVERY_SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'REQ_ID', 'IDENTITY_CONFIDENCE', 'INITIAL_UNKNOWN_FIELDS', 'DATE_ADDED', 'NOTIFICATION_SOURCE'];
 /** Merge {KEY: value} into a parsed payload. Empty values are ignored (nothing is deleted); changed intake keys keep their old value under INTAKE_<KEY>. */
@@ -1457,6 +1465,8 @@ function applyFields_(fields, P, O, set, flexPolicy) {
   if (typeof fields !== 'object' || Array.isArray(fields)) return { ok: false, error: 'fields must be an object {KEY: value}' };
   var keys = Object.keys(fields);
   if (keys.length > 60) return { ok: false, error: 'too many fields (max 60)' };
+  var scoreKeys = scoreOutputKeys_(keys);
+  if (scoreKeys.length) return { ok: false, error: scoreOutputError_(scoreKeys) };
   for (var i = 0; i < keys.length; i++) {
     var k = String(keys[i]).trim().toUpperCase();
     if (!/^[A-Z][A-Z0-9_]{1,60}$/.test(k)) return { ok: false, error: 'bad field name ' + keys[i] };
@@ -2037,7 +2047,7 @@ function saveScoringModel_(input) {
     var readback = JSON.parse(file.getBlob().getDataAsString() || '{}'), rb = validateScoringModel_(readback);
     var verified = rb.ok && JSON.stringify(readback) === JSON.stringify(model);
     var hist = {type:'SCORING_MODEL_PUBLISHED',modelId:SCORING_MODEL_ID,modelVersion:model.modelVersion,publishedRevision:model.publishedRevision,actor:model.publishedBy,ts:now,requestId:String(candidate.requestId || ''),verified:verified,weightTotal:check.weightTotal};
-    appendJsonLine_(findOrCreate_(SCORING_MODEL_HISTORY_NAME, 'text', '\n'), hist); appendEvent_(hist);
+    appendJsonLine_(findOrCreate_(SCORING_MODEL_HISTORY_NAME, 'text', '\n'), Object.assign({}, hist, { previousModel: old })); appendEvent_(hist);
     return {ok:verified,id:file.getId(),fileName:file.getName(),url:file.getUrl(),model:model,history:hist};
   } finally { lock.releaseLock(); }
 }

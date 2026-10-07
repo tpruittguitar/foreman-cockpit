@@ -15,6 +15,7 @@ The weighted rating is an assessment, not an automatic application decision. A h
 - The published model in `PIPELINE_SCORING_MODEL.json` (read through the Writer `scoring` action) is canonical when it exists.
 - A browser-local or agent-local model is a what-if draft only. Do not describe a local draft as Tim's current model.
 - Never write a score into the canonical master unless the requested writer action explicitly permits it. Preserve the evidence fields that support each score.
+- The Writer enforces this: an ENRICH, ruling or upsert that sets `OVERALL_RATING`, `EXPERIENCE_FIT`, `GEO_SCORE`, `NET_COMP_SCORE`, `RATING_CONFIDENCE` or `FLEX_RATING_IMPACT` is rejected with `SCORE_OUTPUT_FIELD` and nothing is written. The Explorer calculates these from the published model, so a stored copy could only drift. Submit the evidence instead: `FLEX_CLASS` or the degree evidence, `SCOPE_FIT_RAW`, salary evidence, location, and the evidence inputs `TITLE_SCORE`, `ATS_MATCH_SCORE`, `CULTURE_SCORE`, `OWNERSHIP_SCORE`. The Writer itself derives `FLEX_MODIFIER`, `ADJUSTED_FIT` and `PURSUIT_STATUS` from the canonical FLEX policy whenever FLEX or fit evidence is written, so a value an agent supplies for them is replaced.
 
 ## Current weights (100 points)
 
@@ -66,7 +67,7 @@ The Pipeline app reports the FLEX effect as the difference between the calculate
 
 ## Agent output minimum
 
-For every evaluated role, return or store:
+For every evaluated role, return in your run report (or, if you need to keep it with the row, store under your own prefix such as `CLAUDE_SCORE_GEO` or `GROK_ADJUSTED_FIT`, never under the canonical score names above):
 
 - overall rating, band, confidence, and model version;
 - experience/content, FLEX, compensation, geography, ATS, title, culture, and ownership scores;
@@ -75,3 +76,13 @@ For every evaluated role, return or store:
 - missing fields and the next research action.
 
 For cover letters, use the same model version and explicitly connect the letter's claims to the role's experience/content evidence. Do not let a cover letter invent salary, location, FLEX, culture, or ownership evidence.
+
+## Changing the model: review, publish, restore
+
+Weights, salary anchors, location points and keywords change only through the Scoring screen, in three steps:
+
+1. **Edit** a local draft. Nothing is shared and the ratings you see do not change.
+2. **Review & publish** shows what you changed in plain words and the effect on the ranked jobs: how many move up and down, the average rating change, band changes, the top 10 before and after, and the largest rank moves. Nothing is saved until you press Publish. Publish is disabled when no setting differs from the published model.
+3. **Publish** validates the weights (total 100), saves the model as the next revision, and reads the saved file back to verify it. Every viewer and every agent that reads the `scoring` action then uses it. No job row is rewritten. The System panel shows the live revision, version, time and author.
+
+To undo, press **Restore revision N**: it loads the previous revision's settings and sends them through the same review, and publishing creates a new revision with the old settings. The Writer also keeps the previous model in the scoring history line for each publish.
