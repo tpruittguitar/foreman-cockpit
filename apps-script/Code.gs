@@ -17,7 +17,7 @@ if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipel
  *
  * DEPLOY: apps-script/README.md.  Pure functions below are unit-tested in tests/*.test.js via CommonJS export.
  */
-var MASTER_ID = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI'; // fixed per Tim's 2026-09-29 ruling (cutover REV2)
+var MASTER_ID = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8'; // plain text as of 2026-10-08; Doc 19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI is the frozen rollback
 var PASSPHRASE = 'CHANGE-ME';                                   // set your own; the page asks for it once
 var STATE_FILE_NAME = 'PIPELINE_EXPLORER_STATE.json';
 var RECEIPTS_DOC_NAME = 'PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS';
@@ -420,21 +420,26 @@ function docAccessSummary_() {
   return { status: status, retries: retries, ops: DOC_ACCESS_.slice() };
 }
 function masterModified_() { return withDocRetry_('MASTER_META', function () { return DriveApp.getFileById(MASTER_ID).getLastUpdated().toISOString(); }); }
-/** Fresh open of the master for a transaction: the handle used for writes plus a snapshot of every paragraph's text. */
+function linesFromMasterText_(text) {
+  text = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (text.slice(-1) === '\n') text = text.slice(0, -1);
+  return text.length ? text.split('\n') : [];
+}
+function readMasterText_(id) {
+  var file = DriveApp.getFileById(id || MASTER_ID);
+  if (String(file.getMimeType()) === 'application/vnd.google-apps.document') return DocumentApp.openById(file.getId()).getBody().getText();
+  return file.getBlob().getDataAsString();
+}
+function saveMasterLines_(lines) { DriveApp.getFileById(MASTER_ID).setContent(lines.join('\n') + '\n'); }
+/** Fresh read of the master for a transaction. Plain text is saved with Drive setContent, not DocumentApp. */
 function openMaster_() {
   return withDocRetry_('MASTER_READ', function () {
-    var doc = DocumentApp.openById(MASTER_ID), body = doc.getBody(), paras = body.getParagraphs(), lines = [];
-    for (var i = 0; i < paras.length; i++) lines.push(paras[i].getText());
-    return { doc: doc, body: body, paras: paras, lines: lines };
+    return { lines: linesFromMasterText_(readMasterText_(MASTER_ID)) };
   });
 }
-/** Independent fresh read of every master paragraph's text (post-write readback or read-only consumers). */
+/** Independent fresh read of every master line (post-write readback or read-only consumers). */
 function readMasterLines_(op) {
-  return withDocRetry_(op || 'MASTER_READBACK', function () {
-    var p = DocumentApp.openById(MASTER_ID).getBody().getParagraphs(), out = [];
-    for (var i = 0; i < p.length; i++) out.push(p[i].getText());
-    return out;
-  });
+  return withDocRetry_(op || 'MASTER_READBACK', function () { return linesFromMasterText_(readMasterText_(MASTER_ID)); });
 }
 
 /* ================= durable write verification ================= */
@@ -586,12 +591,12 @@ function stageVerification_(kind, items, receipts, countsLine, writtenAt) {
   }));
   return writeId;
 }
-/** Applies paragraph edits located in the snapshot (no post-edit scan of every paragraph) and saves. No retry: a failed
- *  or unpersisted commit is caught by independent verification, never by a same-execution re-read. */
+/** Applies line edits located in the snapshot and saves the plain-text master. Drive setContent is synchronous. */
 function applyMasterEdits_(M, snapshot, edits) {
   MASTER_WRITTEN_IN_EXECUTION_ = true;
-  for (var i = 0; i < edits.length; i++) if (snapshot[edits[i].index] !== edits[i].text) M.paras[edits[i].index].setText(edits[i].text);
-  M.doc.saveAndClose();
+  var lines = snapshot.slice();
+  for (var i = 0; i < edits.length; i++) if (lines[edits[i].index] !== edits[i].text) lines[edits[i].index] = edits[i].text;
+  withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(lines); return true; });
 }
 function masterTrailerEdits_(lines, newCounts, newEnd) {
   var out = [];
@@ -913,7 +918,7 @@ function readMasterHydrated_(docParam) {
   if (liveArchiveState_(st)) { archiveId = st.archiveId; companionId = st.companionId; }
   if (docParam && st && st.mode === 'REHEARSAL' && docParam === st.targetDocId) { id = st.targetDocId; archiveId = st.archiveId; companionId = st.companionId; }
   else if (docParam && docParam !== MASTER_ID) return { ok: false, error: 'hydrate doc must be the master or the current rehearsal copy' };
-  var text = withDocRetry_('MASTER_READ', function () { return DocumentApp.openById(id).getBody().getText(); }), file = DriveApp.getFileById(id);
+  var text = withDocRetry_('MASTER_READ', function () { return readMasterText_(id); }), file = DriveApp.getFileById(id);
   if (!archiveId) return { ok: true, hydrated: false, id: id, title: file.getName(), modifiedTime: file.getLastUpdated().toISOString(), fetchedAt: new Date().toISOString(), bytes: text.length, text: text, docAccess: docAccessSummary_() };
   var lines = text.split(/\r?\n/), archive = parseArchive_(DriveApp.getFileById(archiveId).getBlob().getDataAsString()), recs = parseCompanion_(DriveApp.getFileById(companionId).getBlob().getDataAsString());
   var out = hydrateLines_(lines, archive, recs).join('\n');
@@ -1025,9 +1030,8 @@ function restoreArchived_(req) {
     var counts = recomputeCountsLine(all), end = recomputeEndLine(all);
     flushEvidence_(ctx);
     MASTER_WRITTEN_IN_EXECUTION_ = true;
-    M.body.insertParagraph(pos, line); var p1 = M.body.getParagraphs();
-    masterTrailerEdits_(all, counts, end).forEach(function (x) { p1[x.index].setText(x.text); });
-    M.doc.saveAndClose();
+    masterTrailerEdits_(all, counts, end).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
+    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
     var af = DriveApp.getFileById(st.archiveId), cur = af.getBlob().getDataAsString();
     af.setContent(cur.replace(/\n*$/, '\n') + 'RESTORED|' + pid + '|' + rows[0].split(' | ')[0] + '|' + at + '|' + rid + '\n');
     var receipt = { RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: rid, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', TARGET_CANONICAL_ID: pid, CHANGES: ['RESTORED_FROM_ARCHIVE'], READBACK_VERIFIED: 'PENDING', TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: 'PENDING_VERIFICATION', EXECUTED_AT: at, ACTOR: String(req.actor || 'TIM') };
@@ -1040,7 +1044,7 @@ function restoreArchived_(req) {
 function readMaster_() {
   DOC_ACCESS_ = [];
   var file = DriveApp.getFileById(MASTER_ID);
-  var text = withDocRetry_('MASTER_READ', function () { return DocumentApp.openById(MASTER_ID).getBody().getText(); });
+  var text = withDocRetry_('MASTER_READ', function () { return readMasterText_(MASTER_ID); });
   return { ok: true, docAccess: docAccessSummary_(), id: MASTER_ID, title: file.getName(), modifiedTime: file.getLastUpdated().toISOString(), fetchedAt: new Date().toISOString(), bytes: text.length, text: text };
 }
 
@@ -1165,12 +1169,12 @@ function applyUpsertToMaster_(ev) {
     } else {
       var endIdx = -1; for (var e2 = snapshot.length - 1; e2 >= 0; e2--) if (/^END V2_CURRENT_POPULATION_MASTER/.test(snapshot[e2])) { endIdx = e2; break; }
       var at = endIdx >= 0 ? endIdx : snapshot.length;
-      M.body.insertParagraph(at, plan.newLine); all.splice(at, 0, plan.newLine); expect = plan.newLine;
+      all.splice(at, 0, plan.newLine); expect = plan.newLine;
       item = { pid: plan.primaryId, op: 'INSERT', after: plan.newLine };
     }
-    var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all), p1 = M.body.getParagraphs();
-    edits.concat(masterTrailerEdits_(all, newCounts, newEnd).filter(function (x) { return all[x.index] !== x.text; })).forEach(function (x) { p1[x.index].setText(x.text); });
-    M.doc.saveAndClose();
+    var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
+    masterTrailerEdits_(all, newCounts, newEnd).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
+    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
     base.PRIMARY_ID = plan.primaryId; base.MATCHED_BY = plan.matchedBy || ''; base.UPSERT_KEY = plan.upsertKey; base.READBACK_VERIFIED = 'PENDING'; base.COUNTS_AFTER = newCounts; base.COMPLETION_STATUS = 'PENDING_VERIFICATION';
     var writeId = stageVerification_('UPSERT', [item], [base], newCounts, now);
     base.WRITE_ID = writeId;
@@ -1204,11 +1208,10 @@ function applyIntakeToMaster_(req) {
     var toInsert = plan.insertLines, at = endIdx >= 0 ? endIdx : snapshot.length, all = snapshot.slice();
     flushEvidence_(routing);
     MASTER_WRITTEN_IN_EXECUTION_ = true;
-    for (var n = 0; n < toInsert.length; n++) { M.body.insertParagraph(at + n, toInsert[n]); }
     Array.prototype.splice.apply(all, [at, 0].concat(toInsert));
-    var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all), p1 = M.body.getParagraphs();
-    masterTrailerEdits_(all, newCounts, newEnd).forEach(function (x) { p1[x.index].setText(x.text); });
-    M.doc.saveAndClose();
+    var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
+    masterTrailerEdits_(all, newCounts, newEnd).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
+    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
     // Written, not yet durable: a later execution verifies every inserted row (independent post-execution readback).
     var verified = true;
     var counters = runCounters_(req.run || {}, plan, rules, verified);
