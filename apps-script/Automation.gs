@@ -203,7 +203,50 @@ function finalizeClaim_(f, file, original, entry, result) {
     try { file.setName('HOLD__' + original); entry.terminalStatus = 'HOLD_UNMOVED'; } catch (e2) { entry.renameError = String(e2 && e2.message || e2); }
   }
   try { appendQueueLog_(entry); } catch (e) { entry.logError = String(e && e.message || e); }
+  try { entry.repair = repairFailedIntake_(f, file, original, result); } catch (e) { entry.repairError = String(e && e.message || e); }
   return entry;
+}
+
+/** A failed intake is not discarded. The original stays in failed. One repair copy is queued.
+ *  Stop at REPAIR2__ so a file that still fails is preserved, not looped. Never attach a rejection
+ *  to a possible match: that case becomes an intake for the requested requisition. */
+function repairFailedIntake_(f, file, original, result) {
+  if (terminalStatus_(result) === 'SUCCESS' || /^REPAIR2__/.test(original)) return { queued: false, reason: 'repair cap' };
+  var err = String(result && result.error || '');
+  var parsed = { ok: false };
+  try { parsed = parseQueueContent_(readQueueFile_(file)); } catch (e) {}
+  var body = parsed.ok ? parsed.body : null;
+  var next = null, reason = '';
+  if (/invalid JSON/i.test(err) && body) { next = body; reason = 'reserialized JSON'; }
+  else if (/batch too large/i.test(err) && body && Array.isArray(body.requests)) {
+    var chunks = [], size = 49;
+    for (var i = 0; i < body.requests.length; i += size) chunks.push(body.requests.slice(i, i + size));
+    var names = [];
+    chunks.forEach(function (chunk, n) {
+      var part = { action: body.action || 'batch', requestId: (body.requestId || original) + '-S' + (n + 1), requests: chunk };
+      names.push(queueRepair_(f, original, part, n + 1));
+    });
+    return { queued: names.length > 0, files: names, reason: 'split at 49' };
+  } else if (/Service error: Drive|document is inaccessible|migration state unreadable/i.test(err) && body) {
+    next = body; reason = 'transient Drive retry';
+  } else if (result && result.partial && body && Array.isArray(body.requests) && result.notAttempted) {
+    next = { action: 'batch', requestId: (body.requestId || original) + '-REMAINDER', requests: result.notAttempted.map(function (i) { return body.requests[i]; }).filter(Boolean) };
+    reason = 'unattempted remainder only';
+  } else if (/identity ambiguous/i.test(err) && body) {
+    var ev = body.event || body;
+    if (ev && ev.COMPANY && ev.TITLE && ev.SOURCE_URL && !ev.TARGET_PRIMARY_ID) {
+      next = { action: 'intake', run: { SCOUT_RUN_ID: 'REPAIR-' + (ev.requestId || original) }, records: [{ COMPANY: ev.COMPANY, TITLE: ev.TITLE, LOCATION: ev.LOCATION || '', REQ_ID: ev.REQ_ID || '', SOURCE_URL: ev.SOURCE_URL, DISCOVERY_SOURCE: 'FAILED_UPSERT_REPAIR', SCOUT_NOTES: 'Repair intake. Do not attach to a possible match. Rejection evidence stays on the failed file until this row exists. ' + (ev.EVIDENCE || '') }] };
+      reason = 'distinct requisition intake; rejection not attached';
+    }
+  }
+  if (!next) return { queued: false, reason: 'no safe repair' };
+  return { queued: true, file: queueRepair_(f, original, next, 0), reason: reason };
+}
+function queueRepair_(f, original, body, part) {
+  var stem = original.replace(/\.[A-Za-z]+$/, '');
+  var name = (/^REPAIR1__/.test(original) ? 'REPAIR2__' : 'REPAIR1__') + stem + (part ? '-S' + part : '') + '.json';
+  f.queue.createFile(name, JSON.stringify(body), MimeType.PLAIN_TEXT);
+  return name;
 }
 
 /* ================= writer state monitor (read-only) ================= */
