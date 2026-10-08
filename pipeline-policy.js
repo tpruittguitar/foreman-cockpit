@@ -11,16 +11,52 @@ var PipelinePolicy = (function () {
     return {all:found,initiating:validUrl(p.INITIATING_URL)?p.INITIATING_URL:found[0]||'',preferred:validUrl(p.COMPANY_SOURCE_URL)?p.COMPANY_SOURCE_URL:validUrl(p.SOURCE_URL)?p.SOURCE_URL:found[0]||'',companyConfirmed:validUrl(p.COMPANY_SOURCE_URL)&&/^(VERIFIED|HIGH)$/i.test(p.COMPANY_SOURCE_URL_CONF||'')};
   }
   var FLEX_POLICY_DEFAULTS={HIGH_FLEX_MODIFIER:15,SOFT_FLEX_MODIFIER:6,NO_FLEX_MODIFIER:-10,STRICT_MODIFIER:-10,NOT_STATED_CLASS:'HIGH_FLEX',EQUIVALENCY_CLASS:'SOFT_FLEX',HARD_DEGREE_CLASS:'NO_FLEX',SINGLE_PATH_CLASS:'STRICT',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'NO'};
+  var V4='RULES_V4_20261007';
+  function isV4(c){return !!c&&c.FLEX_POLICY_VERSION===V4;}
   function normalizeFlexPolicy(c){
     c=c||{};var out={},classes={HIGH_FLEX:1,SOFT_FLEX:1,NO_FLEX:1,STRICT:1,UNKNOWN:1};
     Object.keys(FLEX_POLICY_DEFAULTS).forEach(function(k){out[k]=c[k]!==undefined?c[k]:FLEX_POLICY_DEFAULTS[k]});
     ['HIGH_FLEX_MODIFIER','SOFT_FLEX_MODIFIER','NO_FLEX_MODIFIER','STRICT_MODIFIER'].forEach(function(k){var n=Number(out[k]);out[k]=isFinite(n)&&n>=-100&&n<=100?n:FLEX_POLICY_DEFAULTS[k]});
     ['NOT_STATED_CLASS','EQUIVALENCY_CLASS','HARD_DEGREE_CLASS','SINGLE_PATH_CLASS'].forEach(function(k){var v=String(out[k]||'').toUpperCase();out[k]=classes[v]?v:FLEX_POLICY_DEFAULTS[k]});
     var fresh=String(out.FRESH_DEGREE_OVERRIDES_STALE_CLASS||'').toUpperCase();out.FRESH_DEGREE_OVERRIDES_STALE_CLASS=/^(YES|NO)$/.test(fresh)?fresh:FLEX_POLICY_DEFAULTS.FRESH_DEGREE_OVERRIDES_STALE_CLASS;
+    if(isV4(c)){
+      out.FLEX_POLICY_VERSION=V4;
+      out.HIGH_FLEX_MODIFIER=15;out.SOFT_FLEX_MODIFIER=6;out.NO_FLEX_MODIFIER=-10;out.STRICT_MODIFIER=0;
+      out.NOT_STATED_CLASS='HIGH_FLEX';out.EQUIVALENCY_CLASS='HIGH_FLEX';out.HARD_DEGREE_CLASS='NO_FLEX';out.SINGLE_PATH_CLASS='STRICT';out.FRESH_DEGREE_OVERRIDES_STALE_CLASS='YES';
+    }
     return out;
+  }
+  // DEGREE_TEXT contains the requirement block, not an analyst's interpretation.
+  function flexV4(p,policy){
+    var text=String(p.DEGREE_TEXT||p.DEGREE_REQ||p.DEGREE||'').trim(),cls='UNKNOWN';
+    var unavailable=!text||/^(UNKNOWN|UNVERIFIED|FETCH_BLOCKED|NOT_RESEARCHED|TBD)$/i.test(text)||/requirements? (?:unavailable|not (?:reviewed|verified|retrieved))|fetch blocked/i.test(text);
+    var degree=/\b(degree|bachelor\w*|master\w*|doctorate|ph\.?d)\b/i.test(text);
+    var equiv=/\bequivalent\s+(?:(?:work|professional|practical|relevant)\s+)?experience\b|\bequivalent\s+combination\s+of\s+education\s+and\s+experience\b|\bexperience\s+in\s+lieu\s+of\b/i.test(text);
+    var negated=/\b(?:no|not|without)\s+(?:\w+\s+){0,3}equivalent\s+(?:work\s+)?experience\b|equivalent\s+(?:work\s+)?experience\s+(?:is\s+)?not\s+(?:accepted|allowed|considered)/i.test(text);
+    var required=/\brequired\b|\bmust have\b|\bminimum\b/i.test(text);
+    var alternate=/\balternatively\b|\bor\s+(?:(?:an?|at least|minimum of)\s+)?(?:\d+\+?\s*years?\b|(?:extensive|relevant|additional|professional)\s+experience\b|(?:certification|diploma|bachelor\w*|master\w*|associate\w*|doctorate)\b)/i.test(text);
+    if(!unavailable){
+      if(equiv&&!negated)cls='HIGH_FLEX';
+      else if(/^(?:degree\s*:\s*)?(?:not[_ ]stated|not mentioned|no degree mentioned)$/i.test(text)||!degree)cls='HIGH_FLEX';
+      else if(alternate&&!negated)cls='SOFT_FLEX';
+      else if(required)cls=/\b(?:single|only)\s+(?:degree\s+)?path\b|\bno\s+(?:alternatives|substitutions)\b/i.test(text)||/^YES$/i.test(p.DEGREE_SINGLE_PATH_CONFIRMED||'')?'STRICT':'NO_FLEX';
+    }
+    var override=/^YES$/i.test(p.TIM_FLEX_OVERRIDE||''),mods={HIGH_FLEX:15,SOFT_FLEX:6,NO_FLEX:-10,STRICT:0,UNKNOWN:0};
+    var priorStrict=/^(STRICT|STRICT_NO)$/i.test(p.FLEX_CLASS||p.FLEX||p.FLEX_HINT||'');
+    if(cls==='UNKNOWN'&&priorStrict)cls='STRICT'; // Preserve the recorded hold until conclusive replacement evidence arrives.
+    return {class:cls,modifier:mods[cls],known:cls!=='UNKNOWN',blocked:cls==='STRICT'&&!override,override:override,policy:policy};
+  }
+  // Evidence fields must describe the seat's actual accountabilities. A title alone never proves ownership.
+  function ownership(p){
+    p=p||{};var form=String(p.OWNERSHIP_FORM||'').toUpperCase(),basis=String(p.OWNERSHIP_BASIS||''),scope=String(p.OWNERSHIP_SCOPE||'').trim();
+    if(form==='NOT_OWNERSHIP'||/^NO$/i.test(p.OWNERSHIP_UNSHARED||''))return {form:'NOT_OWNERSHIP',known:true,score:0,basis:basis||'Shared or supporting responsibility',version:'OWNERSHIP_20261007'};
+    var proven=['OWNERSHIP_UNSHARED','OWNERSHIP_PLAN','OWNERSHIP_EXECUTION','OWNERSHIP_RESULTS'].every(function(k){return /^YES$/i.test(p[k]||'')});
+    if(proven&&basis&&scope&&/^(SITE|LARGE_PART)$/.test(form))return {form:form,known:true,score:100,basis:basis,scope:scope,version:'OWNERSHIP_20261007'};
+    return {form:'',known:false,score:null,basis:'Ownership evidence incomplete',version:'OWNERSHIP_20261007'};
   }
   function flex(p,cfg) {
     p=p||{};var policy=normalizeFlexPolicy(cfg),cls=String(p.FLEX_CLASS||p.FLEX||p.FLEX_HINT||'UNKNOWN').toUpperCase().replace(/[ -]+/g,'_');
+    if(isV4(policy))return flexV4(p,policy);
     var degree=String(p.DEGREE_TEXT||p.DEGREE_REQ||p.DEGREE||'').trim();
     var aliases={YES:'HIGH_FLEX',HIGH:'HIGH_FLEX',SOFT:'SOFT_FLEX',NO:'NO_FLEX',STRICT_NO:'STRICT',NOT_STATED:policy.NOT_STATED_CLASS};
     cls=aliases[cls]||cls;
@@ -45,8 +81,10 @@ var PipelinePolicy = (function () {
     var pay=String(p.FLOOR_STATUS||'').toUpperCase(),title=String(p.TITLE_RULE_STATUS||p.TITLE_STATUS||'').toUpperCase();
     var fail=/BELOW|FAIL/.test(pay)||/FAIL|BELOW/.test(title),clear=/CLEAR|PASS/.test(pay)&&/CLEAR|PASS/.test(title);
     var decision=f.blocked?'STRICT_HOLD':fail?'PAY_OR_TITLE_HOLD':adjusted==null||!f.known?'NEEDS_EVIDENCE':f.class==='NO_FLEX'&&adjusted<80?'LOW_ADJUSTED_FIT':!clear?'CHECK_PAY_AND_TITLE':'PURSUE_CANDIDATE';
-    return {flex:f,rawFit:raw,adjustedFit:adjusted,decision:decision};
+    var own=isV4(f.policy)?ownership(p):null;
+    if(own&&own.known&&own.form==='NOT_OWNERSHIP'&&!f.blocked)decision='OWNERSHIP_HOLD';
+    return {flex:f,rawFit:raw,adjustedFit:adjusted,decision:decision,ownership:own};
   }
-  return {validUrl:validUrl,links:links,flex:flex,assess:assess,normalizeFlexPolicy:normalizeFlexPolicy,FLEX_POLICY_DEFAULTS:FLEX_POLICY_DEFAULTS};
+  return {validUrl:validUrl,links:links,flex:flex,assess:assess,ownership:ownership,isV4:isV4,V4:V4,normalizeFlexPolicy:normalizeFlexPolicy,FLEX_POLICY_DEFAULTS:FLEX_POLICY_DEFAULTS};
 }());
 if(typeof module==='object'&&module.exports)module.exports=PipelinePolicy;

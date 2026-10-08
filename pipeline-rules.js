@@ -21,6 +21,19 @@
   var FLEX_CLASSES=['HIGH_FLEX','SOFT_FLEX','NO_FLEX','STRICT','UNKNOWN'];
   function signed(n){n=Number(n);return (n>0?'+':'')+String(n)}
   function flexPolicyProse(p){
+    if(p.FLEX_POLICY_VERSION==='RULES_V4_20261007')return [
+      'FLEX_POLICY_PROSE_BEGIN',
+      '- RULES_V4_20261007, Tim lock 2026-10-07 22:06 ET, supersedes RULES_V3. Class from the requirement text only; never invent equivalency.',
+      '- HIGH_FLEX +15: no degree mentioned in the reviewed block, or an equivalent-experience path in that block.',
+      '- SOFT_FLEX +6: degree listed with an alternate path that is not equivalent-experience language.',
+      '- NO_FLEX -10: degree required without equivalency. Related field alone is not equivalency. Still pursue if adjusted fit is high and pay/title rules clear.',
+      '- STRICT: degree required, no equivalency, single path only. Do not apply or mark APPLY NOW unless Tim explicitly overrides. The stored zero modifier is a transport sentinel, not eligibility.',
+      '- HIGH_FLEX triggers: or equivalent experience; equivalent experience accepted; or equivalent combination of education and experience; preferred, or equivalent experience. Never SOFT_FLEX or +20 for this wording.',
+      '- Scope/fit, then FLEX modifier, then pay floor and title rule. Adjusted fit = clamp(raw scope fit + FLEX modifier, 0, 100). Report class, modifier, adjusted score. Do not apply the modifier twice.',
+      '- Blank/unresearched requirements remain UNKNOWN. Intake degree/FLEX inputs: DEGREE_TEXT, FLEX_CLASS, FLEX_BASIS only. Writer owns calculated outputs.',
+      '- Tesla req 285047: Degree preferred, or equivalent experience => HIGH_FLEX +15.',
+      'FLEX_POLICY_PROSE_END'
+    ].join('\n');
     return [
       'FLEX_POLICY_PROSE_BEGIN',
       '- Degree not stated => '+p.NOT_STATED_CLASS+'.',
@@ -47,6 +60,11 @@
       else if(m[1]==='FRESH_DEGREE_OVERRIDES_STALE_CLASS'){var b=String(m[2]||'').toUpperCase();if(/^(YES|NO)$/.test(b))out[m[1]]=b}
       else {var v=String(m[2]||'').toUpperCase();if(FLEX_CLASSES.indexOf(v)>=0)out[m[1]]=v}
     });
+    if(/^FLEX_POLICY_VERSION=RULES_V4_20261007\s*$/m.test(sec[1])){
+      out.FLEX_POLICY_VERSION='RULES_V4_20261007';
+      out.HIGH_FLEX_MODIFIER=15;out.SOFT_FLEX_MODIFIER=6;out.NO_FLEX_MODIFIER=-10;out.STRICT_MODIFIER=0;
+      out.NOT_STATED_CLASS='HIGH_FLEX';out.EQUIVALENCY_CLASS='HIGH_FLEX';out.HARD_DEGREE_CLASS='NO_FLEX';out.SINGLE_PATH_CLASS='STRICT';out.FRESH_DEGREE_OVERRIDES_STALE_CLASS='YES';
+    }
     return out;
   }
   function declineReasonCodes(text){
@@ -59,8 +77,12 @@
   function setFlexPolicy(text,policy){
     text=String(text||'');var p=flexPolicy(text),src=policy||{};
     Object.keys(FLEX_DEFAULTS).forEach(function(k){if(src[k]!==undefined)p[k]=src[k]});
+    if(p.FLEX_POLICY_VERSION==='RULES_V4_20261007'){
+      var locked=flexPolicy(text);
+      Object.keys(FLEX_DEFAULTS).forEach(function(k){p[k]=locked[k]});
+    }
     var block=[
-      'FLEX_POLICY_VERSION=1',
+      'FLEX_POLICY_VERSION='+(p.FLEX_POLICY_VERSION||'1'),
       'HIGH_FLEX_MODIFIER='+Number(p.HIGH_FLEX_MODIFIER),
       'SOFT_FLEX_MODIFIER='+Number(p.SOFT_FLEX_MODIFIER),
       'NO_FLEX_MODIFIER='+Number(p.NO_FLEX_MODIFIER),

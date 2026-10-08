@@ -1,4 +1,4 @@
-if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipeline-policy');
+if(typeof module==='object'&&module.exports){var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');}
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -1191,7 +1191,7 @@ function applyIntakeToMaster_(req) {
     if (fence) { fence.results = []; fence.docAccess = docAccessSummary_(); return fence; }
     var rules = readRules_();
     // Dedupe (and next INV numbering) against live rows AND archived terminal history, so a declined/closed/rejected job is not re-admitted.
-    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_() });
+    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_(), flexPolicy: readFlexPolicy_() });
     if (!plan.ok) return { ok: false, error: plan.error, results: plan.results || [] };
     var routing = evidenceRouting_(), routedAt = new Date().toISOString(), routedMap = {};
     plan.newLines = plan.newLines.map(function (l) { var r = externalizeEvidence_(routing, '', l, 'INTAKE:' + ((req.run && req.run.SCOUT_RUN_ID) || ''), routedAt); routedMap[l] = r; return r; });
@@ -1432,7 +1432,9 @@ function mutateRow(line, ruling, flexPolicy) {
   } else return { ok: false, error: 'unknown ruling kind ' + kind + ' ' + val };
   var fr = applyFields_(ruling.fields, P, O, set, flexPolicy);
   if (!fr.ok) return fr;
+  if(kind==='APPLY_NOW'&&val==='YES'&&PipelinePolicy.flex(P,flexPolicy).blocked){if(String(ruling.actor||'').toUpperCase()!=='TIM')return {ok:false,error:'STRICT requires explicit Tim override'};set('TIM_FLEX_OVERRIDE','YES');}
   changes = changes.concat(fr.changed);
+  if(ruling.fields&&Object.keys(ruling.fields).length&&PipelinePolicy.isV4(flexPolicy)){var scored=deriveWriterScores_(fixed,P,set,flexPolicy);if(!scored.ok)return scored;}
   var actor = String(ruling.actor || '').toUpperCase().replace(/[^A-Z0-9_]/g, '');
   var source = (actor || 'TIM_EXPLORER') + ':' + (ruling.requestId || 'no-id');
   // ENRICH is data-only: keep the row's state provenance exactly as it was (absent stays absent) and record the enrichment separately.
@@ -1443,19 +1445,35 @@ function mutateRow(line, ruling, flexPolicy) {
   var after = fixed.join(' | ') + ' | ' + buildPayload(pp.lead, P, O);
   return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7] };
 }
+/** Writer-owned calculation, shared byte-for-byte with the viewer. Called only for a requested row write, never by policy saves. */
+function deriveWriterScores_(fixed, P, set, policy) {
+  if(!policy._SCORING_MODEL)return {ok:false,error:'SCORING_MODEL_UNAVAILABLE: '+(policy._SCORING_ERROR||'read the published model before scoring')};
+  var input={};Object.keys(P).forEach(function(k){if(SCORE_OUTPUT_KEYS.indexOf(k)<0&&['FLEX_MODIFIER','ADJUSTED_FIT','PURSUIT_STATUS'].indexOf(k)<0)input[k]=P[k];});
+  var config=Object.assign({},policy._SCORING_MODEL,{flexPolicy:policy});
+  var score=PipelineScoring.scoreRow({COMPANY:fixed[2],TITLE:fixed[3],LOCATION:fixed[8],payload:input},config);
+  function value(k,v){set(k,v==null?'UNKNOWN':String(v));}
+  value('OVERALL',score.overall);value('OVERALL_RATING',score.overall);
+  value('EXPERIENCE_FIT',score.parts.experience.rawScore);
+  value('GEO',score.parts.geo.known?score.parts.geo.score:null);value('GEO_SCORE',score.parts.geo.known?score.parts.geo.score:null);
+  value('NET_COMP',score.parts.compensation.known?score.parts.compensation.score:null);value('NET_COMP_SCORE',score.parts.compensation.known?score.parts.compensation.score:null);
+  value('RATING_CONFIDENCE',score.confidence);value('FLEX_RATING_IMPACT',score.flexInfluence);
+  value('FLEX_CLASS',score.assessment.flex.class);value('FLEX_MODIFIER',score.assessment.flex.modifier);
+  value('ADJUSTED_FIT',score.assessment.adjustedFit);value('PURSUIT_STATUS',score.assessment.decision);
+  value('SCORING_MODEL_REF',score.modelId+' '+score.modelVersion+' rev'+(config.publishedRevision||0));
+  value('RULES_POLICY_VERSION',PipelinePolicy.V4);value('OWNERSHIP_POLICY_VERSION','OWNERSHIP_20261007');
+  return {ok:true};
+}
 /** Payload keys a write may never set directly (writer-owned) and intake keys whose prior value is kept as INTAKE_<KEY> when changed. */
 var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT', 'IDENTITY_SOURCE', 'IDENTITY_UPDATED_AT'];
 /** Keys an ENRICH may never set: bucket/disposition reasons, application/rejection state, and anything Tim-ruled (TIM_*). Those change only through ruling kinds or upsert_application. */
 var ENRICH_DENY = ['DECLINE_REASON_CODE', 'DECLINE_REASON_CODE_PRIOR', 'DECLINE_REASON_TEXT', 'REOPEN_TRIGGER', 'DUP_OF', 'INVALID_REASON', 'RESEARCH_REQUEST', 'POSTING_STATE',
   'APP_DATE', 'APP_STATUS_EVIDENCE', 'APPLICATION_STATUS', 'APPLICATION_RECEIPT_GMAIL_ID', 'REJECTION_DATE', 'REJECTION_EVIDENCE', 'STATE_SEMANTICS', 'ANTI_RESURRECTION', 'UPSERT_KEY'];
-/** Calculated score fields. The Explorer derives these from the published scoring model and the evidence on each row; they are never
- *  stored in the master, so an agent that writes one would create a second copy that drifts from the model. Agents submit evidence
- *  instead (FLEX_CLASS or its degree evidence, SCOPE_FIT_RAW, salary evidence, location, TITLE_SCORE / ATS_MATCH_SCORE / CULTURE_SCORE /
- *  OWNERSHIP_SCORE where they are evidence inputs). FLEX_MODIFIER, ADJUSTED_FIT and PURSUIT_STATUS are not listed: the Writer derives and
- *  overwrites them from the canonical FLEX policy on every evidence write. An agent's own opinion belongs under its own prefix (CLAUDE_*, GROK_*). */
-var SCORE_OUTPUT_KEYS = ['OVERALL_RATING', 'EXPERIENCE_FIT', 'GEO_SCORE', 'NET_COMP_SCORE', 'RATING_CONFIDENCE', 'FLEX_RATING_IMPACT'];
+/** Calculated outputs are Writer-owned. Under V4, evidence writes calculate and store them with
+ * model/policy provenance; legacy policies retain the prior viewer-derived contract. Agents
+ * submit raw fit, requirement text, salary, location and ownership evidence, never outputs. */
+var SCORE_OUTPUT_KEYS = ['OVERALL', 'GEO', 'NET_COMP', 'OVERALL_RATING', 'EXPERIENCE_FIT', 'GEO_SCORE', 'NET_COMP_SCORE', 'RATING_CONFIDENCE', 'FLEX_RATING_IMPACT'];
 function scoreOutputKeys_(keys) { return (keys || []).map(function (k) { return String(k).trim().toUpperCase(); }).filter(function (k) { return SCORE_OUTPUT_KEYS.indexOf(k) >= 0; }); }
-function scoreOutputError_(found) { return 'SCORE_OUTPUT_FIELD: ' + found.join(', ') + ' ' + (found.length === 1 ? 'is a calculated score' : 'are calculated scores') + '. The Explorer derives scores from the published scoring model; submit the evidence fields instead (FLEX_CLASS or degree evidence, SCOPE_FIT_RAW, salary evidence, location, link). An agent-specific opinion may go under its own prefix (CLAUDE_*, GROK_*).'; }
+function scoreOutputError_(found) { return 'SCORE_OUTPUT_FIELD: ' + found.join(', ') + ' ' + (found.length === 1 ? 'is a calculated score' : 'are calculated scores') + '. The Writer and shared scorer derive scores from the published scoring model; submit the evidence fields instead (FLEX_CLASS or degree evidence, SCOPE_FIT_RAW, salary evidence, location, link). An agent-specific opinion may go under its own prefix (CLAUDE_*, GROK_*).'; }
 function isEnrichDenied_(k) { k = String(k).trim().toUpperCase(); return /^TIM_/.test(k) || ENRICH_DENY.indexOf(k) >= 0; }
 var INTAKE_PRESERVE = ['INTAKE_KEY', 'SCOUT_RUN_ID', 'DISCOVERED_AT_ET', 'DISCOVERY_SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'REQ_ID', 'IDENTITY_CONFIDENCE', 'INITIAL_UNKNOWN_FIELDS', 'DATE_ADDED', 'NOTIFICATION_SOURCE'];
 /** Merge {KEY: value} into a parsed payload. Empty values are ignored (nothing is deleted); changed intake keys keep their old value under INTAKE_<KEY>. */
@@ -1466,6 +1484,7 @@ function applyFields_(fields, P, O, set, flexPolicy) {
   var keys = Object.keys(fields);
   if (keys.length > 60) return { ok: false, error: 'too many fields (max 60)' };
   var scoreKeys = scoreOutputKeys_(keys);
+  if(PipelinePolicy.isV4(flexPolicy))scoreKeys=scoreKeys.concat(keys.map(function(k){return String(k).trim().toUpperCase()}).filter(function(k){return ['FLEX_MODIFIER','ADJUSTED_FIT','PURSUIT_STATUS'].indexOf(k)>=0}));
   if (scoreKeys.length) return { ok: false, error: scoreOutputError_(scoreKeys) };
   for (var i = 0; i < keys.length; i++) {
     var k = String(keys[i]).trim().toUpperCase();
@@ -1473,7 +1492,9 @@ function applyFields_(fields, P, O, set, flexPolicy) {
     if (FIELD_DENY.indexOf(k) >= 0) return { ok: false, error: 'field ' + k + ' is writer-owned and cannot be set' };
     if (IDENTITY_FIXED_KEYS.indexOf(k) >= 0 || k === 'POSSIBLE_MATCHES') return { ok: false, error: 'field ' + k + ' cannot be set through fields: identity columns and POSSIBLE_MATCHES change only through kind IDENTITY (fixed columns + evidence + reconciliation), so a payload copy can never contradict the row' };
     var v = fields[keys[i]]; if (v === undefined || v === null) continue;
-    v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v)).slice(0, 1500);
+    v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v));
+    if(k==='DEGREE_TEXT'&&v.length>12000)return {ok:false,error:'DEGREE_TEXT_TOO_LONG: send the complete requirements block within 12000 characters'};
+    v=v.slice(0,k==='DEGREE_TEXT'?12000:1500);
     if (v === '') continue;
     if (['SOURCE_URL','INITIATING_URL','COMPANY_SOURCE_URL'].indexOf(k)>=0 && !/^https?:\/\/[^\s]+$/i.test(v)) return { ok: false, error: 'URL must be a usable http(s) initiating or company source link' };
     if ((k === 'FLEX' || k === 'FLEX_HINT') && !/^(YES|HIGH_FLEX|SOFT|SOFT_FLEX|NO|NO_FLEX|STRICT_NO|STRICT|UNKNOWN)$/i.test(v)) return { ok: false, error: k + ' must be YES, SOFT, NO, STRICT_NO, or UNKNOWN' };
@@ -1563,6 +1584,7 @@ function planUpsertApplication(lines, ev, ctx) {
   set('SOURCE_URL', eventUrl); set('INITIATING_URL',eventUrl); set('REQ_ID', ev.REQ_ID); set('ANTI_RESURRECTION', 'YES');
   if (ev.NOTE) set('NOTE', ev.NOTE);
   var fr = applyFields_(ev.fields, P, O, set, ctx.flexPolicy); if (!fr.ok) return { ok: false, mode: 'INVALID', error: fr.error };
+  if(ev.fields&&PipelinePolicy.isV4(ctx.flexPolicy)){var ds=deriveWriterScores_(['','',company,title,state,'','','',ev.LOCATION||''],P,set,ctx.flexPolicy);if(!ds.ok)return ds;}
   set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', 'EMAIL'); set('STATE_SOURCE', String(ruling.actor).toUpperCase().replace(/[^A-Z0-9_]/g, '') + ':' + ruling.requestId); set('STATE_UPDATED_AT', now);
   var disp = state === 'APPLIED' ? 'RESOLVED/APPLIED_CONFIRMED' : 'RESOLVED/REJECTED_BY_EMPLOYER';
   var tag = (state === 'APPLIED' ? 'APPLIED_' : 'EMPLOYER_REJECTION_') + evDate;
@@ -1773,10 +1795,10 @@ function classifyNeverConsider(rec, R) {
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
 }
 /* ================= pure functions: intake planning ================= */
-var INTAKE_FACT_KEYS = ['PAY_POSTED', 'DEGREE_TEXT', 'FLEX_HINT', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
+var INTAKE_FACT_KEYS = ['PAY_POSTED', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
-  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0, 400); });
+  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });
   var unk = rec.INITIAL_UNKNOWN_FIELDS; out.INITIAL_UNKNOWN_FIELDS = Array.isArray(unk) ? unk.map(clean_).filter(Boolean).join(',') : clean_(unk || '');
   out.SOURCE_URL=PipelinePolicy.links(out).preferred;
   if (out.SOURCE_URL && !/^https?:\/\//i.test(out.SOURCE_URL)) out.SOURCE_URL = '';
@@ -1801,6 +1823,7 @@ function planIntake(lines, records, rulesObj, ctx) {
     var via = records[i] && records[i].SUBMITTED_VIA === 'RUN_PRE_EXCLUSION' ? 'RUN_PRE_EXCLUSION' : 'RECORDS';
     var res = { index: i, SUBMITTED_VIA: via, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '', NEVER_CONSIDER_RULE_ID: '', NEVER_CONSIDER_REVIEW_NEEDED: '' };
     if (!rec || !rec.COMPANY || !rec.TITLE) { res.result = 'WRITE_FAILED'; res.detail = 'INVALID_INPUT: COMPANY and TITLE are required' + (via === 'RUN_PRE_EXCLUSION' ? ' (pre-excluded entry lacks them; resubmit as a record)' : ''); summary.WRITE_FAILED++; results.push(res); continue; }
+    if(records[i]&&String(records[i].DEGREE_TEXT||'').length>12000){res.result='WRITE_FAILED';res.detail='DEGREE_TEXT_TOO_LONG';summary.WRITE_FAILED++;results.push(res);continue;}
     if (!rec.INTAKE_KEY) rec.INTAKE_KEY = 'IK-' + hashHex([runId, normEmployer(rec.COMPANY), normTitle(rec.TITLE), normLocation(rec.LOCATION), reqCore(rec.REQ_ID), canonUrl(rec.SOURCE_URL)].join('|')).slice(0, 16);
     res.INTAKE_KEY = rec.INTAKE_KEY;
     if (batchKeys[rec.INTAKE_KEY]) { res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
@@ -1829,10 +1852,11 @@ function planIntake(lines, records, rulesObj, ctx) {
     set('INTAKE_KEY', rec.INTAKE_KEY); set('SCOUT_RUN_ID', runId || 'UNSPECIFIED'); set('DISCOVERED_AT_ET', rec.DISCOVERED_AT_ET || nowET); set('DISCOVERY_SOURCE', rec.DISCOVERY_SOURCE || 'Scout');
     set('SOURCE_URL', rec.SOURCE_URL); set('INITIATING_URL',rec.INITIATING_URL||rec.SOURCE_URL); set('COMPANY_SOURCE_URL',rec.COMPANY_SOURCE_URL); set('SOURCE_PROVIDER', rec.SOURCE_PROVIDER); set('REQ_ID', rec.REQ_ID); set('IDENTITY_CONFIDENCE', conf);
     set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED'); if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
-    INTAKE_FACT_KEYS.forEach(function (k) { set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
+    INTAKE_FACT_KEYS.forEach(function (k) { if(!PipelinePolicy.isV4(ctx.flexPolicy)||k!=='FLEX_HINT')set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
     if (nc.outcome === 'REVIEW') { set('NEVER_CONSIDER_REVIEW_NEEDED', nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'); set('NEVER_CONSIDER_REASON', nc.reason); }
     set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', rec.SOURCE_PROVIDER || rec.DISCOVERY_SOURCE || 'Scout');
     set('STATE_SOURCE', 'SCOUT_INTAKE:' + (runId || 'UNSPECIFIED')); set('STATE_UPDATED_AT', now);
+    if(PipelinePolicy.isV4(ctx.flexPolicy)){var scored=deriveWriterScores_(['','',rec.COMPANY,rec.TITLE,bucket,'','','',rec.LOCATION||''],P,set,ctx.flexPolicy);if(!scored.ok){res.result='WRITE_FAILED';res.detail=scored.error;summary.WRITE_FAILED++;results.push(res);delete batchKeys[rec.INTAKE_KEY];continue;}}
     var disposition = bucket === 'SCOUT_INTAKE' ? 'INTAKE/AWAITING_ANALYSIS' : 'INTAKE/IDENTITY_UNRESOLVED';
     var line = [String(inv), pid, rec.COMPANY, rec.TITLE, bucket, disposition, tags.join('; '), rec.REQ_ID || 'UNCAPTURED', rec.LOCATION || 'NOT_STATED'].join(' | ') + ' | ' + buildPayload('SCOUT_INTAKE_PENDING (Claude analysis, then Forge verification)', P, O);
     newLines.push(line); idx.push({ inv: inv, id: pid, company: rec.COMPANY, title: rec.TITLE, bucket: bucket, location: rec.LOCATION, reqTokens: reqTokens(rec.REQ_ID), reqCores: reqTokens(rec.REQ_ID).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), urls: urlsIn(rec.SOURCE_URL).concat(urlsIn(rec.COMPANY_SOURCE_URL || ''), urlsIn(rec.INITIATING_URL || '')), ne: normEmployer(rec.COMPANY), nt: normTitle(rec.TITLE), nl: normLocation(rec.LOCATION), intakeKey: rec.INTAKE_KEY });
@@ -1968,9 +1992,10 @@ function readFlexPolicy_() {
     sec[1].split(/\r?\n/).forEach(function (line) {
       var m = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
       if (!m) return;
-      if (defaults[m[1]] !== undefined) { raw[m[1]] = m[2]; structured++; }
+      if (defaults[m[1]] !== undefined || m[1] === 'FLEX_POLICY_VERSION') { raw[m[1]] = m[2]; structured++; }
     });
     var policy = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy(raw) : raw;
+    if(PipelinePolicy.isV4(policy)){var scoring=readScoringModel_();if(scoring.ok&&scoring.exists)policy._SCORING_MODEL=scoring.model;else policy._SCORING_ERROR=scoring.error||'Published scoring model missing';}
     policy._SOURCE = structured ? 'CANONICAL_STRUCTURED' : 'CANONICAL_DEFAULTS';
     policy._WARNING = structured ? '' : 'No structured FLEX policy keys found; production defaults used';
     return policy;
@@ -2117,4 +2142,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

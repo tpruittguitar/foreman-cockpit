@@ -1,7 +1,12 @@
 # Active Pipeline Authority
 
 STATUS=ACTIVE
-LAST_REVIEWED=2026-10-05
+LAST_REVIEWED=2026-10-07
+
+Tim explicitly authorized and published RULES_V4_20261007 and OWNERSHIP_20261007
+at 22:06 ET on October 7. See `TIM_RULES_V4_20261007.md` for the lock and verified
+publication receipt. Equivalent-experience language is HIGH_FLEX +15; SOFT_FLEX
+is +6. The rule save does not authorize population rescoring or identity changes.
 
 This is the repository pointer for every AI, scheduler and human working on Pipeline Explorer. It prevents older prompts and archived artifacts from being mistaken for current rules.
 
