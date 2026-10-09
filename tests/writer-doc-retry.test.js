@@ -35,13 +35,13 @@ test('classification: only transient Docs/Drive service errors are retryable', t
 test('withDocRetry_: recovers after transient failures using 1s/2s backoff and records RECOVERED_BY_RETRY', t => {
   const s = services(t);let n = 0;
   const v = W.withDocRetry_('MASTER_READ', () => { if (n++ < 2) throw new Error(INACCESSIBLE); return 'ok'; });
-  assert.equal(v, 'ok');assert.equal(n, 3);assert.deepEqual(s.sleeps, [1000, 2000]);
+  assert.equal(v, 'ok');assert.equal(n, 3);assert.equal(s.sleeps.length,2);s.sleeps.forEach((v,i)=>assert.ok(v>=[1000,2000][i]&&v<=[1250,2250][i]));
 });
 
 test('withDocRetry_: exhausts after 1 initial + 3 retries (1s, 2s, 4s), then throws the original error with the operation', t => {
   const s = services(t);let n = 0;
   assert.throws(() => W.withDocRetry_('MASTER_READ', () => { n++; throw new Error(INACCESSIBLE); }), e => e.message === INACCESSIBLE + ' [MASTER_READ: retry exhausted after 4 attempts]');
-  assert.equal(n, 4);assert.deepEqual(s.sleeps, [1000, 2000, 4000]);assert.deepEqual(W.DOC_RETRY_DELAYS_MS, [1000, 2000, 4000]);
+  assert.equal(n, 4);assert.equal(s.sleeps.length,3);s.sleeps.forEach((v,i)=>assert.ok(v>=[1000,2000,4000][i]&&v<=[1250,2250,4250][i]));assert.deepEqual(W.DOC_RETRY_DELAYS_MS, [1000, 2000, 4000]);
 });
 
 test('withDocRetry_: a deterministic error is thrown immediately, unchanged, without sleeping', t => {

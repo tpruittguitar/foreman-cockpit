@@ -101,18 +101,18 @@ test('a condition check is counted once per status read, not once per re-render'
 });
 
 test('health: only ACTIVE incidents count; critical beats warning; resolved never degrade',()=>{
-  const s=P.empty();assert.deepEqual(P.health(s),{state:'LIVE',critical:0,warning:0});
+  const s=P.empty();assert.deepEqual(P.health(s),{state:'LIVE',critical:0,warning:0,recurring:[]});
   P.observe(s,{runs:[run('W_20261006.json','FAILED',T(1),'x')]},T(2));assert.equal(P.health(s).state,'LIVE / WARNING');
   P.observe(s,{writer:writer([{component:'writer',code:'TRIGGER_MISSING',severity:'critical',title:'Trigger missing',text:'not installed'}])},T(3));
-  assert.deepEqual(P.health(s),{state:'DEGRADED',critical:1,warning:1});
-  P.observe(s,{writer:writer([])},T(4));assert.deepEqual(P.health(s),{state:'LIVE / WARNING',critical:0,warning:1});
+  assert.deepEqual(P.health(s),{state:'DEGRADED',critical:1,warning:1,recurring:[]});
+  P.observe(s,{writer:writer([])},T(4));assert.deepEqual(P.health(s),{state:'LIVE / WARNING',critical:0,warning:1,recurring:[]});
 });
 
-test('acknowledge closes a queue incident without action; live conditions cannot be acknowledged away',()=>{
+test('acknowledge retains a queue incident until verified recovery; live conditions cannot be acknowledged away',()=>{
   const s=P.empty();P.observe(s,{runs:[run('LOCK_GROKBOT_20261003T081944Z.txt','FAILED',T(8),'no JSON object found in file')],writer:writer([{component:'writer',code:'TRIGGER_MISSING',severity:'critical',title:'Trigger missing',text:'x'}])},T(9));
   const [cond,ev]=active(s);assert.equal(cond.kind,'condition');
   assert.equal(P.acknowledge(s,cond.id,'TIM',T(9,1)),false);assert.equal(P.acknowledge(s,ev.id,'TIM',T(9,1)),true);
-  const v=P.view(s,T(9,2));assert.equal(v.active.length,1);assert.equal(v.recovered[0].status,'ACKNOWLEDGED');assert.match(v.recovered[0].resolution,/Acknowledged by TIM/);
+  const v=P.view(s,T(9,2));assert.equal(v.active.length,2);assert.equal(v.recovered.length,0);assert.equal(v.active[1].status,'ACKNOWLEDGED_UNRESOLVED');assert.match(v.active[1].resolution,/Acknowledged by TIM/);
   assert.equal(P.health(s).state,'DEGRADED');
 });
 
@@ -124,5 +124,5 @@ test('sync: only queue incidents are shared; ids match across devices; resolutio
   const m=P.merge(b,synced);assert(m.changed);const inc=Object.values(m.store.incidents)[0];assert.equal(inc.attempts,2);
   P.observe(m.store,{runs:[r1,r2]},T(4));assert.equal(Object.values(m.store.incidents)[0].attempts,2,'events already counted elsewhere are not re-counted');
   P.acknowledge(a,Object.values(a.incidents).find(i=>i.kind==='event').id,'TIM',T(5));
-  const m2=P.merge(m.store,P.forSync(a));assert.equal(Object.values(m2.store.incidents)[0].status,'ACKNOWLEDGED');
+  const m2=P.merge(m.store,P.forSync(a));assert.equal(Object.values(m2.store.incidents)[0].status,'ACKNOWLEDGED_UNRESOLVED');
 });

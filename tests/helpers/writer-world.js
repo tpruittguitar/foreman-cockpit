@@ -4,7 +4,7 @@ const MASTER = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8';
 const RULES = '1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
 const DOC = 'application/vnd.google-apps.document';
 function world(t, opts = {}) {
-  const prior = {}, files = new Map(), faults = new Map();
+  const prior = {}, files = new Map(), faults = new Map(), opens = {};
   let clock = Date.parse(opts.clock || '2026-10-09T04:00:00Z'), next = 0, saves = 0;
   const iter = list => { let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; };
   function fault(name, operation, after) {
@@ -33,7 +33,7 @@ function world(t, opts = {}) {
     DriveApp: { getFileById: id => { if (!files.has(id)) throw new Error('No synthetic file: ' + id); return files.get(id); }, getRootFolder: () => folder },
     DocumentApp: { openById: id => {
       if (id === MASTER || id === '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI') throw new Error('Forbidden Doc master access');
-      const f = files.get(id); if (!f) throw new Error('No synthetic Doc: ' + id);
+      opens[id] = (opens[id] || 0) + 1; const f = files.get(id); if (!f || (id === RULES && opts.rulesText === null)) throw new Error('No synthetic Doc: ' + id);
       return { getBody: () => ({ getText: () => f.content, appendParagraph: text => { f.content += '\n' + text; } }), saveAndClose() {} };
     } },
     MimeType: { PLAIN_TEXT: 'text/plain' },
@@ -45,7 +45,7 @@ function world(t, opts = {}) {
   if (t) t.after(restore);
   const text = name => files.get(name)?.content || '';
   const run = fn => { W.resetExecution_(); return fn(); };
-  return { files, run, exec: run, post: body => run(() => W.dispatchWrite_(body)), restore,
+  return { files, opens, run, exec: run, post: body => run(() => W.dispatchWrite_(body)), restore,
     advance: ms => { clock += ms; }, row: id => text(MASTER).split('\n').find(l => l.split(' | ')[1] === id),
     master: () => text(MASTER).trimEnd().split('\n'), masterSaves: () => saves, saves: () => saves,
     receipts: () => text('PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS'), events: () => text('PIPELINE_EVENT_LOG.jsonl'), text,

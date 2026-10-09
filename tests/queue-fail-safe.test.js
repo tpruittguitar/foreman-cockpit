@@ -182,11 +182,11 @@ test('worker: a WRITE_FENCE result releases the claim and leaves the request que
 });
 
 test('worker: no new file is claimed after the claim cutoff; the deadline is set and always cleared', t => {
-  const realNow = Date.now; let t = realNow(), dispatched = 0;
-  const h = queueHarness({ dispatch: () => { dispatched++; t += A.QUEUE_CLAIM_CUTOFF_MS + 1000; return { ok: true }; } });
+  const realNow = Date.now; let clock = realNow(), dispatched = 0;
+  const h = queueHarness({ dispatch: () => { dispatched++; clock += A.QUEUE_CLAIM_CUTOFF_MS + 1000; return { ok: true }; } });
   h.addFile('ONE.json', { action: 'intake', records: [] }, 120000);
   h.addFile('TWO.json', { action: 'intake', records: [] }, 60000);
-  Date.now = () => t;
+  Date.now = () => clock;
   try { A.processWriterQueue(); } finally { Date.now = realNow; }
   assert.equal(dispatched, 1, 'the second file waits for the next tick');
   assert.equal(h.queue.files.length, 1);

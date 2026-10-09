@@ -273,7 +273,7 @@ test('Single ruling result and receipt carry provenance; fallback warning reache
   r=freshExec(degree(1,'SF-'));
   assert.equal(r.ok,true,r.error);assert.equal(r.flexPolicySource,'DEFAULT_FALLBACK');assert.equal(s.opens[RULES],1);
   assert.match(s.receipts(),/FLEX_POLICY_SOURCE=DEFAULT_FALLBACK/);
-  assert.match(s.receipts(),/FLEX_POLICY_WARNING=Canonical FLEX policy read failed: simulated canonical rules outage/);
+  assert.match(s.receipts(),/FLEX_POLICY_WARNING=Canonical FLEX policy read failed: No synthetic Doc: 1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE/);
   assert.equal(pl(s.row('V2F-ROW00000001')).FLEX_MODIFIER,'-10');
 });
 
