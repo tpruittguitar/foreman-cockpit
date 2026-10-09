@@ -9,7 +9,7 @@ const flatRuling = (rid, pid) => ({ action: 'ruling', request_id: rid, actor: 'F
 const nested = (rid, pid) => ({ action: 'ruling', ruling: { primaryId: pid, kind: 'ENRICH', actor: 'CLAUDE', requestId: rid, fields: { CLAUDE_NOTE: 'note for ' + rid } } });
 
 // ---------- shape checks (no Apps Script services exist in this process: touching one would throw) ----------
-test('a batch of flat rulings is rejected at once, before the master is opened, naming every malformed index', () => {
+test('a batch of flat rulings is rejected at once, before the master is opened, naming every malformed index', t => {
   delete global.LockService; delete global.DocumentApp; delete global.DriveApp;
   const r = W.dispatchWrite_({ action: 'batch', requests: [flatRuling('IDRES-P2-1', 'V2I-F01B90E8767D'), flatRuling('IDRES-P2-2', 'V2I-EC39AAAA36F0')] });
   assert.equal(r.ok, false);
@@ -20,7 +20,7 @@ test('a batch of flat rulings is rejected at once, before the master is opened, 
   assert.match(r.results[0].error, /found at top level: primary_id, request_id, kind, fields, actor/);
 });
 
-test('one malformed request rejects the whole batch; valid siblings are not applied', () => {
+test('one malformed request rejects the whole batch; valid siblings are not applied', t => {
   const r = W.dispatchWrite_({ action: 'batch', requests: [nested('R-1', 'V2F-AAAA00000001'), { action: 'ruling', ruling: { primary_id: 'V2F-X' } }, { action: 'nope' }] });
   assert.equal(r.mode, 'REJECTED_SCHEMA');
   assert.deepEqual(r.results.map(x => x.index), [1, 2]);
@@ -28,43 +28,27 @@ test('one malformed request rejects the whole batch; valid siblings are not appl
   assert.match(r.results[1].error, /unsupported action in batch: nope/);
 });
 
-test('a single flat ruling is rejected without opening the master or writing a receipt', () => {
+test('a single flat ruling is rejected without opening the master or writing a receipt', t => {
   const r = W.dispatchWrite_(flatRuling('IDRES-P3-1', 'V2I-E52292921A30'));
   assert.equal(r.mode, 'REJECTED_SCHEMA');
   assert.equal(r.receipt, undefined);
 });
 
-test('requestShapeError_ accepts the documented nested ruling and ignores other actions', () => {
+test('requestShapeError_ accepts the documented nested ruling and ignores other actions', t => {
   assert.equal(W.requestShapeError_(nested('R-1', 'V2F-AAAA00000001')), '');
   assert.equal(W.requestShapeError_({ action: 'intake', records: [] }), '');
 });
 
 // ---------- mixed batches with in-memory services ----------
-const MASTER = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI';
 function rowLine(inv, id) { return inv + ' | ' + id + ' | Acme Corp | Director of Quality | SCOUT_INTAKE | ANALYSIS_PENDING | - | REQ-' + inv + ' | Austin, TX | NOTIFICATION_SOURCE=LinkedIn; SOURCE_URL=https://example.com/' + inv; }
-function fakeServices() {
-  const para = t => { let s = t; return { getText: () => s, setText: v => { s = v; } }; };
-  const master = ['COUNTS: TOTAL=2 SCOUT_INTAKE=2 UNACCOUNTED=0', rowLine(1, 'V2F-AAAA00000001'), rowLine(2, 'V2F-BBBB00000002'), 'END V2_CURRENT_POPULATION_MASTER (2 rows)'].map(para);
-  const receiptParas = [para('')];
-  let saves = 0, events = '';
-  const masterDoc = { getBody: () => ({ getParagraphs: () => master }), saveAndClose: () => { saves++; } };
-  const receiptDoc = { getBody: () => ({ getText: () => receiptParas.map(p => p.getText()).join('\n'), appendParagraph: t => receiptParas.push(para(t)) }), saveAndClose: () => {} };
-  const files = {
-    PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS: { getId: () => 'RECEIPTS', getMimeType: () => 'application/vnd.google-apps.document' },
-    'PIPELINE_EVENT_LOG.jsonl': { getId: () => 'EVENTS', getBlob: () => ({ getDataAsString: () => events }), setContent: v => { events = v; } }
-  };
-  const iter = list => { let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; };
-  const folder = { getFilesByName: n => iter(files[n] ? [files[n]] : []), createFile: (n, c) => { let v = c; return files[n] = { getId: () => n, getMimeType: () => 'text/plain', getBlob: () => ({ getDataAsString: () => v }), setContent: x => { v = x; } }; } };
-  global.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
-  global.DriveApp = { getFileById: id => ({ getLastUpdated: () => new Date('2026-10-04T20:00:00Z'), getParents: () => iter([folder]), getId: () => id }) };
-  global.DocumentApp = { openById: id => id === MASTER ? masterDoc : receiptDoc };
-  global.MimeType = { PLAIN_TEXT: 'text/plain' };
-  return { row: id => master.map(p => p.getText()).find(l => l.split(' | ')[1] === id), saves: () => saves };
+function fakeServices(t) {
+  return require('./helpers/writer-world').world(t, { rows: [rowLine(1,'V2F-AAAA00000001'),rowLine(2,'V2F-BBBB00000002')] });
 }
+
 const mixed = () => ({ action: 'batch', requests: [nested('MIX-1', 'V2F-AAAA00000001'), nested('MIX-2', 'V2F-BBBB00000002'), { action: 'unfreeze_writer', reason: 'x' }] });
 
-test('mixed batch: the second master write is fenced, so the batch ends PARTIAL with the untouched remainder', () => {
-  const f = fakeServices(); W.resetExecution_(); W.setWriteDeadline_(0);
+test('mixed batch: the second master write is fenced, so the batch ends PARTIAL with the untouched remainder', t => {
+  const f = fakeServices(t); W.resetExecution_(); W.setWriteDeadline_(0);
   const r = W.dispatchWrite_(mixed());
   assert.equal(r.mode, 'SERIAL_MIXED_BATCH');
   assert.equal(r.ok, false);
@@ -80,15 +64,15 @@ test('mixed batch: the second master write is fenced, so the batch ends PARTIAL 
   assert.equal(A.terminalStatus_(r), 'PARTIAL_HOLD');
 });
 
-test('mixed batch fenced on its first request returns the fence itself, so the worker leaves it queued', () => {
-  fakeServices(); W.resetExecution_(); W.setWriteDeadline_(0);
+test('mixed batch fenced on its first request returns the fence itself, so the worker leaves it queued', t => {
+  fakeServices(t); W.resetExecution_(); W.setWriteDeadline_(0);
   W.dispatchWrite_(nested('PRIOR', 'V2F-AAAA00000001'));          // this execution has already written the master
   const r = W.dispatchWrite_(mixed());
   assert.equal(r.mode, 'WRITE_FENCE');
 });
 
-test('mixed batch: no request starts after the deadline; a deadline before the first keeps it queued', () => {
-  const f = fakeServices(); W.resetExecution_();
+test('mixed batch: no request starts after the deadline; a deadline before the first keeps it queued', t => {
+  const f = fakeServices(t); W.resetExecution_();
   W.setWriteDeadline_(Date.now() - 1);
   const r = W.dispatchWrite_(mixed());
   W.setWriteDeadline_(0);
@@ -131,7 +115,7 @@ function queueHarness(opts) {
   return { queue, processed, failed, addFile, log, created, deadlines };
 }
 
-test('worker: a stale PROCESSING__ claim is finalized as HOLD_ABANDONED with request-ID states, never re-dispatched', () => {
+test('worker: a stale PROCESSING__ claim is finalized as HOLD_ABANDONED with request-ID states, never re-dispatched', t => {
   let dispatched = 0;
   const h = queueHarness({ dispatch: () => { dispatched++; return { ok: true }; } });
   const body = { action: 'batch', requests: [nested('IDRES-P3-A', 'V2I-1'), nested('IDRES-P3-B', 'V2I-2')] };
@@ -150,7 +134,7 @@ test('worker: a stale PROCESSING__ claim is finalized as HOLD_ABANDONED with req
   assert.equal(h.log[0].terminalStatus, 'HOLD_ABANDONED');
 });
 
-test('worker: a fresh PROCESSING__ claim (another execution is still running it) is left alone', () => {
+test('worker: a fresh PROCESSING__ claim (another execution is still running it) is left alone', t => {
   let dispatched = 0;
   const h = queueHarness({ dispatch: () => { dispatched++; return { ok: true }; } });
   h.addFile('PROCESSING__LIVE.json', { action: 'intake', records: [] }, 5 * 60000, 2 * 60000);
@@ -158,7 +142,7 @@ test('worker: a fresh PROCESSING__ claim (another execution is still running it)
   assert.equal(out.processed, 0); assert.equal(dispatched, 0); assert.equal(h.created.length, 0);
 });
 
-test('worker: an exception thrown by the writer still produces a FAILED RESULT and moves the request', () => {
+test('worker: an exception thrown by the writer still produces a FAILED RESULT and moves the request', t => {
   const h = queueHarness({ dispatch: () => { throw new Error('Exceeded maximum execution time'); } });
   h.addFile('IDENT_X.json', { action: 'intake', records: [] }, 60000);
   A.processWriterQueue();
@@ -168,7 +152,7 @@ test('worker: an exception thrown by the writer still produces a FAILED RESULT a
   assert.equal(h.queue.files.length, 0);
 });
 
-test('worker: a partial batch is finalized as PARTIAL_HOLD with the remainder in the RESULT', () => {
+test('worker: a partial batch is finalized as PARTIAL_HOLD with the remainder in the RESULT', t => {
   const h = queueHarness({ dispatch: () => ({ ok: false, mode: 'SERIAL_MIXED_BATCH', partial: true, attempted: 1, notAttempted: [1], stoppedBy: 'WRITE_FENCE', remainder: { action: 'batch', requests: [{}] }, results: [{ ok: true }] }) });
   h.addFile('MIX.json', { action: 'batch', requests: [] }, 60000);
   A.processWriterQueue();
@@ -177,7 +161,7 @@ test('worker: a partial batch is finalized as PARTIAL_HOLD with the remainder in
   assert.deepEqual(h.log[0].notAttempted, [1]);
 });
 
-test('worker: when the move fails the request is renamed HOLD__ and is never claimed again', () => {
+test('worker: when the move fails the request is renamed HOLD__ and is never claimed again', t => {
   let dispatched = 0;
   const h = queueHarness({ moveThrows: true, dispatch: () => { dispatched++; return { ok: true }; } });
   h.addFile('M.json', { action: 'intake', records: [] }, 60000);
@@ -188,7 +172,7 @@ test('worker: when the move fails the request is renamed HOLD__ and is never cla
   assert.equal(dispatched, 1, 'HOLD__ file is not picked up again');
 });
 
-test('worker: a WRITE_FENCE result releases the claim and leaves the request queued (no RESULT)', () => {
+test('worker: a WRITE_FENCE result releases the claim and leaves the request queued (no RESULT)', t => {
   const h = queueHarness({ dispatch: () => ({ ok: false, mode: 'WRITE_FENCE', error: 'Writer frozen' }) });
   h.addFile('F.json', { action: 'intake', records: [] }, 60000);
   const out = A.processWriterQueue();
@@ -197,12 +181,12 @@ test('worker: a WRITE_FENCE result releases the claim and leaves the request que
   assert.equal(h.created.length, 0);
 });
 
-test('worker: no new file is claimed after the claim cutoff; the deadline is set and always cleared', () => {
-  const realNow = Date.now; let t = realNow(), dispatched = 0;
-  const h = queueHarness({ dispatch: () => { dispatched++; t += A.QUEUE_CLAIM_CUTOFF_MS + 1000; return { ok: true }; } });
+test('worker: no new file is claimed after the claim cutoff; the deadline is set and always cleared', t => {
+  const realNow = Date.now; let clock = realNow(), dispatched = 0;
+  const h = queueHarness({ dispatch: () => { dispatched++; clock += A.QUEUE_CLAIM_CUTOFF_MS + 1000; return { ok: true }; } });
   h.addFile('ONE.json', { action: 'intake', records: [] }, 120000);
   h.addFile('TWO.json', { action: 'intake', records: [] }, 60000);
-  Date.now = () => t;
+  Date.now = () => clock;
   try { A.processWriterQueue(); } finally { Date.now = realNow; }
   assert.equal(dispatched, 1, 'the second file waits for the next tick');
   assert.equal(h.queue.files.length, 1);
@@ -211,13 +195,13 @@ test('worker: no new file is claimed after the claim cutoff; the deadline is set
   assert.ok(h.deadlines[0] > 0); assert.equal(h.deadlines[1], 0);
 });
 
-test('requestIdsOf_ finds nested and snake_case IDs once each', () => {
+test('requestIdsOf_ finds nested and snake_case IDs once each', t => {
   assert.deepEqual(A.requestIdsOf_({ requests: [nested('A', 'P'), flatRuling('B', 'Q'), nested('A', 'P')] }), ['A', 'B']);
   assert.deepEqual(A.requestIdsOf_(null), []);
 });
 
 // ---------- writer monitor warnings (pure) ----------
-test('monitor: a freeze with no running migration is critical; during a LIVE migration step it is a warning', () => {
+test('monitor: a freeze with no running migration is critical; during a LIVE migration step it is a warning', t => {
   const now = Date.parse('2026-10-05T04:00:00Z'), at = '2026-10-05T03:55:00Z';
   const base = { freeze: { frozen: true, reason: 'r', by: 'CLAUDE', at }, queue: {}, triggerInstalled: true };
   const unexpected = A.writerWarnings_(Object.assign({ migration: { mode: 'LIVE', status: 'CUTOVER_COMPLETE' } }, base), now);
@@ -228,7 +212,7 @@ test('monitor: a freeze with no running migration is critical; during a LIVE mig
   assert.equal(longMigration[0].level, 'critical');
 });
 
-test('monitor: long and abandoned claims, backlog, missing trigger, unverified writes and recent holds', () => {
+test('monitor: long and abandoned claims, backlog, missing trigger, unverified writes and recent holds', t => {
   const now = Date.parse('2026-10-05T04:00:00Z');
   const w = A.writerWarnings_({
     queue: { pending: 2, oldestPendingAt: '2026-10-05T03:40:00Z', hold: ['HOLD__X.json'], processing: [{ file: 'A.json', ageMs: 5 * 60000 }, { file: 'B.json', ageMs: 9 * 60000 }] },
@@ -241,7 +225,7 @@ test('monitor: long and abandoned claims, backlog, missing trigger, unverified w
   assert.deepEqual(by, { CLAIM_RUNNING_LONG: 'warn', CLAIM_ABANDONED: 'critical', QUEUE_HOLD: 'warn', QUEUE_BACKLOG: 'warn', TRIGGER_MISSING: 'critical', WRITE_UNVERIFIED: 'critical', HOLD_ABANDONED: 'warn', STATUS_PART_UNAVAILABLE: 'warn' });
 });
 
-test('monitor: recovered PARTIAL_HOLD stays in history but no longer raises an active warning', () => {
+test('monitor: recovered PARTIAL_HOLD stays in history but no longer raises an active warning', t => {
   const now = Date.parse('2026-10-05T07:00:00Z');
   const w = A.writerWarnings_({
     queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 },
@@ -255,7 +239,7 @@ test('monitor: recovered PARTIAL_HOLD stays in history but no longer raises an a
   assert.match(w[0].message, /LIVE\.json/);
 });
 
-test('monitor: FAILED runs in the last 24 h raise one notice, never a warn, and older ones are ignored', () => {
+test('monitor: FAILED runs in the last 24 h raise one notice, never a warn, and older ones are ignored', t => {
   const now = Date.parse('2026-10-06T07:00:00Z');
   const base = { queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, recentRuns: [], recentHolds: [], errors: [] };
   const w = A.writerWarnings_(Object.assign({}, base, { recentFailed: [
@@ -280,7 +264,7 @@ const R2 = { action: 'batch', requests: [upsert('EATON-R2'), upsert('ORACLE'), d
 // Live receipt index, 2026-10-05: the original EATON request was never written (lock timeout); it was re-sent as EATON-R2.
 const LIVE_STATES = { PWC: { s: 'COMPLETE' }, 'EATON-R2': { s: 'COMPLETE' }, ORACLE: { s: 'COMPLETE' }, BEEHIVE: { s: 'COMPLETE' } };
 
-test('recovery: a partial batch is recovered only when every one of its own request IDs is COMPLETE', () => {
+test('recovery: a partial batch is recovered only when every one of its own request IDs is COMPLETE', t => {
   assert.equal(A.partialHoldRecovered_(R2, LIVE_STATES), true);
   assert.equal(A.partialHoldRecovered_(ORIGINAL, LIVE_STATES), false, 'EATON was completed under a different ID; the original is not proven recovered');
   assert.equal(A.partialHoldRecovered_(ORIGINAL, Object.assign({ EATON: { s: 'COMPLETE' } }, LIVE_STATES)), true);
@@ -307,7 +291,7 @@ function writerStatusWith(logEntries, files) {
 const healthy = s => Object.assign({}, s, { queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, errors: [] });
 const successes = (n, fromMin) => Array.from({ length: n }, (_, i) => ({ file: 'OK_' + i + '.json', fileId: 'OK' + i, ok: true, terminalStatus: 'SUCCESS', finishedAt: ago(fromMin - i) }));
 
-test('monitor: writer_status reads the exact logged file by ID and fails closed when it cannot', () => {
+test('monitor: writer_status reads the exact logged file by ID and fails closed when it cannot', t => {
   // Same file name for the original and a decoy: only the logged fileId decides which body is read.
   const files = { 'ID-R2': queueFile('ID-R2', R2), 'ID-ORIG': queueFile('ID-ORIG', ORIGINAL) };
   const r2At = ago(30);
@@ -330,7 +314,7 @@ test('monitor: writer_status reads the exact logged file by ID and fails closed 
   assert.ok(!w.some(x => x.message.includes(r2At)), 'the recovered R2 hold raises no active warning');
 });
 
-test('monitor: an unresolved PARTIAL_HOLD keeps warning behind more than eight newer runs until its 24 hours expire', () => {
+test('monitor: an unresolved PARTIAL_HOLD keeps warning behind more than eight newer runs until its 24 hours expire', t => {
   const files = { 'ID-ORIG': queueFile('ID-ORIG', ORIGINAL) };
   const holdAt = ago(23 * 60);
   const s = writerStatusWith([{ file: 'GROK.json', fileId: 'ID-ORIG', terminalStatus: 'PARTIAL_HOLD', finishedAt: holdAt }].concat(successes(12, 600)), files);
@@ -346,7 +330,7 @@ test('monitor: an unresolved PARTIAL_HOLD keeps warning behind more than eight n
   assert.deepEqual(A.writerWarnings_(healthy(old), Date.now()), []);
 });
 
-test('monitor: a recovered PARTIAL_HOLD more than eight runs back stays in history without an active warning', () => {
+test('monitor: a recovered PARTIAL_HOLD more than eight runs back stays in history without an active warning', t => {
   const files = { 'ID-R2': queueFile('ID-R2', R2) };
   const s = writerStatusWith([{ file: 'GROK_R2.json', fileId: 'ID-R2', terminalStatus: 'PARTIAL_HOLD', finishedAt: ago(120) }].concat(successes(10, 100)), files);
   assert.equal(s.recentHolds.length, 1);
@@ -354,7 +338,7 @@ test('monitor: a recovered PARTIAL_HOLD more than eight runs back stays in histo
   assert.deepEqual(A.writerWarnings_(healthy(s), Date.now()), []);
 });
 
-test('monitor: HOLD_ABANDONED and HOLD_UNMOVED behind newer runs still warn; recovery applies only to PARTIAL_HOLD', () => {
+test('monitor: HOLD_ABANDONED and HOLD_UNMOVED behind newer runs still warn; recovery applies only to PARTIAL_HOLD', t => {
   const s = writerStatusWith([
     { file: 'A.json', fileId: 'ID-A', terminalStatus: 'HOLD_ABANDONED', finishedAt: ago(300) },
     { file: 'U.json', fileId: 'ID-U', terminalStatus: 'HOLD_UNMOVED', finishedAt: ago(290) }
@@ -362,7 +346,7 @@ test('monitor: HOLD_ABANDONED and HOLD_UNMOVED behind newer runs still warn; rec
   assert.deepEqual(A.writerWarnings_(healthy(s), Date.now()).map(x => x.code).sort(), ['HOLD_ABANDONED', 'HOLD_UNMOVED']);
 });
 
-test('monitor: when the receipt index cannot be read, every recent hold still warns', () => {
+test('monitor: when the receipt index cannot be read, every recent hold still warns', t => {
   const saved = global.readIndex_;
   const files = { 'ID-R2': queueFile('ID-R2', R2) };
   const log = [{ file: 'GROK_R2.json', fileId: 'ID-R2', terminalStatus: 'PARTIAL_HOLD', finishedAt: ago(120) }].concat(successes(9, 100));
@@ -382,6 +366,6 @@ test('monitor: when the receipt index cannot be read, every recent hold still wa
   }
 });
 
-test('monitor: an idle, healthy writer has no warnings', () => {
+test('monitor: an idle, healthy writer has no warnings', t => {
   assert.deepEqual(A.writerWarnings_({ freeze: null, queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, recentRuns: [{ file: 'X', terminalStatus: 'SUCCESS', finishedAt: '2026-10-05T03:59:00Z' }], errors: [] }, Date.parse('2026-10-05T04:00:00Z')), []);
 });

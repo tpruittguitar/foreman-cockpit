@@ -1,4 +1,4 @@
-if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipeline-policy');
+if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');}
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -18,7 +18,7 @@ if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipel
  * DEPLOY: apps-script/README.md.  Pure functions below are unit-tested in tests/*.test.js via CommonJS export.
  */
 var MASTER_ID = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8'; // plain text as of 2026-10-08; Doc 19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI is the frozen rollback
-var PASSPHRASE = 'CHANGE-ME';                                   // set your own; the page asks for it once
+var PASSPHRASE = '5150'; // Owner-approved default; deployment preserves the live Writer passphrase.
 var STATE_FILE_NAME = 'PIPELINE_EXPLORER_STATE.json';
 var RECEIPTS_DOC_NAME = 'PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS';
 var DISCOVERY_REQUESTS_NAME = 'PIPELINE_DATA_DISCOVERY_REQUESTS.jsonl';
@@ -50,13 +50,86 @@ var PROTECTED_APPLICANT = ['APPLIED', 'REJECTED_BY_EMPLOYER'];
  *  the repo copy is the placeholder below. Reported by ping and writer_status so the Explorer can show which PR is live. */
 var WRITER_BUILD = { commit: 'source', pr: null, subject: '', deployedAt: '' };
 
+var OPERATIONS_NAME_='PIPELINE_OPERATIONS.json';
+var SCHEDULER_NAME_='CROSS_AI_SCHEDULER.json';
+function readOperationsStore_(){
+  var f=textFileByName_(OPERATIONS_NAME_);if(!f)return PipelineOperations.empty();
+  var d=JSON.parse(withDocRetry_('OPERATIONS_READ',function(){return f.getBlob().getDataAsString();}));
+  if(!d||d.schema!==1||!d.obligations||!d.runs||!d.catchUps)throw new Error('OPERATIONS_INVALID_FAIL_CLOSED');return d;
+}
+function writeOperationsStore_(d){
+  var f=findOrCreate_(OPERATIONS_NAME_,'text','{}'),raw=JSON.stringify(d);f.setContent(raw);
+  if(f.getBlob().getDataAsString()!==raw)throw new Error('OPERATIONS_READBACK_FAILED_UNSYNCED');
+}
+function operationsRead_(){
+  var d=readOperationsStore_(),idx=readIndex_(),rows=null;
+  Object.keys(d.obligations).forEach(function(id){
+    var o=d.obligations[id],r=idx&&idx.requests[o.requestId];
+    if(o.state==='PENDING_VERIFICATION'&&r&&r.s==='COMPLETE'&&o.primaryId&&o.expectedHash){
+      if(!rows)rows=rowsByPid_(readMasterLines_('OPERATIONS_MASTER_READBACK'));
+      var found=rows[o.primaryId]||[];
+      if(found.length===1&&textHash_(found[0])===o.expectedHash){o.state='VERIFIED_COMPLETE';o.proof={independent:true,at:new Date().toISOString(),evidenceRef:'receipt-index:'+o.requestId,readbackHash:o.expectedHash};}
+      else {o.state='NEEDS_RESOLUTION';o.error='Receipt exists but current row does not equal the intended result; inspect subsequent history';}
+    }
+  });
+  return {ok:true,store:d,summary:PipelineOperations.summary(d),coverage:Object.keys(d.runs).map(function(id){return {id:id,coverage:PipelineOperations.emailCoverage(d.runs[id],d.obligations)};}),observedAt:new Date().toISOString()};
+}
+function operationsWrite_(req){
+  var lock=LockService.getScriptLock();lock.waitLock(30000);
+  try{
+    var d=readOperationsStore_(),at=new Date().toISOString();
+    if(req.baseRevision!==d.revision)return {ok:false,mode:'REVISION_CONFLICT',revision:d.revision};
+    if(req.action==='catch_up'){
+      if(readFreeze_())return {ok:false,mode:'WRITE_FENCE',error:'Writer freeze blocks catch-up admission'};
+      d=PipelineOperations.catchUp(d,String(req.requestId||''),req.scope,at);
+    }else if(req.action==='acknowledge_obligation')d=PipelineOperations.acknowledge(d,String(req.id||''),at);
+    else{
+      // Client claims cannot certify canonical completion. Resolve these from Writer index + exact readback.
+      (req.obligations||[]).forEach(function(o){if(/VERIFIED$|VERIFIED_COMPLETE/.test(o.state))throw new Error('SERVER_VERIFICATION_REQUIRED');});
+      d=PipelineOperations.update(d,req,at);
+    }
+    writeOperationsStore_(d);return {ok:true,store:d,revision:d.revision};
+  }finally{lock.releaseLock();}
+}
+function persistIntakePlan_(plan,req){
+  var d=readOperationsStore_(),at=new Date().toISOString(),rid=req.requestId||(req.run&&req.run.SCOUT_RUN_ID)||'';
+  var obligations=plan.results.map(function(r){
+    var line=plan.newLines.filter(function(l){return l.split(' | ')[1]===r.PRIMARY_ID;})[0];
+    var existing=r.result==='EXISTING_MATCH',excluded=r.result==='NEVER_CONSIDER_EXCLUDED';
+    return {id:r.obligationId,state:line?'PENDING_VERIFICATION':existing?'EXISTING_VERIFIED':excluded?'EXCLUDED_VERIFIED':'NEEDS_RESOLUTION',
+      source:r.source||{},runId:(req.run&&req.run.SCOUT_RUN_ID)||'',requestId:rid,primaryId:r.PRIMARY_ID||'',expectedHash:line?textHash_(line):'',
+      outcome:r.outcome||r.result,error:r.detail||'',candidateIds:r.candidateIds||[],owner:'FORGE',nextAction:r.nextAction||'Read Writer receipt and fresh canonical row',
+      proof:existing||excluded?{independent:true,at:at,evidenceRef:existing?'writer-identity-readback:'+r.PRIMARY_ID:'writer-active-rule:'+r.NEVER_CONSIDER_RULE_ID}:null};
+  });
+  // A replay uses the stored original source and completion proof.
+  obligations=obligations.filter(function(o){return !PipelineOperations.complete(d.obligations[o.id]||{});});
+  d=PipelineOperations.update(d,{baseRevision:d.revision,obligations:obligations},at);writeOperationsStore_(d);
+}
+function schedulerRead_(){
+  var f=textFileByName_(SCHEDULER_NAME_),d=f?JSON.parse(f.getBlob().getDataAsString()):PipelineScheduler.empty();
+  if(!d||d.schema!==1||!Array.isArray(d.tasks))throw new Error('SCHEDULER_INVALID');
+  return {ok:true,manifest:d,nativeControl:'UNSUPPORTED',observedAt:new Date().toISOString()};
+}
+function schedulerWrite_(req){
+  var lock=LockService.getScriptLock();lock.waitLock(30000);
+  try{
+    var d=schedulerRead_().manifest;
+    if(req.action!=='save_schedule_proposal')return {ok:false,mode:'UNSUPPORTED',error:'Native provider scheduler adapter is unavailable'};
+    var next=PipelineScheduler.edit(d,req.task,req.baseRevision,new Date().toISOString()),raw=JSON.stringify(next),f=findOrCreate_(SCHEDULER_NAME_,'text','{}');
+    f.setContent(raw);if(f.getBlob().getDataAsString()!==raw)throw new Error('SCHEDULE_READBACK_FAILED');
+    return {ok:true,manifest:next,status:'PENDING_MANUAL',applied:false};
+  }finally{lock.releaseLock();}
+}
+
 /* ================= HTTP ================= */
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['writer_status','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
+    if (a === 'operations') return out_(operationsRead_());
+    if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
     if (a === 'archive') { var stA = readMigrationState_(); return out_(stA && stA.archiveId ? { ok: true, archiveId: stA.archiveId, mode: stA.mode, text: DriveApp.getFileById(stA.archiveId).getBlob().getDataAsString() } : { ok: true, archiveId: '', text: '' }); }
     if (a === 'evidence') return out_(readEvidence_(p.primaryId || ''));
@@ -73,6 +146,7 @@ function doGet(e) {
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'receipt_index') return out_(receiptIndexSummary_(p.requestId || ''));
     if (a === 'verify_pending') return out_(verifyNow_());
+    if (a === 'automation_alignment') return out_(automationAlignmentRead_());
     if (a === 'canonical_rules') return out_(readCanonicalRules_());
     if (a === 'scoring') return out_(readScoringModel_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
@@ -97,7 +171,11 @@ function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj))
 var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived'];
 function dispatchWrite_(req) {
   req = req || {};
+  if(req.automation){var alignmentError=automationEnvelopeError_(req,automationAlignmentRead_());if(alignmentError)return {ok:false,mode:'PAUSED_CONFLICT',error:alignmentError};}
+  WRITE_CONTEXT_ = req;
   var a = String(req.action || '');
+  if (['record_operations','catch_up','acknowledge_obligation'].indexOf(a)>=0) return operationsWrite_(req);
+  if (a === 'save_schedule_proposal') return schedulerWrite_(req);
   if (a === 'intake') return applyIntakeToMaster_(req);
   if (a === 'ruling') { var shapeErr = requestShapeError_(req); if (shapeErr) return { ok: false, mode: 'REJECTED_SCHEMA', error: shapeErr }; return applyRulingToMaster_(req.ruling); }
   if (a === 'data_discovery') return applyDataDiscoveryRequest_(req);
@@ -108,7 +186,7 @@ function dispatchWrite_(req) {
   if (a === 'save_scoring_model') return saveScoringModel_(req.model || req);
   if (a === 'undo_ruling') return undoLastRuling_(req.undo || req);
   if (a === 'rotate_receipts') return rotateReceipts_(req);
-  if (a === 'migration') return migration_(req);
+  if (a === 'migration') return { ok:false, mode:'RETIRED_MIGRATION', error:'The live plain-text master is already migrated; old Doc migration is disabled.' };
   if (a === 'freeze_writer') return setFreeze_(req, true);
   if (a === 'unfreeze_writer') return setFreeze_(req, false);
   if (a === 'restore_archived') return restoreArchived_(req);
@@ -365,7 +443,7 @@ function findRequestResult_(requestId) {
   if (!rid) return { ok:false, found:false, error:'requestId required' };
 
   var idx = readIndex_();
-  if (idx && idx.requests[rid] && idx.requests[rid].s === 'PENDING') { verifyNow_(); idx = readIndex_(); }
+  if (idx && idx.requests[rid] && ['PENDING','PENDING_DELIVERY'].indexOf(idx.requests[rid].s)>=0) { verifyNow_(); idx = readIndex_(); }
   if (idx && idx.requests[rid]) return { ok:true, found:true, requestId:rid, source:'index', status:idx.requests[rid].s, durable:idx.requests[rid].s === 'COMPLETE', entry:idx.requests[rid] };
 
   var receipts = readReceipts_();
@@ -391,26 +469,29 @@ var DOC_ACCESS_ = [];
 function docSleep_(ms) { Utilities.sleep(ms); }
 function isTransientDocError_(e) {
   var m = String(e && e.message || e);
-  if (/lock timeout/i.test(m)) return false;
-  return /document is inaccessible|please try again later|service error|service unavailable|server error|internal error|backend error|temporarily unavailable/i.test(m);
+  if (/lock timeout|permission|unauthorized|forbidden|policy block|invalid|malformed/i.test(m)) return false;
+  return /document is inaccessible|please try again later|service error|service unavailable|server error|internal error|backend error|temporarily unavailable|rate limit|too many requests|429|quota.*(?:per second|per minute)/i.test(m);
 }
 function withDocRetry_(op, fn) {
-  var started = Date.now(), attempt = 0, first = '';
+  var started = Date.now(), attempt = 0, first = '', timeline = [];
+  var metadata={at:new Date(started).toISOString(),fileId:/^MASTER|PRECOMMIT|VERIFY_READ|OPERATIONS_MASTER/.test(op)?MASTER_ID:'',mime:/^MASTER|PRECOMMIT|VERIFY_READ|OPERATIONS_MASTER/.test(op)?'text/plain':'UNKNOWN',build:WRITER_BUILD};
   for (;;) {
     attempt++;
     try {
       var v = fn();
-      DOC_ACCESS_.push({ op: op, attempts: attempt, status: attempt === 1 ? 'INITIAL_SUCCESS' : 'RECOVERED_BY_RETRY', ms: Date.now() - started, error: first });
+      timeline.push({attempt:attempt,at:new Date().toISOString(),status:'SUCCESS'});
+      DOC_ACCESS_.push({ op: op, attempts: attempt, status: attempt === 1 ? 'INITIAL_SUCCESS' : 'RECOVERED_BY_RETRY', ms: Date.now() - started, error: first,metadata:metadata,timeline:timeline.slice() });
       return v;
     } catch (e) {
       var msg = String(e && e.message || e);
+      timeline.push({attempt:attempt,at:new Date().toISOString(),status:'FAILED',error:msg,retryable:isTransientDocError_(e)});
       if (!first) first = msg;
-      if (!isTransientDocError_(e)) { DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'DETERMINISTIC_FAILURE', ms: Date.now() - started, error: msg }); throw e; }
+      if (!isTransientDocError_(e)) { DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'DETERMINISTIC_FAILURE', ms: Date.now() - started, error: msg,metadata:metadata,timeline:timeline.slice() }); throw e; }
       if (attempt > DOC_RETRY_DELAYS_MS.length) {
-        DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'RETRY_EXHAUSTED', ms: Date.now() - started, error: msg });
+        DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'RETRY_EXHAUSTED', ms: Date.now() - started, error: msg,metadata:metadata,timeline:timeline.slice() });
         throw new Error(msg + ' [' + op + ': retry exhausted after ' + attempt + ' attempts]');
       }
-      docSleep_(DOC_RETRY_DELAYS_MS[attempt - 1]);
+      docSleep_(DOC_RETRY_DELAYS_MS[attempt - 1] + Math.floor(Math.random() * 251));
     }
   }
 }
@@ -426,11 +507,35 @@ function linesFromMasterText_(text) {
   return text.length ? text.split('\n') : [];
 }
 function readMasterText_(id) {
-  var file = DriveApp.getFileById(id || MASTER_ID);
+  id = id || MASTER_ID;
+  if (id === '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI') throw new Error('FROZEN_MASTER_FORBIDDEN');
+  var file = DriveApp.getFileById(id);
+  if (id === MASTER_ID && String(file.getMimeType()) !== 'text/plain') throw new Error('LIVE_MASTER_MIME_INVALID');
   if (String(file.getMimeType()) === 'application/vnd.google-apps.document') return DocumentApp.openById(file.getId()).getBody().getText();
   return file.getBlob().getDataAsString();
 }
-function saveMasterLines_(lines) { DriveApp.getFileById(MASTER_ID).setContent(lines.join('\n') + '\n'); }
+var WRITE_CONTEXT_ = {}, CURRENT_WRITE_ID_ = '';
+function saveMasterLines_(lines, expected) {
+  if (!expected) throw new Error('TRANSACTION_EXPECTED_SNAPSHOT_REQUIRED');
+  var fresh = readMasterLines_('PRECOMMIT_READ');
+  if (textHash_(fresh.join('\n')) !== textHash_(expected.join('\n'))) throw new Error('PRECOMMIT_CONFLICT: master changed; no write performed');
+  var at = new Date().toISOString(), plan = WriterTransactions.intent(expected, lines, WRITE_CONTEXT_, at, textHash_, MASTER_ID, WRITER_BUILD);
+  if (!plan) return;
+  var idx = readIndex_() || emptyIndex_();
+  if (idx.pending.length) throw new Error('WRITE_FENCE: unresolved durable transaction');
+  plan.requestIds.forEach(function (rid) {
+    if (idx.requests[rid] && ['COMPLETE','PENDING','NEEDS_RESOLUTION'].indexOf(idx.requests[rid].s) >= 0) throw new Error('REQUEST_ALREADY_RECORDED: ' + rid);
+    idx.requests[rid] = { s: 'PENDING', at: at, w: plan.writeId };
+  });
+  idx.pending.push(plan);
+  writeIndex_(idx); // A durable intent is required BEFORE any canonical effect.
+  var proof = readIndex_(), stored = proof && proof.pending.filter(function (x) { return x.writeId === plan.writeId; })[0];
+  if (!stored || JSON.stringify(stored) !== JSON.stringify(plan)) throw new Error('INTENT_READBACK_FAILED: no master write attempted');
+  CURRENT_WRITE_ID_ = plan.writeId;
+  MASTER_WRITTEN_IN_EXECUTION_ = true;
+  // Never retry a canonical save. Even a thrown response can follow a persisted effect.
+  DriveApp.getFileById(MASTER_ID).setContent(lines.join('\n') + '\n');
+}
 /** Fresh read of the master for a transaction. Plain text is saved with Drive setContent, not DocumentApp. */
 function openMaster_() {
   return withDocRetry_('MASTER_READ', function () {
@@ -486,7 +591,7 @@ function replayState_() {
   if (idx) Object.keys(idx.requests).forEach(function (rid) {
     var s = idx.requests[rid] && idx.requests[rid].s;
     if (s === 'COMPLETE') done[rid] = true;
-    else if (s === 'PENDING') pending[rid] = true;
+    else if (['PENDING','PENDING_DELIVERY','NEEDS_RESOLUTION'].indexOf(s) >= 0) pending[rid] = true;
     else if (s === 'FALSE_COMPLETE' || s === 'NOT_PERSISTED') delete done[rid];
   });
   return { done: done, pending: pending };
@@ -501,6 +606,8 @@ function countsLineOf_(lines) { for (var i = 0; i < lines.length; i++) if (/^COU
 /** Pure: decide one pending write against a fresh master snapshot that was read in a DIFFERENT execution. */
 function classifyPendingWrite_(p, lines, nowMs, graceMs) {
   var byPid = rowsByPid_(lines), countsOk = textHash_(countsLineOf_(lines)) === p.counts;
+  if (p.end) countsOk = countsOk && textHash_(lines.filter(function (l) { return /^END V2_CURRENT_POPULATION_MASTER/.test(l); })[0] || '') === p.end;
+  if (p.afterHash) countsOk = countsOk && textHash_(lines.join('\n')) === p.afterHash;
   var items = p.items.map(function (it) {
     var cur = byPid[it.pid] || [];
     if (cur.length > 1) return { pid: it.pid, state: 'AMBIGUOUS' };
@@ -539,32 +646,61 @@ function verifiedReceipts_(p, v, verifiedAt) {
  * would see its own unsaved edits). lines: a master snapshot read in THIS execution before any write (optional).
  */
 function verifyPendingWrites_(lines) {
-  if (MASTER_WRITTEN_IN_EXECUTION_) return { ok: false, skipped: 'SAME_EXECUTION_AS_WRITE', stillPending: [] };
+  if (MASTER_WRITTEN_IN_EXECUTION_) return { ok:false, skipped:'SAME_EXECUTION_AS_WRITE', stillPending:[] };
   var idx = readIndex_();
-  if (!idx || !idx.pending.length) return { ok: true, decided: [], stillPending: [] };
+  if (!idx || !idx.pending.length) return { ok:true, decided:[], stillPending:[] };
   lines = lines || readMasterLines_('VERIFY_READ');
-  var now = Date.now(), at = new Date(now).toISOString(), keep = [], decided = [], receipts = [], events = [], idx0 = idx.pending.slice();
-  idx.pending.forEach(function (p) {
-    var v = classifyPendingWrite_(p, lines, now, VERIFY_GRACE_MS);
-    if (v.decision === 'WAIT') { keep.push(p); return; }
-    var finals = verifiedReceipts_(p, v, at);
-    receipts = receipts.concat(finals);
-    p.requestIds.forEach(function (rid) { if (rid) idx.requests[rid] = { s: v.decision === 'COMPLETE' ? 'COMPLETE' : v.decision, at: at, w: p.writeId }; });
-    decided.push({ writeId: p.writeId, kind: p.kind, decision: v.decision, requestIds: p.requestIds, items: v.items });
-    events.push({ type: 'WRITE_VERIFICATION', ts: at, writeId: p.writeId, kind: p.kind, decision: v.decision, requestIds: p.requestIds, writtenAt: p.writtenAt });
+  var at = new Date().toISOString(), decided = [];
+  idx.pending.slice().forEach(function (p) {
+    var v = classifyPendingWrite_(p, lines, Date.now(), VERIFY_GRACE_MS);
+    if (v.decision === 'WAIT') return;
+    if (!p.verdict || p.verdict.decision !== v.decision) {
+      p.verdict = { decision:v.decision, items:v.items, countsOk:v.countsOk, verifiedAt:at,
+        snapshotHash:textHash_(lines.join('\n')) };
+      p.receiptDelivered = false; p.eventDelivered = false; p.runDelivered = false;
+    }
+    var proof = p.verdict;
+    p.requestIds.forEach(function (rid) {
+      idx.requests[rid] = { s:v.decision === 'NEEDS_RESOLUTION' ? 'NEEDS_RESOLUTION' : 'PENDING_DELIVERY', at:proof.verifiedAt, w:p.writeId };
+    });
+    p.stage = 'INDEPENDENT_READBACK';
+    writeIndex_(idx); // Persist the evidence and delivery obligation before emitting final logs.
+    if (!p.receiptDelivered) {
+      appendReceipts_(verifiedReceipts_(p, proof, proof.verifiedAt));
+      p.receiptDelivered = true; writeIndex_(idx);
+    }
+    if (!p.eventDelivered) {
+      appendEvents_([{ type:'WRITE_VERIFICATION', ts:proof.verifiedAt, writeId:p.writeId,
+        kind:p.kind, decision:proof.decision, requestIds:p.requestIds, writtenAt:p.writtenAt }]);
+      p.eventDelivered = true; writeIndex_(idx);
+    }
+    if (p.kind === 'INTAKE' && !p.runDelivered) {
+      appendRun_({ RECORD_TYPE:'WRITE_VERIFICATION', SCOUT_RUN_ID:((p.receipts || [])[0] || {}).SCOUT_RUN_ID || '',
+        WRITE_ID:p.writeId, WRITE_STATUS:RUN_WRITE_STATUS_[proof.decision], VERIFIED_AT:proof.verifiedAt,
+        PRIMARY_IDS:proof.items.map(function (x) { return x.pid; }) });
+      p.runDelivered = true; writeIndex_(idx);
+    }
+    if (p.kind === 'INTAKE' && proof.decision === 'COMPLETE' && !p.operationsDelivered) {
+      var operations = readOperationsStore_(), verifiedRows = rowsByPid_(lines), changedObligations = [];
+      Object.keys(operations.obligations).forEach(function (id) {
+        var obligation = operations.obligations[id], found = verifiedRows[obligation.primaryId] || [];
+        if (p.requestIds.indexOf(obligation.requestId) < 0 || obligation.state !== 'PENDING_VERIFICATION') return;
+        if (found.length !== 1 || textHash_(found[0]) !== obligation.expectedHash) throw new Error('OBLIGATION_READBACK_MISMATCH');
+        changedObligations.push(Object.assign({}, obligation, {state:'VERIFIED_COMPLETE', proof:{independent:true,
+          at:proof.verifiedAt,evidenceRef:'writer-verification:'+p.writeId,readbackHash:obligation.expectedHash}}));
+      });
+      if (changedObligations.length) writeOperationsStore_(PipelineOperations.update(operations,
+        {baseRevision:operations.revision,obligations:changedObligations}, at));
+      p.operationsDelivered = true; writeIndex_(idx);
+    }
+    decided.push({ writeId:p.writeId, kind:p.kind, decision:proof.decision, requestIds:p.requestIds, items:proof.items });
+    if (proof.decision !== 'NEEDS_RESOLUTION') {
+      p.requestIds.forEach(function (rid) { idx.requests[rid] = { s:proof.decision, at:proof.verifiedAt, w:p.writeId, items:p.items, snapshotHash:proof.snapshotHash }; });
+      idx.pending = idx.pending.filter(function (x) { return x.writeId !== p.writeId; });
+      writeIndex_(idx);
+    }
   });
-  if (!decided.length) return { ok: true, decided: [], stillPending: keep.map(function (p) { return p.writeId; }) };
-  idx.pending = keep;
-  writeIndex_(idx);              // the authority first: replay protection reflects the verdict even if the log append fails
-  appendReceipts_(receipts);
-  appendEvents_(events);
-  // Intake telemetry: a run is not "written" until verified. Record the durable verdict beside its run.
-  decided.forEach(function (d) {
-    if (d.kind !== 'INTAKE') return;
-    var p0 = (idx0.filter(function (p) { return p.writeId === d.writeId; })[0] || {}), runId = ((p0.receipts || [])[0] || {}).SCOUT_RUN_ID || '';
-    appendRun_({ RECORD_TYPE: 'WRITE_VERIFICATION', SCOUT_RUN_ID: runId, WRITE_ID: d.writeId, WRITE_STATUS: RUN_WRITE_STATUS_[d.decision], VERIFIED_AT: at, PRIMARY_IDS: d.items.map(function (x) { return x.pid; }) });
-  });
-  return { ok: true, decided: decided, stillPending: keep.map(function (p) { return p.writeId; }) };
+  return { ok:true, decided:decided, stillPending:idx.pending.map(function (p) { return p.writeId; }) };
 }
 /** Run at the start of every master write, on the snapshot that write just read. Returns a refusal or null. */
 function writeFence_(lines) {
@@ -577,26 +713,27 @@ function writeFence_(lines) {
 }
 /** Records a committed write as PENDING_VERIFICATION: index entry first (authority), then the provisional receipts. */
 function stageVerification_(kind, items, receipts, countsLine, writtenAt) {
-  var idx = readIndex_() || emptyIndex_();
-  var writeId = 'W-' + writtenAt.replace(/[^0-9]/g, '').slice(0, 17) + '-' + textHash_(JSON.stringify(items)).slice(0, 6);
-  var rids = receipts.map(function (r) { return String(r.REQUEST_ID || ''); });
-  idx.pending.push({ writeId: writeId, kind: kind, writtenAt: writtenAt, counts: textHash_(countsLine), requestIds: rids,
-    items: items.map(function (x) { return { pid: x.pid, op: x.op || 'REPLACE', b: x.op === 'INSERT' ? '' : textHash_(x.before), a: textHash_(x.after) }; }), receipts: receipts });
-  rids.forEach(function (rid) { if (rid) idx.requests[rid] = { s: 'PENDING', at: writtenAt, w: writeId }; });
+  var idx = readIndex_(), pending = idx && idx.pending.filter(function (p) { return p.writeId === CURRENT_WRITE_ID_; })[0];
+  if (!pending) throw new Error('INTENT_MISSING_AFTER_SAVE: reconcile before retry');
+  var ids = receipts.map(function (r) { return String(r.REQUEST_ID || ''); }).filter(Boolean);
+  pending.kind = kind; pending.receipts = receipts; pending.stage = 'SAVE_RETURNED';
+  ids.forEach(function (rid) {
+    if (pending.requestIds.indexOf(rid) < 0) pending.requestIds.push(rid);
+    idx.requests[rid] = { s: 'PENDING', at: pending.writtenAt, w: pending.writeId };
+  });
   writeIndex_(idx);
   appendReceipts_(receipts.map(function (r) {
-    var o = {}; Object.keys(r).forEach(function (k) { o[k] = r[k]; });
-    o.COMPLETION_STATUS = 'PENDING_VERIFICATION'; o.READBACK_VERIFIED = 'PENDING'; o.VERIFICATION = 'POST_EXECUTION_REQUIRED'; o.WRITE_ID = writeId;
-    return o;
+    return Object.assign({}, r, { COMPLETION_STATUS: 'PENDING_VERIFICATION', READBACK_VERIFIED: 'PENDING',
+      VERIFICATION: 'POST_EXECUTION_REQUIRED', WRITE_ID: pending.writeId });
   }));
-  return writeId;
+  return pending.writeId;
 }
 /** Applies line edits located in the snapshot and saves the plain-text master. Drive setContent is synchronous. */
 function applyMasterEdits_(M, snapshot, edits) {
   MASTER_WRITTEN_IN_EXECUTION_ = true;
   var lines = snapshot.slice();
   for (var i = 0; i < edits.length; i++) if (lines[edits[i].index] !== edits[i].text) lines[edits[i].index] = edits[i].text;
-  withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(lines); return true; });
+  saveMasterLines_(lines, snapshot);
 }
 function masterTrailerEdits_(lines, newCounts, newEnd) {
   var out = [];
@@ -855,7 +992,14 @@ function chunkState_(chunk, lines) {
 
 /* ----- impure: files, freeze, routing ----- */
 function textFileByName_(name) { var it = folder_().getFilesByName(name); return it.hasNext() ? it.next() : null; }
-function readMigrationState_() { var f = textFileByName_(MIGRATION_STATE_NAME); if (!f) return null; try { return JSON.parse(f.getBlob().getDataAsString()); } catch (e) { throw new Error('migration state unreadable (fail closed): ' + e.message); } }
+function readMigrationState_() {
+  var f = withDocRetry_('MIGRATION_STATE_LOOKUP', function () { return textFileByName_(MIGRATION_STATE_NAME); });
+  if (!f) return null;
+  var raw = withDocRetry_('MIGRATION_STATE_BLOB_READ', function () { return f.getBlob().getDataAsString(); });
+  var state; try { state = JSON.parse(raw); } catch (e) { throw new Error('migration state unreadable (fail closed): ' + e.message); }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('migration state malformed (fail closed)');
+  return state;
+}
 function writeMigrationState_(s) { s.updatedAt = new Date().toISOString(); findOrCreate_(MIGRATION_STATE_NAME, 'text', '{}').setContent(JSON.stringify(s)); }
 function readFreeze_() {
   var f = textFileByName_(FREEZE_NAME); if (!f) return null;
@@ -1031,7 +1175,7 @@ function restoreArchived_(req) {
     flushEvidence_(ctx);
     MASTER_WRITTEN_IN_EXECUTION_ = true;
     masterTrailerEdits_(all, counts, end).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
-    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
+    saveMasterLines_(all, snapshot);
     var af = DriveApp.getFileById(st.archiveId), cur = af.getBlob().getDataAsString();
     af.setContent(cur.replace(/\n*$/, '\n') + 'RESTORED|' + pid + '|' + rows[0].split(' | ')[0] + '|' + at + '|' + rid + '\n');
     var receipt = { RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: rid, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', TARGET_CANONICAL_ID: pid, CHANGES: ['RESTORED_FROM_ARCHIVE'], READBACK_VERIFIED: 'PENDING', TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: 'PENDING_VERIFICATION', EXECUTED_AT: at, ACTOR: String(req.actor || 'TIM') };
@@ -1174,7 +1318,7 @@ function applyUpsertToMaster_(ev) {
     }
     var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
     masterTrailerEdits_(all, newCounts, newEnd).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
-    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
+    saveMasterLines_(all, snapshot);
     base.PRIMARY_ID = plan.primaryId; base.MATCHED_BY = plan.matchedBy || ''; base.UPSERT_KEY = plan.upsertKey; base.READBACK_VERIFIED = 'PENDING'; base.COUNTS_AFTER = newCounts; base.COMPLETION_STATUS = 'PENDING_VERIFICATION';
     var writeId = stageVerification_('UPSERT', [item], [base], newCounts, now);
     base.WRITE_ID = writeId;
@@ -1195,11 +1339,13 @@ function applyIntakeToMaster_(req) {
     if (fence) { fence.results = []; fence.docAccess = docAccessSummary_(); return fence; }
     var rules = readRules_();
     // Dedupe (and next INV numbering) against live rows AND archived terminal history, so a declined/closed/rejected job is not re-admitted.
-    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_() });
+    var flexPolicy = readFlexPolicy_();
+    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_(), flexPolicy: flexPolicy });
     if (!plan.ok) return { ok: false, error: plan.error, results: plan.results || [] };
     var routing = evidenceRouting_(), routedAt = new Date().toISOString(), routedMap = {};
     plan.newLines = plan.newLines.map(function (l) { var r = externalizeEvidence_(routing, '', l, 'INTAKE:' + ((req.run && req.run.SCOUT_RUN_ID) || ''), routedAt); routedMap[l] = r; return r; });
     plan.insertLines = plan.insertLines.map(function (l) { return routedMap[l] || l; });
+    persistIntakePlan_(plan, req);
     var modCheck = masterModified_();
     if (modCheck !== modBefore) return { ok: false, error: 'master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', results: [] };
     // append: before END marker if present, else at end. Positions come from the snapshot, not a post-edit re-read.
@@ -1211,13 +1357,13 @@ function applyIntakeToMaster_(req) {
     Array.prototype.splice.apply(all, [at, 0].concat(toInsert));
     var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
     masterTrailerEdits_(all, newCounts, newEnd).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
-    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
+    saveMasterLines_(all, snapshot);
     // Written, not yet durable: a later execution verifies every inserted row (independent post-execution readback).
     var verified = true;
     var counters = runCounters_(req.run || {}, plan, rules, verified);
     var executedAt = new Date().toISOString();
     var receipt = {
-      RECEIPT: 'INTAKE_RECEIPT', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
+      RECEIPT: 'INTAKE_RECEIPT', REQUEST_ID: req.requestId || (req.run && req.run.SCOUT_RUN_ID) || '', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
       RECORDS_RECEIVED: (req.records || []).length, COUNTERS: counters, RULES_STATUS: rules.status, RULES_DOC_ID: CANONICAL_RULES_DOC_ID,
       DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, NEVER_CONSIDER_REVIEW_NEEDED: plan.summary.NEVER_CONSIDER_REVIEW_NEEDED,
       NEW_PRIMARY_IDS: plan.newLines.map(function (l) { return l.split(' | ')[1]; }),
@@ -1435,7 +1581,9 @@ function mutateRow(line, ruling, flexPolicy) {
   } else return { ok: false, error: 'unknown ruling kind ' + kind + ' ' + val };
   var fr = applyFields_(ruling.fields, P, O, set, flexPolicy);
   if (!fr.ok) return fr;
+  if(kind==='APPLY_NOW'&&val==='YES'&&PipelinePolicy.flex(P,flexPolicy).blocked){if(String(ruling.actor||'').toUpperCase()!=='TIM')return {ok:false,error:'STRICT requires explicit Tim override'};set('TIM_FLEX_OVERRIDE','YES');}
   changes = changes.concat(fr.changed);
+  if(ruling.fields&&Object.keys(ruling.fields).length&&PipelinePolicy.isV4(flexPolicy)){var scored=deriveWriterScores_(fixed,P,set,flexPolicy);if(!scored.ok)return scored;}
   var actor = String(ruling.actor || '').toUpperCase().replace(/[^A-Z0-9_]/g, '');
   var source = (actor || 'TIM_EXPLORER') + ':' + (ruling.requestId || 'no-id');
   // ENRICH is data-only: keep the row's state provenance exactly as it was (absent stays absent) and record the enrichment separately.
@@ -1446,19 +1594,35 @@ function mutateRow(line, ruling, flexPolicy) {
   var after = fixed.join(' | ') + ' | ' + buildPayload(pp.lead, P, O);
   return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7] };
 }
+/** Writer-owned calculation, shared byte-for-byte with the viewer. Called only for a requested row write, never by policy saves. */
+function deriveWriterScores_(fixed, P, set, policy) {
+  if(!policy._SCORING_MODEL)return {ok:false,error:'SCORING_MODEL_UNAVAILABLE: '+(policy._SCORING_ERROR||'read the published model before scoring')};
+  var input={};Object.keys(P).forEach(function(k){if(SCORE_OUTPUT_KEYS.indexOf(k)<0&&['FLEX_MODIFIER','ADJUSTED_FIT','PURSUIT_STATUS'].indexOf(k)<0)input[k]=P[k];});
+  var config=Object.assign({},policy._SCORING_MODEL,{flexPolicy:policy});
+  var score=PipelineScoring.scoreRow({COMPANY:fixed[2],TITLE:fixed[3],LOCATION:fixed[8],payload:input},config);
+  function value(k,v){set(k,v==null?'UNKNOWN':String(v));}
+  value('OVERALL',score.overall);value('OVERALL_RATING',score.overall);
+  value('EXPERIENCE_FIT',score.parts.experience.rawScore);
+  value('GEO',score.parts.geo.known?score.parts.geo.score:null);value('GEO_SCORE',score.parts.geo.known?score.parts.geo.score:null);
+  value('NET_COMP',score.parts.compensation.known?score.parts.compensation.score:null);value('NET_COMP_SCORE',score.parts.compensation.known?score.parts.compensation.score:null);
+  value('RATING_CONFIDENCE',score.confidence);value('FLEX_RATING_IMPACT',score.flexInfluence);
+  value('FLEX_CLASS',score.assessment.flex.class);value('FLEX_MODIFIER',score.assessment.flex.modifier);
+  value('ADJUSTED_FIT',score.assessment.adjustedFit);value('PURSUIT_STATUS',score.assessment.decision);
+  value('SCORING_MODEL_REF',score.modelId+' '+score.modelVersion+' rev'+(config.publishedRevision||0));
+  value('RULES_POLICY_VERSION',PipelinePolicy.V4);value('OWNERSHIP_POLICY_VERSION','OWNERSHIP_20261007');
+  return {ok:true};
+}
 /** Payload keys a write may never set directly (writer-owned) and intake keys whose prior value is kept as INTAKE_<KEY> when changed. */
 var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT', 'IDENTITY_SOURCE', 'IDENTITY_UPDATED_AT'];
 /** Keys an ENRICH may never set: bucket/disposition reasons, application/rejection state, and anything Tim-ruled (TIM_*). Those change only through ruling kinds or upsert_application. */
 var ENRICH_DENY = ['DECLINE_REASON_CODE', 'DECLINE_REASON_CODE_PRIOR', 'DECLINE_REASON_TEXT', 'REOPEN_TRIGGER', 'DUP_OF', 'INVALID_REASON', 'RESEARCH_REQUEST', 'POSTING_STATE',
   'APP_DATE', 'APP_STATUS_EVIDENCE', 'APPLICATION_STATUS', 'APPLICATION_RECEIPT_GMAIL_ID', 'REJECTION_DATE', 'REJECTION_EVIDENCE', 'STATE_SEMANTICS', 'ANTI_RESURRECTION', 'UPSERT_KEY'];
-/** Calculated score fields. The Explorer derives these from the published scoring model and the evidence on each row; they are never
- *  stored in the master, so an agent that writes one would create a second copy that drifts from the model. Agents submit evidence
- *  instead (FLEX_CLASS or its degree evidence, SCOPE_FIT_RAW, salary evidence, location, TITLE_SCORE / ATS_MATCH_SCORE / CULTURE_SCORE /
- *  OWNERSHIP_SCORE where they are evidence inputs). FLEX_MODIFIER, ADJUSTED_FIT and PURSUIT_STATUS are not listed: the Writer derives and
- *  overwrites them from the canonical FLEX policy on every evidence write. An agent's own opinion belongs under its own prefix (CLAUDE_*, GROK_*). */
-var SCORE_OUTPUT_KEYS = ['OVERALL_RATING', 'EXPERIENCE_FIT', 'GEO_SCORE', 'NET_COMP_SCORE', 'RATING_CONFIDENCE', 'FLEX_RATING_IMPACT'];
+/** Calculated outputs are Writer-owned. Under V4, evidence writes calculate and store them with
+ * model/policy provenance; legacy policies retain the prior viewer-derived contract. Agents
+ * submit raw fit, requirement text, salary, location and ownership evidence, never outputs. */
+var SCORE_OUTPUT_KEYS = ['OVERALL', 'GEO', 'NET_COMP', 'OVERALL_RATING', 'EXPERIENCE_FIT', 'GEO_SCORE', 'NET_COMP_SCORE', 'RATING_CONFIDENCE', 'FLEX_RATING_IMPACT'];
 function scoreOutputKeys_(keys) { return (keys || []).map(function (k) { return String(k).trim().toUpperCase(); }).filter(function (k) { return SCORE_OUTPUT_KEYS.indexOf(k) >= 0; }); }
-function scoreOutputError_(found) { return 'SCORE_OUTPUT_FIELD: ' + found.join(', ') + ' ' + (found.length === 1 ? 'is a calculated score' : 'are calculated scores') + '. The Explorer derives scores from the published scoring model; submit the evidence fields instead (FLEX_CLASS or degree evidence, SCOPE_FIT_RAW, salary evidence, location, link). An agent-specific opinion may go under its own prefix (CLAUDE_*, GROK_*).'; }
+function scoreOutputError_(found) { return 'SCORE_OUTPUT_FIELD: ' + found.join(', ') + ' ' + (found.length === 1 ? 'is a calculated score' : 'are calculated scores') + '. The Writer and shared scorer derive scores from the published scoring model; submit the evidence fields instead (FLEX_CLASS or degree evidence, SCOPE_FIT_RAW, salary evidence, location, link). An agent-specific opinion may go under its own prefix (CLAUDE_*, GROK_*).'; }
 function isEnrichDenied_(k) { k = String(k).trim().toUpperCase(); return /^TIM_/.test(k) || ENRICH_DENY.indexOf(k) >= 0; }
 var INTAKE_PRESERVE = ['INTAKE_KEY', 'SCOUT_RUN_ID', 'DISCOVERED_AT_ET', 'DISCOVERY_SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'REQ_ID', 'IDENTITY_CONFIDENCE', 'INITIAL_UNKNOWN_FIELDS', 'DATE_ADDED', 'NOTIFICATION_SOURCE'];
 /** Merge {KEY: value} into a parsed payload. Empty values are ignored (nothing is deleted); changed intake keys keep their old value under INTAKE_<KEY>. */
@@ -1469,6 +1633,7 @@ function applyFields_(fields, P, O, set, flexPolicy) {
   var keys = Object.keys(fields);
   if (keys.length > 60) return { ok: false, error: 'too many fields (max 60)' };
   var scoreKeys = scoreOutputKeys_(keys);
+  if(PipelinePolicy.isV4(flexPolicy))scoreKeys=scoreKeys.concat(keys.map(function(k){return String(k).trim().toUpperCase()}).filter(function(k){return ['FLEX_MODIFIER','ADJUSTED_FIT','PURSUIT_STATUS'].indexOf(k)>=0}));
   if (scoreKeys.length) return { ok: false, error: scoreOutputError_(scoreKeys) };
   for (var i = 0; i < keys.length; i++) {
     var k = String(keys[i]).trim().toUpperCase();
@@ -1476,7 +1641,9 @@ function applyFields_(fields, P, O, set, flexPolicy) {
     if (FIELD_DENY.indexOf(k) >= 0) return { ok: false, error: 'field ' + k + ' is writer-owned and cannot be set' };
     if (IDENTITY_FIXED_KEYS.indexOf(k) >= 0 || k === 'POSSIBLE_MATCHES') return { ok: false, error: 'field ' + k + ' cannot be set through fields: identity columns and POSSIBLE_MATCHES change only through kind IDENTITY (fixed columns + evidence + reconciliation), so a payload copy can never contradict the row' };
     var v = fields[keys[i]]; if (v === undefined || v === null) continue;
-    v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v)).slice(0, 1500);
+    v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v));
+    if(k==='DEGREE_TEXT'&&v.length>12000)return {ok:false,error:'DEGREE_TEXT_TOO_LONG: send the complete requirements block within 12000 characters'};
+    v=v.slice(0,k==='DEGREE_TEXT'?12000:1500);
     if (v === '') continue;
     if (['SOURCE_URL','INITIATING_URL','COMPANY_SOURCE_URL'].indexOf(k)>=0 && !/^https?:\/\/[^\s]+$/i.test(v)) return { ok: false, error: 'URL must be a usable http(s) initiating or company source link' };
     if ((k === 'FLEX' || k === 'FLEX_HINT') && !/^(YES|HIGH_FLEX|SOFT|SOFT_FLEX|NO|NO_FLEX|STRICT_NO|STRICT|UNKNOWN)$/i.test(v)) return { ok: false, error: k + ' must be YES, SOFT, NO, STRICT_NO, or UNKNOWN' };
@@ -1566,6 +1733,7 @@ function planUpsertApplication(lines, ev, ctx) {
   set('SOURCE_URL', eventUrl); set('INITIATING_URL',eventUrl); set('REQ_ID', ev.REQ_ID); set('ANTI_RESURRECTION', 'YES');
   if (ev.NOTE) set('NOTE', ev.NOTE);
   var fr = applyFields_(ev.fields, P, O, set, ctx.flexPolicy); if (!fr.ok) return { ok: false, mode: 'INVALID', error: fr.error };
+  if(ev.fields&&PipelinePolicy.isV4(ctx.flexPolicy)){var ds=deriveWriterScores_(['','',company,title,state,'','','',ev.LOCATION||''],P,set,ctx.flexPolicy);if(!ds.ok)return ds;}
   set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', 'EMAIL'); set('STATE_SOURCE', String(ruling.actor).toUpperCase().replace(/[^A-Z0-9_]/g, '') + ':' + ruling.requestId); set('STATE_UPDATED_AT', now);
   var disp = state === 'APPLIED' ? 'RESOLVED/APPLIED_CONFIRMED' : 'RESOLVED/REJECTED_BY_EMPLOYER';
   var tag = (state === 'APPLIED' ? 'APPLIED_' : 'EMPLOYER_REJECTION_') + evDate;
@@ -1641,34 +1809,40 @@ function indexExisting(lines) {
 }
 /** Find matches for one intake record. Returns {kind:'none'|'exact'|'ambiguous', rows:[...], by:''} */
 function matchExisting(rec, idx) {
-  var key = rec.INTAKE_KEY;
-  if (key) { var k = idx.filter(function (r) { return r.intakeKey === key; }); if (k.length) return { kind: 'exact', rows: k, by: 'INTAKE_KEY' }; }
-  var rc = reqCore(rec.REQ_ID || '');
   var ne = normEmployer(rec.COMPANY), nt = normTitle(rec.TITLE), nl = normLocation(rec.LOCATION);
-  var cu = canonUrl(rec.SOURCE_URL || '');
-  if (rc && rc.length >= 5) {
-    // requisition ids are employer-local: exact only with the same normalized employer, or when the record's canonical URL binds it to that row
-    var byReq = idx.filter(function (r) { return r.reqCores.indexOf(rc) >= 0; });
-    var byReqEmp = byReq.filter(function (r) { return ne && r.ne === ne; });
-    var byReqUrl = byReq.filter(function (r) { return cu && r.urls.indexOf(cu) >= 0; });
-    if (byReqEmp.length === 1) return { kind: 'exact', rows: byReqEmp, by: 'REQ_ID' };
-    if (byReqEmp.length > 1) return { kind: 'ambiguous', rows: byReqEmp, by: 'REQ_ID' };
-    if (byReqUrl.length === 1) return { kind: 'exact', rows: byReqUrl, by: 'REQ_ID+SOURCE_URL' };
-    if (byReq.length) return { kind: 'ambiguous', rows: byReq, by: 'REQ_ID (employer differs)' };
+  var rc = reqCore(rec.REQ_ID || ''), cu = canonUrl(rec.SOURCE_URL || '');
+  function verdict(kind, rows, by) { return { kind:kind, rows:rows, by:by,
+    compared:{employer:ne, requisition:rc, title:nt, location:nl, sourceUrl:rec.SOURCE_URL || ''} }; }
+  function compatible(r) { return ne && (r.ne === ne || (rec.EMPLOYER_RELATIONSHIP_EVIDENCE && PipelinePolicy.validUrl(rec.EMPLOYER_RELATIONSHIP_URL) && String(rec.EMPLOYER_ALIASES||'').split(',').some(function(alias){return normEmployer(alias)===r.ne;}))); }
+  function conflictingReq(r) { return rc && r.reqCores.length && r.reqCores.indexOf(rc) < 0; }
+  var key = rec.INTAKE_KEY, byKey = key ? idx.filter(function (r) { return r.intakeKey === key; }) : [];
+  if (byKey.length) {
+    if (byKey.some(function (r) { return !compatible(r) || conflictingReq(r); })) return verdict('conflict', byKey, 'INTAKE_KEY_IDENTITY_CONFLICT');
+    return verdict(byKey.length === 1 ? 'exact' : 'ambiguous', byKey, 'INTAKE_KEY');
   }
-  if (cu && !/^(linkedin\.com\/jobs\/search|indeed\.com\/jobs)/.test(cu) && cu.length > 12) { var byUrl = idx.filter(function (r) { return r.urls.indexOf(cu) >= 0; }); if (byUrl.length === 1) return { kind: 'exact', rows: byUrl, by: 'SOURCE_URL' }; if (byUrl.length > 1) return { kind: 'ambiguous', rows: byUrl, by: 'SOURCE_URL' }; }
-  if (ne && nt) {
-    // employer+title is a provisional identity: exact only when BOTH normalized locations are present and equal and exactly one row matches.
-    // A missing location on either side never resolves identity (a later distinct req at the same employer/title must not be swallowed); fail closed.
-    var byId = idx.filter(function (r) { return r.ne === ne && r.nt === nt; });
-    if (byId.length) {
-      var sameLoc = byId.filter(function (r) { return nl && r.nl && r.nl === nl; });
-      if (sameLoc.length === 1) return { kind: 'exact', rows: sameLoc, by: 'EMPLOYER_TITLE_LOCATION' };
-      if (sameLoc.length > 1) return { kind: 'ambiguous', rows: sameLoc, by: 'EMPLOYER_TITLE_LOCATION' };
-      return { kind: 'ambiguous', rows: byId, by: nl && byId.every(function (r) { return r.nl; }) ? 'EMPLOYER_TITLE (location differs)' : 'EMPLOYER_TITLE (location unstated)' };
+  if (rc && rc.length >= 5) {
+    var byReqEmp = idx.filter(function (r) { return compatible(r) && r.reqCores.indexOf(rc) >= 0; });
+    if (byReqEmp.length) return verdict(byReqEmp.length === 1 ? 'exact' : 'ambiguous', byReqEmp, 'REQ_ID');
+  }
+  if (cu && !/^(linkedin\.com\/jobs\/search|indeed\.com\/jobs)/.test(cu) && cu.length > 12) {
+    var byUrl = idx.filter(function (r) { return r.urls.indexOf(cu) >= 0; });
+    if (byUrl.some(function (r) { return !compatible(r) || conflictingReq(r); })) return verdict(rec.EMPLOYER_ALIASES ? 'ambiguous' : 'conflict', byUrl, 'SOURCE_URL_IDENTITY_CONFLICT');
+    if (byUrl.length) {
+      var supported = byUrl.filter(function (r) { return compatible(r) && nt && r.nt === nt && nl && r.nl === nl; });
+      if (supported.length === 1 && byUrl.length === 1) return verdict('exact', supported, 'EMPLOYER+TITLE+LOCATION+SOURCE_URL');
+      return verdict('ambiguous', byUrl, 'SOURCE_URL_NEEDS_IDENTITY_EVIDENCE');
     }
   }
-  return { kind: 'none', rows: [], by: '' };
+  if (ne && nt) {
+    var byId = idx.filter(function (r) { return compatible(r) && r.nt === nt && !conflictingReq(r); });
+    if (byId.length) {
+      var sameLoc = byId.filter(function (r) { return nl && r.nl && r.nl === nl; });
+      if (sameLoc.length === 1) return verdict('exact', sameLoc, 'EMPLOYER_TITLE_LOCATION');
+      return verdict('ambiguous', sameLoc.length ? sameLoc : byId, 'EMPLOYER_TITLE_NEEDS_LOCATION');
+    }
+  }
+  // Requisition numbers are employer-local. A shared token alone does not merge unrelated employers.
+  return verdict('none', [], 'NO_SUPPORTED_MATCH');
 }
 /* ================= pure functions: never-consider rules ================= */
 /**
@@ -1776,10 +1950,10 @@ function classifyNeverConsider(rec, R) {
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
 }
 /* ================= pure functions: intake planning ================= */
-var INTAKE_FACT_KEYS = ['PAY_POSTED', 'DEGREE_TEXT', 'FLEX_HINT', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
+var INTAKE_FACT_KEYS = ['PAY_POSTED', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
-  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0, 400); });
+  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });
   var unk = rec.INITIAL_UNKNOWN_FIELDS; out.INITIAL_UNKNOWN_FIELDS = Array.isArray(unk) ? unk.map(clean_).filter(Boolean).join(',') : clean_(unk || '');
   out.SOURCE_URL=PipelinePolicy.links(out).preferred;
   if (out.SOURCE_URL && !/^https?:\/\//i.test(out.SOURCE_URL)) out.SOURCE_URL = '';
@@ -1802,20 +1976,23 @@ function planIntake(lines, records, rulesObj, ctx) {
   for (var i = 0; i < records.length; i++) {
     var rec = sanitizeRecord(records[i]);
     var via = records[i] && records[i].SUBMITTED_VIA === 'RUN_PRE_EXCLUSION' ? 'RUN_PRE_EXCLUSION' : 'RECORDS';
-    var res = { index: i, SUBMITTED_VIA: via, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '', NEVER_CONSIDER_RULE_ID: '', NEVER_CONSIDER_REVIEW_NEEDED: '' };
+    var res = { obligationId: 'C-' + hashHex(runId + '|' + i + '|' + JSON.stringify(records[i])).slice(0,20), source: records[i], index: i, SUBMITTED_VIA: via, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '', NEVER_CONSIDER_RULE_ID: '', NEVER_CONSIDER_REVIEW_NEEDED: '' };
     if (!rec || !rec.COMPANY || !rec.TITLE) { res.result = 'WRITE_FAILED'; res.detail = 'INVALID_INPUT: COMPANY and TITLE are required' + (via === 'RUN_PRE_EXCLUSION' ? ' (pre-excluded entry lacks them; resubmit as a record)' : ''); summary.WRITE_FAILED++; results.push(res); continue; }
+    if(records[i]&&String(records[i].DEGREE_TEXT||'').length>12000){res.result='WRITE_FAILED';res.detail='DEGREE_TEXT_TOO_LONG';summary.WRITE_FAILED++;results.push(res);continue;}
     if (!rec.INTAKE_KEY) rec.INTAKE_KEY = 'IK-' + hashHex([runId, normEmployer(rec.COMPANY), normTitle(rec.TITLE), normLocation(rec.LOCATION), reqCore(rec.REQ_ID), canonUrl(rec.SOURCE_URL)].join('|')).slice(0, 16);
     res.INTAKE_KEY = rec.INTAKE_KEY;
-    if (batchKeys[rec.INTAKE_KEY]) { res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
+    if (batchKeys[rec.INTAKE_KEY]) { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
     var nc = classifyNeverConsider(rec, R);
     if (nc.outcome === 'EXCLUDE') {
-      res.result = 'NEVER_CONSIDER_EXCLUDED'; res.NEVER_CONSIDER_RULE_ID = nc.ruleId; res.detail = nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'; summary.NEVER_CONSIDER_EXCLUDED++; byRule[nc.ruleId] = (byRule[nc.ruleId] || 0) + 1;
+      res.outcome = 'EXCLUDED'; res.result = 'NEVER_CONSIDER_EXCLUDED'; res.NEVER_CONSIDER_RULE_ID = nc.ruleId; res.detail = nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'; summary.NEVER_CONSIDER_EXCLUDED++; byRule[nc.ruleId] = (byRule[nc.ruleId] || 0) + 1;
       excluded.push({ SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis, SUBMITTED_VIA: via, DECIDED_BY: 'WRITER' });
       results.push(res); continue;
     }
     if (nc.outcome === 'REVIEW') { res.NEVER_CONSIDER_REVIEW_NEEDED = nc.ruleId; summary.NEVER_CONSIDER_REVIEW_NEEDED++; }
     var m = matchExisting(rec, idx);
-    if (m.kind === 'exact') { res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = m.rows[0].id; res.INV = m.rows[0].inv; res.BUCKET = m.rows[0].bucket; res.matchedBy = m.by; if (m.by === 'INTAKE_KEY') { res.detail = 'REPLAY'; summary.REPLAY++; } summary.EXISTING_MATCH++; results.push(res); continue; }
+    res.identity = m; res.initiatingUrl = rec.INITIATING_URL || rec.SOURCE_URL || '';
+    if (m.kind === 'conflict' || m.kind === 'ambiguous') { res.result='WRITE_FAILED'; res.outcome=m.kind === 'conflict' ? 'IDENTITY_CONFLICT' : 'AMBIGUOUS_MATCH'; res.detail=res.outcome+': '+m.by; res.candidateIds=m.rows.map(function(r){return r.id;}); res.nextAction='Resolve exact employer/requisition evidence; preserve this candidate'; summary.WRITE_FAILED++; results.push(res); continue; }
+    if (m.kind === 'exact') { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = m.rows[0].id; res.INV = m.rows[0].inv; res.BUCKET = m.rows[0].bucket; res.matchedBy = m.by; if (m.by === 'INTAKE_KEY') { res.detail = 'REPLAY'; summary.REPLAY++; } summary.EXISTING_MATCH++; results.push(res); continue; }
     if(!PipelinePolicy.validUrl(rec.SOURCE_URL)){res.result='WRITE_FAILED';res.detail='SOURCE_URL_REQUIRED: retain initiating job-board, email click-through, or ATS link';summary.WRITE_FAILED++;results.push(res);continue;}
     var proposed = String(rec.PROPOSED_BUCKET || '').toUpperCase(); var conf = String(rec.IDENTITY_CONFIDENCE || '').toUpperCase() || (rec.REQ_ID || rec.SOURCE_URL ? 'MEDIUM' : 'LOW');
     var bucket;
@@ -1832,14 +2009,15 @@ function planIntake(lines, records, rulesObj, ctx) {
     set('INTAKE_KEY', rec.INTAKE_KEY); set('SCOUT_RUN_ID', runId || 'UNSPECIFIED'); set('DISCOVERED_AT_ET', rec.DISCOVERED_AT_ET || nowET); set('DISCOVERY_SOURCE', rec.DISCOVERY_SOURCE || 'Scout');
     set('SOURCE_URL', rec.SOURCE_URL); set('INITIATING_URL',rec.INITIATING_URL||rec.SOURCE_URL); set('COMPANY_SOURCE_URL',rec.COMPANY_SOURCE_URL); set('SOURCE_PROVIDER', rec.SOURCE_PROVIDER); set('REQ_ID', rec.REQ_ID); set('IDENTITY_CONFIDENCE', conf);
     set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED'); if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
-    INTAKE_FACT_KEYS.forEach(function (k) { set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
+    INTAKE_FACT_KEYS.forEach(function (k) { if(!PipelinePolicy.isV4(ctx.flexPolicy)||k!=='FLEX_HINT')set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
     if (nc.outcome === 'REVIEW') { set('NEVER_CONSIDER_REVIEW_NEEDED', nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'); set('NEVER_CONSIDER_REASON', nc.reason); }
     set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', rec.SOURCE_PROVIDER || rec.DISCOVERY_SOURCE || 'Scout');
     set('STATE_SOURCE', 'SCOUT_INTAKE:' + (runId || 'UNSPECIFIED')); set('STATE_UPDATED_AT', now);
+    if(PipelinePolicy.isV4(ctx.flexPolicy)){var scored=deriveWriterScores_(['','',rec.COMPANY,rec.TITLE,bucket,'','','',rec.LOCATION||''],P,set,ctx.flexPolicy);if(!scored.ok){res.result='WRITE_FAILED';res.detail=scored.error;summary.WRITE_FAILED++;results.push(res);delete batchKeys[rec.INTAKE_KEY];continue;}}
     var disposition = bucket === 'SCOUT_INTAKE' ? 'INTAKE/AWAITING_ANALYSIS' : 'INTAKE/IDENTITY_UNRESOLVED';
     var line = [String(inv), pid, rec.COMPANY, rec.TITLE, bucket, disposition, tags.join('; '), rec.REQ_ID || 'UNCAPTURED', rec.LOCATION || 'NOT_STATED'].join(' | ') + ' | ' + buildPayload('SCOUT_INTAKE_PENDING (Claude analysis, then Forge verification)', P, O);
     newLines.push(line); idx.push({ inv: inv, id: pid, company: rec.COMPANY, title: rec.TITLE, bucket: bucket, location: rec.LOCATION, reqTokens: reqTokens(rec.REQ_ID), reqCores: reqTokens(rec.REQ_ID).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), urls: urlsIn(rec.SOURCE_URL).concat(urlsIn(rec.COMPANY_SOURCE_URL || ''), urlsIn(rec.INITIATING_URL || '')), ne: normEmployer(rec.COMPANY), nt: normTitle(rec.TITLE), nl: normLocation(rec.LOCATION), intakeKey: rec.INTAKE_KEY });
-    res.result = bucket === 'SCOUT_INTAKE' ? 'SCOUT_INTAKE_WRITTEN' : 'DISCOVERY_LEAD_WRITTEN'; res.PRIMARY_ID = pid; res.INV = inv; res.BUCKET = bucket; summary[res.result]++; summary.ENTERED_MASTER++; results.push(res);
+    res.outcome = 'INSERTED'; res.result = bucket === 'SCOUT_INTAKE' ? 'SCOUT_INTAKE_WRITTEN' : 'DISCOVERY_LEAD_WRITTEN'; res.PRIMARY_ID = pid; res.INV = inv; res.BUCKET = bucket; summary[res.result]++; summary.ENTERED_MASTER++; results.push(res);
   }
   // Insert block: rows grouped by bucket, each group under its own heading, so a SCOUT_INTAKE row never sits under
   // a DISCOVERY_LEAD heading (row BUCKET stays authoritative; headings are presentation and may repeat).
@@ -1934,7 +2112,7 @@ function readJobDocuments_() {
   return { ok:true, config:readDocsConfig_(), resumes:listFolderFiles_(RESUMES_FOLDER_ID), coverLetters:listFolderFiles_(COVER_LETTERS_FOLDER_ID), supporting:listFolderFiles_(SUPPORTING_DOCS_FOLDER_ID), timVoice:listFolderFiles_(TIM_VOICE_FOLDER_ID), interviewNotes:listFolderFiles_(INTERVIEW_NOTES_FOLDER_ID) };
 }
 function readDocumentText_(fileId) {
-  var id=String(fileId||'').trim(); if(!id) return {ok:false,error:'fileId required'};
+  var id=String(fileId||'').trim(); if(id === '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI') return {ok:false,error:'FROZEN_MASTER_FORBIDDEN'}; if(!id) return {ok:false,error:'fileId required'};
   var f; try { f=DriveApp.getFileById(id); } catch(e) { return {ok:false,error:'document not found'}; }
   var mime=String(f.getMimeType()||''), text='', method='';
   try {
@@ -1967,13 +2145,15 @@ function readFlexPolicy_() {
       defaults._WARNING = 'SECTION=DEGREE_FLEX not found; production defaults used';
       return defaults;
     }
-    var raw = {}, structured = 0;
+    var raw = { POLICY_VERSION: (String(text).match(/^POLICY_VERSION=(.+)$/m) || [])[1] || '' }, structured = 0;
     sec[1].split(/\r?\n/).forEach(function (line) {
       var m = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
       if (!m) return;
-      if (defaults[m[1]] !== undefined) { raw[m[1]] = m[2]; structured++; }
+      if (defaults[m[1]] !== undefined || m[1] === 'FLEX_POLICY_VERSION') { raw[m[1]] = m[2]; structured++; }
     });
+    if (raw.POLICY_VERSION === PipelinePolicy.V4) raw.FLEX_POLICY_VERSION = PipelinePolicy.V4;
     var policy = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy(raw) : raw;
+    if(PipelinePolicy.isV4(policy)){var scoring=readScoringModel_();if(scoring.ok&&scoring.exists)policy._SCORING_MODEL=scoring.model;else policy._SCORING_ERROR=scoring.error||'Published scoring model missing';}
     policy._SOURCE = structured ? 'CANONICAL_STRUCTURED' : 'CANONICAL_DEFAULTS';
     policy._WARNING = structured ? '' : 'No structured FLEX policy keys found; production defaults used';
     return policy;
@@ -1983,6 +2163,25 @@ function readFlexPolicy_() {
     return defaults;
   }
 }
+
+// This endpoint establishes live authority identity, not native provider adoption.
+function automationAlignmentRead_(){
+  var at=new Date().toISOString(),authorities={};
+  function fingerprint(text){return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(text)));}
+  try{var common=readDocumentText_(PipelineAlignment.IDS.common);authorities.common={ok:common.ok===true,id:PipelineAlignment.IDS.common,active:/^STATUS=ACTIVE_COMMON_OPERATIONAL_STANDARD/m.test(common.text||''),fingerprint:common.ok?fingerprint(common.text):'',fetchedAt:at,error:common.error||''};}catch(e){authorities.common={ok:false,error:String(e)};}
+  try{var rules=readCanonicalRules_();authorities.rules={ok:rules.ok===true,id:rules.id,active:/^STATUS=ACTIVE\s*$/m.test(rules.text||''),fingerprint:rules.ok?fingerprint(rules.text):'',fetchedAt:at,error:rules.error||''};}catch(e){authorities.rules={ok:false,error:String(e)};}
+  authorities.writer={ok:true,masterId:MASTER_ID,fingerprint:fingerprint(MASTER_ID+'|'+PipelineAlignment.stable(WRITER_BUILD)),fetchedAt:at};
+  return {ok:true,version:PipelineAlignment.VERSION,authorities:authorities,tasks:PipelineAlignment.TASKS,nativeControl:'UNSUPPORTED',nativeAdoption:'UNVERIFIED',enforcement:'OPT_IN_AUTOMATION_ENVELOPE'};
+}
+function automationEnvelopeError_(req,live){
+  var envelope=req.automation||{},a=live.authorities||{};
+  if(!envelope.attemptId||!req.requestId)return 'AUTOMATION_STABLE_IDENTIFIERS_REQUIRED';
+  for(var k of ['common','rules','writer']){if(!a[k]||a[k].ok!==true||!a[k].fingerprint)return 'BLOCKED_AUTHORITY: '+k;if((envelope.authorityFingerprints||{})[k]!==a[k].fingerprint)return 'AUTHORITY_CHANGED: '+k;}
+  if(!a.common.active||!a.rules.active||a.writer.masterId!==PipelineAlignment.IDS.master)return 'ACTIVE_AUTHORITY_REQUIRED';
+  try{PipelineAlignment.assertRequest({allowed:true,taskKey:envelope.taskKey},req);}catch(e){return String(e.message||e);}
+  return '';
+}
+
 function readCanonicalRules_() {
   try {
     var file=DriveApp.getFileById(CANONICAL_RULES_DOC_ID), text=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
@@ -1992,13 +2191,17 @@ function readCanonicalRules_() {
 function saveCanonicalRules_(r) {
   var text=String(r.text||'').trim(); if(!text) return {ok:false,error:'rules text required'};
   if(text.indexOf('TIM_PIPELINE_RULES_CANONICAL')<0) return {ok:false,error:'missing TIM_PIPELINE_RULES_CANONICAL header'};
+  var lock=LockService.getScriptLock();lock.waitLock(30000);
+  try{
   var doc=DocumentApp.openById(CANONICAL_RULES_DOC_ID), body=doc.getBody(), before=body.getText(), ts=r.ts||new Date().toISOString();
+  if(r.baseText!==undefined&&String(r.baseText)!==before)return {ok:false,mode:'REVISION_CONFLICT',error:'Canonical rules changed; reload before saving'};
   body.clear(); body.setText(text); doc.saveAndClose();
   var after=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
   var ok=after===text;
   var hist={type:'RULESET_SAVED',actor:'TIM',ts:ts,requestId:String(r.requestId||''),verified:ok,priorHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,before)).slice(0,16),newHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,after)).slice(0,16),note:String(r.note||'')};
   appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text','\n'),hist); appendEvent_(hist);
   return {ok:ok,id:CANONICAL_RULES_DOC_ID,modifiedTime:DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(),history:hist};
+  }finally{lock.releaseLock();}
 }
 /* ================= shared weighted scoring model ================= */
 function validateScoringModel_(m) {
@@ -2115,9 +2318,9 @@ function appendRun_(rec) { var f = findOrCreate_(RUNS_FILE_NAME, 'text', ''); va
 function appendReceipt_(r) { appendReceipts_([r]); }
 function readReceipts_() {
   var f = receiptsFile_(); if (!f) return '';
-  if (!isGoogleDoc_(f)) return f.getBlob().getDataAsString();
+  if (!isGoogleDoc_(f)) return withDocRetry_('RECEIPTS_READ', function(){return f.getBlob().getDataAsString();});
   var id = f.getId(); return withDocRetry_('RECEIPTS_READ', function () { return DocumentApp.openById(id).getBody().getText(); });
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

@@ -7,7 +7,7 @@ const freshExec = b => { W.resetExecution_(); return W.dispatchWrite_(b); };
 // Durable verification happens in a LATER execution (separate request / queue tick), never in the write itself.
 const verifyLater = () => { W.resetExecution_(); return W.verifyPendingWrites_(); };
 
-test('FLEX policy defaults preserve current production behavior',()=>{
+test('FLEX policy defaults preserve current production behavior',t =>{
   const p=R.flexPolicy('SECTION=OTHER\nX=1\n');
   assert.equal(p.HIGH_FLEX_MODIFIER,15);
   assert.equal(p.SOFT_FLEX_MODIFIER,6);
@@ -22,7 +22,7 @@ test('FLEX policy defaults preserve current production behavior',()=>{
   assert.deepEqual(R.FLEX_DEFAULTS,P.FLEX_POLICY_DEFAULTS);
 });
 
-test('Generated FLEX prose stays synchronized with structured policy values',()=>{
+test('Generated FLEX prose stays synchronized with structured policy values',t =>{
   const src='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- HIGH_FLEX: old hard-coded prose. Modifier +15.\n- SOFT_FLEX: old prose. Modifier +6.\nSECTION=TITLE_SCOPE_FIT\nX=1\n';
   const out=R.setFlexPolicy(src,{HIGH_FLEX_MODIFIER:12,SOFT_FLEX_MODIFIER:4,NO_FLEX_MODIFIER:-8,STRICT_MODIFIER:-20,NOT_STATED_CLASS:'SOFT_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'STRICT',SINGLE_PATH_CLASS:'NO_FLEX',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'});
   assert.match(out,/FLEX_POLICY_PROSE_BEGIN/);
@@ -37,7 +37,7 @@ test('Generated FLEX prose stays synchronized with structured policy values',()=
   assert.equal(R.setFlexPolicy(out,R.flexPolicy(out)),out,'generated prose is stable on repeat save');
 });
 
-test('FLEX-only save transformation can use canonical text without committing unrelated raw-draft edits',()=>{
+test('FLEX-only save transformation can use canonical text without committing unrelated raw-draft edits',t =>{
   const canonical='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- canonical prose\nSECTION=OTHER\nCANONICAL_ONLY=YES\n';
   const draft=canonical.replace('CANONICAL_ONLY=YES','CANONICAL_ONLY=YES\nUNSAVED_RAW_EDIT=DO_NOT_COMMIT');
   const policy={HIGH_FLEX_MODIFIER:13};
@@ -49,7 +49,7 @@ test('FLEX-only save transformation can use canonical text without committing un
   assert.equal(R.flexPolicy(retainedLocalDraft).HIGH_FLEX_MODIFIER,13);
 });
 
-test('Rules editor round-trips structured FLEX policy in canonical DEGREE_FLEX section',()=>{
+test('Rules editor round-trips structured FLEX policy in canonical DEGREE_FLEX section',t =>{
   const src='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose stays here\nSECTION=TITLE_SCOPE_FIT\nX=1\n';
   const out=R.setFlexPolicy(src,{HIGH_FLEX_MODIFIER:12,SOFT_FLEX_MODIFIER:4,NO_FLEX_MODIFIER:-8,STRICT_MODIFIER:-20,NOT_STATED_CLASS:'SOFT_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'STRICT',SINGLE_PATH_CLASS:'STRICT',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'NO'});
   const p=R.flexPolicy(out);
@@ -65,7 +65,7 @@ test('Rules editor round-trips structured FLEX policy in canonical DEGREE_FLEX s
   assert.equal((out.match(/HIGH_FLEX_MODIFIER=/g)||[]).length,1);
 });
 
-test('PipelinePolicy consumes canonical FLEX class mappings and modifiers',()=>{
+test('PipelinePolicy consumes canonical FLEX class mappings and modifiers',t =>{
   const cfg={HIGH_FLEX_MODIFIER:11,SOFT_FLEX_MODIFIER:3,NO_FLEX_MODIFIER:-7,STRICT_MODIFIER:-25,NOT_STATED_CLASS:'SOFT_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'STRICT',SINGLE_PATH_CLASS:'STRICT'};
   let f=P.flex({DEGREE_TEXT:'Degree not stated'},cfg);
   assert.equal(f.class,'SOFT_FLEX');assert.equal(f.modifier,3);
@@ -75,7 +75,7 @@ test('PipelinePolicy consumes canonical FLEX class mappings and modifiers',()=>{
   assert.equal(f.class,'STRICT');assert.equal(f.modifier,-25);assert.equal(f.blocked,true);
 });
 
-test('Writer mutation uses supplied canonical FLEX policy',()=>{
+test('Writer mutation uses supplied canonical FLEX policy',t =>{
   const row='1 | TEST-1 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ1 | TN | TEST';
   const cfg={HIGH_FLEX_MODIFIER:9,SOFT_FLEX_MODIFIER:2,NO_FLEX_MODIFIER:-5,STRICT_MODIFIER:-30,NOT_STATED_CLASS:'HIGH_FLEX',EQUIVALENCY_CLASS:'SOFT_FLEX',HARD_DEGREE_CLASS:'STRICT',SINGLE_PATH_CLASS:'STRICT'};
   const r=W.mutateRow(row,{kind:'ENRICH',actor:'CLAUDE',requestId:'T1',fields:{DEGREE_TEXT:"Bachelor's degree required",REQUIREMENTS_REVIEWED:'YES'}},cfg);
@@ -85,7 +85,7 @@ test('Writer mutation uses supplied canonical FLEX policy',()=>{
   assert.equal(payload.FLEX_MODIFIER,'-30');
 });
 
-test('Unrelated ENRICH still does not create FLEX fields under custom policy',()=>{
+test('Unrelated ENRICH still does not create FLEX fields under custom policy',t =>{
   const row='1 | TEST-2 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ2 | TN | TEST';
   const cfg={HIGH_FLEX_MODIFIER:99,NOT_STATED_CLASS:'STRICT'};
   const r=W.mutateRow(row,{kind:'ENRICH',actor:'CLAUDE',requestId:'T2',fields:{SALARY_BASE_EST:'$200000-$240000'}},cfg);
@@ -94,7 +94,7 @@ test('Unrelated ENRICH still does not create FLEX fields under custom policy',()
   assert.equal('FLEX_MODIFIER' in payload,false);
 });
 
-test('Writer obeys app-managed fresh degree precedence switch',()=>{
+test('Writer obeys app-managed fresh degree precedence switch',t =>{
   const row='1 | TEST-3 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ3 | TN | TEST; FLEX=SOFT; FLEX_CLASS=SOFT_FLEX; FLEX_MODIFIER=6';
   const base={HIGH_FLEX_MODIFIER:15,SOFT_FLEX_MODIFIER:6,NO_FLEX_MODIFIER:-10,STRICT_MODIFIER:-10,NOT_STATED_CLASS:'HIGH_FLEX',EQUIVALENCY_CLASS:'SOFT_FLEX',HARD_DEGREE_CLASS:'NO_FLEX',SINGLE_PATH_CLASS:'STRICT'};
   const yes=Object.assign({},base,{FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'});
@@ -110,7 +110,7 @@ test('Writer obeys app-managed fresh degree precedence switch',()=>{
   assert.equal(pn.FLEX_MODIFIER,'6');
 });
 
-test('Explicit FLEX in same write still wins over fresh degree precedence',()=>{
+test('Explicit FLEX in same write still wins over fresh degree precedence',t =>{
   const row='1 | TEST-4 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ4 | TN | TEST; FLEX_CLASS=NO_FLEX; FLEX_MODIFIER=-10';
   const cfg={FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'};
   const r=W.mutateRow(row,{kind:'ENRICH',actor:'CLAUDE',requestId:'T4',fields:{FLEX:'SOFT',DEGREE_TEXT:"Bachelor's degree required",REQUIREMENTS_REVIEWED:'YES'}},cfg);
@@ -121,7 +121,7 @@ test('Explicit FLEX in same write still wins over fresh degree precedence',()=>{
 
 const pl=line=>W.parsePayload(line.split(' | ').slice(9).join(' | ')).payload;
 
-test('Absent policy keys reproduce production: conclusive fresh degree evidence keeps the stale class unless Tim turns precedence on',()=>{
+test('Absent policy keys reproduce production: conclusive fresh degree evidence keeps the stale class unless Tim turns precedence on',t =>{
   const row='1 | TEST-5 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ5 | TN | TEST; FLEX_CLASS=SOFT_FLEX; FLEX_MODIFIER=6';
   const fields={DEGREE_TEXT:"Bachelor's degree required",REQUIREMENTS_REVIEWED:'YES'};
   const def=pl(W.mutateRow(row,{kind:'ENRICH',actor:'CLAUDE',requestId:'T5',fields},R.flexPolicy('SECTION=DEGREE_FLEX\n- prose only\n')).after);
@@ -130,7 +130,7 @@ test('Absent policy keys reproduce production: conclusive fresh degree evidence 
   assert.equal(on.FLEX_CLASS,'NO_FLEX');assert.equal(on.FLEX_MODIFIER,'-10');
 });
 
-test('Fresh degree precedence never wipes a known class or STRICT hold with inconclusive evidence',()=>{
+test('Fresh degree precedence never wipes a known class or STRICT hold with inconclusive evidence',t =>{
   const yes={FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'};
   const strict='1 | TEST-6 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ6 | TN | TEST; FLEX_CLASS=STRICT; FLEX_MODIFIER=-10';
   const s=pl(W.mutateRow(strict,{kind:'ENRICH',actor:'CLAUDE',requestId:'T6',fields:{DEGREE_TEXT:'See posting'}},yes).after);
@@ -140,13 +140,13 @@ test('Fresh degree precedence never wipes a known class or STRICT hold with inco
   assert.equal(n.FLEX_CLASS,'NO_FLEX');assert.equal(n.FLEX_MODIFIER,'-10');assert.equal(n.FLEX,'NO');
 });
 
-test('STRICT pursue gate uses the transaction FLEX policy',()=>{
+test('STRICT pursue gate uses the transaction FLEX policy',t =>{
   const row='1 | TEST-8 | Test Co | Director | MANUAL_RESEARCH | OPEN | - | REQ8 | TN | TEST; REQUIREMENTS_REVIEWED=YES; DEGREE_SINGLE_PATH_CONFIRMED=YES; DEGREE_TEXT=Bachelor degree required';
   assert.equal(W.mutateRow(row,{kind:'APPLY_NOW',value:'YES',actor:'CLAUDE',requestId:'T8'},{}).ok,false);
   assert.equal(W.mutateRow(row,{kind:'APPLY_NOW',value:'YES',actor:'CLAUDE',requestId:'T8B'},{SINGLE_PATH_CLASS:'NO_FLEX'}).ok,true);
 });
 
-test('Load approved FLEX/URL update keeps saved structured FLEX keys',()=>{
+test('Load approved FLEX/URL update keeps saved structured FLEX keys',t =>{
   const src=R.setFlexPolicy('TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- old prose\nSECTION=TITLE_SCOPE_FIT\nX=1',{HIGH_FLEX_MODIFIER:12,FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'});
   const replaced=src.replace(/SECTION=DEGREE_FLEX[\s\S]*?(?=SECTION=TITLE_SCOPE_FIT)/,'SECTION=DEGREE_FLEX\n- new prose\n');
   const out=R.setFlexPolicy(replaced,R.flexPolicy(src));
@@ -156,45 +156,32 @@ test('Load approved FLEX/URL update keeps saved structured FLEX keys',()=>{
 });
 
 // ---- Writer end-to-end: policy comes from the canonical Rules document, read once per transaction ----
-const MASTER='19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI', RULES='1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
-function services(rowCount,rulesText){
-  const para=t=>{let s=t;return {getText:()=>s,setText:v=>{s=v}}};
+const RULES='1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
+function services(t,rowCount,rulesText){
   const rows=[];for(let i=1;i<=rowCount;i++)rows.push(i+' | V2F-ROW'+String(i).padStart(8,'0')+' | Acme '+i+' | Director | SCOUT_INTAKE | ANALYSIS_PENDING | - | REQ-'+i+' | Austin, TX | SOURCE_URL=https://example.com/'+i);
-  const master=['COUNTS: TOTAL='+rowCount+' SCOUT_INTAKE='+rowCount+' UNACCOUNTED=0',...rows,'END V2_CURRENT_POPULATION_MASTER ('+rowCount+' rows)'].map(para);
-  const receipts=[];let events='',opens={};
-  const doc=(body)=>({getBody:()=>body,saveAndClose(){}});
-  const files={PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS: { getId: () => 'RECEIPTS', getMimeType: () => 'application/vnd.google-apps.document' },'PIPELINE_EVENT_LOG.jsonl':{getId:()=>'EVENTS',getBlob:()=>({getDataAsString:()=>events}),setContent:v=>{events=v}}};
-  const iter=l=>{let i=0;return {hasNext:()=>i<l.length,next:()=>l[i++]}};
-  const folder={getFilesByName:n=>iter(files[n]?[files[n]]:[]),createFile:(n,c)=>{if(n==='PIPELINE_RECEIPT_INDEX.json'){let v=c;return files[n]={getId:()=>'INDEX',getMimeType:()=>'text/plain',getBlob:()=>({getDataAsString:()=>v}),setContent:x=>{v=x}}}throw new Error('unexpected createFile '+n)}};
-  global.LockService={getScriptLock:()=>({waitLock(){},releaseLock(){}})};
-  global.DriveApp={getFileById:id=>({getLastUpdated:()=>new Date('2026-10-04T20:00:00Z'),getParents:()=>iter([folder]),getId:()=>id})};
-  global.DocumentApp={openById:id=>{opens[id]=(opens[id]||0)+1;
-    if(id===MASTER)return doc({getParagraphs:()=>master});
-    if(id===RULES){if(rulesText===null)throw new Error('simulated canonical rules outage');return doc({getText:()=>rulesText});}
-    return doc({getText:()=>receipts.join('\n'),appendParagraph:t=>receipts.push(t)});}};
-  global.MimeType={PLAIN_TEXT:'text/plain'};
-  return {opens,receipts:()=>receipts.join('\n'),row:id=>master.map(p=>p.getText()).find(l=>l.split(' | ')[1]===id)};
+  return require('./helpers/writer-world').world(t, { rows, rulesText });
 }
+
 const rules='TIM_PIPELINE_RULES_CANONICAL\nSTATUS=ACTIVE\nSECTION=DEGREE_FLEX\nFLEX_POLICY_VERSION=1\nNO_FLEX_MODIFIER=-4\nHARD_DEGREE_CLASS=NO_FLEX\n- prose\nSECTION=TITLE_SCOPE_FIT\nX=1';
 const degree=(i,rid)=>({action:'ruling',ruling:{primaryId:'V2F-ROW'+String(i).padStart(8,'0'),kind:'ENRICH',actor:'CLAUDE',requestId:rid+i,fields:{DEGREE_TEXT:"Bachelor's degree required",REQUIREMENTS_REVIEWED:'YES'}}});
 
-test('A 30-row all-ruling batch reads the canonical Rules document once and applies its policy to every row',()=>{
-  const s=services(30,rules);
+test('A 30-row all-ruling batch reads the canonical Rules document once and applies its policy to every row',t =>{
+  const s=services(t, 30,rules);
   const r=freshExec({action:'batch',requests:Array.from({length:30},(_,i)=>degree(i+1,'BATCH-'))});
   assert.equal(r.mode,'BATCH_RULING_SINGLE_COMMIT');assert.equal(r.ok,true);assert.equal(r.processed,30);
   assert.equal(s.opens[RULES],1,'rules read once per batch');
   for(let i=1;i<=30;i++){const p=pl(s.row('V2F-ROW'+String(i).padStart(8,'0')));assert.equal(p.FLEX_CLASS,'NO_FLEX');assert.equal(p.FLEX_MODIFIER,'-4')}
 });
 
-test('A single ruling reads the canonical Rules document once',()=>{
-  const s=services(2,rules);
+test('A single ruling reads the canonical Rules document once',t =>{
+  const s=services(t, 2,rules);
   const r=freshExec(degree(1,'SINGLE-'));
   assert.equal(r.ok,true,r.error);assert.equal(s.opens[RULES],1);
   assert.equal(pl(s.row('V2F-ROW00000001')).FLEX_MODIFIER,'-4');
 });
 
-test('Writer surfaces CANONICAL_STRUCTURED policy provenance in batch result and receipts',()=>{
-  const s=services(1,rules);
+test('Writer surfaces CANONICAL_STRUCTURED policy provenance in batch result and receipts',t =>{
+  const s=services(t, 1,rules);
   const r=freshExec({action:'batch',requests:[degree(1,'PROV-')]});
   assert.equal(r.ok,true);
   assert.equal(r.flexPolicySource,'CANONICAL_STRUCTURED');
@@ -202,8 +189,8 @@ test('Writer surfaces CANONICAL_STRUCTURED policy provenance in batch result and
   assert.equal(r.results[0].flexPolicySource,'CANONICAL_STRUCTURED');
 });
 
-test('Writer surfaces DEFAULT_FALLBACK when canonical FLEX policy cannot be read',()=>{
-  const s=services(1,null);
+test('Writer surfaces DEFAULT_FALLBACK when canonical FLEX policy cannot be read',t =>{
+  const s=services(t, 1,null);
   const r=freshExec({action:'batch',requests:[degree(1,'FALLBACK-')]});
   assert.equal(r.ok,true);
   assert.equal(r.flexPolicySource,'DEFAULT_FALLBACK');
@@ -214,9 +201,9 @@ test('Writer surfaces DEFAULT_FALLBACK when canonical FLEX policy cannot be read
   assert.equal(p.FLEX_MODIFIER,'-10','production default still applies during explicit fallback');
 });
 
-test('Writer surfaces CANONICAL_DEFAULTS when canonical rules are readable but structured FLEX keys are absent',()=>{
+test('Writer surfaces CANONICAL_DEFAULTS when canonical rules are readable but structured FLEX keys are absent',t =>{
   const readable='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose only\nSECTION=OTHER\nX=1';
-  const s=services(1,readable);
+  const s=services(t, 1,readable);
   const r=freshExec({action:'batch',requests:[degree(1,'DEFAULTS-')]});
   assert.equal(r.ok,true);
   assert.equal(r.flexPolicySource,'CANONICAL_DEFAULTS');
@@ -234,7 +221,7 @@ const LIVE_FLEX='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n'+
 '- Protected application and rejection states remain authoritative.\nSECTION=TITLE_SCOPE_FIT\nX=1\n';
 const NONDEFAULT={HIGH_FLEX_MODIFIER:12,SOFT_FLEX_MODIFIER:4,NO_FLEX_MODIFIER:-8,STRICT_MODIFIER:-20,NOT_STATED_CLASS:'SOFT_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'STRICT',SINGLE_PATH_CLASS:'NO_FLEX',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'};
 
-test('Live-shaped DEGREE_FLEX: keys and generated prose agree, governing rules survive, old modifier prose is gone, repeat saves are byte-stable',()=>{
+test('Live-shaped DEGREE_FLEX: keys and generated prose agree, governing rules survive, old modifier prose is gone, repeat saves are byte-stable',t =>{
   const out=R.setFlexPolicy(LIVE_FLEX,NONDEFAULT);
   assert.deepEqual(R.flexPolicy(out),NONDEFAULT,'structured keys carry the saved policy');
   const sec=out.match(/SECTION=DEGREE_FLEX\n([\s\S]*?)(?=\nSECTION=)/)[1];
@@ -261,14 +248,14 @@ test('Live-shaped DEGREE_FLEX: keys and generated prose agree, governing rules s
   assert.equal((back.match(/FLEX_POLICY_PROSE_BEGIN/g)||[]).length,1);
 });
 
-test('Section-less rules get keys and generated prose together',()=>{
+test('Section-less rules get keys and generated prose together',t =>{
   const out=R.setFlexPolicy('TIM_PIPELINE_RULES_CANONICAL\nSECTION=OTHER\nX=1',NONDEFAULT);
   assert.match(out,/FLEX modifiers: HIGH_FLEX \+12/);
   assert.equal(R.setFlexPolicy(out,NONDEFAULT),out);
 });
 
-test('Batch receipts carry FLEX_POLICY_SOURCE for every row',()=>{
-  const s=services(2,rules);
+test('Batch receipts carry FLEX_POLICY_SOURCE for every row',t =>{
+  const s=services(t, 2,rules);
   const r=freshExec({action:'batch',requests:[degree(1,'RCPT-'),degree(2,'RCPT-')]});
   assert.equal(r.mode,'BATCH_RULING_SINGLE_COMMIT');assert.equal(s.opens[RULES],1);
   assert.equal((s.receipts().match(/FLEX_POLICY_SOURCE=CANONICAL_STRUCTURED/g)||[]).length,2);
@@ -277,21 +264,21 @@ test('Batch receipts carry FLEX_POLICY_SOURCE for every row',()=>{
   assert.equal(Object.keys(W.completedReceiptRequestIds_(s.receipts())).sort().join(),'RCPT-1,RCPT-2','verified receipts parse as COMPLETE');
 });
 
-test('Single ruling result and receipt carry provenance; fallback warning reaches the receipt',()=>{
-  let s=services(1,rules);
+test('Single ruling result and receipt carry provenance; fallback warning reaches the receipt',t =>{
+  let s=services(t, 1,rules);
   let r=freshExec(degree(1,'SP-'));
   assert.equal(r.ok,true,r.error);assert.equal(r.flexPolicySource,'CANONICAL_STRUCTURED');assert.equal(r.receipt.FLEX_POLICY_SOURCE,'CANONICAL_STRUCTURED');
   assert.match(s.receipts(),/FLEX_POLICY_SOURCE=CANONICAL_STRUCTURED/);
-  s=services(1,null);
+  s=services(t, 1,null);
   r=freshExec(degree(1,'SF-'));
   assert.equal(r.ok,true,r.error);assert.equal(r.flexPolicySource,'DEFAULT_FALLBACK');assert.equal(s.opens[RULES],1);
   assert.match(s.receipts(),/FLEX_POLICY_SOURCE=DEFAULT_FALLBACK/);
-  assert.match(s.receipts(),/FLEX_POLICY_WARNING=Canonical FLEX policy read failed: simulated canonical rules outage/);
+  assert.match(s.receipts(),/FLEX_POLICY_WARNING=Canonical FLEX policy read failed: No synthetic Doc: 1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE/);
   assert.equal(pl(s.row('V2F-ROW00000001')).FLEX_MODIFIER,'-10');
 });
 
-test('Upsert reads the canonical Rules document once and its receipt carries provenance',()=>{
-  const s=services(1,'TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose only\nSECTION=OTHER\nX=1');
+test('Upsert reads the canonical Rules document once and its receipt carries provenance',t =>{
+  const s=services(t, 1,'TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n- prose only\nSECTION=OTHER\nX=1');
   const r=freshExec({action:'upsert_application',event:{TARGET_PRIMARY_ID:'V2F-ROW00000001',STATE:'APPLIED',EVENT_DATE:'2026-10-02',EVIDENCE:'Gmail 1cd "Thanks for applying"',actor:'FORGE',requestId:'UP-1'}});
   assert.equal(r.ok,true,r.error);assert.equal(r.mode,'UPDATE');
   assert.equal(s.opens[RULES],1,'rules read once per upsert');
@@ -302,7 +289,7 @@ test('Upsert reads the canonical Rules document once and its receipt carries pro
 });
 
 
-test('Canonical decline reason codes are parsed from DECLINE_RULES without duplicating policy in the UI',()=>{
+test('Canonical decline reason codes are parsed from DECLINE_RULES without duplicating policy in the UI',t =>{
   const text='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DECLINE_RULES\n- Allowed reason codes: PAY_BELOW_FLOOR, FLEX_STRICT_NO, SCOPE_BELOW_TARGET, TIM_EXPLICIT_DECLINE.\nSECTION=OTHER\nX=1';
   assert.deepEqual(R.declineReasonCodes(text),['PAY_BELOW_FLOOR','FLEX_STRICT_NO','SCOPE_BELOW_TARGET','TIM_EXPLICIT_DECLINE']);
   assert.deepEqual(R.declineReasonCodes('SECTION=DECLINE_RULES\n- no list here'),[]);

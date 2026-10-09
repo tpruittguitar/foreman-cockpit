@@ -3,7 +3,7 @@
 // V2_TERMINAL_ARCHIVE.txt. Docs edits persist only at execution end (and can fail), exactly like production.
 const test = require('node:test'), assert = require('node:assert/strict');
 const W = require('../apps-script/Code.gs');
-const MASTER = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI', DOCMIME = 'application/vnd.google-apps.document';
+const MASTER = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8', DOCMIME = 'application/vnd.google-apps.document';
 
 const row = (n, id, bucket, extra) => n + ' | ' + id + ' | Acme ' + n + ' | Director of Quality | ' + bucket + ' | ANALYSIS_PENDING | - | REQ-' + n + ' | Austin, TX | SCOUT_ACTION; SOURCE_URL=https://example.com/' + n + '; FLEX_CLASS=HIGH_FLEX' + (extra || '');
 function masterFixture() {
@@ -22,41 +22,8 @@ function masterFixture() {
 }
 
 function world(lines) {
-  const docs = { [MASTER]: lines.slice() }, names = { [MASTER]: 'V2_CURRENT_POPULATION_MASTER.txt' }, texts = {}, files = {}; let next = 1, clock = Date.parse('2026-10-05T12:00:00Z');
-  const byName = n => Object.values(files).filter(f => f.getName() === n);
-  const textFile = (name, content) => { let v = content, n = name; const id = 'T' + (next++); const f = { getId: () => id, getMimeType: () => 'text/plain', getName: () => n, setName: x => { n = x; }, getBlob: () => ({ getDataAsString: () => v }), setContent: x => { v = x; }, getLastUpdated: () => new Date(clock), getParents: () => iter([folder]) }; files[id] = f; return f; };
-  const docFile = id => ({ getId: () => id, getMimeType: () => DOCMIME, getName: () => names[id], setName: x => { names[id] = x; }, getLastUpdated: () => new Date('2026-10-04T20:00:00Z'), getParents: () => iter([folder]),
-    makeCopy: (name) => { const nid = 'DOC' + (next++); docs[nid] = docs[id].slice(); names[nid] = name; files[nid] = docFile(nid); return files[nid]; } });
-  const iter = l => { let i = 0; return { hasNext: () => i < l.length, next: () => l[i++] }; };
-  const folder = { getId: () => 'FOLDER', getFilesByName: n => iter(byName(n)), createFile: (n, c) => textFile(n, c) };
-  files[MASTER] = docFile(MASTER);
-  textFile('PIPELINE_EVENT_LOG.jsonl', '\n');
-  textFile('PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS', 'RECEIPT=RECEIPT_LOG_ROTATION\nEND RECEIPT_LOG_ROTATION\n');
-  let cache = {}, saved = {}, saves = 0;
-  const open = id => {
-    if (!cache[id]) cache[id] = docs[id].slice();
-    const work = cache[id];
-    const paras = () => work.map((_, i) => { const p = { getText: () => work[work.indexOf(p._t) >= 0 ? work.indexOf(p._t) : i], setText: v => { const k = work.indexOf(p._t); work[k] = v; p._t = v; }, removeFromParent: () => { const k = work.indexOf(p._t); work.splice(k, 1); } }; p._t = work[i]; return p; });
-    return { getBody: () => ({ getParagraphs: paras, getText: () => work.join('\n'), insertParagraph: (at, t) => { work.splice(at, 0, t); } }), saveAndClose: () => { saved[id] = true; saves++; } };
-  };
-  const crypto = require('crypto');
-  global.Utilities = { sleep() {}, DigestAlgorithm: { SHA_256: 'sha256' }, Charset: { UTF_8: 'utf8' },
-    computeDigest: (alg, str) => Array.from(crypto.createHash('sha256').update(String(str), 'utf8').digest()).map(x => x > 127 ? x - 256 : x),
-    formatDate: () => '2026-10-05 08:00 ET' };
-  global.LockService = { getScriptLock: () => ({ waitLock() {}, tryLock: () => true, releaseLock() {} }) };
-  global.DriveApp = { getFileById: id => files[id] || (() => { throw new Error('no file ' + id); })(), getRootFolder: () => folder };
-  global.DocumentApp = { openById: id => { if (!docs[id]) throw new Error('no doc ' + id); return open(id); } };
-  global.MimeType = { PLAIN_TEXT: 'text/plain' };
-  const RealDate = Date;
-  global.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(clock); } static now() { return clock; } };
-  const exec = (fn, o) => {
-    W.resetExecution_(); cache = {}; saved = {};
-    try { return fn(); } finally { if (!(o && o.flushFails)) Object.keys(cache).forEach(id => { if (saved[id]) docs[id] = cache[id]; }); cache = {}; }
-  };
-  const post = (body, o) => exec(() => W.dispatchWrite_(body), o);
-  const text = n => (byName(n)[0] || { getBlob: () => ({ getDataAsString: () => '' }) }).getBlob().getDataAsString();
-  return { exec, post, docs, files, byName, text, advance: ms => { clock += ms; }, restore: () => { global.Date = RealDate; }, saves: () => saves,
-    master: () => docs[MASTER], rowOf: (id, d) => (d || docs[MASTER]).find(l => l.split(' | ')[1] === id) };
+  const f = require('./helpers/writer-world').world(null, {rows:lines});
+  return Object.assign(f,{rowOf:f.row,byName:n=>f.files.has(n)?[f.files.get(n)]:[]});
 }
 const enrich = (rid, pid, fields) => ({ action: 'ruling', ruling: { primaryId: pid, kind: 'ENRICH', actor: 'FORGE', requestId: rid, fields } });
 const runToEnd = (w, max) => { let r; for (let i = 0; i < (max || 40); i++) { r = w.post({ action: 'migration', op: 'step' }); if (r.done || (!r.ok && r.mode !== 'WAIT')) return r; } return r; };
@@ -108,55 +75,25 @@ test('hydrated view reproduces every source row exactly and the original COUNTS 
   assert.ok(h.some(l => l === '=== DECLINED_BY_TIM (1) ==='), 'archived rows sit under their own bucket heading');
 });
 
-test('rehearsal on a copy: chunked, one write per execution, each chunk verified by the next; the canonical master is untouched', () => {
-  const w = world(masterFixture()), before = w.master().slice();
-  const prep = w.post({ action: 'migration', op: 'prepare', mode: 'REHEARSAL', removeChunk: 1, rewriteChunk: 1 });
-  assert.equal(prep.ok, true, JSON.stringify(prep));assert.notEqual(prep.state.targetDocId, MASTER);
-  const fin = runToEnd(w);
-  assert.equal(fin.ok, true, JSON.stringify(fin));assert.equal(fin.state.status, 'REHEARSAL_COMPLETE');assert.equal(fin.state.final.matchesPlan, true);
-  assert.deepEqual(w.master(), before, 'canonical master byte-identical');
-  const copy = w.docs[prep.state.targetDocId];
-  assert.equal(copy.filter(l => /^\d+ \| /.test(l)).length, 4);assert.match(copy.find(l => /^COUNTS:/.test(l)), /TOTAL=4 .*UNACCOUNTED=0/);
-  const hyd = w.exec(() => W.readMasterHydrated_(prep.state.targetDocId));
-  assert.equal(hyd.hydrated, true);assert.match(hyd.text, /SCOUT_NOTES=found via target company/);assert.match(hyd.text, /V2F-DECL00000003.*ARCHIVE_STATE=ARCHIVED_TERMINAL/);
-  w.restore();
+test('retired Doc migration cannot create copies, replay old chunks or mutate the text master', () => {
+  const w=world(masterFixture()),before=w.master();
+  for(const op of ['prepare','step','verify'])assert.equal(w.post({action:'migration',op}).mode,'RETIRED_MIGRATION');
+  assert.deepEqual(w.master(),before);assert.equal(w.masterSaves(),0);w.restore();
 });
 
-test('a chunk whose flush fails is detected by the next execution, waits, then is re-applied; nothing is double-applied', () => {
-  const w = world(masterFixture());
-  w.post({ action: 'migration', op: 'prepare', mode: 'REHEARSAL', removeChunk: 1, rewriteChunk: 2 });
-  const first = w.post({ action: 'migration', op: 'step' }, { flushFails: true });
-  assert.equal(first.applied, 0);
-  w.advance(10000);
-  assert.equal(w.post({ action: 'migration', op: 'step' }).mode, 'WAIT');
-  w.advance(200000);
-  const fin = runToEnd(w);
-  assert.equal(fin.state.status, 'REHEARSAL_COMPLETE', JSON.stringify(fin));assert.equal(fin.state.final.matchesPlan, true);
-  w.restore();
-});
-
-test('live cutover requires the freeze; frozen writes stay queued (WRITE_FENCE frozen)', () => {
-  const w = world(masterFixture());
-  assert.match(w.post({ action: 'migration', op: 'prepare', mode: 'LIVE' }).error, /freeze the Writer first/);
-  w.post({ action: 'freeze_writer', reason: 'cutover', actor: 'CLAUDE' });
-  const blocked = w.post({ action: 'batch', requests: [enrich('Z-1', 'V2F-LIVE00000001', { SCOPE_FIT_RAW: '90' })] });
-  assert.equal(blocked.mode, 'WRITE_FENCE');assert.equal(blocked.frozen, true);
-  const prep = w.post({ action: 'migration', op: 'prepare', mode: 'LIVE' });
-  assert.equal(prep.ok, true, JSON.stringify(prep));assert.equal(prep.state.targetDocId, MASTER);
-  assert.ok(prep.state.rollback.docCopyId && prep.state.rollback.textSnapshotId && prep.state.rollback.companionInitialId && prep.state.rollback.archiveInitialId, 'immutable rollback copies');
-  assert.deepEqual(w.docs[prep.state.rollback.docCopyId], masterFixture(), 'rollback Doc copy is the pre-migration master');
-  assert.equal(runToEnd(w).state.status, 'CUTOVER_COMPLETE');
-  assert.equal(w.master().filter(l => /^\d+ \| /.test(l)).length, 4);
-  w.restore();
+test('freeze protects text master writes independently of retired migration', () => {
+  const w=world(masterFixture());w.post({action:'freeze_writer',reason:'maintenance'});
+  assert.equal(w.post(enrich('FROZEN','V2F-LIVE00000001',{SCOPE_FIT_RAW:'90'})).mode,'WRITE_FENCE');
+  assert.equal(w.masterSaves(),0);w.restore();
 });
 
 /** A world already cut over (LIVE) and unfrozen. */
 function cutWorld() {
-  const w = world(masterFixture());
-  w.post({ action: 'freeze_writer', reason: 'cutover' });
-  w.post({ action: 'migration', op: 'prepare', mode: 'LIVE' });
-  runToEnd(w);
-  w.post({ action: 'unfreeze_writer' });
+  const p=W.planMasterMigration_(masterFixture(),{at:'2026-10-05T00:00:00Z',archiveId:'ARCHIVE',companionId:'COMPANION'}),w=world(p.target);
+  const folder=global.DriveApp.getRootFolder();
+  const archive=folder.createFile('V2_TERMINAL_ARCHIVE.txt',p.archive.join('\n'));
+  const companion=folder.createFile('V2_EVIDENCE_COMPANION.jsonl',p.records.map(JSON.stringify).join('\n'));
+  folder.createFile('PIPELINE_MIGRATION_STATE.json',JSON.stringify({mode:'LIVE',status:'CUTOVER_COMPLETE',archiveId:archive.getId(),companionId:companion.getId()}));
   return w;
 }
 
@@ -226,14 +163,8 @@ test('Scout run telemetry end to end: intake records PENDING; the next execution
   w.restore();
 });
 
-test('mid-migration (frozen, partly migrated) the hydrated view is still complete and exact', () => {
-  const w = world(masterFixture());
-  w.post({ action: 'freeze_writer', reason: 'cutover' });
-  w.post({ action: 'migration', op: 'prepare', mode: 'LIVE', removeChunk: 1, rewriteChunk: 1 });
-  w.post({ action: 'migration', op: 'step' }); w.post({ action: 'migration', op: 'step' }); w.post({ action: 'migration', op: 'step' });
-  assert.equal(w.master().filter(l => /^\d+ \| /.test(l)).length, 4, 'both terminal rows already removed');
-  const h = w.exec(() => W.readMasterHydrated_('')), rows = h.text.split('\n').filter(l => /^\d+ \| /.test(l));
-  assert.equal(h.hydrated, true);assert.equal(rows.length, 6);assert.match(h.text, /COUNTS: TOTAL=6 /);
-  assert.equal(rows.filter(l => /SCOUT_NOTES=found via target company/.test(l)).length, 1, 'no duplicated evidence whether or not a row is rewritten yet');
-  w.restore();
+test('archive and companion reads fail closed when metadata is invalid; no canonical write', () => {
+  const w=cutWorld();w.files.get('PIPELINE_MIGRATION_STATE.json').content='{invalid';
+  assert.throws(()=>w.post(enrich('INVALID-META','V2F-LIVE00000001',{FIT_EVIDENCE:'Preserve source'})),/migration state unreadable/);
+  assert.equal(w.masterSaves(),0);w.restore();
 });

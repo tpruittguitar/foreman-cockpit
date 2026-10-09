@@ -11,38 +11,27 @@ const DECLINE_RULES = 'TIM_PIPELINE_RULES_CANONICAL\nSECTION=DECLINE_RULES\n' +
   '- Allowed reason codes: PAY_BELOW_FLOOR, GEOGRAPHY_GATE_FAIL, FLEX_STRICT_NO, SCOPE_BELOW_TARGET, FIT_TOO_WEAK, DOMAIN_MISMATCH, LOCATION_NOT_ACCEPTABLE, TIM_EXPLICIT_DECLINE, MULTIPLE_RULE_FAILURES.\n' +
   '- LEGACY_REASON_NEEDS_NORMALIZATION is migration-only and must never be used for a new decision.\nSECTION=NEVER_CONSIDER\nX=1';
 
-test('live-shaped DECLINE_RULES yields all nine allowed codes, including the last one before the period', () => {
+test('live-shaped DECLINE_RULES yields all nine allowed codes, including the last one before the period', t => {
   assert.deepEqual(R.declineReasonCodes(DECLINE_RULES), ['PAY_BELOW_FLOOR', 'GEOGRAPHY_GATE_FAIL', 'FLEX_STRICT_NO', 'SCOPE_BELOW_TARGET', 'FIT_TOO_WEAK', 'DOMAIN_MISMATCH', 'LOCATION_NOT_ACCEPTABLE', 'TIM_EXPLICIT_DECLINE', 'MULTIPLE_RULE_FAILURES']);
   assert.equal(R.declineReasonCodes(DECLINE_RULES).includes('LEGACY_REASON_NEEDS_NORMALIZATION'), false);
 });
 
-test('missing section or list fails closed with no codes', () => {
+test('missing section or list fails closed with no codes', t => {
   assert.deepEqual(R.declineReasonCodes(''), []);
   assert.deepEqual(R.declineReasonCodes('SECTION=OTHER\n- Allowed reason codes: PAY_BELOW_FLOOR.'), []);
 });
 
-const MASTER = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI';
-function services(lines) {
-  const para = t => { let s = t; return { getText: () => s, setText: v => { s = v; } }; };
-  const master = ['COUNTS: TOTAL=' + lines.length, ...lines, 'END V2_CURRENT_POPULATION_MASTER (' + lines.length + ' rows)'].map(para);
-  const receipts = []; let events = '', saves = 0;
-  const files = { PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS: { getId: () => 'RECEIPTS', getMimeType: () => 'application/vnd.google-apps.document' }, 'PIPELINE_EVENT_LOG.jsonl': { getId: () => 'EVENTS', getBlob: () => ({ getDataAsString: () => events }), setContent: v => { events = v; } } };
-  const iter = l => { let i = 0; return { hasNext: () => i < l.length, next: () => l[i++] }; };
-  const folder = { getFilesByName: n => iter(files[n] ? [files[n]] : []), createFile: (n, c) => { if (n === 'PIPELINE_RECEIPT_INDEX.json') { let v = c; return files[n] = { getId: () => 'INDEX', getMimeType: () => 'text/plain', getBlob: () => ({ getDataAsString: () => v }), setContent: x => { v = x; } }; } throw new Error('unexpected createFile ' + n); } };
-  global.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
-  global.DriveApp = { getFileById: id => ({ getLastUpdated: () => new Date('2026-10-04T20:00:00Z'), getParents: () => iter([folder]), getId: () => id }) };
-  global.DocumentApp = { openById: id => id === MASTER ? { getBody: () => ({ getParagraphs: () => master }), saveAndClose: () => { saves++; } }
-    : { getBody: () => ({ getText: () => (id === 'RECEIPTS' ? receipts.join('\n') : ''), appendParagraph: t => receipts.push(t) }), saveAndClose() {} } };
-  global.MimeType = { PLAIN_TEXT: 'text/plain' };
-  return { saves: () => saves, receipts: () => receipts.join('\n'), row: id => master.map(p => p.getText()).find(l => l.split(' | ')[1] === id) };
+function services(t, lines) {
+  return require('./helpers/writer-world').world(t, { rows: lines });
 }
+
 const row = (n, bucket, extra) => n + ' | V2F-BULK' + String(n).padStart(8, '0') + ' | Co ' + n + ' | Director of Quality | ' + bucket + ' | OPEN | - | REQ-' + n + ' | Austin, TX | PROPOSED_DISPOSITION=DECLINED_BY_TIM (recommendation only)' + (extra || '');
 const pl = line => W.parsePayload(line.split(' | ').slice(9).join(' | ')).payload;
 const decline = (n, i) => ({ action: 'ruling', ruling: { primaryId: 'V2F-BULK' + String(n).padStart(8, '0'), kind: 'DECLINE', code: 'PAY_BELOW_FLOOR', note: 'Bulk: posted pay below floor', actor: 'TIM', requestId: 'PX-BULK-1-' + i + '-' + n } });
 
-test('one 20-row Tim DECLINE batch commits once and writes ordinary Tim decline fields on every row', () => {
+test('one 20-row Tim DECLINE batch commits once and writes ordinary Tim decline fields on every row', t => {
   const buckets = ['SCOUT_INTAKE', 'DISCOVERY_LEAD', 'MANUAL_RESEARCH', 'TIM_DECISION_REQUIRED', 'READY_TO_PURSUE'];
-  const s = services(Array.from({ length: 20 }, (_, i) => row(i + 1, buckets[i % 5])));
+  const s = services(t, Array.from({ length: 20 }, (_, i) => row(i + 1, buckets[i % 5])));
   const r = freshExec({ action: 'batch', requests: Array.from({ length: 20 }, (_, i) => decline(i + 1, i + 1)) });
   assert.equal(r.ok, true); assert.equal(r.mode, 'BATCH_RULING_SINGLE_COMMIT'); assert.equal(r.processed, 20); assert.equal(s.saves(), 1);
   for (let n = 1; n <= 20; n++) {
@@ -61,8 +50,8 @@ test('one 20-row Tim DECLINE batch commits once and writes ordinary Tim decline 
   assert.deepEqual(bulkKeys, singleKeys);
 });
 
-test('protected applicant rows still fail closed inside a bulk DECLINE batch; eligible rows are unaffected by the refusal', () => {
-  const s = services([row(1, 'SCOUT_INTAKE'), row(2, 'APPLIED', '; APP_DATE=2026-10-01; ANTI_RESURRECTION=YES'), row(3, 'REJECTED_BY_EMPLOYER')]);
+test('protected applicant rows still fail closed inside a bulk DECLINE batch; eligible rows are unaffected by the refusal', t => {
+  const s = services(t, [row(1, 'SCOUT_INTAKE'), row(2, 'APPLIED', '; APP_DATE=2026-10-01; ANTI_RESURRECTION=YES'), row(3, 'REJECTED_BY_EMPLOYER')]);
   const r = freshExec({ action: 'batch', requests: [decline(1, 1), decline(2, 2), decline(3, 3)] });
   assert.equal(r.ok, false);
   assert.match(r.results[1].error, /protected applicant state/); assert.match(r.results[2].error, /protected applicant state/);

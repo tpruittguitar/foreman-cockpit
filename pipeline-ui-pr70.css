@@ -1,0 +1,267 @@
+/* Graphite workspace surfaces and responsive typography. */
+body{background:#000}
+/* Compact command bars live on their controls; measured work gets wider bars. */
+.has-command-progress{position:relative;padding-bottom:9px!important}
+.command-progress{display:inline;font-weight:400}
+.command-elapsed{display:inline-block;margin-left:7px;font:12px var(--mono);letter-spacing:0;text-transform:none}
+.command-track{position:absolute;left:7px;right:7px;bottom:2px;height:3px;overflow:hidden;background:#333;border-radius:2px;pointer-events:none}
+.command-track i,.work-progress-track i,.writer-countdown i{display:block;height:100%;background:#65d8c0}
+.command-progress[data-state=active] .command-track i,.work-progress-track:not([aria-valuenow]) i,.writer-countdown[data-state=active] i{width:32%;animation:command-scan 1.35s ease-in-out infinite alternate}
+.command-progress[data-state=waiting] .command-track i{width:100%;background:repeating-linear-gradient(135deg,#e0b24a88 0 6px,transparent 6px 12px)}
+.command-progress[data-state=attention] .command-track i{width:100%;background:#e0b24a}
+.command-progress[data-state=received] .command-track i{width:100%}
+.work-progress{margin:10px 0;max-width:100%;min-width:0}
+.work-progress.compact{width:140px}.work-progress.medium{width:280px}.work-progress.large{width:100%}
+.work-progress-label{font-size:13px;line-height:1.35;overflow-wrap:anywhere;margin-bottom:5px;color:#dedede}
+.work-progress-track{height:6px;background:#303030;overflow:hidden;border-radius:3px}
+.work-progress.large .work-progress-track{height:9px}
+.work-progress[data-state=waiting] .work-progress-track i{animation:none;width:100%;background:repeating-linear-gradient(135deg,#e0b24a88 0 6px,transparent 6px 12px)}
+.writer-countdown{padding:1px 10px 0;min-width:108px;max-width:100%;font:12px/1.2 var(--mono);color:#d0d0d0}
+.writer-countdown>span{display:block;white-space:nowrap;margin-bottom:3px}
+.writer-countdown-track{height:3px;background:#333;overflow:hidden;border-radius:2px}
+.writer-countdown[data-state=paused] i{width:0}
+.writer-countdown[data-state=countdown] i{transition:width 180ms linear}
+#writer-panel .writer-countdown{padding:10px 0;font-size:14px}
+@keyframes command-scan{from{transform:translateX(0)}to{transform:translateX(210%)}}
+@media(max-width:760px),(pointer:coarse) and (max-width:980px){.writer-countdown{padding:1px 6px 0;min-width:94px;font-size:11px}.command-elapsed{font-size:12px}.work-progress.medium{width:100%}}
+@media(prefers-reduced-motion:reduce){.command-track i,.work-progress-track i,.writer-countdown i{animation:none!important;transition:none!important}}
+body.progress-paused .command-track i,body.progress-paused .work-progress-track i,body.progress-paused .writer-countdown i{animation-play-state:paused}
+#list-map-divider{display:none}
+header,#rail,#bottombar,#drawer,.dash,.detail,.panel,#grid{background:#080808;background-image:none}
+header,#rail,#bottombar{border-color:#303030}
+#drawer{padding:12px;color:#ededed}
+#drawer .tip,#drawer .dim{color:#bdbdbd}
+#drawer h2,#drawer h3{color:#fff}
+#drawer .faint{color:#a3a3a3}
+#grid td{font-size:12.9px}
+#drawer{font-size:14.835px}
+.panel,.ops-console{border-color:#303030}
+.panel input,.panel select,.panel textarea{background:#090909;border-color:#454545}
+.panel a,#drawer a{color:#dedede}
+.panel button:focus-visible,#rail button:focus-visible,#drawer button:focus-visible{outline:2px solid #fff;outline-offset:2px;box-shadow:none}
+.ops-console{max-width:1500px;margin:0 auto;padding:14px}
+.ops-console h2{margin:0 0 12px}
+.ops-tabs{padding:10px 0;border-bottom:1px solid #383838;margin-bottom:14px}
+.ops-tabs [aria-selected=true]{background:#eee;color:#080808}
+.ops-table{overflow:auto;max-width:100%}
+.ops-table table{width:100%;border-collapse:collapse;font-size:14.835px}
+.ops-table th,.ops-table td{padding:9px 8px;text-align:left;border-bottom:1px solid #303030;vertical-align:top;overflow-wrap:anywhere}
+.ops-table th{color:#bdbdbd;font-weight:500}
+.ops-warning{color:#e0b24a}
+.ops-obligation{padding:12px 0;border-bottom:1px solid #333}
+.ops-console pre{white-space:pre-wrap;overflow-wrap:anywhere}
+.ops-console [data-ops-message]:empty{display:none}
+@media(max-width:700px){.ops-console{padding:10px}.ops-tabs{gap:5px}.ops-tabs button{min-height:40px}.ops-table th,.ops-table td{min-width:105px}#drawer{padding:10px}.ops-console .row{flex-wrap:wrap}}
+
+.ops-console .tip{color:#b0b0b0}
+#drawer .detail-card,#drawer .detail-hero,#drawer .d-tabs,#drawer .d-foot,.rules-nav,.rules-tools{background:#090909;border-color:#333}
+.rules-content .panel{background:#090909;border-color:#333}
+.rules-content h3,.rules-nav h3,.rule-line strong,.rule-line .rule-value{color:#d9d9d9}
+
+.flex-policy-panel{padding:14px;margin-bottom:14px}
+.flex-policy-panel h3{font-size:18px;margin:0 0 12px;color:#fff}
+.flex-policy-panel h4{margin:14px 0 6px;color:#d9d9d9}
+.flex-weight-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px}
+.flex-weight-row label{font-weight:600;color:#fff}
+.flex-weight-row input{width:90px;min-height:34px}
+.flex-policy-panel .edit-grid{grid-template-columns:minmax(175px,.8fr) minmax(100px,1fr) minmax(175px,.8fr) minmax(100px,1fr);gap:8px 14px}
+.flex-policy-panel .edit-grid input,.flex-policy-panel .edit-grid select{min-height:32px}
+.flex-policy-panel .tip{color:#bdbdbd}
+@media(max-width:980px){.flex-policy-panel .edit-grid{grid-template-columns:minmax(0,1fr) minmax(100px,1fr)}}
+@media(max-width:600px){.flex-policy-panel .edit-grid{grid-template-columns:1fr}}
+
+/* Desktop revision: 12.5% larger text and 10% more interior padding.
+   Queue/map composition, map controls and mobile sizes retain their existing rules. */
+@media(min-width:981px),(min-width:761px) and (pointer:fine){
+  /* Keep the header track independent of the selected job's spanning workspace. */
+  body:not(.map-full) #view-pipeline.on,body:not(.map-full) #view-pipeline.on:has(#drawer.on){grid-template-rows:66px minmax(0,var(--list-track,55fr)) 10px minmax(0,var(--map-track,45fr))!important}
+  body:not(.map-full) #job-map-card{grid-row:4!important;margin-top:0}
+  body:not(.map-full) #drawer{grid-row:1/5!important}
+  body:not(.map-full) #list-map-divider{display:flex;grid-column:1;grid-row:3;align-items:center;justify-content:center;position:relative;cursor:row-resize;touch-action:none;background:#080808;border-top:1px solid #373737;border-bottom:1px solid #373737;outline:none;z-index:4}
+  #list-map-divider span{width:56px;height:3px;background:#888;border-radius:2px;pointer-events:none}
+  #list-map-divider:hover,#list-map-divider:focus-visible{border-color:#ddd;background:#171717}
+  #list-map-divider:hover span,#list-map-divider:focus-visible span{background:#eee}
+  #list-map-divider:focus-visible{box-shadow:inset 0 0 0 1px #eee}
+  #list-map-divider:hover:after,#list-map-divider:focus-visible:after{content:attr(data-split);position:absolute;right:12px;bottom:12px;background:#111;border:1px solid #555;padding:5px 8px;font:12px var(--mono);color:#eee;pointer-events:none}
+  body.pane-resizing,body.pane-resizing *{cursor:row-resize!important;user-select:none!important}
+  header,#rail,#queue-head,#worksplit,#drawer,.view:not(#view-pipeline){font-size:13.1625px}
+  header{padding-left:6.6px;padding-right:15.4px}
+  header .brand{font-size:24.75px;padding-left:15.4px;padding-right:24.2px}
+  header .brand small{font-size:11.8125px}
+  header #crumb{font-size:11.8125px}
+  header #search{font-size:15.75px;padding-left:44px;padding-right:6.6px}
+  header .hcell,header .writer-badge{padding-left:15.4px;padding-right:15.4px}
+  header .hcell small,header .writer-badge small{font-size:11.25px}
+  header .hcell b,header .writer-badge b{font-size:19.125px}
+  header #compare-open,header #density-toggle,header #refresh{font-size:12.375px;padding-left:11px;padding-right:11px}
+  #rail button{font-size:15.1875px}
+  #rail:not(.open) .rl{font-size:14.625px}
+  .queue-head{height:66px;min-height:66px;padding:11px 15.4px}
+  .qh-title{font-size:19.125px}
+  .qh-title .mono{font-size:16.875px}
+  .queue-head .decide{padding:2.2px 15.4px}
+  .queue-head .decide b{font-size:27px}
+  .queue-head .decide small{font-size:11.8125px}
+  .qh-view{font-size:13.5px;padding:6.6px 11px}
+  #grid th{font-size:11.8125px;padding:2.2px 9.9px}
+  #grid td,body:not([data-density=comfortable]) #grid td{font-size:calc(var(--row-font,13px) * 1.125);padding:1.1px 9.9px}
+  #grid td.mono{font-size:13.5px}
+  #drawer{font-size:16.6894px;padding:13.2px}
+  #drawer .wh-title h2,#drawer #d-title{font-size:31.5px!important}
+  #drawer .wh-title .sub{font-size:13.5844px}
+  #drawer .wh-top{padding:15.4px 17.6px 6.6px}
+  #drawer .ws-meta{font-size:19.4062px}
+  #drawer .ws-ring b{font-size:33.75px}
+  #drawer .ws-ring small{font-size:14.2312px}
+  #drawer .wh-chips{padding:2.2px 17.6px 11px}
+  #drawer #d-body{padding:13.2px 17.6px}
+  #detail-tabs button{font-size:14.625px;padding-left:11px;padding-right:11px}
+  #drawer .wh-actions{padding:13.2px 17.6px 15.4px;gap:8.8px}
+  #drawer .wh-actions button{font-size:18.1125px;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:1.2}
+  #drawer .detail-card{padding:11px}
+  #drawer .detail-card h3,.ck-over h3{font-size:18.1125px}
+  .ck-over h3 .faint{font-size:12.9375px}
+  .ck-kd li,.ck-checks li,.ck-next p,.ck-sum p{font-size:19.4062px}
+  .ck-kd{padding-right:19.8px}
+  .ck-checks li{padding-left:33px}
+  .ck-next{padding-top:13.2px}
+  #drawer .tip,#drawer .kv,#drawer .edit-grid label{font-size:14.2312px}
+  #drawer .edit-grid input,#drawer .edit-grid select,#drawer .edit-grid textarea{font-size:15.1369px;padding:4.4px 6.6px}
+  #drawer .wh-chips .bpill,#drawer .wh-chips .wchip{font-size:13.5844px}
+  .view:not(#view-pipeline) .panel{padding:15.4px}
+  .view:not(#view-pipeline) .panel h2{font-size:20.25px}
+  .view:not(#view-pipeline) .panel h3{font-size:18.1125px}
+  .view:not(#view-pipeline) .panel h4{font-size:15.525px}
+  .view:not(#view-pipeline) .tip{font-size:14.2312px}
+  .view:not(#view-pipeline) button{font-size:14.6194px;padding:4.4px 9.9px}
+  .view:not(#view-pipeline) input,.view:not(#view-pipeline) select,.view:not(#view-pipeline) textarea{font-size:15.1369px;padding:4.4px 6.6px}
+  .view:not(#view-pipeline) .edit-grid label{font-size:15.1369px}
+  .ops-table table{font-size:16.6894px}
+  .ops-table th,.ops-table td{padding:9.9px 8.8px}
+  .ops-tabs{padding:11px 0}
+  .ops-obligation{padding:13.2px 0}
+  .rules-nav{padding:13.2px}
+  .rules-nav button{font-size:15.1369px;padding:8.8px}
+  .rule-line,.rules-content textarea.cfg{font-size:15.525px;padding:7.7px 0}
+}
+@media(hover:hover) and (min-width:981px){#rail:hover .rl{font-size:15.75px}}
+@media(min-width:2200px) and (min-height:1200px){#drawer .wh-title h2,#drawer #d-title{font-size:36px!important}}
+@media(max-width:1599px) and (min-width:981px),(max-width:1599px) and (min-width:761px) and (pointer:fine){header .brand{font-size:20.25px;padding-left:11px;padding-right:15.4px}header .brand small{font-size:10.125px}}
+@media(max-width:1279px) and (min-width:981px),(max-width:1279px) and (min-width:761px) and (pointer:fine){header .brand{font-size:16.875px}header .hcell,header .writer-badge{padding-left:9.9px;padding-right:9.9px}}
+@media(max-width:1023px) and (min-width:981px),(max-width:1023px) and (min-width:761px) and (pointer:fine){header .brand{font-size:14.625px;padding-left:8.8px;padding-right:8.8px}header #compare-open,header #density-toggle{padding-left:6.6px;padding-right:6.6px}}
+@media(max-width:1100px) and (min-width:981px),(max-width:1100px) and (min-width:761px) and (pointer:fine){header .brand{max-width:180px;min-width:0;white-space:normal;line-height:1.1}header .brand small{display:none}}
+@media(max-width:1599px) and (min-width:981px),(max-width:1599px) and (min-width:761px) and (pointer:fine){
+  .queue-head{gap:8px}
+  .queue-head .qh-title{font-size:0;letter-spacing:0}
+  .queue-head .qh-title:before{content:'Jobs ';font:600 19.125px/1 var(--sans);letter-spacing:1px}
+  .queue-head .decide-strip{flex:1;min-width:0}
+  .queue-head .decide{flex:1;min-width:0;padding:2.2px 4.4px}
+  .queue-head .decide small{white-space:normal;overflow-wrap:anywhere;text-align:center;line-height:1.1;letter-spacing:.6px}
+  #drawer #detail-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  #drawer #detail-tabs button{min-width:0}
+  #drawer #detail-tabs:after{display:none}
+}
+
+/* Readable supporting text: let labels and statuses wrap rather than clip. */
+#drawer .kv{grid-template-columns:minmax(95px,30%) minmax(0,1fr)}
+#drawer .kv>div{min-width:0;overflow-wrap:anywhere}
+#drawer .kv>div:nth-child(odd){font-size:12.765px}
+#drawer .bpill,#drawer .wchip{white-space:normal;overflow:visible;text-overflow:clip;max-width:100%;overflow-wrap:anywhere;line-height:1.35}
+#drawer .ck-kd li span{overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+#drawer .ck-next{flex-wrap:wrap;gap:8px 22px}
+#drawer #detail-tabs button{white-space:normal;overflow-wrap:anywhere;line-height:1.25;padding-top:8px;padding-bottom:8px}
+#drawer .detail-card .row,.view:not(#view-pipeline) .row{flex-wrap:wrap}
+#drawer .enrich-grid{grid-template-columns:minmax(100px,30%) minmax(0,1fr)}
+#drawer .enrich-grid label,#drawer .research-note,#drawer .event .ev{font-size:12.995px}
+#drawer .sec h4,#drawer .gap-list span,#drawer .event .ts,#drawer .approved{font-size:12.42px}
+#drawer .doc-type{font-size:11.04px}
+#drawer .doc-preview-head{flex-wrap:wrap}
+#drawer .doc-preview-head h3,#drawer .doc-preview-head .tip,#drawer .docitem .nm,#drawer .docitem .docname{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+#drawer .doc-preview-actions{flex-wrap:wrap}
+#autobar{font-size:12.995px;white-space:normal;overflow:visible;flex-wrap:wrap;overflow-wrap:anywhere;line-height:1.35}
+.view:not(#view-pipeline) .kv{grid-template-columns:minmax(100px,30%) minmax(0,1fr)}
+.view:not(#view-pipeline) .kv>div{min-width:0;overflow-wrap:anywhere}
+.view:not(#view-pipeline) .kv>div:nth-child(odd){font-size:12.765px}
+.view:not(#view-pipeline) .pill,.view:not(#view-pipeline) .kpi span,.view:not(#view-pipeline) .u{font-size:12.765px;white-space:normal;overflow-wrap:anywhere}
+.view:not(#view-pipeline) .chart-card .tip{font-size:12.995px}
+.view:not(#view-pipeline) .chart-card h3{font-size:13.455px}
+.view:not(#view-pipeline) .chart-intro p{font-size:13.8px}
+@media(min-width:981px),(min-width:761px) and (pointer:fine){
+ #drawer .enrich-grid label,#drawer .research-note,#drawer .event .ev,#drawer .doc-score-name{font-size:14.9494px}
+ #drawer .kv>div:nth-child(odd),#drawer .sec h4,#drawer .gap-list span,#drawer .event .ts,#drawer .approved,#drawer .doc-score-metric span{font-size:14.2853px}
+ #drawer button{font-size:14.6194px;white-space:normal;overflow-wrap:anywhere}
+ #drawer .doc-type{font-size:12.696px}
+ .view:not(#view-pipeline){font-size:15.1369px}
+ .view:not(#view-pipeline) .kv,.view:not(#view-pipeline) .kv>div:nth-child(odd){font-size:14.2853px}
+ .view:not(#view-pipeline) .pill,.view:not(#view-pipeline) .kpi span,.view:not(#view-pipeline) .u{font-size:14.2853px}
+}
+@media(max-width:1599px) and (min-width:981px),(max-width:1599px) and (min-width:761px) and (pointer:fine){
+ #drawer .ck-over{grid-template-columns:minmax(0,1fr)}
+ #drawer .ck-kd{padding-right:0;padding-bottom:14px;border-right:0}
+ #drawer .ck-ev{padding-top:8px}
+}
+@media(max-width:760px),(pointer:coarse) and (max-width:980px){
+ #drawer .tip,#drawer .kv{font-size:12.765px}
+ #drawer .enrich-grid{grid-template-columns:minmax(0,1fr)}
+}
+/* Keep action names intact when the workspace is narrow. */
+#drawer .wh-actions button{letter-spacing:.2px;overflow-wrap:normal;word-break:normal;padding-left:6px;padding-right:6px}
+
+/* Acquisition and editing cues, inspired by instrument consoles. */
+#drawer #d-body>*{animation:none}
+#drawer .wh-top:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;border-top:1px solid #91dcff;background:linear-gradient(105deg,#91dcff12,transparent 45%);clip-path:polygon(0 0,100% 0,100% 14%,14% 14%,0 65%)}
+#drawer.motion-lock .wh-top:after{animation:console-acquire 700ms ease-out both}
+@keyframes console-acquire{0%{opacity:0;clip-path:polygon(0 0,12% 0,12% 14%,0 14%,0 65%)}25%{opacity:1}65%{opacity:.65}100%{opacity:0;clip-path:polygon(0 0,100% 0,100% 14%,14% 14%,0 65%)}}
+#drawer .detail-card,.view:not(#view-pipeline) .panel{transition:border-color 180ms ease,box-shadow 180ms ease}
+#drawer .detail-card:focus-within,.view:not(#view-pipeline) .panel:focus-within{border-color:#91dcff80;box-shadow:inset 3px 0 #91dcff}
+#drawer input:focus-visible,#drawer select:focus-visible,#drawer textarea:focus-visible,.view:not(#view-pipeline) input:focus-visible,.view:not(#view-pipeline) select:focus-visible,.view:not(#view-pipeline) textarea:focus-visible{outline:2px solid #91dcff;outline-offset:2px}
+#list-map-divider{transition:background 140ms ease,border-color 140ms ease}
+#list-map-divider span{transition:width 140ms ease,background 140ms ease,box-shadow 140ms ease}
+#list-map-divider:hover span,#list-map-divider:focus-visible span,body.pane-resizing #list-map-divider span{width:84px;background:#91dcff;box-shadow:0 0 10px #91dcff70}
+#list-map-divider.motion-invite span{animation:divider-invite 1200ms ease-in-out 2}
+@keyframes divider-invite{0%,100%{box-shadow:none}50%{background:#91dcff;box-shadow:0 0 14px #91dcff90}}
+body.pane-resizing #list-map-divider{border-color:#91dcff;background:#10202a}
+#grid tbody tr.focus td{transition:background-color 200ms ease}
+@media(hover:hover){
+ #drawer .wh-actions button:not(:disabled):hover,.view:not(#view-pipeline) .panel button:not(:disabled):hover,.ops-tabs button:not(:disabled):hover{border-color:#91dcff;box-shadow:inset 0 0 14px #91dcff15,0 0 8px #91dcff18}
+ #drawer .wh-actions button:not(:disabled):active,.view:not(#view-pipeline) .panel button:not(:disabled):active{box-shadow:inset 0 0 18px #91dcff35}
+ #drawer input:hover,#drawer select:hover,#drawer textarea:hover,.view:not(#view-pipeline) input:hover,.view:not(#view-pipeline) select:hover{border-color:#91dcff80}
+}
+#worksplit{position:relative}
+body[data-freshness=loading] #worksplit:after{content:"";position:absolute;left:0;top:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,#e0b24a,transparent);pointer-events:none;z-index:6;animation:console-read 1400ms ease-in-out infinite}
+@keyframes console-read{0%,100%{opacity:.25;transform:scaleX(.25)}50%{opacity:1;transform:scaleX(1)}}
+@media(prefers-reduced-motion:reduce){
+ #drawer .wh-top:after,#list-map-divider.motion-invite span{animation:none!important;opacity:0}
+ body[data-freshness=loading] #worksplit:after{animation:none!important;transform:none;opacity:1}
+ #list-map-divider span{transition:none}
+}
+
+/* Workflow groups share the same catalogue on desktop and phone. */
+#rail .nav-short{display:none}
+#rail:not(.open):not(:hover) .nav-full{display:none}
+#rail:not(.open):not(:hover) .nav-short{display:inline;font-size:12.5px}
+#rail .rail-sub button{white-space:normal;overflow-wrap:anywhere}
+#drawer .decision-essentials{order:2;flex:none;margin:0 16px 10px;padding:8px 10px;border:1px solid #454545;border-left:3px solid #91dcff;background:#0b1115;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+#drawer .decision-status{display:flex;gap:4px 16px;flex-wrap:wrap}
+#drawer .decision-status b{color:#aaa;font-weight:500;margin-right:5px}
+#drawer .decision-blocker{margin:5px 0;color:#e0b24a}
+#drawer .next-job-step{margin-top:6px;text-transform:none;text-align:left;font-size:14px;white-space:normal;border-color:#91dcff70;background:#0d1b23;color:#dff4ff;max-width:100%}
+#drawer .wh-actions{display:flex;flex-direction:column;gap:8px}
+#drawer .wh-action-group{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;min-width:0;margin:0;padding:0;border:0}
+#drawer .wh-action-group legend{margin-bottom:6px;padding:0;color:#aaa;font-size:12.5px;letter-spacing:.5px}
+#drawer .wh-prepare{order:1}
+#drawer .wh-decide{order:2;padding-top:8px;border-top:1px solid #333}
+#drawer .detail-card summary{cursor:pointer;font-size:14px;color:#ccc;line-height:1.4}
+#drawer .detail-card[open] summary{margin-bottom:10px}
+#drawer .wh-title .sub{display:none}
+@media(min-width:981px),(min-width:761px) and (pointer:fine){#drawer .decision-essentials{font-size:14px}#drawer .next-job-step{font-size:15px}}
+@media(max-width:760px),(pointer:coarse) and (max-width:980px){#drawer .decision-essentials{margin-left:10px;margin-right:10px}#bottombar{grid-template-columns:repeat(5,minmax(0,1fr))}}
+#rail .rail-in{overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
+#rail .rail-brand,#rail .rail-group,#rail .rail-foot{flex-shrink:0}
+#rail .rail-sub button{height:auto;min-height:36px;padding-top:6px;padding-bottom:6px;line-height:1.3;font-size:12.5px;letter-spacing:.3px}
+#rail .rail-foot{margin-top:auto}
+/* The phone menu shows all six sections before expanding their functions. */
+#sheet .sheet-g summary{cursor:pointer;min-height:44px;padding:12px 0;line-height:1.25;color:#eee}
+#sheet .sheet-g summary h4{display:inline;font-size:16px;color:inherit;letter-spacing:.3px}
+#sheet .sheet-g[open] summary{color:#91dcff}
+#sheet .sheet-g button{padding-left:18px;font-size:15px;white-space:normal;overflow-wrap:anywhere}

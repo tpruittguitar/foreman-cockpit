@@ -1,0 +1,264 @@
+[
+  {
+    "name": "preview-desktop-2560x1440",
+    "width": 2560,
+    "height": 1440,
+    "touch": false,
+    "typography": {
+      "cell": {
+        "fontSize": "15.75px",
+        "padding": "1.1px 9.9px"
+      },
+      "heading": {
+        "fontSize": "19.125px",
+        "padding": "0px"
+      },
+      "headerSearch": {
+        "fontSize": "15.75px",
+        "padding": "0px 6.6px 0px 44px"
+      },
+      "detailText": {
+        "fontSize": "19.4062px",
+        "padding": "0px"
+      },
+      "drawer": {
+        "fontSize": "16.6894px",
+        "padding": "13.2px"
+      }
+    },
+    "visibleRows": 19,
+    "map": {
+      "x": 106,
+      "y": 839.390625,
+      "width": 1578.609375,
+      "height": 564.0625
+    },
+    "table": {
+      "x": 106,
+      "y": 140,
+      "width": 1578.609375,
+      "height": 689.390625
+    },
+    "drawer": {
+      "x": 1694.609375,
+      "y": 74,
+      "width": 855.390625,
+      "height": 1329.453125
+    },
+    "horizontalOverflow": 0,
+    "selectedId": "V2F-D00A5953E950",
+    "errors": [],
+    "fixture": "600 synthetic jobs; no production access",
+    "limitation": ""
+  },
+  {
+    "name": "preview-desktop-1280x960",
+    "width": 1280,
+    "height": 960,
+    "touch": false,
+    "typography": {
+      "cell": {
+        "fontSize": "13.5px",
+        "padding": "1.1px 9.9px"
+      },
+      "heading": {
+        "fontSize": "0px",
+        "padding": "0px"
+      },
+      "headerSearch": {
+        "fontSize": "15.75px",
+        "padding": "0px 6.6px 0px 44px"
+      },
+      "detailText": {
+        "fontSize": "19.4062px",
+        "padding": "0px"
+      },
+      "drawer": {
+        "fontSize": "16.6894px",
+        "padding": "13.2px"
+      }
+    },
+    "visibleRows": 16,
+    "map": {
+      "x": 106,
+      "y": 575.390625,
+      "width": 634,
+      "height": 348.0625
+    },
+    "table": {
+      "x": 106,
+      "y": 140,
+      "width": 634,
+      "height": 425.390625
+    },
+    "drawer": {
+      "x": 750,
+      "y": 74,
+      "width": 520,
+      "height": 849.453125
+    },
+    "horizontalOverflow": 0,
+    "selectedId": "V2F-D00A5953E950",
+    "errors": [],
+    "fixture": "600 synthetic jobs; no production access",
+    "limitation": ""
+  },
+  {
+    "name": "preview-portrait",
+    "width": 390,
+    "height": 844,
+    "touch": true,
+    "typography": {
+      "cell": {
+        "fontSize": "12px",
+        "padding": "4px 5px"
+      },
+      "heading": {
+        "fontSize": "0px",
+        "padding": "8px 2px 0px"
+      },
+      "headerSearch": {
+        "fontSize": "16px",
+        "padding": "0px 9px 0px 40px"
+      },
+      "detailText": {
+        "fontSize": "14px",
+        "padding": "0px"
+      },
+      "drawer": {
+        "fontSize": "14.835px",
+        "padding": "10px"
+      }
+    },
+    "visibleRows": 8,
+    "map": {
+      "x": 8,
+      "y": 148.6875,
+      "width": 374,
+      "height": 300
+    },
+    "table": {
+      "x": 8,
+      "y": 512.6875,
+      "width": 374,
+      "height": 330
+    },
+    "drawer": {
+      "x": 8,
+      "y": 850.6875,
+      "width": 374,
+      "height": 1685.5625
+    },
+    "horizontalOverflow": 0,
+    "selectedId": "V2F-D00A5953E950",
+    "errors": [],
+    "fixture": "600 synthetic jobs; no production access",
+    "limitation": "Chromium landscape emulation; physical iOS safe-area insets are not verified"
+  },
+  {
+    "name": "preview-landscape-left",
+    "width": 844,
+    "height": 390,
+    "touch": true,
+    "angle": 90,
+    "typography": {
+      "cell": {
+        "fontSize": "12px",
+        "padding": "4px 5px"
+      },
+      "heading": {
+        "fontSize": "0px",
+        "padding": "8px 2px 0px"
+      },
+      "headerSearch": {
+        "fontSize": "16px",
+        "padding": "0px 9px 0px 40px"
+      },
+      "detailText": {
+        "fontSize": "14px",
+        "padding": "0px"
+      },
+      "drawer": {
+        "fontSize": "14.835px",
+        "padding": "12px"
+      }
+    },
+    "visibleRows": 0,
+    "map": {
+      "x": 8,
+      "y": 138.34375,
+      "width": 804,
+      "height": 300
+    },
+    "table": {
+      "x": 8,
+      "y": 502.34375,
+      "width": 804,
+      "height": 200
+    },
+    "drawer": {
+      "x": 8,
+      "y": 710.34375,
+      "width": 804,
+      "height": 1444.921875
+    },
+    "horizontalOverflow": 0,
+    "selectedId": "V2F-D00A5953E950",
+    "errors": [],
+    "fixture": "600 synthetic jobs; no production access",
+    "limitation": "Chromium landscape emulation; physical iOS safe-area insets are not verified"
+  },
+  {
+    "name": "preview-landscape-right",
+    "width": 844,
+    "height": 390,
+    "touch": true,
+    "angle": -90,
+    "typography": {
+      "cell": {
+        "fontSize": "12px",
+        "padding": "4px 5px"
+      },
+      "heading": {
+        "fontSize": "0px",
+        "padding": "8px 2px 0px"
+      },
+      "headerSearch": {
+        "fontSize": "16px",
+        "padding": "0px 9px 0px 40px"
+      },
+      "detailText": {
+        "fontSize": "14px",
+        "padding": "0px"
+      },
+      "drawer": {
+        "fontSize": "14.835px",
+        "padding": "12px"
+      }
+    },
+    "visibleRows": 0,
+    "map": {
+      "x": 8,
+      "y": 138.34375,
+      "width": 804,
+      "height": 300
+    },
+    "table": {
+      "x": 8,
+      "y": 502.34375,
+      "width": 804,
+      "height": 200
+    },
+    "drawer": {
+      "x": 8,
+      "y": 710.34375,
+      "width": 804,
+      "height": 1444.921875
+    },
+    "horizontalOverflow": 0,
+    "selectedId": "V2F-D00A5953E950",
+    "errors": [],
+    "fixture": "600 synthetic jobs; no production access",
+    "limitation": "Chromium landscape emulation; physical iOS safe-area insets are not verified"
+  }
+]

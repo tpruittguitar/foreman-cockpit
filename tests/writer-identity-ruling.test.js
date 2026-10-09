@@ -15,7 +15,7 @@ const base = { kind: 'IDENTITY', actor: 'CLAUDE', requestId: 'IDT-1', ts: '2026-
 const cells = l => l.split(' | ');
 const payload = l => W.parsePayload(cells(l).slice(9).join(' | ')).payload;
 
-test('IDENTITY rewrites the fixed columns together, keeps every prior value, and removes a contradicting payload copy', () => {
+test('IDENTITY rewrites the fixed columns together, keeps every prior value, and removes a contradicting payload copy', t => {
   const r = W.mutateRow(hidden, base);
   assert.equal(r.ok, true, r.error);
   const c = cells(r.after), p = payload(r.after);
@@ -29,14 +29,14 @@ test('IDENTITY rewrites the fixed columns together, keeps every prior value, and
   assert.equal(c[4], 'DISCOVERY_LEAD'); assert.equal(c[5], 'INTAKE/IDENTITY_UNRESOLVED', 'bucket and disposition untouched');
 });
 
-test('IDENTITY requires evidence text and an http(s) evidence URL, and refuses placeholders and unknown keys', () => {
+test('IDENTITY requires evidence text and an http(s) evidence URL, and refuses placeholders and unknown keys', t => {
   assert.match(W.mutateRow(hidden, Object.assign({}, base, { evidence: 'short' })).error, /requires evidence/);
   assert.match(W.mutateRow(hidden, Object.assign({}, base, { evidenceUrl: 'not a url' })).error, /requires evidenceUrl/);
   assert.match(W.mutateRow(hidden, Object.assign({}, base, { identity: { LOCATION: 'NOT_STATED' } })).error, /placeholder/);
   assert.match(W.mutateRow(hidden, Object.assign({}, base, { identity: { BUCKET: 'APPLIED' } })).error, /not one of/);
 });
 
-test('identity columns and POSSIBLE_MATCHES can never be set through fields (ENRICH or IDENTITY)', () => {
+test('identity columns and POSSIBLE_MATCHES can never be set through fields (ENRICH or IDENTITY)', t => {
   for (const k of ['COMPANY', 'TITLE', 'LOCATION', 'REQ', 'POSSIBLE_MATCHES', 'location']) {
     assert.match(W.mutateRow(hidden, { kind: 'ENRICH', ts: base.ts, fields: { [k]: 'X Corp' } }).error, /only through kind IDENTITY/, 'ENRICH ' + k);
     assert.match(W.mutateRow(hidden, Object.assign({}, base, { fields: { [k]: 'X Corp' } })).error, /only through kind IDENTITY/, 'IDENTITY ' + k);
@@ -44,7 +44,7 @@ test('identity columns and POSSIBLE_MATCHES can never be set through fields (ENR
   assert.equal(W.mutateRow(hidden, { kind: 'ENRICH', ts: base.ts, fields: { LOCATION_VERIFIED: 'Remote' } }).ok, true, 'other keys still fine');
 });
 
-test('IDENTITY is refused on protected applicant rows', () => {
+test('IDENTITY is refused on protected applicant rows', t => {
   const applied = hidden.replace('DISCOVERY_LEAD | INTAKE/IDENTITY_UNRESOLVED', 'APPLIED | RESOLVED/APPLIED_CONFIRMED');
   assert.match(W.mutateRow(applied, base).error, /protected applicant state/);
 });
@@ -53,7 +53,7 @@ const withPM = row(11, 'V2I-PM0000000001', 'Anduril Industries', 'Director, Supp
 const pmRuling = (reconciled) => Object.assign({}, base, { identity: { LOCATION: 'Ashville, OH', REQ: '5200299007' }, reconciled,
   evidence: 'Anduril Greenhouse requisition 5200299007 Director Supply Chain at Arsenal-1 in Ashville, OH', evidenceUrl: 'https://job-boards.greenhouse.io/andurilindustries/jobs/5200299007', fields: { IDENTITY_CONFIDENCE: 'HIGH' } });
 
-test('POSSIBLE_MATCHES clears only when every listed row is reconciled, and the reconciliation is kept', () => {
+test('POSSIBLE_MATCHES clears only when every listed row is reconciled, and the reconciliation is kept', t => {
   assert.match(W.mutateRow(withPM, pmRuling({})).error, /not reconciled V2I-OTHER0000002, V2I-OTHER0000003/);
   assert.match(W.mutateRow(withPM, pmRuling({ 'V2I-OTHER0000002': 'DISTINCT: different req 1234567 in Atlanta' })).error, /not reconciled V2I-OTHER0000003/);
   assert.match(W.mutateRow(withPM, pmRuling({ 'V2I-OTHER0000002': 'looks different', 'V2I-OTHER0000003': 'DISTINCT: x' })).error, /must read "DISTINCT/);
@@ -65,7 +65,7 @@ test('POSSIBLE_MATCHES clears only when every listed row is reconciled, and the 
   assert.equal(p.POSSIBLE_MATCHES_RECONCILED, 'V2I-OTHER0000002 DISTINCT, V2I-OTHER0000003 DUPLICATE_RESOLVED');
 });
 
-test('identityConflicts_: a corrected identity that matches another row is refused unless that row is reconciled', () => {
+test('identityConflicts_: a corrected identity that matches another row is refused unless that row is reconciled', t => {
   const other = row(12, 'V2I-REGAL0000099', 'Regal Rexnord', 'Vice President, Supply Chain', 'R26_04429', 'Rosemont, IL');
   const lines = ['COUNTS: TOTAL=2', hidden, other];
   const after = W.mutateRow(hidden, base).after;
@@ -76,7 +76,7 @@ test('identityConflicts_: a corrected identity that matches another row is refus
   assert.match(W.identityConflicts_(['COUNTS: TOTAL=1', hidden], 1, after, base, [other.replace('DISCOVERY_LEAD', 'DECLINED_BY_TIM')]), /IDENTITY_COLLISION/);
 });
 
-test('identityConflicts_: DUPLICATE_RESOLVED requires the other row to be DUPLICATE already', () => {
+test('identityConflicts_: DUPLICATE_RESOLVED requires the other row to be DUPLICATE already', t => {
   const dupLive = row(13, 'V2I-OTHER0000003', 'Anduril Industries', 'Director, Supply Chain', '-', 'Columbus, OH').replace('DISCOVERY_LEAD', 'DUPLICATE');
   const stillLive = row(13, 'V2I-OTHER0000003', 'Anduril Industries', 'Director, Supply Chain', '-', 'Columbus, OH');
   const ru = pmRuling({ 'V2I-OTHER0000002': 'DISTINCT: req 5200301 is Atlanta, GA (different site)', 'V2I-OTHER0000003': 'DUPLICATE_RESOLVED: same posting, already marked DUPLICATE' });
@@ -85,7 +85,7 @@ test('identityConflicts_: DUPLICATE_RESOLVED requires the other row to be DUPLIC
   assert.equal(W.identityConflicts_(['C', withPM, dupLive], 1, after, ru, []), '');
 });
 
-test('the Explorer counts a fully corrected row as identity-resolved (predicate unchanged)', () => {
+test('the Explorer counts a fully corrected row as identity-resolved (predicate unchanged)', t => {
   const html = fs.readFileSync(path.join(__dirname, '..', 'pipeline.html'), 'utf8');
   const resolved = new Function(html.match(/function usableReq_\(v\)\{[\s\S]*?\n/)[0] + html.match(/function hasResolvedIdentity_\(r\)\{[\s\S]*?\n/)[0] + ';return hasResolvedIdentity_;')();
   const parse = l => P.parse('COUNTS: TOTAL=1 DISCOVERY_LEAD=1\n================\n' + l).rows[0];
@@ -97,24 +97,14 @@ test('the Explorer counts a fully corrected row as identity-resolved (predicate 
 });
 
 // ---------- end to end through the batch path with in-memory services ----------
-const MASTER = '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI';
-function services(lines) {
-  const para = t => { let s = t; return { getText: () => s, setText: v => { s = v; } }; };
-  const master = lines.map(para); let saves = 0, events = '';
-  const files = { PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS: { getId: () => 'R', getMimeType: () => 'application/vnd.google-apps.document' }, 'PIPELINE_EVENT_LOG.jsonl': { getId: () => 'E', getBlob: () => ({ getDataAsString: () => events }), setContent: v => { events = v; } } };
-  const iter = list => { let i = 0; return { hasNext: () => i < list.length, next: () => list[i++] }; };
-  const folder = { getFilesByName: n => iter(files[n] ? [files[n]] : []), createFile: (n, c) => { let v = c; return files[n] = { getId: () => n, getMimeType: () => 'text/plain', getBlob: () => ({ getDataAsString: () => v }), setContent: x => { v = x; } }; } };
-  const receipts = [para('')];
-  global.LockService = { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) };
-  global.DriveApp = { getFileById: id => ({ getLastUpdated: () => new Date('2026-10-05T06:00:00Z'), getParents: () => iter([folder]), getId: () => id }) };
-  global.DocumentApp = { openById: id => id === MASTER ? { getBody: () => ({ getParagraphs: () => master }), saveAndClose: () => { saves++; } } : { getBody: () => ({ getText: () => receipts.map(p => p.getText()).join('\n'), appendParagraph: t => receipts.push(para(t)) }), saveAndClose: () => {} } };
-  global.MimeType = { PLAIN_TEXT: 'text/plain' };
-  return { line: pid => master.map(p => p.getText()).find(l => cells(l)[1] === pid), saves: () => saves };
+function services(t,lines) {
+  const fixture=require('./helpers/writer-world').world(t,{rows:lines.filter(line=>/^\d+ \| /.test(line))});
+  return { line:fixture.row, saves:fixture.saves };
 }
 
-test('end to end: an IDENTITY batch commits once and stays pending verification; a colliding ruling is held, not written', () => {
+test('end to end: an IDENTITY batch commits once and stays pending verification; a colliding ruling is held, not written', t => {
   const other = row(12, 'V2I-REGAL0000099', 'Regal Rexnord', 'Vice President, Supply Chain', 'R26_04429', 'Rosemont, IL');
-  const f = services(['COUNTS: TOTAL=2 DISCOVERY_LEAD=2 UNACCOUNTED=0', hidden, other, 'END V2_CURRENT_POPULATION_MASTER (2 rows)']);
+  const f = services(t, ['COUNTS: TOTAL=2 DISCOVERY_LEAD=2 UNACCOUNTED=0', hidden, other, 'END V2_CURRENT_POPULATION_MASTER (2 rows)']);
   W.resetExecution_();
   const held = W.dispatchWrite_({ action: 'batch', requests: [{ action: 'ruling', ruling: Object.assign({ primaryId: 'V2I-HIDDEN000001' }, base) }] });
   assert.equal(held.results[0].mode, 'HOLD'); assert.match(held.results[0].error, /IDENTITY_COLLISION/);

@@ -39,7 +39,7 @@ const recs = [
 const plan = W.planIntake(lines, recs, rules, ctx);
 ok(plan.ok, 'plan ok');
 ok(plan.results[0].result === 'SCOUT_INTAKE_WRITTEN' && plan.results[1].result === 'SCOUT_INTAKE_WRITTEN', 'distinct Glassdoor jobs are admitted, not EXISTING_MATCH to the Glassdoor-sourced row (' + plan.results[0].result + ', ' + plan.results[1].result + ')');
-ok(plan.results[2].result === 'EXISTING_MATCH' && plan.results[2].PRIMARY_ID === anchorId && plan.results[2].matchedBy === 'SOURCE_URL', 'the same Glassdoor job id still matches its existing row by SOURCE_URL');
+ok(plan.results[2].outcome === 'IDENTITY_CONFLICT' && plan.results[2].candidateIds.includes(anchorId), 'shared Glassdoor URL at a different employer is held as an identity conflict');
 
 // dedupe index: the URL fields the Writer writes on new rows take part; the never-written JOB_URL / CANONICAL_URL do not
 {

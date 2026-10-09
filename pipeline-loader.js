@@ -113,8 +113,8 @@
   function liveArchiveState_(st) { return !!(st && st.mode === 'LIVE' && st.archiveId && st.status !== 'ABANDONED'); }
   function isTransientDocError_(e) {
     var m = String(e && e.message || e);
-    if (/lock timeout/i.test(m)) return false;
-    return /document is inaccessible|please try again later|service error|service unavailable|server error|internal error|backend error|temporarily unavailable/i.test(m);
+    if (/lock timeout|permission|unauthorized|forbidden|policy block|invalid|malformed/i.test(m)) return false;
+    return /document is inaccessible|please try again later|service error|service unavailable|server error|internal error|backend error|temporarily unavailable|rate limit|too many requests|429|quota.*(?:per second|per minute)/i.test(m);
   }
   /* ---------- end verbatim ---------- */
 

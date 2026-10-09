@@ -1,0 +1,28 @@
+{
+  "statusCalls": 5,
+  "statusPeak": 1,
+  "errors": [],
+  "writes": [
+    "catch_up",
+    "save_rules",
+    "data_discovery",
+    "state"
+  ],
+  "checks": [
+    "real deadline countdown",
+    "automatic refresh",
+    "no overlapping manual refresh",
+    "retry countdown on failure",
+    "hidden pause and resume",
+    "verified count bars",
+    "body review count bars",
+    "unknown duration command",
+    "failed command",
+    "reduced motion",
+    "rules readback",
+    "queued AI remains waiting",
+    "job isolation",
+    "phone overflow"
+  ],
+  "fixture": "600 synthetic jobs; external requests blocked"
+}

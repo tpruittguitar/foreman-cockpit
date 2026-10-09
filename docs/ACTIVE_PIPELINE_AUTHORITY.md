@@ -8,7 +8,7 @@ This is the repository pointer for every AI, scheduler and human working on Pipe
 ## Current authority, in order
 
 1. The active canonical rules Doc `TIM_PIPELINE_RULES_CANONICAL` (Drive ID `1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE`).
-2. The fixed canonical master `V2_CURRENT_POPULATION_MASTER.txt` (Drive ID `19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI`).
+2. The fixed canonical master `V2_CURRENT_POPULATION_MASTER.txt` (Drive ID `1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8`).
 3. The deployed Authorized State Writer and its live `action=ping` response.
 4. This document and `docs/WRITER_ACCESS.md` for operating procedure.
 
