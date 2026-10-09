@@ -1,5 +1,7 @@
 # PR70 GUI review
 
+**[Latest: revision 2 — larger fonts, more padding, and FLEX controls at the top](revision-2/README.md)**
+
 These are screenshots of the modified working application using isolated synthetic fixtures. They are review evidence; the visual application changes are still uncommitted and not deployed.
 
 Desktop shows 19 visible rows. Map geometry matches the recovered baseline. Mobile views are browser emulations; physical iOS safe areas are not certified. The original owner screenshot comparison remains unavailable.
