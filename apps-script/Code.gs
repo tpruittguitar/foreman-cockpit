@@ -1,4 +1,4 @@
-if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipeline-policy');
+if(typeof module==='object'&&module.exports){var PipelinePolicy=require('../pipeline-policy');var WriterTransactions=require('./WriterTransactions.gs');}
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -18,7 +18,7 @@ if(typeof module==='object'&&module.exports)var PipelinePolicy=require('../pipel
  * DEPLOY: apps-script/README.md.  Pure functions below are unit-tested in tests/*.test.js via CommonJS export.
  */
 var MASTER_ID = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8'; // plain text as of 2026-10-08; Doc 19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI is the frozen rollback
-var PASSPHRASE = 'CHANGE-ME';                                   // set your own; the page asks for it once
+var PASSPHRASE = '5150'; // Owner-approved default; deployment preserves the live Writer passphrase.
 var STATE_FILE_NAME = 'PIPELINE_EXPLORER_STATE.json';
 var RECEIPTS_DOC_NAME = 'PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS';
 var DISCOVERY_REQUESTS_NAME = 'PIPELINE_DATA_DISCOVERY_REQUESTS.jsonl';
@@ -97,6 +97,7 @@ function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj))
 var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived'];
 function dispatchWrite_(req) {
   req = req || {};
+  WRITE_CONTEXT_ = req;
   var a = String(req.action || '');
   if (a === 'intake') return applyIntakeToMaster_(req);
   if (a === 'ruling') { var shapeErr = requestShapeError_(req); if (shapeErr) return { ok: false, mode: 'REJECTED_SCHEMA', error: shapeErr }; return applyRulingToMaster_(req.ruling); }
@@ -108,7 +109,7 @@ function dispatchWrite_(req) {
   if (a === 'save_scoring_model') return saveScoringModel_(req.model || req);
   if (a === 'undo_ruling') return undoLastRuling_(req.undo || req);
   if (a === 'rotate_receipts') return rotateReceipts_(req);
-  if (a === 'migration') return migration_(req);
+  if (a === 'migration') return { ok:false, mode:'RETIRED_MIGRATION', error:'The live plain-text master is already migrated; old Doc migration is disabled.' };
   if (a === 'freeze_writer') return setFreeze_(req, true);
   if (a === 'unfreeze_writer') return setFreeze_(req, false);
   if (a === 'restore_archived') return restoreArchived_(req);
@@ -426,11 +427,35 @@ function linesFromMasterText_(text) {
   return text.length ? text.split('\n') : [];
 }
 function readMasterText_(id) {
-  var file = DriveApp.getFileById(id || MASTER_ID);
+  id = id || MASTER_ID;
+  if (id === '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI') throw new Error('FROZEN_MASTER_FORBIDDEN');
+  var file = DriveApp.getFileById(id);
+  if (id === MASTER_ID && String(file.getMimeType()) !== 'text/plain') throw new Error('LIVE_MASTER_MIME_INVALID');
   if (String(file.getMimeType()) === 'application/vnd.google-apps.document') return DocumentApp.openById(file.getId()).getBody().getText();
   return file.getBlob().getDataAsString();
 }
-function saveMasterLines_(lines) { DriveApp.getFileById(MASTER_ID).setContent(lines.join('\n') + '\n'); }
+var WRITE_CONTEXT_ = {}, CURRENT_WRITE_ID_ = '';
+function saveMasterLines_(lines, expected) {
+  if (!expected) throw new Error('TRANSACTION_EXPECTED_SNAPSHOT_REQUIRED');
+  var fresh = readMasterLines_('PRECOMMIT_READ');
+  if (textHash_(fresh.join('\n')) !== textHash_(expected.join('\n'))) throw new Error('PRECOMMIT_CONFLICT: master changed; no write performed');
+  var at = new Date().toISOString(), plan = WriterTransactions.intent(expected, lines, WRITE_CONTEXT_, at, textHash_, MASTER_ID, WRITER_BUILD);
+  if (!plan) return;
+  var idx = readIndex_() || emptyIndex_();
+  if (idx.pending.length) throw new Error('WRITE_FENCE: unresolved durable transaction');
+  plan.requestIds.forEach(function (rid) {
+    if (idx.requests[rid] && ['COMPLETE','PENDING','NEEDS_RESOLUTION'].indexOf(idx.requests[rid].s) >= 0) throw new Error('REQUEST_ALREADY_RECORDED: ' + rid);
+    idx.requests[rid] = { s: 'PENDING', at: at, w: plan.writeId };
+  });
+  idx.pending.push(plan);
+  writeIndex_(idx); // A durable intent is required BEFORE any canonical effect.
+  var proof = readIndex_(), stored = proof && proof.pending.filter(function (x) { return x.writeId === plan.writeId; })[0];
+  if (!stored || JSON.stringify(stored) !== JSON.stringify(plan)) throw new Error('INTENT_READBACK_FAILED: no master write attempted');
+  CURRENT_WRITE_ID_ = plan.writeId;
+  MASTER_WRITTEN_IN_EXECUTION_ = true;
+  // Never retry a canonical save. Even a thrown response can follow a persisted effect.
+  DriveApp.getFileById(MASTER_ID).setContent(lines.join('\n') + '\n');
+}
 /** Fresh read of the master for a transaction. Plain text is saved with Drive setContent, not DocumentApp. */
 function openMaster_() {
   return withDocRetry_('MASTER_READ', function () {
@@ -486,7 +511,7 @@ function replayState_() {
   if (idx) Object.keys(idx.requests).forEach(function (rid) {
     var s = idx.requests[rid] && idx.requests[rid].s;
     if (s === 'COMPLETE') done[rid] = true;
-    else if (s === 'PENDING') pending[rid] = true;
+    else if (['PENDING','PENDING_DELIVERY','NEEDS_RESOLUTION'].indexOf(s) >= 0) pending[rid] = true;
     else if (s === 'FALSE_COMPLETE' || s === 'NOT_PERSISTED') delete done[rid];
   });
   return { done: done, pending: pending };
@@ -501,6 +526,8 @@ function countsLineOf_(lines) { for (var i = 0; i < lines.length; i++) if (/^COU
 /** Pure: decide one pending write against a fresh master snapshot that was read in a DIFFERENT execution. */
 function classifyPendingWrite_(p, lines, nowMs, graceMs) {
   var byPid = rowsByPid_(lines), countsOk = textHash_(countsLineOf_(lines)) === p.counts;
+  if (p.end) countsOk = countsOk && textHash_(lines.filter(function (l) { return /^END V2_CURRENT_POPULATION_MASTER/.test(l); })[0] || '') === p.end;
+  if (p.afterHash) countsOk = countsOk && textHash_(lines.join('\n')) === p.afterHash;
   var items = p.items.map(function (it) {
     var cur = byPid[it.pid] || [];
     if (cur.length > 1) return { pid: it.pid, state: 'AMBIGUOUS' };
@@ -539,32 +566,48 @@ function verifiedReceipts_(p, v, verifiedAt) {
  * would see its own unsaved edits). lines: a master snapshot read in THIS execution before any write (optional).
  */
 function verifyPendingWrites_(lines) {
-  if (MASTER_WRITTEN_IN_EXECUTION_) return { ok: false, skipped: 'SAME_EXECUTION_AS_WRITE', stillPending: [] };
+  if (MASTER_WRITTEN_IN_EXECUTION_) return { ok:false, skipped:'SAME_EXECUTION_AS_WRITE', stillPending:[] };
   var idx = readIndex_();
-  if (!idx || !idx.pending.length) return { ok: true, decided: [], stillPending: [] };
+  if (!idx || !idx.pending.length) return { ok:true, decided:[], stillPending:[] };
   lines = lines || readMasterLines_('VERIFY_READ');
-  var now = Date.now(), at = new Date(now).toISOString(), keep = [], decided = [], receipts = [], events = [], idx0 = idx.pending.slice();
-  idx.pending.forEach(function (p) {
-    var v = classifyPendingWrite_(p, lines, now, VERIFY_GRACE_MS);
-    if (v.decision === 'WAIT') { keep.push(p); return; }
-    var finals = verifiedReceipts_(p, v, at);
-    receipts = receipts.concat(finals);
-    p.requestIds.forEach(function (rid) { if (rid) idx.requests[rid] = { s: v.decision === 'COMPLETE' ? 'COMPLETE' : v.decision, at: at, w: p.writeId }; });
-    decided.push({ writeId: p.writeId, kind: p.kind, decision: v.decision, requestIds: p.requestIds, items: v.items });
-    events.push({ type: 'WRITE_VERIFICATION', ts: at, writeId: p.writeId, kind: p.kind, decision: v.decision, requestIds: p.requestIds, writtenAt: p.writtenAt });
+  var at = new Date().toISOString(), decided = [];
+  idx.pending.slice().forEach(function (p) {
+    var v = classifyPendingWrite_(p, lines, Date.now(), VERIFY_GRACE_MS);
+    if (v.decision === 'WAIT') return;
+    if (!p.verdict || p.verdict.decision !== v.decision) {
+      p.verdict = { decision:v.decision, items:v.items, countsOk:v.countsOk, verifiedAt:at,
+        snapshotHash:textHash_(lines.join('\n')) };
+      p.receiptDelivered = false; p.eventDelivered = false; p.runDelivered = false;
+    }
+    var proof = p.verdict;
+    p.requestIds.forEach(function (rid) {
+      idx.requests[rid] = { s:v.decision === 'NEEDS_RESOLUTION' ? 'NEEDS_RESOLUTION' : 'PENDING_DELIVERY', at:proof.verifiedAt, w:p.writeId };
+    });
+    p.stage = 'INDEPENDENT_READBACK';
+    writeIndex_(idx); // Persist the evidence and delivery obligation before emitting final logs.
+    if (!p.receiptDelivered) {
+      appendReceipts_(verifiedReceipts_(p, proof, proof.verifiedAt));
+      p.receiptDelivered = true; writeIndex_(idx);
+    }
+    if (!p.eventDelivered) {
+      appendEvents_([{ type:'WRITE_VERIFICATION', ts:proof.verifiedAt, writeId:p.writeId,
+        kind:p.kind, decision:proof.decision, requestIds:p.requestIds, writtenAt:p.writtenAt }]);
+      p.eventDelivered = true; writeIndex_(idx);
+    }
+    if (p.kind === 'INTAKE' && !p.runDelivered) {
+      appendRun_({ RECORD_TYPE:'WRITE_VERIFICATION', SCOUT_RUN_ID:((p.receipts || [])[0] || {}).SCOUT_RUN_ID || '',
+        WRITE_ID:p.writeId, WRITE_STATUS:RUN_WRITE_STATUS_[proof.decision], VERIFIED_AT:proof.verifiedAt,
+        PRIMARY_IDS:proof.items.map(function (x) { return x.pid; }) });
+      p.runDelivered = true; writeIndex_(idx);
+    }
+    decided.push({ writeId:p.writeId, kind:p.kind, decision:proof.decision, requestIds:p.requestIds, items:proof.items });
+    if (proof.decision !== 'NEEDS_RESOLUTION') {
+      p.requestIds.forEach(function (rid) { idx.requests[rid] = { s:proof.decision, at:proof.verifiedAt, w:p.writeId }; });
+      idx.pending = idx.pending.filter(function (x) { return x.writeId !== p.writeId; });
+      writeIndex_(idx);
+    }
   });
-  if (!decided.length) return { ok: true, decided: [], stillPending: keep.map(function (p) { return p.writeId; }) };
-  idx.pending = keep;
-  writeIndex_(idx);              // the authority first: replay protection reflects the verdict even if the log append fails
-  appendReceipts_(receipts);
-  appendEvents_(events);
-  // Intake telemetry: a run is not "written" until verified. Record the durable verdict beside its run.
-  decided.forEach(function (d) {
-    if (d.kind !== 'INTAKE') return;
-    var p0 = (idx0.filter(function (p) { return p.writeId === d.writeId; })[0] || {}), runId = ((p0.receipts || [])[0] || {}).SCOUT_RUN_ID || '';
-    appendRun_({ RECORD_TYPE: 'WRITE_VERIFICATION', SCOUT_RUN_ID: runId, WRITE_ID: d.writeId, WRITE_STATUS: RUN_WRITE_STATUS_[d.decision], VERIFIED_AT: at, PRIMARY_IDS: d.items.map(function (x) { return x.pid; }) });
-  });
-  return { ok: true, decided: decided, stillPending: keep.map(function (p) { return p.writeId; }) };
+  return { ok:true, decided:decided, stillPending:idx.pending.map(function (p) { return p.writeId; }) };
 }
 /** Run at the start of every master write, on the snapshot that write just read. Returns a refusal or null. */
 function writeFence_(lines) {
@@ -577,26 +620,27 @@ function writeFence_(lines) {
 }
 /** Records a committed write as PENDING_VERIFICATION: index entry first (authority), then the provisional receipts. */
 function stageVerification_(kind, items, receipts, countsLine, writtenAt) {
-  var idx = readIndex_() || emptyIndex_();
-  var writeId = 'W-' + writtenAt.replace(/[^0-9]/g, '').slice(0, 17) + '-' + textHash_(JSON.stringify(items)).slice(0, 6);
-  var rids = receipts.map(function (r) { return String(r.REQUEST_ID || ''); });
-  idx.pending.push({ writeId: writeId, kind: kind, writtenAt: writtenAt, counts: textHash_(countsLine), requestIds: rids,
-    items: items.map(function (x) { return { pid: x.pid, op: x.op || 'REPLACE', b: x.op === 'INSERT' ? '' : textHash_(x.before), a: textHash_(x.after) }; }), receipts: receipts });
-  rids.forEach(function (rid) { if (rid) idx.requests[rid] = { s: 'PENDING', at: writtenAt, w: writeId }; });
+  var idx = readIndex_(), pending = idx && idx.pending.filter(function (p) { return p.writeId === CURRENT_WRITE_ID_; })[0];
+  if (!pending) throw new Error('INTENT_MISSING_AFTER_SAVE: reconcile before retry');
+  var ids = receipts.map(function (r) { return String(r.REQUEST_ID || ''); }).filter(Boolean);
+  pending.kind = kind; pending.receipts = receipts; pending.stage = 'SAVE_RETURNED';
+  ids.forEach(function (rid) {
+    if (pending.requestIds.indexOf(rid) < 0) pending.requestIds.push(rid);
+    idx.requests[rid] = { s: 'PENDING', at: pending.writtenAt, w: pending.writeId };
+  });
   writeIndex_(idx);
   appendReceipts_(receipts.map(function (r) {
-    var o = {}; Object.keys(r).forEach(function (k) { o[k] = r[k]; });
-    o.COMPLETION_STATUS = 'PENDING_VERIFICATION'; o.READBACK_VERIFIED = 'PENDING'; o.VERIFICATION = 'POST_EXECUTION_REQUIRED'; o.WRITE_ID = writeId;
-    return o;
+    return Object.assign({}, r, { COMPLETION_STATUS: 'PENDING_VERIFICATION', READBACK_VERIFIED: 'PENDING',
+      VERIFICATION: 'POST_EXECUTION_REQUIRED', WRITE_ID: pending.writeId });
   }));
-  return writeId;
+  return pending.writeId;
 }
 /** Applies line edits located in the snapshot and saves the plain-text master. Drive setContent is synchronous. */
 function applyMasterEdits_(M, snapshot, edits) {
   MASTER_WRITTEN_IN_EXECUTION_ = true;
   var lines = snapshot.slice();
   for (var i = 0; i < edits.length; i++) if (lines[edits[i].index] !== edits[i].text) lines[edits[i].index] = edits[i].text;
-  withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(lines); return true; });
+  saveMasterLines_(lines, snapshot);
 }
 function masterTrailerEdits_(lines, newCounts, newEnd) {
   var out = [];
@@ -1031,7 +1075,7 @@ function restoreArchived_(req) {
     flushEvidence_(ctx);
     MASTER_WRITTEN_IN_EXECUTION_ = true;
     masterTrailerEdits_(all, counts, end).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
-    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
+    saveMasterLines_(all, snapshot);
     var af = DriveApp.getFileById(st.archiveId), cur = af.getBlob().getDataAsString();
     af.setContent(cur.replace(/\n*$/, '\n') + 'RESTORED|' + pid + '|' + rows[0].split(' | ')[0] + '|' + at + '|' + rid + '\n');
     var receipt = { RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: rid, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', TARGET_CANONICAL_ID: pid, CHANGES: ['RESTORED_FROM_ARCHIVE'], READBACK_VERIFIED: 'PENDING', TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: 'PENDING_VERIFICATION', EXECUTED_AT: at, ACTOR: String(req.actor || 'TIM') };
@@ -1174,7 +1218,7 @@ function applyUpsertToMaster_(ev) {
     }
     var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
     masterTrailerEdits_(all, newCounts, newEnd).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
-    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
+    saveMasterLines_(all, snapshot);
     base.PRIMARY_ID = plan.primaryId; base.MATCHED_BY = plan.matchedBy || ''; base.UPSERT_KEY = plan.upsertKey; base.READBACK_VERIFIED = 'PENDING'; base.COUNTS_AFTER = newCounts; base.COMPLETION_STATUS = 'PENDING_VERIFICATION';
     var writeId = stageVerification_('UPSERT', [item], [base], newCounts, now);
     base.WRITE_ID = writeId;
@@ -1211,13 +1255,13 @@ function applyIntakeToMaster_(req) {
     Array.prototype.splice.apply(all, [at, 0].concat(toInsert));
     var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
     masterTrailerEdits_(all, newCounts, newEnd).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
-    withDocRetry_('MASTER_SAVE', function () { saveMasterLines_(all); return true; });
+    saveMasterLines_(all, snapshot);
     // Written, not yet durable: a later execution verifies every inserted row (independent post-execution readback).
     var verified = true;
     var counters = runCounters_(req.run || {}, plan, rules, verified);
     var executedAt = new Date().toISOString();
     var receipt = {
-      RECEIPT: 'INTAKE_RECEIPT', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
+      RECEIPT: 'INTAKE_RECEIPT', REQUEST_ID: req.requestId || (req.run && req.run.SCOUT_RUN_ID) || '', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
       RECORDS_RECEIVED: (req.records || []).length, COUNTERS: counters, RULES_STATUS: rules.status, RULES_DOC_ID: CANONICAL_RULES_DOC_ID,
       DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, NEVER_CONSIDER_REVIEW_NEEDED: plan.summary.NEVER_CONSIDER_REVIEW_NEEDED,
       NEW_PRIMARY_IDS: plan.newLines.map(function (l) { return l.split(' | ')[1]; }),
@@ -2120,4 +2164,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
