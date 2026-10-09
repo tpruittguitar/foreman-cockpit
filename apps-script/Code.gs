@@ -1,4 +1,4 @@
-if(typeof module==='object'&&module.exports){var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');}
+if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');}
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -127,7 +127,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['writer_status','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -146,6 +146,7 @@ function doGet(e) {
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'receipt_index') return out_(receiptIndexSummary_(p.requestId || ''));
     if (a === 'verify_pending') return out_(verifyNow_());
+    if (a === 'automation_alignment') return out_(automationAlignmentRead_());
     if (a === 'canonical_rules') return out_(readCanonicalRules_());
     if (a === 'scoring') return out_(readScoringModel_());
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
@@ -170,6 +171,7 @@ function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj))
 var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived'];
 function dispatchWrite_(req) {
   req = req || {};
+  if(req.automation){var alignmentError=automationEnvelopeError_(req,automationAlignmentRead_());if(alignmentError)return {ok:false,mode:'PAUSED_CONFLICT',error:alignmentError};}
   WRITE_CONTEXT_ = req;
   var a = String(req.action || '');
   if (['record_operations','catch_up','acknowledge_obligation'].indexOf(a)>=0) return operationsWrite_(req);
@@ -2161,6 +2163,25 @@ function readFlexPolicy_() {
     return defaults;
   }
 }
+
+// This endpoint establishes live authority identity, not native provider adoption.
+function automationAlignmentRead_(){
+  var at=new Date().toISOString(),authorities={};
+  function fingerprint(text){return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,String(text)));}
+  try{var common=readDocumentText_(PipelineAlignment.IDS.common);authorities.common={ok:common.ok===true,id:PipelineAlignment.IDS.common,active:/^STATUS=ACTIVE_COMMON_OPERATIONAL_STANDARD/m.test(common.text||''),fingerprint:common.ok?fingerprint(common.text):'',fetchedAt:at,error:common.error||''};}catch(e){authorities.common={ok:false,error:String(e)};}
+  try{var rules=readCanonicalRules_();authorities.rules={ok:rules.ok===true,id:rules.id,active:/^STATUS=ACTIVE\s*$/m.test(rules.text||''),fingerprint:rules.ok?fingerprint(rules.text):'',fetchedAt:at,error:rules.error||''};}catch(e){authorities.rules={ok:false,error:String(e)};}
+  authorities.writer={ok:true,masterId:MASTER_ID,fingerprint:fingerprint(MASTER_ID+'|'+PipelineAlignment.stable(WRITER_BUILD)),fetchedAt:at};
+  return {ok:true,version:PipelineAlignment.VERSION,authorities:authorities,tasks:PipelineAlignment.TASKS,nativeControl:'UNSUPPORTED',nativeAdoption:'UNVERIFIED',enforcement:'OPT_IN_AUTOMATION_ENVELOPE'};
+}
+function automationEnvelopeError_(req,live){
+  var envelope=req.automation||{},a=live.authorities||{};
+  if(!envelope.attemptId||!req.requestId)return 'AUTOMATION_STABLE_IDENTIFIERS_REQUIRED';
+  for(var k of ['common','rules','writer']){if(!a[k]||a[k].ok!==true||!a[k].fingerprint)return 'BLOCKED_AUTHORITY: '+k;if((envelope.authorityFingerprints||{})[k]!==a[k].fingerprint)return 'AUTHORITY_CHANGED: '+k;}
+  if(!a.common.active||!a.rules.active||a.writer.masterId!==PipelineAlignment.IDS.master)return 'ACTIVE_AUTHORITY_REQUIRED';
+  try{PipelineAlignment.assertRequest({allowed:true,taskKey:envelope.taskKey},req);}catch(e){return String(e.message||e);}
+  return '';
+}
+
 function readCanonicalRules_() {
   try {
     var file=DriveApp.getFileById(CANONICAL_RULES_DOC_ID), text=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
@@ -2302,4 +2323,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
