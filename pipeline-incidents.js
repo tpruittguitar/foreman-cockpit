@@ -11,9 +11,9 @@
  * was already resolved or the retry fails with a materially different (normalized) failure class.
  *
  * States: ACTIVE (unresolved; needs corrective action; never ages out), RECOVERED (a later verified result proves
- * the operation completed and no downstream consequence remains), ACKNOWLEDGED (Tim closed it with no action),
+ * the operation completed and no downstream consequence remains), ACKNOWLEDGED_UNRESOLVED (Tim saw it; resolution still required),
  * and HISTORICAL in the view: any resolved incident older than the display window.
- * Health counts ACTIVE incidents only: 0 critical + 0 warning = LIVE, 0 critical + >=1 warning = LIVE / WARNING,
+ * Health counts ACTIVE and ACKNOWLEDGED_UNRESOLVED incidents: 0 critical + 0 warning = LIVE, 0 critical + >=1 warning = LIVE / WARNING,
  * >=1 critical = DEGRADED. Resolved incidents never degrade health.
  */
 (function(root){'use strict';
@@ -57,6 +57,7 @@ function applyRuns(store,runs,unverifiedCount){
   events.forEach(function(e){
     var r=e.r,op=normalizeOperation(r.file),iso=new Date(e.at).toISOString();
     if(!isFailureRun(r)){
+      if(r.recovered!==true)return; // A task success alone cannot certify its downstream effects.
       // Verified success of the same operation recovers every open queue incident for it that failed earlier.
       // A HOLD-type failure may have written part of a batch: it recovers only when no master write is left unverified.
       Object.keys(store.incidents).forEach(function(k){var i=store.incidents[k];
@@ -71,6 +72,7 @@ function applyRuns(store,runs,unverifiedCount){
     else{i={id:gk+'|'+iso,group:gk,kind:'event',component:RUN_COMPONENT,failureClass:cls,operation:op,terminalStatus:String(r.terminalStatus||''),
       severity:'warning',title:String(r.terminalStatus||'FAILED')+' · '+op,attempts:1,firstAt:iso,latestAt:iso,latestError:String(r.error||''),latestFile:r.file,
       eventIds:[e.id],status:'ACTIVE',updatedAt:iso};store.incidents[i.id]=i}
+    i.timeline=(i.timeline||[]).concat([{at:iso,eventId:e.id,file:r.file,status:r.terminalStatus,error:String(r.error||''),docAccess:r.docAccess||null}]).slice(-MAX_EVENT_IDS);
     // The Writer's own receipt check: every request in a PARTIAL_HOLD batch is COMPLETE in the durable receipt index.
     if(r.recovered===true)resolve(i,'RECOVERED',iso,'Receipt index: every request in '+r.file+' is COMPLETE','Recovered: all requests completed (verified by the Writer)');
     changed=true;
@@ -104,13 +106,14 @@ function prune(store,now){
 /* obs: {runs:[], unverifiedCount:number|null, writer:source|null, load:source|null}. Returns true when the store changed. */
 function observe(store,obs,now){
   now=now==null?Date.now():now;obs=obs||{};if(!store.incidents)store.incidents={};
+  Object.keys(store.incidents).forEach(function(k){var i=store.incidents[k];if(i.status==='ACKNOWLEDGED'){i.status='ACKNOWLEDGED_UNRESOLVED';i.acknowledgedAt=i.resolvedAt||i.updatedAt;delete i.resolvedAt;i.resolution='Historical acknowledgement has no verified resolution evidence';}});
   store.healthySince=store.healthySince||{};[obs.writer,obs.load].forEach(function(source){if(!source||!source.authoritative)return;if((source.conditions||[]).length)delete store.healthySince[source.name];else if(!store.healthySince[source.name])store.healthySince[source.name]=source.at||now;});
   var a=applyRuns(store,obs.runs,obs.unverifiedCount),b=applyConditions(store,obs.writer,now),c=applyConditions(store,obs.load,now);
   var before=Object.keys(store.incidents).length;prune(store,now);
   return a||b||c||Object.keys(store.incidents).length!==before;
 }
 
-/* Tim closes an ACTIVE queue incident without corrective action. Live conditions cannot be acknowledged away:
+/* Tim acknowledges an unresolved queue incident while retaining its obligation. Live conditions cannot be acknowledged away:
  * they clear only when a status read verifies them gone. */
 function acknowledge(store,id,by,now){
   var i=store.incidents[id];if(!i||(i.status!=='ACTIVE'&&i.status!=='ACKNOWLEDGED_UNRESOLVED')||i.kind!=='event')return false;var iso=new Date(now==null?Date.now():now).toISOString();
@@ -141,7 +144,7 @@ function health(store,now,config){
  * computes the same id). Live conditions are recomputed from the current status on each device. */
 function forSync(store){var out={v:1,incidents:{}};Object.keys((store&&store.incidents)||{}).forEach(function(k){var i=store.incidents[k];if(i.kind==='event')out.incidents[k]=i});return out}
 function merge(local,remote){
-  var out={v:1,incidents:{}},changed=false;Object.keys((local&&local.incidents)||{}).forEach(function(k){out.incidents[k]=local.incidents[k]});
+  var out={v:1,incidents:{},healthySince:Object.assign({},local&&local.healthySince||{})},changed=false;Object.keys((local&&local.incidents)||{}).forEach(function(k){out.incidents[k]=local.incidents[k]});
   Object.keys((remote&&remote.incidents)||{}).forEach(function(k){var r=remote.incidents[k],l=out.incidents[k];if(!r||r.kind!=='event')return;
     if(!l){out.incidents[k]=r;changed=true;return}
     var pick=l;if(l.status==='ACTIVE'&&r.status!=='ACTIVE')pick=r;else if(l.status===r.status&&(r.attempts||0)>(l.attempts||0))pick=r;

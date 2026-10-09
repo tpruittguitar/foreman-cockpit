@@ -4,6 +4,7 @@
   function create(adapter){
     if(!adapter.persist||!adapter.load)throw new Error('DURABLE_CHECKPOINT_ADAPTER_REQUIRED');
     async function reconcile(item){
+      if(!adapter.result||!adapter.master||!adapter.verify){item.state='WRITER_TRANSPORT_BLOCKED';item.error='Readback adapter unavailable; original request retained';await adapter.persist(item);return item;}
       var result=await adapter.result(item.requestId);
       item.result=result;item.updatedAt=new Date().toISOString();
       if(!result||result.status!=='COMPLETE'||result.durable!==true){item.state='PENDING_VERIFICATION';await adapter.persist(item);return item;}
@@ -15,6 +16,7 @@
     async function submit(requestId,body,source){
       if(!requestId||!body||!source||!source.initiatingUrl)throw new Error('REQUEST_ID_AND_ORIGINAL_SOURCE_REQUIRED');
       var old=await adapter.load(requestId);
+      if(old&&JSON.stringify(old.body)!==JSON.stringify(body))throw new Error('REQUEST_ID_PAYLOAD_CONFLICT');
       if(old&&old.state==='VERIFIED_COMPLETE')return old;
       if(old&&old.deliveryAttempted)return reconcile(old);
       var item=old||{requestId:requestId,body:JSON.parse(JSON.stringify(body)),source:JSON.parse(JSON.stringify(source)),state:'NOT_ATTEMPTED',createdAt:new Date().toISOString()};

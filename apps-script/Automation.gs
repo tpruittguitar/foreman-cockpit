@@ -194,6 +194,9 @@ function finalizeClaim_(f, file, original, entry, result) {
   if (result && result.partial) { entry.attempted = result.attempted; entry.notAttempted = result.notAttempted; entry.stoppedBy = result.stoppedBy; }
   entry.totalMs = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
   if (result && result.timings) entry.writerTimings = result.timings;
+  entry.records = result && (result.processed || result.results && result.results.length) || null;
+  entry.writerBuild = typeof WRITER_BUILD !== 'undefined' ? WRITER_BUILD.commit : 'UNKNOWN';
+  entry.storageModel='text/plain';
   try {
     dest.createFile('RESULT__' + original.replace(/\.[A-Za-z]+$/, '') + '.json', JSON.stringify({ request_file: original, request_file_id: file.getId(), terminalStatus: status, processed: entry, result: result }, null, 2), MimeType.PLAIN_TEXT);
   } catch (e) { entry.resultFileError = String(e && e.message || e); }
@@ -277,7 +280,7 @@ function writerStatus_() {
   part('trigger', function () { s.triggerInstalled = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === QUEUE_TRIGGER_FN; }); });
   part('recentRuns', function () {
     var lf = findOrCreate_(QUEUE_LOG_NAME, 'text', ''), lines = String(lf.getBlob().getDataAsString() || '').split('\n').filter(Boolean);
-    var runs = lines.map(function (l) { try { var e = JSON.parse(l); return { file: e.file, fileId: e.fileId || '', terminalStatus: e.terminalStatus || (e.ok ? 'SUCCESS' : 'FAILED'), action: e.action || '', finishedAt: e.finishedAt || '', totalMs: e.totalMs || 0, error: String(e.error || '').slice(0, 240) }; } catch (x) { return null; } }).filter(Boolean);
+    var runs = lines.map(function (l) { try { var e = JSON.parse(l); return { file: e.file, fileId: e.fileId || '', terminalStatus: e.terminalStatus || (e.ok ? 'SUCCESS' : 'FAILED'), action: e.action || '', finishedAt: e.finishedAt || '', totalMs: e.totalMs || 0, docAccess:e.docAccess||null, writerTimings:e.writerTimings||null, records:e.records||null, writerBuild:e.writerBuild||'UNKNOWN', storageModel:e.storageModel||'UNKNOWN', error: String(e.error || '').slice(0, 240) }; } catch (x) { return null; } }).filter(Boolean);
     s.recentRuns = runs.slice(-8).reverse();
     // Warnings follow the 24-hour policy window, not queue traffic: every HOLD-type result that finished
     // inside the window is kept, however many runs came after it. An unparseable finishedAt counts as recent.
@@ -289,7 +292,7 @@ function writerStatus_() {
     // keep it in history but mark it recovered so the Explorer no longer raises an active warning.
     // Fail closed: the exact logged file is read by ID; a missing ID, an unreadable file or any
     // request without a COMPLETE ID leaves the run unrecovered and its warning in place.
-    var partials = s.recentHolds.concat(s.recentRuns).filter(function (r, i, all) { return r.terminalStatus === 'PARTIAL_HOLD' && all.indexOf(r) === i; });
+    var partials = s.recentHolds.concat(s.recentRuns).filter(function (r, i, all) { return /^(PARTIAL_HOLD|SUCCESS)$/.test(r.terminalStatus) && all.indexOf(r) === i; });
     if (partials.length) {
       var idx = readIndex_(), states = (idx && idx.requests) || {};
       partials.forEach(function (r) {
@@ -306,6 +309,7 @@ function writerStatus_() {
     var idx = readIndex_(), pend = (idx && idx.pending) || [];
     s.unverified = { count: pend.length, oldestWrittenAt: pend.reduce(function (m, p) { return !m || p.writtenAt < m ? p.writtenAt : m; }, '') };
   });
+  s.workload={state:'UNKNOWN',productionBenchmark:'NOT_TESTED',reason:'No independently approved production capacity profile',measurements:(s.recentRuns||[]).map(function(r){return {elapsedMs:r.totalMs,records:r.records,ok:r.terminalStatus==='SUCCESS',environment:'production',operation:r.action,build:r.writerBuild,storageModel:r.storageModel};})};
   s.warnings = writerWarnings_(s, now);
   s.level = s.warnings.some(function (w) { return w.level === 'critical'; }) ? 'critical' : s.warnings.some(function (w) { return w.level === 'warn'; }) ? 'warn' : 'ok';
   return s;

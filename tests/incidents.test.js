@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),P=require('../pipeline-incidents');
 const T=(h,m)=>Date.parse('2026-10-06T'+String(h).padStart(2,'0')+':'+String(m||0).padStart(2,'0')+':00Z');
 const iso=t=>new Date(t).toISOString();
-const run=(file,status,at,error,extra)=>Object.assign({file,fileId:'id-'+file,terminalStatus:status,action:'',finishedAt:iso(at),error:error||''},extra||{});
+const run=(file,status,at,error,extra)=>Object.assign({file,fileId:'id-'+file,terminalStatus:status,action:'',finishedAt:iso(at),error:error||'',recovered:status==='SUCCESS'},extra||{});
 const writer=(conds,auth)=>({name:'writer',authoritative:auth!==false,evidence:'writer_status',conditions:conds});
 const active=s=>P.view(s,T(23)).active;
 
@@ -125,4 +125,19 @@ test('sync: only queue incidents are shared; ids match across devices; resolutio
   P.observe(m.store,{runs:[r1,r2]},T(4));assert.equal(Object.values(m.store.incidents)[0].attempts,2,'events already counted elsewhere are not re-counted');
   P.acknowledge(a,Object.values(a.incidents).find(i=>i.kind==='event').id,'TIM',T(5));
   const m2=P.merge(m.store,P.forSync(a));assert.equal(Object.values(m2.store.incidents)[0].status,'ACKNOWLEDGED_UNRESOLVED');
+});
+
+test('task SUCCESS without independent downstream proof cannot resolve an earlier failure',()=>{
+ const s=P.empty();P.observe(s,{runs:[run('SAME.json','FAILED',T(1),'service error')]},T(1));
+ P.observe(s,{runs:[run('SAME_RETRY.json','SUCCESS',T(2),'',{recovered:false})],unverifiedCount:0},T(2));
+ assert.equal(active(s).length,1);assert.equal(active(s)[0].timeline.length,1);
+});
+test('legacy acknowledged items retain unresolved health after reload',()=>{
+ const s=P.empty();P.observe(s,{runs:[run('LEGACY.json','FAILED',T(1),'permission')]},T(1));
+ const i=active(s)[0];i.status='ACKNOWLEDGED';i.resolvedAt=iso(T(2));
+ P.observe(s,{},T(3));assert.equal(active(s)[0].status,'ACKNOWLEDGED_UNRESOLVED');assert.equal(P.health(s).state,'LIVE / WARNING');
+});
+test('recurrence degrades health until a sustained authoritative healthy interval',()=>{
+ const s=P.empty(),now=T(4);for(let n=0;n<3;n++)s.incidents['E'+n]={id:'E'+n,group:'G',source:'writer',status:'RECOVERED',latestAt:iso(now-n*600000),resolvedAt:iso(now-n*600000),severity:'warning'};
+ assert.equal(P.health(s,now).state,'DEGRADED');s.healthySince={writer:now+1};assert.equal(P.health(s,now+16*60000).state,'LIVE');
 });

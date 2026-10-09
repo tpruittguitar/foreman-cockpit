@@ -441,7 +441,7 @@ function findRequestResult_(requestId) {
   if (!rid) return { ok:false, found:false, error:'requestId required' };
 
   var idx = readIndex_();
-  if (idx && idx.requests[rid] && idx.requests[rid].s === 'PENDING') { verifyNow_(); idx = readIndex_(); }
+  if (idx && idx.requests[rid] && ['PENDING','PENDING_DELIVERY'].indexOf(idx.requests[rid].s)>=0) { verifyNow_(); idx = readIndex_(); }
   if (idx && idx.requests[rid]) return { ok:true, found:true, requestId:rid, source:'index', status:idx.requests[rid].s, durable:idx.requests[rid].s === 'COMPLETE', entry:idx.requests[rid] };
 
   var receipts = readReceipts_();
@@ -471,19 +471,22 @@ function isTransientDocError_(e) {
   return /document is inaccessible|please try again later|service error|service unavailable|server error|internal error|backend error|temporarily unavailable|rate limit|too many requests|429|quota.*(?:per second|per minute)/i.test(m);
 }
 function withDocRetry_(op, fn) {
-  var started = Date.now(), attempt = 0, first = '';
+  var started = Date.now(), attempt = 0, first = '', timeline = [];
+  var metadata={at:new Date(started).toISOString(),fileId:/^MASTER|PRECOMMIT|VERIFY_READ|OPERATIONS_MASTER/.test(op)?MASTER_ID:'',mime:/^MASTER|PRECOMMIT|VERIFY_READ|OPERATIONS_MASTER/.test(op)?'text/plain':'UNKNOWN',build:WRITER_BUILD};
   for (;;) {
     attempt++;
     try {
       var v = fn();
-      DOC_ACCESS_.push({ op: op, attempts: attempt, status: attempt === 1 ? 'INITIAL_SUCCESS' : 'RECOVERED_BY_RETRY', ms: Date.now() - started, error: first });
+      timeline.push({attempt:attempt,at:new Date().toISOString(),status:'SUCCESS'});
+      DOC_ACCESS_.push({ op: op, attempts: attempt, status: attempt === 1 ? 'INITIAL_SUCCESS' : 'RECOVERED_BY_RETRY', ms: Date.now() - started, error: first,metadata:metadata,timeline:timeline.slice() });
       return v;
     } catch (e) {
       var msg = String(e && e.message || e);
+      timeline.push({attempt:attempt,at:new Date().toISOString(),status:'FAILED',error:msg,retryable:isTransientDocError_(e)});
       if (!first) first = msg;
-      if (!isTransientDocError_(e)) { DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'DETERMINISTIC_FAILURE', ms: Date.now() - started, error: msg }); throw e; }
+      if (!isTransientDocError_(e)) { DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'DETERMINISTIC_FAILURE', ms: Date.now() - started, error: msg,metadata:metadata,timeline:timeline.slice() }); throw e; }
       if (attempt > DOC_RETRY_DELAYS_MS.length) {
-        DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'RETRY_EXHAUSTED', ms: Date.now() - started, error: msg });
+        DOC_ACCESS_.push({ op: op, attempts: attempt, status: 'RETRY_EXHAUSTED', ms: Date.now() - started, error: msg,metadata:metadata,timeline:timeline.slice() });
         throw new Error(msg + ' [' + op + ': retry exhausted after ' + attempt + ' attempts]');
       }
       docSleep_(DOC_RETRY_DELAYS_MS[attempt - 1] + Math.floor(Math.random() * 251));
@@ -675,9 +678,22 @@ function verifyPendingWrites_(lines) {
         PRIMARY_IDS:proof.items.map(function (x) { return x.pid; }) });
       p.runDelivered = true; writeIndex_(idx);
     }
+    if (p.kind === 'INTAKE' && proof.decision === 'COMPLETE' && !p.operationsDelivered) {
+      var operations = readOperationsStore_(), verifiedRows = rowsByPid_(lines), changedObligations = [];
+      Object.keys(operations.obligations).forEach(function (id) {
+        var obligation = operations.obligations[id], found = verifiedRows[obligation.primaryId] || [];
+        if (p.requestIds.indexOf(obligation.requestId) < 0 || obligation.state !== 'PENDING_VERIFICATION') return;
+        if (found.length !== 1 || textHash_(found[0]) !== obligation.expectedHash) throw new Error('OBLIGATION_READBACK_MISMATCH');
+        changedObligations.push(Object.assign({}, obligation, {state:'VERIFIED_COMPLETE', proof:{independent:true,
+          at:proof.verifiedAt,evidenceRef:'writer-verification:'+p.writeId,readbackHash:obligation.expectedHash}}));
+      });
+      if (changedObligations.length) writeOperationsStore_(PipelineOperations.update(operations,
+        {baseRevision:operations.revision,obligations:changedObligations}, at));
+      p.operationsDelivered = true; writeIndex_(idx);
+    }
     decided.push({ writeId:p.writeId, kind:p.kind, decision:proof.decision, requestIds:p.requestIds, items:proof.items });
     if (proof.decision !== 'NEEDS_RESOLUTION') {
-      p.requestIds.forEach(function (rid) { idx.requests[rid] = { s:proof.decision, at:proof.verifiedAt, w:p.writeId }; });
+      p.requestIds.forEach(function (rid) { idx.requests[rid] = { s:proof.decision, at:proof.verifiedAt, w:p.writeId, items:p.items, snapshotHash:proof.snapshotHash }; });
       idx.pending = idx.pending.filter(function (x) { return x.writeId !== p.writeId; });
       writeIndex_(idx);
     }
@@ -2154,13 +2170,17 @@ function readCanonicalRules_() {
 function saveCanonicalRules_(r) {
   var text=String(r.text||'').trim(); if(!text) return {ok:false,error:'rules text required'};
   if(text.indexOf('TIM_PIPELINE_RULES_CANONICAL')<0) return {ok:false,error:'missing TIM_PIPELINE_RULES_CANONICAL header'};
+  var lock=LockService.getScriptLock();lock.waitLock(30000);
+  try{
   var doc=DocumentApp.openById(CANONICAL_RULES_DOC_ID), body=doc.getBody(), before=body.getText(), ts=r.ts||new Date().toISOString();
+  if(r.baseText!==undefined&&String(r.baseText)!==before)return {ok:false,mode:'REVISION_CONFLICT',error:'Canonical rules changed; reload before saving'};
   body.clear(); body.setText(text); doc.saveAndClose();
   var after=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
   var ok=after===text;
   var hist={type:'RULESET_SAVED',actor:'TIM',ts:ts,requestId:String(r.requestId||''),verified:ok,priorHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,before)).slice(0,16),newHash:Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,after)).slice(0,16),note:String(r.note||'')};
   appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text','\n'),hist); appendEvent_(hist);
   return {ok:ok,id:CANONICAL_RULES_DOC_ID,modifiedTime:DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(),history:hist};
+  }finally{lock.releaseLock();}
 }
 /* ================= shared weighted scoring model ================= */
 function validateScoringModel_(m) {
