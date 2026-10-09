@@ -17,6 +17,7 @@ function create(io){
  }
  async function updatePrompt(taskKey,scope,attemptId){
   const task=Alignment.task(taskKey),nativeTaskId=task.nativeId||(io.nativeTaskIds||{})[taskKey],desired=Alignment.prompt(task,scope);
+  if(!task.active)return {state:'DEFERRED',taskKey,applied:false};
   if(!nativeTaskId||!io.provider||!io.provider.getTask||!io.provider.updatePrompt)return {state:'NATIVE_CONTROL_UNSUPPORTED',taskKey,prompt:desired,applied:false};
   const before=await io.provider.getTask(nativeTaskId);
   if(before.enabled!==true)throw new Error('PAUSED_TASK_REACTIVATION_FORBIDDEN');

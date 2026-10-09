@@ -2,9 +2,11 @@
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.PipelineScheduler=factory();})(typeof globalThis!=='undefined'?globalThis:this,function(){
   'use strict';
   var DAYS=['SU','MO','TU','WE','TH','FR','SA'];
+  function deferred(t){return /^(claude|grok)$/i.test(String(t.provider))||/^(CLAUDE|GROK)$/i.test(String(t.owner));}
   function empty(){return {schema:1,revision:0,updatedAt:'',tasks:[],history:[]};}
   function validate(t){
     if(!t.key||!t.provider||!t.owner||typeof t.enabled!=='boolean')throw new Error('SCHEDULE_IDENTITY_REQUIRED');
+    if(deferred(t)&&t.enabled)throw new Error('AUTOMATION_PROVIDER_DEFERRED');
     try{new Intl.DateTimeFormat('en',{timeZone:t.timezone}).format();}catch(e){throw new Error('INVALID_TIMEZONE');}
     if(!/^\d\d:\d\d$/.test(t.time)||+t.time.slice(0,2)>23||+t.time.slice(3)>59)throw new Error('INVALID_CLOCK');
     if(!Array.isArray(t.days)||!t.days.length||t.days.some(function(d){return DAYS.indexOf(d)<0;}))throw new Error('INVALID_WEEKDAYS');
@@ -24,11 +26,13 @@
     out.tasks=out.tasks.filter(function(t){return t.key!==task.key;}).concat([proposed]);out.history.push({at:at,key:task.key,before:old||null,after:proposed});out.revision++;out.updatedAt=at;return out;
   }
   function status(t,now){
+    if(deferred(t))return 'DEFERRED';
     if(t.expiresAt&&Date.parse(t.expiresAt)<=now)return 'EXPIRED';
     if(!t.actual||!t.actual.readbackAt||!t.actual.providerEvidence)return t.status==='UNSUPPORTED'?'UNSUPPORTED':'PENDING_MANUAL';
     var a=t.actual;return t.enabled===a.enabled&&t.time===a.time&&t.timezone===a.timezone&&JSON.stringify(t.days)===JSON.stringify(a.days)&&t.approvedRevision>0?'VERIFIED_SYNC':'DRIFT';
   }
   function upcoming(t,now,count){
+    if(deferred(t))return [];
     validate(t);var fmt=new Intl.DateTimeFormat('en-CA',{timeZone:t.timezone,year:'numeric',month:'2-digit',day:'2-digit',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
     function parts(ms){var p={};fmt.formatToParts(new Date(ms)).forEach(function(x){p[x.type]=x.value;});return p;}
     var out=[],today=parts(now),base=Date.UTC(+today.year,+today.month-1,+today.day),map={Sun:'SU',Mon:'MO',Tue:'TU',Wed:'WE',Thu:'TH',Fri:'FR',Sat:'SA'};
@@ -43,6 +47,6 @@
     }
     return out;
   }
-  function warnings(manifest,now){var out=[];manifest.tasks.forEach(function(t){(t.dependencies||[]).forEach(function(key){var d=manifest.tasks.find(function(x){return x.key===key;});if(!d||!d.enabled)out.push(t.key+': dependency '+key+' unavailable');else{var a=upcoming(t,now,1)[0],b=upcoming(d,now,1)[0];if(a&&b&&a<=b)out.push(t.key+': next run precedes dependency '+key);}});});return out;}
+  function warnings(manifest,now){var out=[];manifest.tasks.filter(function(t){return !deferred(t)}).forEach(function(t){(t.dependencies||[]).forEach(function(key){var d=manifest.tasks.find(function(x){return x.key===key;});if(d&&deferred(d))return;if(!d||!d.enabled)out.push(t.key+': dependency '+key+' unavailable');else{var a=upcoming(t,now,1)[0],b=upcoming(d,now,1)[0];if(a&&b&&a<=b)out.push(t.key+': next run precedes dependency '+key);}});});return out;}
   return {empty:empty,validate:validate,edit:edit,status:status,upcoming:upcoming,warnings:warnings};
 });

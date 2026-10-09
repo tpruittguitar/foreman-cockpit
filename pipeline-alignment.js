@@ -12,6 +12,7 @@
     {key:'grok-resolver',provider:'Grok',owner:'GROK',lane:'resolver',nativeId:null,intent:'Resolve assigned canonical identity and evidence obligations, preserving protected application history and exact requisition binding.',actions:['ruling','upsert_application']}
   ];
   function stable(x){if(Array.isArray(x))return '['+x.map(stable).join(',')+']';if(x&&typeof x==='object')return '{'+Object.keys(x).sort().map(function(k){return JSON.stringify(k)+':'+stable(x[k])}).join(',')+'}';return JSON.stringify(x);}
+  TASKS.forEach(function(t){t.active=t.provider==='ChatGPT';t.availability=t.active?'ACTIVE':'DEFERRED';});
   function copy(x){return JSON.parse(JSON.stringify(x));}
   function task(key){var t=TASKS.find(function(t){return t.key===key});if(!t)throw new Error('UNKNOWN_AUTOMATION_TASK');return copy(t);}
   function scopeCheck(t,s){
@@ -39,6 +40,7 @@
   }
   function preflight(input){
     var t=task(input.taskKey),now=Date.parse(input.at),issues=[],a=input.authorities||{},native=input.native,scope=input.scope;
+    if(t.active===false)return {taskKey:t.key,provider:t.provider,owner:t.owner,attemptId:input.attemptId||'',at:input.at,state:'DEFERRED',allowed:false,issues:[],nativeAdoption:'DEFERRED',reason:'Provider is out of use by owner instruction'};
     function issue(code,expected,actual,source){issues.push({code:code,expected:expected,actual:actual==null?'UNKNOWN':actual,source:source||''});}
     if(!input.attemptId)issue('UNSYNCED','Unique durable attempt ID',input.attemptId,'runtime');
     ['common','rules','writer','reason'].forEach(function(k){var d=a[k],age=d&&now-Date.parse(d.fetchedAt);
@@ -71,7 +73,7 @@
   }
   function assertRequest(result,body){
     if(!result||!result.allowed)throw new Error('AUTOMATION_PREFLIGHT_REQUIRED');
-    var t=task(result.taskKey);if(t.actions.indexOf(body.action)<0)throw new Error('AUTOMATION_LANE_ACTION_CONFLICT');
+    var t=task(result.taskKey);if(!t.active)throw new Error('AUTOMATION_PROVIDER_DEFERRED');if(t.actions.indexOf(body.action)<0)throw new Error('AUTOMATION_LANE_ACTION_CONFLICT');
     if(body.action==='ruling'&&(!body.ruling||['ENRICH','IDENTITY','DUPLICATE','NOTE'].indexOf(body.ruling.kind)<0))throw new Error('AUTOMATION_DECISION_REQUIRES_TIM');
     var actor=body.actor||(body.ruling&&body.ruling.actor)||(body.event&&body.event.actor);
     if(actor&&String(actor).toUpperCase()!==t.owner)throw new Error('AUTOMATION_OWNER_CONFLICT');

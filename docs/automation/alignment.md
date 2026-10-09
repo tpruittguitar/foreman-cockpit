@@ -2,6 +2,8 @@
 
 Status: implemented locally; native prompt adoption and live deployment remain unverified. No native task, schedule, Drive governance document or job row was changed by this implementation.
 
+Active rollout is Writer + ChatGPT/Forge. Claude and Grok are deferred by owner instruction: preflight cannot enable them, schedule proposals cannot activate them, and their desired occurrences/dependencies are excluded from active checks. Native provider schedules have not been changed.
+
 The shared contract assigns Forge bounded email intake, explicitly scoped temporary coverage and the existing morning freeze; Claude existing-row analysis; Grok public-source scouting and assigned resolution. It preserves the sole plain-text master, protected decisions, initiating provenance, current Rules and Writer receipt plus exact-row verification. It does not activate tasks or create a recovery relay.
 
 `pipeline-alignment.js` implements deterministic prompt generation, fresh-authority preflight, precise conflict evidence, lane permissions and completion accounting. Every run needs fresh common standard, ACTIVE Rules, Writer and owner-specific AI_REASON fingerprints; approved source/window scope; native prompt/schedule readback; durable checkpoints; authorized transport and independent coverage-ledger readback. Unknown Claude/Grok native identities require explicit enrollment. The three previously documented ChatGPT task identities are retained.
@@ -31,4 +33,4 @@ Call `updatePrompt(taskKey,approvedScope,attemptId)` only with actual approved n
 
 Deploy the shared Apps Script contract alongside Code.gs. Connect each real provider and durable ledger, capture scope/schedules/revisions, update prompts with revision checks, then independently read back and run acceptance. Document text updates alone do not prove native adoption. This session has no callable ChatGPT/Claude/Grok task-management capability and no clasp OAuth credential, so rollout cannot be completed here. The existing GUI preview approval gate also remains applicable to the accumulated visual changes.
 
-Validation covers stale/unreadable/inactive authority, exact prompt conflicts, missing native enrollment, lane ownership, coverage omissions, paused tasks, ambiguous updates, checkpoint failure, request recovery across attempts, body conflicts, authority drift, ambiguous Writer effects, independent ledger failure and Apps Script mirror equality. Full npm suite: 301 tests passed.
+Validation covers stale/unreadable/inactive authority, exact prompt conflicts, missing native enrollment, lane ownership, coverage omissions, paused tasks, ambiguous updates, checkpoint failure, request recovery across attempts, body conflicts, authority drift, ambiguous Writer effects, independent ledger failure and Apps Script mirror equality. Full npm suite: 302 tests passed.
