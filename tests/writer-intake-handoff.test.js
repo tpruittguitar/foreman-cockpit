@@ -55,3 +55,13 @@ test('valid receipt cannot repair a damaged live trailer', t => {
  const f=world(t,{rows:[row],receipts:receipt()});f.files.get(MASTER).content=f.files.get(MASTER).content.replace('END V2_CURRENT_POPULATION_MASTER (1 rows)','END V2_CURRENT_POPULATION_MASTER (2 rows)');
  assert.equal(f.post(repair).ok,false);assert.equal(f.index(),null);
 });
+
+test('identical legacy END markers do not block identity repair or durable planning; conflicting markers do', t => {
+ const f=world(t,{rows:[row],receipts:receipt()});const text=f.files.get(MASTER).content;
+ f.files.get(MASTER).content=text+'END V2_CURRENT_POPULATION_MASTER (1 rows)\n';
+ assert.equal(f.post(repair).ok,true);assert.equal(f.masterSaves(),0);
+ const before=f.master(),after=before.map(x=>x===row?x.replace('Fixture Co','Changed Co'):x);
+ assert.equal(T.intent(before,after,{action:'ruling',requestId:'NEW'},'2026-10-10T00:00:00Z',W.textHash_,MASTER,{}).requestIds[0],'NEW');
+ after.push('END V2_CURRENT_POPULATION_MASTER (2 rows)');
+ assert.throws(()=>T.intent(before,after,{action:'ruling',requestId:'NEW'},'2026-10-10T00:00:00Z',W.textHash_,MASTER,{}),/TRAILER_INVALID/);
+});

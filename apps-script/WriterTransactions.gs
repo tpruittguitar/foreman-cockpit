@@ -36,7 +36,7 @@ var WriterTransactions = (function () {
     });
     var counts = after.filter(function (l) { return /^COUNTS:/.test(l); });
     var end = after.filter(function (l) { return /^END V2_CURRENT_POPULATION_MASTER/.test(l); });
-    if (counts.length !== 1 || end.length !== 1) throw new Error('TRANSACTION_TRAILER_INVALID');
+    if (counts.length !== 1 || !end.length || end.some(function (line) { return line !== end[0]; })) throw new Error('TRANSACTION_TRAILER_INVALID');
     return { version: 2, writeId: writeId, kind: String(request.action || 'MASTER_WRITE').toUpperCase(),
       stage: 'PREPARED', writtenAt: now, counts: hash(counts[0]), end: hash(end[0]),
       beforeHash: hash(before.join('\n')), afterHash: hash(after.join('\n')),

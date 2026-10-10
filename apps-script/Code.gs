@@ -487,7 +487,7 @@ function reconcileIntakeReceipt_(req) {
       return { ok: false, error: 'Receipt rows absent or ambiguous in live master' };
     var counts = lines.filter(function (l) { return /^COUNTS:/.test(l); });
     var ends = lines.filter(function (l) { return /^END V2_CURRENT_POPULATION_MASTER/.test(l); });
-    if (counts.length !== 1 || ends.length !== 1 || counts[0] !== recomputeCountsLine(lines) || ends[0] !== recomputeEndLine(lines))
+    if (counts.length !== 1 || !ends.length || counts[0] !== recomputeCountsLine(lines) || ends.some(function (end) { return end !== recomputeEndLine(lines); }))
       return { ok: false, error: 'Live master trailer mismatch' };
     var entry = { s: 'COMPLETE', at: proof.verifiedAt, w: wid, src: 'LEGACY_INDEPENDENT_INTAKE_RECEIPT',
       primaryIds: proof.primaryIds, reconciledAt: new Date().toISOString(), receiptHash: textHash_(JSON.stringify(proof)),
