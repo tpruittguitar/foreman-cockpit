@@ -17,7 +17,7 @@ This file is the durable checklist. Future work should update this file when an 
 
 ---
 
-## Phase 1 â€” Foundation deploy: PR #85
+## Phase 1 — Foundation deploy: PR #85
 
 Goal: put the new command-center structure into the app without changing Writer, automations, master data, or live scoring.
 
@@ -56,9 +56,11 @@ Production smoke test checklist:
 
 Smoke test note, 2026-10-10: production app loaded at `https://foreman-cockpit.netlify.app`; visible table showed 647 roles and 1255 row-lines; top navigation rendered Pipeline, Map, AI Ops, Control, and Analytics. Follow-up interaction smoke test verified Map, AI Operations, and Control Center page navigation. That run observed a transient/backend data-load error (`Writer returned an HTML error page instead of JSON`), so job-row click/detail behavior could not be verified end-to-end. Mobile bottom navigation remains unverified because the browser automation could not use a true narrow mobile viewport.
 
+Smoke test note, 2026-10-10 after Netlify credit restore: production deployed commit `3ff637f` and returned HTTP 200. Focused headless Chrome smoke test rendered Pipeline Explorer with 647 visible roles, 1255 row-lines, Writer/data `Connected`, queue 0, last sync `now`, top navigation Pipeline / Map / AI Ops / Control / Analytics, and no captured browser runtime errors. Job-click detail and mobile bottom nav remain unchecked because this smoke test intentionally did not perform interaction testing.
+
 ---
 
-## Phase 2 â€” Storage foundation migration
+## Phase 2 — Storage foundation migration
 
 Goal: make production data loading reliable. The master was already moved from a Google Doc to a plain text file, which was the right first fix. The remaining issue is that production runtime still depends on Google Drive/App Script text-file reads for large runtime data.
 
@@ -95,7 +97,7 @@ Immediate hardening while migration is pending:
 
 ---
 
-## Phase 3 â€” Finish Pipeline table controls
+## Phase 3 — Finish Pipeline table controls
 
 Goal: finish the concrete table-control request so Tim can make the job queue fit his workflow and keep the settings.
 
@@ -114,7 +116,7 @@ Goal: finish the concrete table-control request so Tim can make the job queue fi
 
 ---
 
-## Phase 4 â€” Finish automation visibility
+## Phase 4 — Finish automation visibility
 
 Goal: solve the problem where an automation can do partial work and Tim cannot tell what was skipped or left unfinished.
 
@@ -137,7 +139,7 @@ Goal: solve the problem where an automation can do partial work and Tim cannot t
 
 ---
 
-## Phase 5 â€” Finish automation strategy enforcement
+## Phase 5 — Finish automation strategy enforcement
 
 Goal: make the five-lane strategy enforceable and visible, not just described in prompts.
 
@@ -163,7 +165,7 @@ Checklist:
 
 ---
 
-## Phase 6 â€” Finish Control Center
+## Phase 6 — Finish Control Center
 
 Goal: turn Control Center from a shell into a real management surface for authority and governance.
 
@@ -182,7 +184,7 @@ Goal: turn Control Center from a shell into a real management surface for author
 
 ---
 
-## Phase 7 â€” Finish workspace layout system
+## Phase 7 — Finish workspace layout system
 
 Goal: make each major view operator-adjustable while preserving app behavior.
 
@@ -200,7 +202,7 @@ Goal: make each major view operator-adjustable while preserving app behavior.
 
 ---
 
-## Phase 8 â€” Finish mobile review
+## Phase 8 — Finish mobile review
 
 Goal: verify the mobile UI on the real target device and tune it from actual use.
 
@@ -214,7 +216,7 @@ Goal: verify the mobile UI on the real target device and tune it from actual use
 
 ---
 
-## Phase 9 â€” VNext scoring model
+## Phase 9 — VNext scoring model
 
 Goal: prove a new scoring model is better before it becomes live.
 
@@ -237,7 +239,7 @@ Important current status: VNext is not live. PR #85 only adds a warning/backtest
 
 ---
 
-## Phase 10 â€” Writer test debt cleanup
+## Phase 10 — Writer test debt cleanup
 
 Goal: get the repo test baseline clean so future PRs are easier to judge.
 
