@@ -379,8 +379,10 @@ function queuePayloadProof_(text) {
 function intakeAccountingError_(body) {
   if(!body||body.action!=='intake')return '';
   if(!Array.isArray(body.records))return 'INTAKE_RECORDS_NOT_ARRAY';
-  var run=body.run||{},gross=Number(run.GROSS_FOUND),ledger=run.DISPOSITION_LEDGER;
+  var run=body.run||{},declared=run.GROSS_FOUND;
+  var gross=(declared===undefined||declared===null||declared==='')?body.records.length:Number(declared);
   if(!isFinite(gross)||gross<0||Math.floor(gross)!==gross)return 'GROSS_FOUND_INVALID';
+  if(gross===0&&body.records.length)gross=body.records.length; // legacy Writer treats zero as unspecified
   if(!Array.isArray(ledger)){
     return gross===body.records.length?'':'COUNT_MISMATCH: GROSS_FOUND '+gross+' versus records '+body.records.length+'; no disposition ledger; source reconstruction required';
   }
