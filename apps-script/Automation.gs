@@ -119,11 +119,14 @@ function processWriterQueue() {
       var entry = { file: original, fileId: file.getId(), startedAt: new Date().toISOString(), executionStartedAt: new Date(started).toISOString(), claimElapsedMs: Date.now() - started, queueWaitMs: Math.max(0, Date.now() - file.getDateCreated().getTime()) };
       var result, body = null;
       try {
-        var parsed = parseQueueContent_(readQueueFile_(file));
+        var rawQueueText = readQueueFile_(file);
+        var parsed = parseQueueContent_(rawQueueText);
+        entry.payloadProof = queuePayloadProof_(rawQueueText);
         if (parsed.ok) body = parsed.body;
         if (claim.stale) result = abandonedClaimResult_(claim.stale, body);
         else if (!parsed.ok) result = { ok: false, error: parsed.error };
         else if (WRITE_ACTIONS.indexOf(parsed.body.action) < 0) result = { ok: false, error: 'unsupported action ' + parsed.body.action + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
+        else if (parsed.body.action === 'intake' && intakeAccountingError_(parsed.body)) result = { ok: false, mode: 'INTAKE_ACCOUNTING_REJECTED', error: intakeAccountingError_(parsed.body), retryClass: 'RECONSTRUCT_FROM_SOURCE_NO_BLIND_REPLAY' };
         else { delete parsed.body.key; result = dispatchWrite_(parsed.body); }
       } catch (e) { result = claim.stale ? abandonedClaimResult_(claim.stale, body) : { ok: false, error: String(e && e.message || e), errorStack: errorStack_(e), docAccess: docAccessSummary_() }; }
       if (result && result.mode === 'WRITE_FENCE') {
@@ -191,6 +194,7 @@ function finalizeClaim_(f, file, original, entry, result) {
   entry.ok = status === 'SUCCESS'; entry.terminalStatus = status; entry.action = (result && result.mode) || ''; entry.finishedAt = new Date().toISOString(); entry.error = (result && result.error) || '';
   if (result && result.verification) { entry.verification = result.verification; entry.writeId = result.writeId || ''; }
   if (result && result.errorStack) entry.errorStack = result.errorStack;
+  if (result && result.retryClass) entry.retryClass = result.retryClass;
   if (result && result.docAccess && result.docAccess.status !== 'INITIAL_SUCCESS') entry.docAccess = result.docAccess;
   if (result && result.partial) { entry.attempted = result.attempted; entry.notAttempted = result.notAttempted; entry.stoppedBy = result.stoppedBy; }
   entry.totalMs = new Date(entry.finishedAt).getTime() - new Date(entry.startedAt).getTime();
@@ -361,6 +365,38 @@ function appendQueueLog_(entry) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Fingerprint the EXACT bytes read before any permissive normalization. Never include secrets or payload contents in logs. */
+function queuePayloadProof_(text) {
+  var raw=String(text||''),bytes=Utilities.newBlob(raw,'text/plain').getBytes();
+  var digest=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,bytes);
+  return {rawByteLength:bytes.length,rawSha256:digest.map(function(b){return ('0'+(b&255).toString(16)).slice(-2);}).join(''),parserStage:'QUEUE_READ'};
+}
+/** Legacy intake may have more discoveries than records only when an explicit source ledger accounts for each.
+ * Stop BEFORE dispatch; the writer must not partially write 20 and then discover that 8 vanished.
+ */
+function intakeAccountingError_(body) {
+  if(!body||body.action!=='intake')return '';
+  if(!Array.isArray(body.records))return 'INTAKE_RECORDS_NOT_ARRAY';
+  var run=body.run||{},gross=Number(run.GROSS_FOUND),ledger=run.DISPOSITION_LEDGER;
+  if(!isFinite(gross)||gross<0||Math.floor(gross)!==gross)return 'GROSS_FOUND_INVALID';
+  if(!Array.isArray(ledger)){
+    return gross===body.records.length?'':'COUNT_MISMATCH: GROSS_FOUND '+gross+' versus records '+body.records.length+'; no disposition ledger; source reconstruction required';
+  }
+  var submitted=0,accounted=0,seen={};
+  for(var i=0;i<ledger.length;i++){
+    var x=ledger[i]||{},id=String(x.candidateId||'');
+    if(!id||seen[id]||!x.sourceMessageId||!x.initiatingUrl)return 'DISPOSITION_LEDGER_IDENTITY_OR_SOURCE_INVALID index '+i;
+    seen[id]=true;
+    if(['SUBMITTED','EXISTING','NEVER_CONSIDER','IDENTITY_HOLD','UNRESOLVED','CARRY_FORWARD'].indexOf(x.disposition)<0){
+      if(x.disposition==='OFF_TARGET_PRE_GROSS')continue;
+      return 'DISPOSITION_LEDGER_STATUS_INVALID index '+i;
+    }
+    accounted++;if(x.disposition==='SUBMITTED')submitted++;
+  }
+  if(accounted!==gross||submitted!==body.records.length)return 'COUNT_MISMATCH: GROSS_FOUND '+gross+' ledger '+accounted+' submitted '+submitted+' records '+body.records.length;
+  return '';
 }
 
 /** Pure: extract one JSON object from file text (tolerates BOM, code fences, smart quotes from Docs, leading prose). */
