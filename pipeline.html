@@ -432,7 +432,7 @@ var DATE_KEYS={DATE_ADDED:1,MASTER_LOADED_AT:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
 var mapView={zoom:1,x:480,y:255,focus:null,hasFocused:false,animation:0,request:0,found:[],active:null,overview:null,returnView:null};
 var scoreCache={fp:"",rows:{}};
-var S={cfg:LS.get('cfg',PipelineConnection),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:null,filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),incidents:LS.get('incidents',null)||PipelineIncidents.empty(),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),chartsArchive:!!LS.get('chartsArchive',false),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,buildInfo:null,buildLatest:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,targetCompanies:null,events:{},interview:{}};
+var S={cfg:LS.get('cfg',PipelineConnection),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:{col:'EXPERIENCE_FIT',dir:'desc'},filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),incidents:LS.get('incidents',null)||PipelineIncidents.empty(),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),chartsArchive:!!LS.get('chartsArchive',false),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,buildInfo:null,buildLatest:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,targetCompanies:null,events:{},interview:{}};
 if(!S.cfg.url){S.cfg=Object.assign({},PipelineConnection);LS.set('cfg',S.cfg)}else if(!S.cfg.key&&S.cfg.url===PipelineConnection.url){S.cfg.key=PipelineConnection.key;LS.set('cfg',S.cfg)}
 function buildTime_(value){if(!value)return 'not recorded';var d=new Date(value);return isNaN(d.getTime())?String(value):d.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
 function buildCommitUrl_(commit){return commit&&commit!=='local'?'https://github.com/tpruittguitar/foreman-cockpit/commit/'+encodeURIComponent(commit):'https://github.com/tpruittguitar/foreman-cockpit/commits/main';}
@@ -739,7 +739,7 @@ function apply(text,meta,fromCache){
   // First visit ever on this device: everything already in the master counts as shown now, except rows added within the NEW window.
   if(!LS.get('baselined',false)){var t=Date.now();S.rows.forEach(function(r){var recent=r.dateAdded&&(t-r.dateAdded.getTime())/864e5<=S.newDays;if(!recent)S.seen[r.id]=t});LS.set('seen',S.seen);LS.set('baselined',true)}
   Object.keys(S.rulings).forEach(function(id){var ru=S.rulings[id],row=S.rows.find(function(r){return r.id===id});if(ru.writeStatus==='READBACK_PENDING'||ru.writeStatus==='READBACK_UNCONFIRMED'&&ru.receipt){ru.writeStatus=!fromCache&&PipelineTrust.matches(row,ru)?'VERIFIED':'READBACK_UNCONFIRMED';if(ru.writeStatus==='VERIFIED'){ru.verifiedAt=new Date().toISOString();LS.set('writeError','');S.lastWrite={at:ru.verifiedAt,id:id,requestId:ru.requestId};LS.set('lastWrite',S.lastWrite)}}});LS.set('rulings',S.rulings);
-  buildColumnModel();renderPresets();render();renderAutobar();if(S.pendingFocus){var pf=S.pendingFocus;S.pendingFocus=null;if(rowById(pf)){if(S.tab!=='pipeline')switchTab('pipeline');selectMapRow_(pf)}}if(S.focus&&terminalJob_(rowById(S.focus))&&!historyPreset_(S.preset)){S.focus=null;mapView.focus=null;$('drawer').classList.remove('on')}if(S.focus&&$('drawer').classList.contains('on')&&rowById(S.focus))renderDetail(rowById(S.focus));if(!S.autoPicked){S.autoPicked=true;if(!S.focus&&S.tab==='pipeline'&&!S.mapFull){var top=filteredRows()[0];if(top){/* show only: no seen mark, no state sync, no hash change */S.focus=top.id;mapView.focus=top.id;S.detailTab=S.detailTab||'overview';$('drawer').classList.add('on');renderDetail(top);render()}}}
+  buildColumnModel();resetOpeningTableLayout_();renderPresets();render();renderAutobar();if(S.pendingFocus){var pf=S.pendingFocus;S.pendingFocus=null;if(rowById(pf)){if(S.tab!=='pipeline')switchTab('pipeline');selectMapRow_(pf)}}if(S.focus&&terminalJob_(rowById(S.focus))&&!historyPreset_(S.preset)){S.focus=null;mapView.focus=null;$('drawer').classList.remove('on')}if(S.focus&&$('drawer').classList.contains('on')&&rowById(S.focus))renderDetail(rowById(S.focus));if(!S.autoPicked){S.autoPicked=true;if(!S.focus&&S.tab==='pipeline'&&!S.mapFull){var top=filteredRows()[0];if(top){/* show only: no seen mark, no state sync, no hash change */S.focus=top.id;mapView.focus=top.id;S.detailTab=S.detailTab||'overview';$('drawer').classList.add('on');renderDetail(top);render()}}}
 }
 function decorate(r){
   r.id=r.PRIMARY_ID||('INV-'+r.INV);
@@ -1222,8 +1222,27 @@ function bulkAction(kind){
     return chain.then(function(){S.checked={};readout('<span class="good">Bulk '+esc(kind)+' submitted: '+rows.length+' rows in '+chunks.length+' Writer batch'+(chunks.length===1?'':'es')+'</span>');load();return results},function(e){if(e&&e.partial)load();throw e});
   }).catch(function(e){alert('Bulk action failed: '+e.message)});
 }
+/* User widths are session-only. On a fresh canonical load/refresh, reset to
+ * compact content-based widths and default highest experience-fit sorting.
+ * Re-renders, filter changes, and tab changes must never reset manual resizing. */
+function resetOpeningTableLayout_(){
+  S.sort={col:'EXPERIENCE_FIT',dir:'desc'};
+  var rows=S.rows.filter(function(r){return allowedInView_(r,S.preset)}).slice(0,100);
+  var sets=[{cols:S.cols&&S.cols.desktop,phone:false,target:S.colWidths},{cols:S.cols&&S.cols.phone,phone:true,target:S.colWidthsPhone}];
+  sets.forEach(function(set){
+    if(!set.cols)return;
+    Object.keys(set.target).forEach(function(k){delete set.target[k]});
+    set.cols.forEach(function(c){
+      if(c==='NEW'||c==='LINK'){set.target[c]=44;return}
+      var longest=String(c).replace(/_/g,' ').length;
+      rows.forEach(function(r){var v=String(val(r,c)||'').replace(/\s+/g,' ').trim();longest=Math.max(longest,Math.min(42,v.length))});
+      var w=Math.round(longest*6.6+22);
+      set.target[c]=Math.max(columnMin(c),Math.min(set.phone?235:290,w));
+    });
+  });
+}
 function columnWidths(){return phoneLayout()?S.colWidthsPhone:S.colWidths}
-function persistColumnWidths(){LS.set(phoneLayout()?'colWidthsPhone':'colWidths',columnWidths())}
+function persistColumnWidths(){/* Manual sizing stays authoritative in this session until next load or refresh. */}
 function columnMin(c){return c==='NEW'||c==='LINK'?44:60}
 function columnWidth(c){var phone=phoneLayout(),defaults={NEW:phone?44:95,COMPANY:phone?140:180,TITLE:phone?240:285,LINK:48,AGE:64,BUCKET:170,TIM_RULING:155,DISPOSITION:210,LOCATION:185};return Math.max(columnMin(c),Math.min(1200,Number(columnWidths()[c])||defaults[c]||150))}
 function applyColumnWidths(){var grid=$('grid'),cols=visibleCols(),cg=grid.querySelector('colgroup');if(!cg){cg=document.createElement('colgroup');grid.prepend(cg)}cg.innerHTML=cols.map(function(c){return '<col style="width:'+columnWidth(c)+'px">'}).join('');grid.style.width=cols.reduce(function(n,c){return n+columnWidth(c)},0)+'px';grid.querySelectorAll('thead th').forEach(function(th){var h=th.querySelector('.resize-handle');if(h)h.setAttribute('aria-valuenow',columnWidth(th.getAttribute('data-c')))});fixSticky()}
