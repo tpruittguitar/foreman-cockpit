@@ -507,19 +507,22 @@ function observeIncidents_(){var before=JSON.stringify(PipelineIncidents.forSync
   if(PipelineIncidents.observe(S.incidents,incidentObservation_(),Date.now())){LS.set('incidents',S.incidents);if(JSON.stringify(PipelineIncidents.forSync(S.incidents))!==before)syncStateUp()}}
 function incidentTime_(iso){var t=Date.parse(iso||'');if(isNaN(t))return '—';var d=new Date(t),same=new Date().toDateString()===d.toDateString();return (same?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric'})+' ')+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})}
 function incidentHtml_(i){var res=i.status!=='ACTIVE'&&i.status!=='ACKNOWLEDGED_UNRESOLVED',lvl=res?'NOTICE':i.severity==='critical'?'FAULT':'CAUTION',n=i.kind==='event'?(i.attempts||1):(i.checks||1);
-  return '<div class="notice incident '+lvl+'" data-incident="'+esc(i.id)+'"><span class="lvl">'+esc(res?i.status:i.severity==='critical'?'CRITICAL':'WARNING')+'<small>'+(i.kind==='event'?n+' attempt'+(n===1?'':'s'):n+' check'+(n===1?'':'s'))+'</small></span><span class="t">'+esc(i.title)
+  return '<div class="notice incident '+lvl+'" data-incident="'+esc(i.id)+'"><span class="lvl">'+esc(res?i.status:i.kind==='event'?'VERIFY':i.severity==='critical'?'CRITICAL':'WARNING')+'<small>'+(i.kind==='event'?n+' attempt'+(n===1?'':'s'):n+' check'+(n===1?'':'s'))+'</small></span><span class="t">'+esc(i.title)
    +'<small>First failure '+esc(incidentTime_(i.firstAt))+' · latest '+esc(incidentTime_(i.latestAt))+(i.kind==='event'&&i.latestFile?' · '+esc(i.latestFile):'')+'</small>'
    +(i.latestError?'<small>'+esc(String(i.latestError).slice(0,220))+'</small>':'')
    +(res?'<small class="inc-res">'+esc(i.resolution||'')+(i.resolvedAt?' · '+esc(incidentTime_(i.resolvedAt)):'')+'</small>'+(i.recoveryEvidence?'<small class="inc-ev">Recovery evidence: '+esc(i.recoveryEvidence)+'</small>':'')
-     :'<small class="inc-res">Unresolved · needs corrective action</small>'+(i.kind==='event'?'<button type="button" class="inc-ack" data-ack="'+esc(i.id)+'">Acknowledge · retain unresolved</button>':''))
+     :'<small class="inc-res">'+(i.kind==='event'?'Prior failure; current outcome not independently verified':'Current fault requiring action')+'</small>'+(i.kind==='event'?'<button type="button" class="inc-ack" data-ack="'+esc(i.id)+'">Acknowledge · retain unresolved</button>':''))
    +(i.timeline&&i.timeline.length?'<details><summary>Attempt chronology</summary>'+i.timeline.map(function(t){return '<small>'+esc(t.at+' · '+t.status+' · '+(t.error||''))+'</small>'}).join('')+'</details>':'')+' </span></div>'}
-function incidentsHtml_(hv,hh){var ev=hv.active.filter(function(i){return i.kind==='event'}).length,h='';
-  h+='<h3 style="margin-top:10px">Active incidents · '+hv.active.length+'</h3>'+(hv.active.length?hv.active.map(incidentHtml_).join(''):'<div class="inc-none">No active incidents.</div>');
-  if(ev>1)h+='<button type="button" id="inc-ack-all">Acknowledge all '+ev+' queue incidents</button>';
-  h+='<div class="inc-history-link"><button type="button" id="open-incident-history">View full incident history</button><span class="tip">Unresolved or not independently verified; historical records are on the separate page.</span></div>';
-  /* Verified recoveries and resolved history live on the separate incident-history page. */
-  return h}
-/* prior recovered/historical sections retained in history rather than the system drawer */
+function incidentsHtml_(hv,hh){
+  var live=hv.active.filter(function(i){return i.kind!=='event'});
+  var unverified=hv.active.filter(function(i){return i.kind==='event'});
+  var h='<h3 style="margin-top:10px">Current faults - '+live.length+'</h3>'
+    +(live.length?live.map(incidentHtml_).join(''):'<div class="inc-none">No confirmed current faults.</div>');
+  if(hh.recoveryRequired)h+='<p class="inc-summary">Confirmed recovery obligations: '+hh.recoveryRequired+'</p>';
+  if(unverified.length)h+='<div class="inc-history-link"><span>'+unverified.length+' prior Writer failure incident(s) need outcome verification, not evidence of current Writer failure.</span></div>';
+  h+='<div class="inc-history-link"><button type="button" id="open-incident-history">Review incident history and verification</button></div>';
+  return h;
+}
 function renderIncidentHistory_(){
   var host=$('view-incident-history');if(!host)return;
   var hv=PipelineIncidents.view(S.incidents,Date.now()),all=hv.active.concat(hv.recovered,hv.historical);
@@ -528,7 +531,7 @@ function renderIncidentHistory_(){
   var q=oldQ?oldQ.value:'',status=oldStatus?oldStatus.value:'ALL';
   host.innerHTML='<section class="inc-history-page"><div class="inc-history-header"><h2>Incident History</h2><button type="button" id="history-to-system">System Health</button></div>'
     +'<p class="tip">History retained in available synchronized/local storage. Failed attempts remain visible after verified recovery; missing proof is not recovery. Clearing browser storage may remove locally held records.</p>'
-    +'<div class="inc-history-summary"><b>'+hv.active.length+'</b> unresolved <b>'+hv.recovered.length+'</b> recovered (24h) <b>'+hv.historical.length+'</b> older resolved</div>'
+    +'<div class="inc-history-summary"><b>'+hv.active.filter(function(i){return i.kind!=='event'}).length+'</b> current faults <b>'+hv.active.filter(function(i){return i.kind==='event'}).length+'</b> verification pending <b>'+hv.recovered.length+'</b> recovered (24h) <b>'+hv.historical.length+'</b> older resolved</div>'
     +'<div class="inc-history-tools"><label>Search <input id="inc-history-search" type="search" placeholder="Request ID, component, error or owner" value="'+esc(q)+'"></label>'
     +'<label>State <select id="inc-history-state"><option value="ALL">All states</option><option value="UNRESOLVED">Unresolved / verification pending</option><option value="RECOVERED">Verified recovered</option><option value="HISTORICAL">Historical resolved</option></select></label></div>'
     +'<div id="inc-history-items"></div><div id="inc-history-queue-results"></div></section>';
@@ -560,7 +563,7 @@ function renderWriterStatus_(){
   var wn=writerNotices_(),ln=loadNotices_(),all=ln.concat(wn);all.sort(function(a,c){return NOTICE_LEVELS.indexOf(a.level)-NOTICE_LEVELS.indexOf(c.level)||(c.at||0)-(a.at||0)});
   observeIncidents_();var hv=PipelineIncidents.view(S.incidents,Date.now()),hh=PipelineIncidents.health(S.incidents),top=hh.critical||hh.recurring.length?'FAULT':hh.warning?'CAUTION':'';
   var info=all.filter(function(n){return n.level==='NOTICE'&&n.source!=='queue'&&!RUN_CODES_.test(String(n.code||'').toUpperCase())});
-  var strip=hv.active.filter(function(i){return i.severity==='critical'&&i.component!=='master-load'&&!dis['inc:'+i.id]}).map(function(i){return {key:'inc:'+i.id,level:'FAULT',title:i.title,text:' '+(i.latestError||'')}})[0];
+  var strip=hv.active.filter(function(i){return i.kind!=='event'&&i.severity==='critical'&&i.component!=='master-load'&&!dis['inc:'+i.id]}).map(function(i){return {key:'inc:'+i.id,level:'FAULT',title:i.title,text:' '+(i.latestError||'')}})[0];
   if(!hasWriter()){label='not configured';}
   else if(!w){label='checking';}
   else if(w.unsupported){label='monitor unavailable';lvl='warn';}
@@ -568,7 +571,7 @@ function renderWriterStatus_(){
   else{var fz=w.freeze&&w.freeze.frozen?w.freeze:null,q=w.queue||{},proc=q.processing||[];label=fz?'FROZEN':proc.length?'PROCESSING '+proc.length:q.pending?'QUEUED '+q.pending:'IDLE';lvl=hh.critical||hh.recurring.length?'critical':hh.warning?'warn':'ok';}
   var i=S.buildInfo||{},short=i.commitShort||(i.commit&&i.commit!=='local'?String(i.commit).slice(0,7):'unknown'),v=S.load||{},m=S.master;
   html+='<div class="sys-head"><h3>System</h3><button class="sys-x" type="button" id="sys-close" aria-label="Close">✕</button></div>';
-  html+=writerRow_('health','<span class="sys-health"><span class="pill '+(hh.critical?'bad':hh.warning?'warn':'ok')+'" id="sys-health">'+esc(hh.state)+'</span>'+(hh.critical||hh.warning?'<span>'+hh.critical+' critical · '+hh.warning+' warning active</span>':'<span class="dim">no active incidents</span>')+'</span>');
+  html+=writerRow_('health','<span class="sys-health"><span class="pill '+(hh.critical?'bad':hh.warning?'warn':'ok')+'" id="sys-health">'+esc(hh.state)+'</span>'+(hh.critical||hh.warning?'<span>'+hh.critical+' critical · '+hh.warning+' warning active</span>':'<span class="dim">no current faults</span>')+(hh.verification?'<span class="dim"> / '+hh.verification+' prior failures to verify</span>':'')+'</span>');
   html+=writerRow_('master',v.freshness==='LIVE'?'<span class="pill ok">LIVE</span> '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+(m&&m.checksum?(m.checksum.ok?' · COUNTS OK':' · <span class="pill bad">COUNTS MISMATCH</span>'):''):v.freshness==='STALE'?'<span class="pill warn">STALE CACHE</span> '+esc(fmtTime_(v.meta&&v.meta.fetchedAt)):v.freshness==='NONE'?'<span class="pill bad">NO DATA</span>':esc(v.freshness||'loading'));
   html+=writerRow_('writer',!hasWriter()?'not configured':!w?'checking…':w.unsupported?'monitor unavailable':w.fetchError?'<span class="pill bad">UNREACHABLE</span>':(label+(w.freeze&&w.freeze.frozen?' · '+esc(w.freeze.reason||'')+' · by '+esc(w.freeze.by||'?'):'')));
   html+=writerRow_('live code',writerBuildHtml_());
@@ -582,6 +585,7 @@ function renderWriterStatus_(){
     html+=writerRow_('trigger',w.triggerInstalled===false?'<span class="pill bad">MISSING</span>':w.triggerInstalled?'installed':'unknown');
     if(w.migration)html+=writerRow_('migration',esc((w.migration.mode||'')+' '+(w.migration.status||'')));}
   if(hh.recurring.length)html+=writerRow_('recurrence',esc(hh.recurring.length+' recurring fault group(s) · experimental: 3 episodes / 1 hour; healthy clearance 15 minutes'));
+  html+=writerRow_('verification',hh.verification?hh.verification+' older Writer incident(s) awaiting independent proof':'none');
   html+=incidentsHtml_(hv,hh);
   html+='<h3 style="margin-top:10px">Information · last 24 h</h3>'+noticeListHtml_(info,dis);
   html+='<div class="build-status">'+(w&&w.checkedAt?'Checked '+esc(new Date(w.checkedAt).toLocaleTimeString())+'. Refreshes every minute while this page is visible.':'')+'</div><div class="writer-countdown" data-writer-countdown><span></span><div class="writer-countdown-track" role="progressbar"><i></i></div></div>';

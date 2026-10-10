@@ -41,7 +41,7 @@ test('the same failure event seen again on a later status poll is not counted tw
 test('a later verified SUCCESS of the same operation recovers the incident with evidence; health returns to LIVE',()=>{
   const s=P.empty();
   P.observe(s,{runs:[run('CLAUDE-EMAIL-20261006-1630ET_intake.json','FAILED',T(20,42),'invalid JSON: Expected , at position 1876')],unverifiedCount:0},T(20,43));
-  assert.equal(P.health(s).state,'LIVE / WARNING');
+  assert.equal(P.health(s).state,'LIVE');
   P.observe(s,{runs:[run('CLAUDE-EMAIL-20261006-1630ET_intake_r2.json','SUCCESS',T(20,47))],unverifiedCount:0},T(20,48));
   const v=P.view(s,T(21));assert.equal(v.active.length,0);assert.equal(v.recovered.length,1);
   assert.match(v.recovered[0].recoveryEvidence,/SUCCESS · CLAUDE-EMAIL-20261006-1630ET_intake_r2\.json/);assert.match(v.recovered[0].resolution,/Recovered/);
@@ -70,7 +70,7 @@ test('an unresolved incident never ages out of ACTIVE; resolved ones move to HIS
     run('GONE_20261001.json','FAILED',Date.parse('2026-10-01T04:00:00Z'),'Lock timeout'),run('GONE_20261001_R2.json','SUCCESS',Date.parse('2026-10-01T04:05:00Z'))],unverifiedCount:0},Date.parse('2026-10-01T05:00:00Z'));
   const later=Date.parse('2026-10-20T00:00:00Z');P.observe(s,{runs:[]},later);
   const v=P.view(s,later);assert.equal(v.active.length,1);assert.equal(v.active[0].operation,'OLD_20261001');assert.equal(v.recovered.length,0);assert.equal(v.historical.length,1);
-  assert.equal(P.health(s).state,'LIVE / WARNING');
+  assert.equal(P.health(s).state,'LIVE');
 });
 
 test('HOLD-type failures recover only when no master write is left unverified, or by the Writer receipt check',()=>{
@@ -101,11 +101,11 @@ test('a condition check is counted once per status read, not once per re-render'
 });
 
 test('health: only ACTIVE incidents count; critical beats warning; resolved never degrade',()=>{
-  const s=P.empty();assert.deepEqual(P.health(s),{state:'LIVE',critical:0,warning:0,recurring:[]});
-  P.observe(s,{runs:[run('W_20261006.json','FAILED',T(1),'x')]},T(2));assert.equal(P.health(s).state,'LIVE / WARNING');
+  const s=P.empty();assert.deepEqual(P.health(s),{state:'LIVE',critical:0,warning:0,verification:0,recoveryRequired:0,recurring:[]});
+  P.observe(s,{runs:[run('W_20261006.json','FAILED',T(1),'x')]},T(2));assert.equal(P.health(s).state,'LIVE');assert.equal(P.health(s).verification,1);
   P.observe(s,{writer:writer([{component:'writer',code:'TRIGGER_MISSING',severity:'critical',title:'Trigger missing',text:'not installed'}])},T(3));
-  assert.deepEqual(P.health(s),{state:'DEGRADED',critical:1,warning:1,recurring:[]});
-  P.observe(s,{writer:writer([])},T(4));assert.deepEqual(P.health(s),{state:'LIVE / WARNING',critical:0,warning:1,recurring:[]});
+  assert.deepEqual(P.health(s),{state:'DEGRADED',critical:1,warning:0,verification:1,recoveryRequired:0,recurring:[]});
+  P.observe(s,{writer:writer([])},T(4));assert.deepEqual(P.health(s),{state:'LIVE',critical:0,warning:0,verification:1,recoveryRequired:0,recurring:[]});
 });
 
 test('acknowledge retains a queue incident until verified recovery; live conditions cannot be acknowledged away',()=>{
@@ -135,9 +135,24 @@ test('task SUCCESS without independent downstream proof cannot resolve an earlie
 test('legacy acknowledged items retain unresolved health after reload',()=>{
  const s=P.empty();P.observe(s,{runs:[run('LEGACY.json','FAILED',T(1),'permission')]},T(1));
  const i=active(s)[0];i.status='ACKNOWLEDGED';i.resolvedAt=iso(T(2));
- P.observe(s,{},T(3));assert.equal(active(s)[0].status,'ACKNOWLEDGED_UNRESOLVED');assert.equal(P.health(s).state,'LIVE / WARNING');
+ P.observe(s,{},T(3));assert.equal(active(s)[0].status,'ACKNOWLEDGED_UNRESOLVED');assert.equal(P.health(s).state,'LIVE');
 });
 test('recurrence degrades health until a sustained authoritative healthy interval',()=>{
  const s=P.empty(),now=T(4);for(let n=0;n<3;n++)s.incidents['E'+n]={id:'E'+n,group:'G',source:'writer',status:'RECOVERED',latestAt:iso(now-n*600000),resolvedAt:iso(now-n*600000),severity:'warning'};
  assert.equal(P.health(s,now).state,'DEGRADED');s.healthySince={writer:now+1};assert.equal(P.health(s,now+16*60000).state,'LIVE');
+});
+
+test('62 unverified past queue failures are visible for verification but do not assert 62 live faults',()=>{
+  const s=P.empty();
+  for(let n=0;n<62;n++)s.incidents['q'+n]={id:'q'+n,kind:'event',status:'ACTIVE',severity:'warning',firstAt:iso(T(1)),latestAt:iso(T(1)),title:'Failed queue attempt'};
+  assert.equal(P.health(s).state,'LIVE');
+  assert.equal(P.health(s).verification,62);
+  assert.equal(P.health(s).warning,0);
+  assert.equal(P.view(s,T(2)).active.length,62,'no incident history is erased');
+});
+test('confirmed current writer warning is counted separately from unknown past failures',()=>{
+ const s=P.empty();s.incidents.unknown={id:'unknown',kind:'event',status:'ACTIVE',severity:'warning'};
+ s.incidents.current={id:'current',kind:'condition',status:'ACTIVE',severity:'warning'};
+ assert.equal(P.health(s).verification,1);assert.equal(P.health(s).warning,1);
+ assert.equal(P.health(s).state,'LIVE / WARNING');
 });
