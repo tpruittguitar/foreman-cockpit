@@ -947,7 +947,7 @@ function render(){
   if($('clearf'))$('clearf').onclick=function(){S.chartFilter=null;S.filters={};pushHash();render()};
   var rows=filteredRows();
   $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
-  var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
+  var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
   var tb='';rows.forEach(function(r){
     var cls=(attentionFor_(r).strong?'priority-hot ':'')+(S.seen[r.id]?'seen ':'')+(S.focus===r.id?'focus':'');
@@ -956,7 +956,7 @@ function render(){
       else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'rule':'pend')+'">'+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'◈':'◇')+'</span>'+esc(v):''}
       else if(c==='COMPANY')v=(ruling(r)?'<span class="write-tag">'+esc(rulingState(r).s)+'</span> ':'')+(r.parseError?'<span class="g err" title="'+esc(r.parseError)+'">!</span>':'')+esc(v);
       else if(c==='BUCKET'){extra=' b-'+esc(r.BUCKET);v='<span class="bpill b-'+esc(r.BUCKET)+'" title="'+esc(v)+'">'+esc(bucketLabel(r.BUCKET))+'</span>'+(r.mismatch?' <span class="faint" title="heading says '+esc(r.section)+'">§</span>':'')}
-      else if(c==='OVERALL_RATING'){var os=scoreFor_(r);v=os.overall==null?'':'<span class="score-badge '+esc(String(os.band||'').toLowerCase().replace(/[^a-z]/g,''))+'">'+os.overall+'</span> <span class="faint">'+esc(os.band)+'</span>'}
+      else if(c==='OVERALL_RATING'){var os=scoreFor_(r);v=os.overall==null?'':'<span class="score-badge '+esc(String(os.band||'').toLowerCase().replace(/[^a-z]/g,''))+'" title="'+esc('Score '+os.overall+' — '+(os.band||'Unclassified'))+'">'+os.overall+'</span>'}
       else if(c==='LINK'){v=v?'<a class="rowlink" href="'+esc(v)+'" target="_blank" rel="noopener" title="'+esc(v)+'" onclick="event.stopPropagation()">'+LINK_ICON+'</a>':''}
       else if(c==='AGE'){v=v?esc(v)+'<span class="faint">d</span>':''}
       else if(c==='SOURCE_URL'){v=v?'<a href="'+esc(v)+'" target="_blank" rel="noopener" title="'+esc(v)+'" onclick="event.stopPropagation()">'+esc(v.replace(/^https?:\/\//,'').slice(0,70))+'</a>':''}
@@ -1264,7 +1264,7 @@ function autoFitRenderedColumns_(){
     if(c==='NEW'||c==='LINK'){widths[c]=44;return}
     var th=head[i],computed=getComputedStyle(th);
     ctx.font=computed.font||computed.fontSize+' '+computed.fontFamily;
-    var width=ctx.measureText(c.replace(/_/g,' ')).width+34;
+    var width=ctx.measureText(c==='OVERALL_RATING'?'SCORE':c.replace(/_/g,' ')).width+34;
     rows.forEach(function(tr){
       var td=tr.children[i];if(!td)return;
       var style=getComputedStyle(td);
@@ -1272,7 +1272,7 @@ function autoFitRenderedColumns_(){
       var displayed=(td.textContent||'').replace(/\s+/g,' ').trim();
       width=Math.max(width,ctx.measureText(displayed).width+20);
     });
-    var max=c==='TITLE'?(phone?320:450):c==='COMPANY'?(phone?250:320):(phone?210:275);
+    var max=c==='OVERALL_RATING'?76:c==='TITLE'?(phone?320:450):c==='COMPANY'?(phone?250:320):(phone?210:275);
     widths[c]=Math.ceil(Math.max(columnMin(c),Math.min(max,width)));
   });
   S.pendingTableAutoFit=false;
