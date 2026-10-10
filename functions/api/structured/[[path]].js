@@ -28,17 +28,21 @@ async function writerKeyOk(req, url) {
 }
 
 function snapshotStore(env) {
-  if (!env || !env.PIPELINE_SNAPSHOT_KV) throw new Error('PIPELINE_SNAPSHOT_KV binding is required');
-  return env.PIPELINE_SNAPSHOT_KV;
+  return env && env.PIPELINE_SNAPSHOT_KV ? env.PIPELINE_SNAPSHOT_KV : null;
 }
 
 async function readSnapshot(env) {
-  const raw = await snapshotStore(env).get(SNAPSHOT_KEY);
+  const store = snapshotStore(env);
+  if (!store) return null;
+  const raw = await store.get(SNAPSHOT_KEY);
   return raw ? JSON.parse(raw) : null;
 }
 
 async function saveSnapshot(env, snapshot) {
-  await snapshotStore(env).put(SNAPSHOT_KEY, JSON.stringify(snapshot));
+  const store = snapshotStore(env);
+  if (!store) return false;
+  await store.put(SNAPSHOT_KEY, JSON.stringify(snapshot));
+  return true;
 }
 
 function route(req) {
@@ -137,12 +141,21 @@ export async function onRequest(context) {
   try {
     snapshot = await readSnapshot(context.env);
   } catch (e) {
-    return response({ ok: false, service: 'structured-runtime', error: 'SNAPSHOT_STORE_UNAVAILABLE', detail: String(e && e.message || e) }, 503);
+    snapshot = null;
   }
 
   if (path === '/' || path === '/health') return response(publicHealth(snapshot));
 
   if (!(await writerKeyOk(req, url))) return locked(snapshot);
+
+  async function currentSnapshot() {
+    if (snapshot) return snapshot;
+    const master = await readWriterMaster(req, url);
+    const built = parseMasterText(master.text);
+    built.meta.writerFetchedAt = master.fetchedAt || master.modifiedTime || '';
+    built.meta.writerId = master.id || '';
+    return built;
+  }
 
   if (path === '/admin/import-from-writer') {
     if (req.method !== 'POST') return response({ ok: false, error: 'Use POST' }, 405);
@@ -151,30 +164,33 @@ export async function onRequest(context) {
       const built = parseMasterText(master.text);
       built.meta.writerFetchedAt = master.fetchedAt || master.modifiedTime || '';
       built.meta.writerId = master.id || '';
-      await saveSnapshot(context.env, built);
-      return response({ ok: true, service: 'structured-runtime', imported: true, jobs: built.jobs.length, counts: built.counts, meta: built.meta });
+      const stored = await saveSnapshot(context.env, built);
+      return response({ ok: true, service: 'structured-runtime', imported: true, stored, jobs: built.jobs.length, counts: built.counts, meta: built.meta });
     } catch (e) {
       return response({ ok: false, service: 'structured-runtime', error: 'IMPORT_FROM_WRITER_FAILED', detail: String(e && e.message || e) }, 502);
     }
   }
 
-  if (!snapshot) return response({ ok: false, service: 'structured-runtime', error: 'STRUCTURED_SNAPSHOT_NOT_LOADED', dataAvailable: false }, 503);
-
-  if (path === '/counts') return response({ ok: true, service: 'structured-runtime', counts: snapshot.counts || {}, meta: snapshot.meta || {} });
+  if (path === '/counts') {
+    const current = await currentSnapshot();
+    return response({ ok: true, service: 'structured-runtime', counts: current.counts || {}, meta: current.meta || {}, source: snapshot ? 'snapshot' : 'writer-live' });
+  }
 
   if (path === '/jobs') {
+    const current = await currentSnapshot();
     const { limit, offset } = normalizeLimitOffset(url);
-    const jobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
-    return response({ ok: true, service: 'structured-runtime', limit, offset, total: jobs.length, jobs: jobs.slice(offset, offset + limit), meta: snapshot.meta || {} });
+    const jobs = Array.isArray(current.jobs) ? current.jobs : [];
+    return response({ ok: true, service: 'structured-runtime', limit, offset, total: jobs.length, jobs: jobs.slice(offset, offset + limit), meta: current.meta || {}, source: snapshot ? 'snapshot' : 'writer-live' });
   }
 
   const jobMatch = path.match(/^\/jobs\/([^/]+)$/);
   if (jobMatch) {
+    const current = await currentSnapshot();
     const id = decodeURIComponent(jobMatch[1]);
-    const jobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
+    const jobs = Array.isArray(current.jobs) ? current.jobs : [];
     const job = jobs.find(j => String(j.PRIMARY_ID || j.id || '') === id);
     if (!job) return response({ ok: false, error: 'JOB_NOT_FOUND', id }, 404);
-    return response({ ok: true, service: 'structured-runtime', job, meta: snapshot.meta || {} });
+    return response({ ok: true, service: 'structured-runtime', job, meta: current.meta || {}, source: snapshot ? 'snapshot' : 'writer-live' });
   }
 
   return response({ ok: false, error: 'Not found', path }, 404);
