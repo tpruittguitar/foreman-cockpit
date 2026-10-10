@@ -71,3 +71,7 @@ https://foreman-cockpit.netlify.app/?src=local&localApi=http://127.0.0.1:8765
 ```
 
 This is a read-only development source. It does not use Writer, Apps Script, Google Docs, or Google Drive runtime reads for the Pipeline table load. It reads the local SQLite `/api/master` endpoint and feeds the existing Pipeline parser.
+
+## Final structured schema
+
+The schema now includes additive Phase 2 tables for archive, evidence, automation runs, operation obligations, Writer transactions, scoring-model versions, rule versions, runtime read status, and export snapshots. See `docs/STORAGE_SQLITE_SCHEMA_DESIGN.md`.

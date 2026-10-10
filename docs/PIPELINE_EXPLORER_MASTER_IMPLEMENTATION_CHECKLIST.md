@@ -87,7 +87,7 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 - [x] Verify local app loads from SQLite through `?src=local`: 647 visible roles / 734 row-lines rendered from `http://127.0.0.1:8765/api/master`.
 - [~] Build a read-only structured mirror from the current text master. Prototype exists locally; not production source yet.
 - [~] Validate counts, bucket totals, archive totals, and evidence resolution against the current text master. Bucket counts validated for imported live rows; archive/evidence validation remains open.
-- [ ] Design final structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules.
+- [x] Design final structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules. See `docs/STORAGE_SQLITE_SCHEMA_DESIGN.md` and additive Phase 2 tables in `tools/local-store/schema.sql`.
 - [ ] Switch production UI reads to bounded JSON endpoints backed by structured storage.
 - [ ] Keep Google Drive exports generated from the structured store only.
 - [ ] Retire Google Drive text-file reads from the production UI load path.
