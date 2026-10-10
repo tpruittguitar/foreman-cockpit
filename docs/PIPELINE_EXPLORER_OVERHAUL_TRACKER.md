@@ -55,9 +55,30 @@ Pipeline Explorer should feel like a black/grey modern military manufacturing-in
 | 2 | Navigation consolidation | Collapse left rail/menu into Pipeline, Map, AI Operations, Control Center, Analytics | BLOCKED UNTIL PHASE 1B REVIEW |
 | 3 | AI Operations dashboard | Intake/enrichment throughput, explicit enrichment backlog, backlog trend, Writer health, lane performance, Next Priority | BLOCKED UNTIL PHASE 2 REVIEW |
 | 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | BLOCKED UNTIL PHASE 3 REVIEW |
-| 5 | Workspace layout system | Drag, resize, lock, save, restore, presets, responsive layout separation | TABLE-SPECIFIC CONTROLS MOVED FORWARD TO PHASE 1B; REMAINDER BLOCKED UNTIL PHASE 4 REVIEW |
+| 5 | Workspace layout system | Drag, resize, lock, save, restore, presets, responsive layout separation for panels in every view | TABLE-SPECIFIC CONTROLS MOVED FORWARD TO PHASE 1B; REMAINDER BLOCKED UNTIL PHASE 4 REVIEW |
 | 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | BLOCKED UNTIL PHASE 5 REVIEW |
 | 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | BLOCKED UNTIL PHASE 6 REVIEW |
+
+## Global workspace layout requirement
+
+Every major view must ultimately support operator-owned panel arrangement, not just the Pipeline table.
+
+### Required behavior
+
+- Panels in each view can be moved.
+- Panels in each view can be resized.
+- Panel placement and sizing can be locked.
+- Locked layouts persist across refresh/load/browser reopen.
+- Each view can have its own saved layout.
+- Desktop, phone portrait, and phone landscape layouts can differ.
+- User can unlock, adjust, save, restore, or reset a view layout.
+- Layout state is presentation-only; it must never change job data, master state, Writer behavior, scoring, rules, automations, or application history.
+
+### Scope by phase
+
+- Phase 1B handles the Pipeline table first because it is the active pain point and already has partial resize code.
+- Phase 5 remains the full reusable workspace system for movable/resizable/lockable panels across Pipeline, Map, AI Operations, Control Center, Analytics, and supporting views.
+- Phase 5 implementation should not be skipped just because Phase 1B adds table-specific controls.
 
 ## Phase 1 detailed scope
 
@@ -68,7 +89,7 @@ Pipeline Explorer should feel like a black/grey modern military manufacturing-in
 - Tighten job detail metadata spacing and hierarchy.
 - Preserve desktop Pipeline layout proportions.
 - Preserve current queue/detail/map behavior.
-- Preserve target density of 15–20 visible queue rows.
+- Preserve target density of 15-20 visible queue rows.
 - Keep accent colors limited to state, selection, priority, charts, map pins, and warnings.
 - Add subtle modern-military/sci-fi polish only where it improves readability or priority.
 
@@ -167,6 +188,7 @@ Required chart groups:
 - 2026-10-10: Implemented Phase 1 CSS-only visual foundation overrides in `pipeline-ui-workspace.css`.
 - 2026-10-10: Restored `build-info.json` placeholder after an accidental branch-local stamp; the final file content matches the main placeholder.
 - 2026-10-10: Phase 1 visual scale/look accepted by user; Pipeline table layout persistence is now a required Phase 1B correction before Phase 2.
+- 2026-10-10: Reconfirmed global requirement that panels in every view must be movable, resizable, lockable, saved, restored, and presentation-only.
 
 ## Expected review diff
 
