@@ -43,3 +43,42 @@ Keep the browser app path and user behavior the same while replacing the Netlify
 ## Usage rule
 
 Do not run deploy loops. Use one deploy, then inspect the result. If the Pages site fails, fix locally before triggering another deploy.
+
+## Current branch state
+
+The Cloudflare migration is intentionally isolated on local branch:
+
+```text
+cloudflare-pages-migration
+```
+
+`main` is reset to `origin/main` to avoid triggering Netlify by accident.
+
+## Next exact action
+
+When ready to involve hosted services, push only the migration branch first:
+
+```bash
+git push origin cloudflare-pages-migration
+```
+
+Do not push `main` until Cloudflare Pages has been created, tested, and selected as the replacement host.
+
+## First Cloudflare deploy target
+
+In Cloudflare Pages, connect the GitHub repo and select branch:
+
+```text
+cloudflare-pages-migration
+```
+
+Use:
+
+```text
+Build command: npm run build
+Build output directory: .
+KV binding: PIPELINE_SNAPSHOT_KV
+```
+
+After the first successful Cloudflare deploy, run the in-app structured import once from Settings.
+
