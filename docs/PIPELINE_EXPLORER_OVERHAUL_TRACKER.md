@@ -130,5 +130,5 @@ Required chart groups:
 
 - 2026-10-10: Created phased overhaul tracker and branch `phase1-overhaul-visual-foundation`.
 - 2026-10-10: Implemented Phase 1 CSS-only visual foundation overrides in `pipeline-ui-workspace.css`.
-- 2026-10-10: Restored `build-info.json` placeholder after an accidental branch-local stamp; final diff should not include a build-info change.
+- 2026-10-10: Restored `build-info.json` placeholder after an accidental branch-local stamp; final file content matches the main placeholder again.
 - 2026-10-10: Phase 1 is awaiting visual review before any Phase 2 navigation work begins.
