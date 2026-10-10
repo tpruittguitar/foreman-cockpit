@@ -32,7 +32,7 @@ def main(a):
         os.makedirs(a[2], exist_ok=True)
         for f in call('GET', a[1] + '/content')['files']:
             ext = '.json' if f['type'] == 'JSON' else '.html' if f['type'] == 'HTML' else '.js'
-            open(os.path.join(a[2], f['name'] + ext), 'w').write(f['source'])
+            open(os.path.join(a[2], f['name'] + ext), 'w', encoding='utf-8').write(f['source'])
     elif a[0] == 'set-content':
         files = []
         for n in sorted(os.listdir(a[2])):
@@ -40,9 +40,9 @@ def main(a):
             if n.startswith('.') or not os.path.isfile(p):
                 continue
             if n == 'appsscript.json':
-                files.append({'name': 'appsscript', 'type': 'JSON', 'source': open(p).read()})
+                files.append({'name': 'appsscript', 'type': 'JSON', 'source': open(p, encoding='utf-8').read()})
             elif n.endswith('.js'):
-                files.append({'name': n[:-3], 'type': 'SERVER_JS', 'source': open(p).read()})
+                files.append({'name': n[:-3], 'type': 'SERVER_JS', 'source': open(p, encoding='utf-8').read()})
         if not any(f['name'] == 'appsscript' for f in files):
             sys.exit('refusing to set content without appsscript.json')
         r = call('PUT', a[1] + '/content', {'scriptId': a[1], 'files': files})
