@@ -1,7 +1,11 @@
 /* Scoring preview: what would change if the draft scoring model were published.
- * Pure: takes rows, the scorer, and two configurations; reads nothing and writes nothing. The Explorer calls it before Publish. */
+ * Pure compare functions are side-effect free. VNext support added here is preview/backtest only. */
 (function(root){'use strict';
 var RANKED_BUCKETS=['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','BLOCKED'];
+var VNEXT_STATUS='DESIGN_AND_BACKTEST_ONLY';
+var VNEXT_WEIGHTS={manufacturing_domain_alignment:25,prototype_to_rate_opportunity:20,analogous_operating_experience:15,strategic_employer_clout:10,scope_authority_title_progression:15,compensation_economics:10,geography:5};
+var VNEXT_REQUIRED=['manufacturing/domain evidence','prototype-to-rate or scale-up evidence','analogous plant-floor operating experience','strategic employer signal','actual scope/authority/title progression','compensation economics','geography'];
+var VNEXT_ACCEPTANCE={minimum_labeled_rows:24,target_pairwise_accuracy:'>70%',good_bad_separation:'Good average materially above Bad average',publish_gate:'explicit Tim approval only'};
 function num(v){var n=Number(v);return isFinite(n)?n:null}
 function scoreOf(scoreRow,cfg,r){try{var s=scoreRow(r,cfg);return {overall:s&&s.overall!=null?s.overall:null,band:(s&&s.band)||''}}catch(e){return {overall:null,band:'',error:true}}}
 function ranks(items,key){
@@ -33,7 +37,7 @@ function compare(rows,scoreRow,beforeCfg,afterCfg,opts){
   out.movers=both.filter(function(x){return x.rankDelta!==0}).sort(function(a,b){return Math.abs(b.rankDelta)-Math.abs(a.rankDelta)||(a.id<b.id?-1:1)}).slice(0,moverN)
     .map(function(x){return {id:x.id,company:x.company,title:x.title,before:brief(x,'before'),after:brief(x,'after'),rankDelta:x.rankDelta}});
   var tb=rb.slice(0,topN),ta=ra.slice(0,topN),idsB={},idsA={};tb.forEach(function(x){idsB[x.id]=1});ta.forEach(function(x){idsA[x.id]=1});
-  out.top={before:tb.map(function(x){return brief(x,'before')}),after:ta.map(function(x){return brief(x,'after')}),
+  out.top={before:tb.map(function(x){return brief(x,'before')}),after:ta.map(function(x){return brief(x,'after'}),
     entered:ta.filter(function(x){return !idsB[x.id]}).map(function(x){return brief(x,'after')}),left:tb.filter(function(x){return !idsA[x.id]}).map(function(x){return brief(x,'before')})};
   out.identical=out.errors===0&&out.ratingUp===0&&out.ratingDown===0&&out.newlyRated===0&&out.newlyUnrated===0&&out.rankUp===0&&out.rankDown===0;
   return out;
@@ -58,6 +62,23 @@ function describeChanges(before,after){
   return out;
 }
 
-var api={RANKED_BUCKETS:RANKED_BUCKETS,compare:compare,describeChanges:describeChanges};
+function vnextSpec(){return {status:VNEXT_STATUS,weights:Object.assign({},VNEXT_WEIGHTS),requiredEvidence:VNEXT_REQUIRED.slice(),acceptance:Object.assign({},VNEXT_ACCEPTANCE),canPublish:false,reason:'VNext is a design/backtest model. It is not compatible with the live scorer until evidence mapping, labeled-row backtest, and explicit Tim approval are complete.'}}
+function vnextReadiness(rows,labeledCount,pairwiseAccuracy){var count=Number(labeledCount)||0,acc=Number(pairwiseAccuracy)||0;return {status:VNEXT_STATUS,labeledRows:count,pairwiseAccuracy:acc,ready:false,checks:[
+  {name:'Minimum labeled rows',pass:count>=24,need:'24+ user-labeled rows'},
+  {name:'Pairwise accuracy',pass:acc>70,need:'>70%'},
+  {name:'Evidence mapping',pass:false,need:'map VNext evidence categories to real row fields'},
+  {name:'Explicit approval',pass:false,need:'Tim approval to publish'}
+ ]}}
+function injectVnextPanel(){
+  if(typeof document==='undefined')return;var view=document.getElementById('view-scoring');if(!view||document.getElementById('vnext-backtest-gate'))return;
+  var host=view.querySelector('.score-model-panel')||view;var spec=vnextSpec();var weights=Object.keys(spec.weights).map(function(k){return '<li><b>'+k.replace(/_/g,' ')+'</b>: '+spec.weights[k]+'%</li>'}).join('');
+  var el=document.createElement('section');el.id='vnext-backtest-gate';el.className='panel score-review';el.innerHTML='<h3>VNext scoring backtest gate</h3><p class="tip"><b>'+spec.status+'</b> · This panel is preview-only. It cannot publish or replace the live scoring model.</p><div class="score-layout"><section><h4>Proposed weight shape</h4><ul>'+weights+'</ul></section><section><h4>Cutover gates</h4><ul><li>24+ user-labeled rows minimum.</li><li>Pairwise accuracy above 70%.</li><li>Good average materially above Bad average.</li><li>Evidence mapping from row fields to VNext categories.</li><li>Explicit Tim approval before any publish path exists.</li></ul></section></div><p class="tip">Current state: NOT READY. Live model remains TIM_WEIGHTED_JOB_RATING 2026-10-04.1 unless separately authorized.</p>';
+  host.insertAdjacentElement('afterbegin',el);
+}
+if(typeof MutationObserver!=='undefined'&&typeof document!=='undefined'){
+  var boot=function(){injectVnextPanel();var v=document.getElementById('view-scoring');if(v)new MutationObserver(injectVnextPanel).observe(v,{childList:true,subtree:true});};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+}
+var api={RANKED_BUCKETS:RANKED_BUCKETS,compare:compare,describeChanges:describeChanges,vnextSpec:vnextSpec,vnextReadiness:vnextReadiness};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineScoringPreview=api;
 })(typeof window!=='undefined'?window:globalThis);
