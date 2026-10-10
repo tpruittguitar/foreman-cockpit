@@ -133,3 +133,20 @@ Validation result from 2026-10-10:
 
 The Netlify-hosted page may fail to fetch `http://127.0.0.1:8765` from the browser. For local SQLite testing, serve the app locally or later provide a reachable local/tunnel/VPN endpoint.
 
+
+## SQLite-generated export snapshots
+
+Generate text/jsonl artifacts from the structured SQLite store:
+
+```powershell
+python tools/local-store/export_snapshots.py --db data\pipeline_local.db --out data\exports
+```
+
+This creates generated output files only. It does not upload to Google Drive and it does not make text files the runtime source again.
+
+Validation result from 2026-10-10:
+
+- `V2_CURRENT_POPULATION_MASTER__SQLITE_EXPORT_<stamp>.txt` — 741 rows
+- `V2_TERMINAL_ARCHIVE__SQLITE_EXPORT_<stamp>.txt` — 522 rows
+- `V2_EVIDENCE_COMPANION__SQLITE_EXPORT_<stamp>.jsonl` — 1,936 evidence records
+- export records written to SQLite `export_snapshots`

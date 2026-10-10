@@ -1,4 +1,4 @@
-# Storage Architecture Decision
+﻿# Storage Architecture Decision
 
 Status date: 2026-10-10
 Status: ACTIVE DECISION
@@ -95,7 +95,7 @@ Minimum migration checklist:
 - [x] build read-only mirror endpoint from the current text master, terminal archive, and evidence companion into structured records;
 - [x] validate row counts, bucket counts, archive counts, and evidence resolution against the current local files;
 - [ ] switch UI reads to structured JSON;
-- [ ] keep Drive exports as generated artifacts only;
+- [~] keep Drive exports as generated artifacts only; SQLite-generated master/archive/evidence export snapshots exist locally, but Drive publishing is not implemented;
 - [ ] retire Drive text-file reads from the production UI load path.
 
 ## Hard rule
@@ -103,3 +103,4 @@ Minimum migration checklist:
 Do not build new core functionality on top of Google Docs runtime reads or large Google Drive text-file runtime reads.
 
 If a future implementation needs reliable app data, it must use the new structured storage path or explicitly stay read-only/export-only until that path exists.
+

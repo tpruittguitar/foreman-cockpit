@@ -1,4 +1,4 @@
-# Pipeline Explorer Master Implementation Checklist
+﻿# Pipeline Explorer Master Implementation Checklist
 
 Status date: 2026-10-10
 Branch: `main`
@@ -17,7 +17,7 @@ This file is the durable checklist. Future work should update this file when an 
 
 ---
 
-## Phase 1 — Foundation deploy: PR #85
+## Phase 1 â€” Foundation deploy: PR #85
 
 Goal: put the new command-center structure into the app without changing Writer, automations, master data, or live scoring.
 
@@ -60,11 +60,11 @@ Smoke test note, 2026-10-10 after Netlify credit restore: production deployed co
 
 Interaction smoke note, 2026-10-10: focused production job-click test passed. Headless Chrome loaded 647 visible roles, clicked the first job row without pressing any action buttons, opened the detail drawer, preserved the selected job in the URL as `j=V2I-B7271A614138`, and rendered Overview, Posting, Fit & Score, Application, Documents, and History tab labels. The drawer showed FPC of Brighton / Head of Manufacturing details. Archive/evidence was still loading during part of the run, but the active master and detail drawer rendered successfully.
 
-Mobile smoke note, 2026-10-10: focused iPhone-size emulation at 390×844 passed for the bottom nav. `#bottombar` rendered as a visible 390×58 grid at the screen bottom with PIPELINE, MAP, AI OPS, CONTROL, and ANALYTICS. Each button clicked successfully: Pipeline kept the pipeline view, Map added map mode, AI Ops opened `automations`, Control opened `scoring` / Control Center, and Analytics opened `reports`. No job action buttons were clicked.
+Mobile smoke note, 2026-10-10: focused iPhone-size emulation at 390Ã—844 passed for the bottom nav. `#bottombar` rendered as a visible 390Ã—58 grid at the screen bottom with PIPELINE, MAP, AI OPS, CONTROL, and ANALYTICS. Each button clicked successfully: Pipeline kept the pipeline view, Map added map mode, AI Ops opened `automations`, Control opened `scoring` / Control Center, and Analytics opened `reports`. No job action buttons were clicked.
 
 ---
 
-## Phase 2 — Storage foundation migration
+## Phase 2 â€” Storage foundation migration
 
 Goal: make production data loading reliable. The master was already moved from a Google Doc to a plain text file, which was the right first fix. The remaining issue is that production runtime still depends on Google Drive/App Script text-file reads for large runtime data.
 
@@ -89,7 +89,7 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 - [x] Validate counts, bucket totals, archive totals, and evidence resolution against the current local files. Validation on 2026-10-10 imported 741 live jobs, 522 archive jobs, 31,761 payload fields, 1,936 evidence chains, 4,683 evidence field rows, and 0 unresolved evidence chains.
 - [x] Design final structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules. See `docs/STORAGE_SQLITE_SCHEMA_DESIGN.md` and additive Phase 2 tables in `tools/local-store/schema.sql`.
 - [~] Switch production UI reads to bounded JSON endpoints backed by structured storage. Dev-only local path now loads from paged SQLite `/api/jobs?mode=source` when the app is served locally; production default is not cut over.
-- [ ] Keep Google Drive exports generated from the structured store only.
+- [~] Keep Google Drive exports generated from the structured store only. Local SQLite now generates master/archive/evidence export snapshots and records them in `export_snapshots`; Drive upload/publishing is not implemented.
 - [ ] Retire Google Drive text-file reads from the production UI load path.
 
 Immediate hardening while migration is pending:
@@ -103,7 +103,7 @@ Archive guard commit: `29e33d7` added `readArchiveSafe_()` and routes `GET actio
 
 ---
 
-## Phase 3 — Finish Pipeline table controls
+## Phase 3 â€” Finish Pipeline table controls
 
 Goal: finish the concrete table-control request so Tim can make the job queue fit his workflow and keep the settings.
 
@@ -122,7 +122,7 @@ Goal: finish the concrete table-control request so Tim can make the job queue fi
 
 ---
 
-## Phase 4 — Finish automation visibility
+## Phase 4 â€” Finish automation visibility
 
 Goal: solve the problem where an automation can do partial work and Tim cannot tell what was skipped or left unfinished.
 
@@ -145,7 +145,7 @@ Goal: solve the problem where an automation can do partial work and Tim cannot t
 
 ---
 
-## Phase 5 — Finish automation strategy enforcement
+## Phase 5 â€” Finish automation strategy enforcement
 
 Goal: make the five-lane strategy enforceable and visible, not just described in prompts.
 
@@ -171,7 +171,7 @@ Checklist:
 
 ---
 
-## Phase 6 — Finish Control Center
+## Phase 6 â€” Finish Control Center
 
 Goal: turn Control Center from a shell into a real management surface for authority and governance.
 
@@ -190,7 +190,7 @@ Goal: turn Control Center from a shell into a real management surface for author
 
 ---
 
-## Phase 7 — Finish workspace layout system
+## Phase 7 â€” Finish workspace layout system
 
 Goal: make each major view operator-adjustable while preserving app behavior.
 
@@ -208,7 +208,7 @@ Goal: make each major view operator-adjustable while preserving app behavior.
 
 ---
 
-## Phase 8 — Finish mobile review
+## Phase 8 â€” Finish mobile review
 
 Goal: verify the mobile UI on the real target device and tune it from actual use.
 
@@ -222,7 +222,7 @@ Goal: verify the mobile UI on the real target device and tune it from actual use
 
 ---
 
-## Phase 9 — VNext scoring model
+## Phase 9 â€” VNext scoring model
 
 Goal: prove a new scoring model is better before it becomes live.
 
@@ -245,7 +245,7 @@ Important current status: VNext is not live. PR #85 only adds a warning/backtest
 
 ---
 
-## Phase 10 — Writer test debt cleanup
+## Phase 10 â€” Writer test debt cleanup
 
 Goal: get the repo test baseline clean so future PRs are easier to judge.
 
@@ -290,3 +290,4 @@ Separate PRs should be used for:
 - Drive authority changes
 - master data changes
 - storage architecture / runtime data store changes
+
