@@ -21,10 +21,38 @@ test('a value that is simply absent is not "stale": only differences from a stor
   assert.equal(p.stale.length,0,'nothing stored, nothing out of date');assert.equal(p.upToDate,1);
 });
 
-test('rows outside active work are counted but never planned; rows with no class or an unrecognised class are reported, not touched',()=>{
-  const p=D.plan([row('APP','APPLIED',{FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6'}),row('NC','SCOUT_INTAKE',{FLEX_MODIFIER:'6'}),row('CF','SCOUT_INTAKE',{FLEX_CLASS:'BANANA',FLEX_MODIFIER:'6'})],V3);
-  assert.equal(p.stale.length,0,'none of these is planned');assert.equal(p.outOfScopeStale,1,'the applied row is stale but left alone');
-  assert.equal(p.noClass,1);assert.deepEqual(p.classConflict.map(x=>[x.id,x.stored,x.derived]),[['CF','BANANA','UNKNOWN']],'a class the policy does not recognise is surfaced for review, never rewritten');
+test('applied and declined live-master jobs are eligible; terminal or physical archive rows never get refresh writes',()=>{
+  const p=D.plan([
+    row('APP','APPLIED',{FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6'}),
+    row('DECL','DECLINED_BY_TIM',{FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6'}),
+    row('DEAD','CLOSED_DEAD',{FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6'}),
+    row('REJ','REJECTED_BY_EMPLOYER',{FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6'}),
+    row('DUP','DUPLICATE',{FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6'}),
+    row('BAD','INVALID_DISCOVERY',{FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6'}),
+    row('ARC','DECLINED_BY_TIM',{FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6',ARCHIVE_STATE:'TERMINAL'}),
+    row('NC','SCOUT_INTAKE',{FLEX_MODIFIER:'6'}),
+    row('CF','SCOUT_INTAKE',{FLEX_CLASS:'BANANA',FLEX_MODIFIER:'6'})
+  ],V3);
+  assert.deepEqual(p.stale.map(x=>x.id),['APP','DECL']);
+  assert.equal(p.outOfScopeStale,5);
+  assert.equal(p.noClass,1);
+  assert.deepEqual(p.classConflict.map(x=>[x.id,x.stored,x.derived]),[['CF','BANANA','UNKNOWN']]);
+});
+test('Writer ENRICH recalculates APPLIED and DECLINED while preserving canonical bucket, disposition and decision notes',()=>{
+ for(const bucket of ['APPLIED','DECLINED_BY_TIM']){
+  const id='V2F-'+bucket, payload={FLEX_CLASS:'SOFT_FLEX',FLEX_MODIFIER:'6',SCOPE_FIT_RAW:'75',ADJUSTED_FIT:'81',TIM_NOTE:'Prior decision remains',APP_DATE:'2026-09-25'};
+  const plan=D.plan([row(id,bucket,payload)],V3);
+  assert.equal(plan.stale.length,1);
+  const before=line(id,bucket,payload).replace('RESOLVED/NEEDS_RESOLUTION','RESOLVED/KEEP_ORIGINAL');
+  const res=W.mutateRow(before,D.requests(plan.stale,plan.policyId)[0].ruling,Pol.normalizeFlexPolicy(V3));
+  assert.equal(res.ok,true,res.error);
+  assert.equal(res.after.split(' | ')[4],bucket);
+  assert.equal(res.after.split(' | ')[5],'RESOLVED/KEEP_ORIGINAL');
+  const after=W.parsePayload(res.after.split(' | ').slice(9).join(' | ')).payload;
+  assert.equal(after.TIM_NOTE,'Prior decision remains');
+  assert.equal(after.APP_DATE,'2026-09-25');
+  assert.equal(after.FLEX_MODIFIER,'20');
+ }
 });
 
 test('an explicit FLEX_CLASS wins over legacy FLEX text, exactly as in the Writer, so such a row is judged on its stored class',()=>{
