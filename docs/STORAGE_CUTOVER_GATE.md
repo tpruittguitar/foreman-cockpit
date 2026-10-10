@@ -82,3 +82,12 @@ The UI must not cut over while `production_structured_data_available` is false o
 ### Non-default UI adapter
 
 `pipeline.html?src=structured` is a parallel test adapter only. It is allowed before cutover because it does not change the default production data source. The default UI must not switch to structured runtime until the gate passes and Tim explicitly approves cutover.
+
+
+## Browser-seeded structured import
+
+A non-default UI test path can seed structured runtime data from the existing Writer master:
+
+    /pipeline.html?src=structured&import=1
+
+This route uses the existing Writer key already configured in the browser. It does not introduce a second secret and does not change the default Pipeline Explorer load path.

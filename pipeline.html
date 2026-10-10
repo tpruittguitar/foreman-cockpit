@@ -722,6 +722,11 @@ function localSqliteTextFromPagedJobs_(base,seq){
   });
 }
 
+function importStructuredFromWriter_(base){
+  readout('<b>seeding structured runtime.</b> importing current Writer master');
+  return fetch(base+'/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(r){return r.json().then(function(j){if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('structured import HTTP '+r.status));return j})});
+}
+
 function structuredTextFromPagedJobs_(base,seq){
   var limit=250,all=[],total=null,fetchedAt=new Date().toISOString();
   function page(offset){
@@ -747,7 +752,14 @@ function loadStructuredRuntime_(q){
   if(!S.cfg.key){S.connection.state='Structured runtime not configured';readout('Structured runtime requires the existing Writer key.');switchTab('settings');return Promise.resolve(null)}
   readout('<b>fetching structured runtime.</b>');
   S.connection.state='Checking structured runtime';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};renderLoadAlert_();
-  return structuredTextFromPagedJobs_(base,seq).then(function(j){
+  function readStructuredOnce(){return structuredTextFromPagedJobs_(base,seq)}
+  var loader=readStructuredOnce().catch(function(e){
+    if(q.get('import')==='1'&&String(e.message||'').indexOf('STRUCTURED_SNAPSHOT_NOT_LOADED')>=0){
+      return importStructuredFromWriter_(base).then(function(){return readStructuredOnce()});
+    }
+    throw e;
+  });
+  return loader.then(function(j){
     if(seq!==S.loadSeq)return j;
     if(!j||j.ok!==true||typeof j.text!=='string'||!j.text)throw new Error((j&&j.error)||'structured runtime returned no master text');
     var meta={id:j.id||'structured-runtime',fetchedAt:j.fetchedAt||new Date().toISOString(),modifiedTime:j.modifiedTime||'',bytes:j.text.length,source:j.source||'structured-runtime',structuredApi:base};

@@ -231,3 +231,16 @@ A non-default browser adapter is available for testing the structured endpoint w
     https://foreman-cockpit.netlify.app/pipeline.html?src=structured
 
 It uses the existing in-app Writer key and reads `/api/structured/jobs` in bounded pages. It will fail safely until the structured snapshot has been loaded. The normal production Pipeline Explorer path is unchanged.
+
+
+### Browser-seeded structured import
+
+The production UI has a non-default structured test path:
+
+    https://foreman-cockpit.netlify.app/pipeline.html?src=structured
+
+To seed the structured snapshot from the current Writer master using the existing in-browser Writer key, use:
+
+    https://foreman-cockpit.netlify.app/pipeline.html?src=structured&import=1
+
+This posts to `/api/structured/admin/import-from-writer`, stores a Netlify Blob snapshot, then rereads `/api/structured/jobs` in bounded pages. It does not change the normal production default path.

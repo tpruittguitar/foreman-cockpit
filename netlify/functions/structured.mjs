@@ -98,6 +98,51 @@ function normalizeLimitOffset(url) {
   return { limit, offset };
 }
 
+
+function parseMasterText(text) {
+  const lines = String(text || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const rows = lines.filter(line => /^V2[A-Z]-/.test(line) || /^V2I-/.test(line) || /^V2F-/.test(line));
+  const jobs = rows.map((line, index) => {
+    const cells = line.split(' | ');
+    return {
+      PRIMARY_ID: cells[0] || '',
+      INV: cells[1] || '',
+      COMPANY: cells[2] || '',
+      TITLE: cells[3] || '',
+      BUCKET: cells[4] || '',
+      DISPOSITION: cells[5] || '',
+      DATE_ADDED: cells[6] || '',
+      REQ: cells[7] || '',
+      LOCATION: cells[8] || '',
+      SOURCE_LINE: line,
+      SOURCE_INDEX: index,
+    };
+  });
+  const buckets = {};
+  for (const job of jobs) buckets[job.BUCKET || 'UNKNOWN'] = (buckets[job.BUCKET || 'UNKNOWN'] || 0) + 1;
+  return {
+    ok: true,
+    meta: { schema: 'pipeline-structured-snapshot-v1', source: 'writer-master', generatedAt: new Date().toISOString() },
+    counts: { jobs: jobs.length, buckets },
+    jobs,
+  };
+}
+
+async function readWriterMaster(req, url) {
+  const key = writerKey(req, url);
+  if (!key) throw new Error('WRITER_KEY_REQUIRED');
+  const r = await fetch(WRITER_URL + '?action=master&key=' + encodeURIComponent(key), { signal: AbortSignal.timeout(30000) });
+  if (!r.ok) throw new Error('WRITER_MASTER_HTTP_' + r.status);
+  const j = await r.json();
+  if (!j || j.ok !== true || typeof j.text !== 'string') throw new Error((j && j.error) || 'WRITER_MASTER_UNREADABLE');
+  return j;
+}
+
+async function saveSnapshot(snapshot) {
+  const store = getStore({ name: STORE_NAME, consistency: 'strong' });
+  await store.set(SNAPSHOT_KEY, JSON.stringify(snapshot), { metadata: { generatedAt: snapshot.meta?.generatedAt || '', jobs: String(snapshot.jobs.length), schema: snapshot.meta?.schema || '' } });
+}
+
 export default async function handler(req) {
   const { url, path } = route(req);
   if (!['GET', 'POST'].includes(req.method)) return response({ ok: false, error: 'Method not allowed' }, 405);
@@ -112,9 +157,22 @@ export default async function handler(req) {
     if (req.method !== 'POST') return response({ ok: false, error: 'Use POST' }, 405);
     const body = await req.json();
     if (!body || body.ok !== true || !Array.isArray(body.jobs) || !body.counts) return response({ ok: false, error: 'INVALID_STRUCTURED_SNAPSHOT' }, 400);
-    const store = getStore({ name: STORE_NAME, consistency: 'strong' });
-    await store.set(SNAPSHOT_KEY, JSON.stringify(body), { metadata: { generatedAt: body.meta?.generatedAt || '', jobs: String(body.jobs.length), schema: body.meta?.schema || '' } });
+    await saveSnapshot(body);
     return response({ ok: true, service: 'structured-runtime', loaded: true, jobs: body.jobs.length, counts: body.counts || {}, meta: body.meta || {} });
+  }
+
+  if (path === '/admin/import-from-writer') {
+    if (req.method !== 'POST') return response({ ok: false, error: 'Use POST' }, 405);
+    try {
+      const master = await readWriterMaster(req, url);
+      const built = parseMasterText(master.text);
+      built.meta.writerFetchedAt = master.fetchedAt || master.modifiedTime || '';
+      built.meta.writerId = master.id || '';
+      await saveSnapshot(built);
+      return response({ ok: true, service: 'structured-runtime', imported: true, jobs: built.jobs.length, counts: built.counts, meta: built.meta });
+    } catch (e) {
+      return response({ ok: false, service: 'structured-runtime', error: 'IMPORT_FROM_WRITER_FAILED', detail: String(e && e.message || e) }, 502);
+    }
   }
 
   if (!snapshot) return response({ ok: false, service: 'structured-runtime', error: 'STRUCTURED_SNAPSHOT_NOT_LOADED', dataAvailable: false }, 503);
