@@ -6,15 +6,21 @@
  */
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const Transport=require('../pipeline-writer-transport'),Parser=require('../pipeline-parser'),rowHash=require('../apps-script/Code.gs').textHash_;
+const Transport=require('../pipeline-writer-transport'),Parser=require('../pipeline-parser'),rowHash=require('../apps-script/Code.gs').textHash_,Preflight=require('../pipeline-intake-preflight');
 async function main(args){
   if(args.length!==3)throw new Error('Usage: writer-intake.cjs connection.json candidate-request.json checkpoint-directory');
   const config=JSON.parse(fs.readFileSync(args[0],'utf8')),request=JSON.parse(fs.readFileSync(args[1],'utf8'));
   const endpoint=new URL(config.url);
   if(endpoint.protocol!=='https:'||endpoint.hostname!=='script.google.com'||!/^\/macros\/s\/[^/]+\/exec$/.test(endpoint.pathname))throw new Error('SUPPORTED_WRITER_ENDPOINT_REQUIRED');
   if(!config.key||request.body.action!=='intake'||!request.body.run||request.body.run.SCOUT_RUN_ID!==request.requestId)throw new Error('INTAKE_ID_MUST_EQUAL_SCOUT_RUN_ID');
+  const preflight=Preflight.validate(request);
+  if(!preflight.ok)throw new Error('INTAKE_PREFLIGHT_FAILED: '+preflight.errors.join('; '));
   fs.mkdirSync(args[2],{recursive:true});
   const checkpoint=path.join(args[2],crypto.createHash('sha256').update(request.requestId).digest('hex')+'.json');
+  const payloadProof=path.join(args[2],crypto.createHash('sha256').update(request.requestId).digest('hex')+'.payload-proof.json');
+  const prior=fs.existsSync(payloadProof)?JSON.parse(fs.readFileSync(payloadProof,'utf8')):null;
+  if(prior && prior.sha256!==preflight.sha256)throw new Error('INTAKE_PAYLOAD_CHANGED_FOR_REQUEST_ID');
+  if(!prior)fs.writeFileSync(payloadProof,JSON.stringify({requestId:request.requestId,sha256:preflight.sha256,byteLength:preflight.byteLength,recordCount:preflight.stats.records,ledgerCount:preflight.stats.ledger},null,2)+'\n',{flag:'wx',mode:0o600});
   const adapter={
     load:async()=>fs.existsSync(checkpoint)?JSON.parse(fs.readFileSync(checkpoint,'utf8')):null,
     persist:async item=>{const temporary=checkpoint+'.tmp';fs.writeFileSync(temporary,JSON.stringify(item,null,2)+'\n',{mode:0o600});const fd=fs.openSync(temporary,'r');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}fs.renameSync(temporary,checkpoint);},
