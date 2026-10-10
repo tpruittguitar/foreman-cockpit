@@ -1,0 +1,5 @@
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const code=fs.readFileSync(path.join(__dirname,'..','pipeline.html'),'utf8');
+test('ranking weights have a persistent accessible live total',()=>{assert.match(code,/id="score-weight-total"/);assert.match(code,/id="score-weight-balance"/);assert.match(code,/aria-live="polite"/);});
+test('input events update a total and announce under or over 100',()=>{assert.match(code,/function updateRankingWeightTotal_\(v\)/);assert.match(code,/el\.addEventListener\('input',function\(\)\{updateRankingWeightTotal_\(v\)\}/);assert.match(code,/Add '\+diff\+' points to reach 100/);assert.match(code,/Reduce by '\+diff\+' points to reach 100/);});
+test('save and publish are both blocked unless complete weights sum to 100',()=>{assert.match(code,/correct=valid&&Math\.abs\(total-100\)/);assert.match(code,/\['score-save','score-publish'\]/);assert.match(code,/button\.disabled=!correct/);assert.match(code,/Enter a value from 0 to 100 in every weight field/);});
