@@ -144,6 +144,7 @@ class Handler(BaseHTTPRequestHandler):
         offset = max(int(params.get("offset", [0])[0]), 0)
         bucket = params.get("bucket", [""])[0].strip()
         q = params.get("q", [""])[0].strip()
+        mode = params.get("mode", [""])[0].strip().lower()
         where: List[str] = []
         values: List[Any] = []
         if bucket:
@@ -154,12 +155,16 @@ class Handler(BaseHTTPRequestHandler):
             like = f"%{q}%"
             values.extend([like, like, like, like])
         clause = "WHERE " + " AND ".join(where) if where else ""
-        sql = f"SELECT primary_id, inv, company, title, bucket, disposition, date_added, req_id, location FROM jobs {clause} ORDER BY inv LIMIT ? OFFSET ?"
+        select_cols = "source_line" if mode == "source" else "primary_id, inv, company, title, bucket, disposition, date_added, req_id, location"
+        sql = f"SELECT {select_cols} FROM jobs {clause} ORDER BY inv LIMIT ? OFFSET ?"
         with connect(self.db_path) as conn:
             total_sql = f"SELECT COUNT(*) FROM jobs {clause}"
             total = conn.execute(total_sql, values).fetchone()[0]
-            rows = [row_to_dict(r) for r in conn.execute(sql, values + [limit, offset])]
-            self.send_json({"ok": True, "total": total, "limit": limit, "offset": offset, "rows": rows})
+            if mode == "source":
+                rows = [r["source_line"] for r in conn.execute(sql, values + [limit, offset])]
+            else:
+                rows = [row_to_dict(r) for r in conn.execute(sql, values + [limit, offset])]
+            self.send_json({"ok": True, "total": total, "limit": limit, "offset": offset, "mode": mode or "summary", "rows": rows})
 
     def job(self, primary_id: str) -> None:
         with connect(self.db_path) as conn:

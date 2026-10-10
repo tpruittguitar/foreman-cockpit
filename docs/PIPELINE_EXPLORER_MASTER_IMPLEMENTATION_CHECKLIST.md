@@ -88,7 +88,7 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 - [x] Build a read-only structured mirror from the current text master, terminal archive, and evidence companion. Local SQLite mirror imports live rows, archived rows, evidence field rows, resolved evidence chains, and runtime read status; not production source yet.
 - [x] Validate counts, bucket totals, archive totals, and evidence resolution against the current local files. Validation on 2026-10-10 imported 741 live jobs, 522 archive jobs, 31,761 payload fields, 1,936 evidence chains, 4,683 evidence field rows, and 0 unresolved evidence chains.
 - [x] Design final structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules. See `docs/STORAGE_SQLITE_SCHEMA_DESIGN.md` and additive Phase 2 tables in `tools/local-store/schema.sql`.
-- [ ] Switch production UI reads to bounded JSON endpoints backed by structured storage.
+- [~] Switch production UI reads to bounded JSON endpoints backed by structured storage. Dev-only local path now loads from paged SQLite `/api/jobs?mode=source` when the app is served locally; production default is not cut over.
 - [ ] Keep Google Drive exports generated from the structured store only.
 - [ ] Retire Google Drive text-file reads from the production UI load path.
 

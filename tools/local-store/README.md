@@ -70,7 +70,7 @@ Override the API base when needed:
 https://foreman-cockpit.netlify.app/?src=local&localApi=http://127.0.0.1:8765
 ```
 
-This is a read-only development source. It does not use Writer, Apps Script, Google Docs, or Google Drive runtime reads for the Pipeline table load. It reads the local SQLite `/api/master` endpoint and feeds the existing Pipeline parser.
+This is a read-only development source. It does not use Writer, Apps Script, Google Docs, or Google Drive runtime reads for the Pipeline table load. By default it reads bounded `/api/jobs?mode=source` pages from SQLite and feeds the existing Pipeline parser. The older single `/api/master` compatibility endpoint remains available with `?src=local&bounded=0`.
 
 ## Final structured schema
 
@@ -104,3 +104,32 @@ Additional local API endpoints:
 /api/evidence/<PRIMARY_ID>
 /api/runtime-status
 ```
+
+## Bounded local UI read
+
+The default local development path is now bounded and paged:
+
+```text
+http://127.0.0.1:8080/pipeline.html?src=local
+```
+
+That path reads:
+
+```text
+/api/jobs?mode=source&limit=250&offset=0
+/api/jobs?mode=source&limit=250&offset=250
+...
+```
+
+The browser rebuilds a Pipeline-compatible text view from those SQLite pages, then feeds the existing parser. This proves the UI can run from bounded structured JSON without one large `/api/master` runtime read.
+
+Validation result from 2026-10-10:
+
+- app served locally from `http://127.0.0.1:8080/pipeline.html?src=local`
+- local API at `http://127.0.0.1:8765`
+- 654 visible roles
+- 741 row-lines
+- readout: `Connected local SQLite bounded`
+
+The Netlify-hosted page may fail to fetch `http://127.0.0.1:8765` from the browser. For local SQLite testing, serve the app locally or later provide a reachable local/tunnel/VPN endpoint.
+
