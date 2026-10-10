@@ -2,48 +2,15 @@
 
 Status date: 2026-10-10
 Branch: `phase1-overhaul-visual-foundation`
-Review rule: complete one phase, review with screenshots/summary, then begin the next phase only after approval.
+Review model: Tim does not need to navigate GitHub. Each phase is summarized in chat with clear changed files, behavior changes, and guardrails. Proceed only on Tim's direct instruction.
 
 ## Guardrails
 
 - Preserve current Pipeline Explorer functionality, data behavior, Writer flow, canonical master handling, scoring display, application state history, filtering/search, map behavior, and protected statuses.
 - Do not directly edit the canonical master.
 - Do not change live scoring weights or publish VNext scoring in the visual overhaul.
-- Do not alter Writer authority, Writer transaction logic, queue behavior, or automation prompts as part of Phase 1.
-- Keep changes reviewable and phase-bounded.
-
-## Visual target
-
-Pipeline Explorer should feel like a black/grey modern military manufacturing-intelligence cockpit with a slick Shield AI / Hivemind software feel. Movie/game/sci-fi interface inspiration is acceptable when it improves intuitiveness, exploration, priority guidance, and operational readability. Avoid blue-cast structural greys; use true black, white, and neutral greys as the base. Accent colors should communicate function and state.
-
-## Color baseline
-
-### Structural colors
-
-| Token | Purpose | Value |
-| --- | --- | --- |
-| `--bg` | Page background | `#000000` |
-| `--panel` | Main shell/panel | `#050505` |
-| `--panel2` | Secondary panel | `#0b0b0b` |
-| `--raised` | Raised card surface | `#111111` |
-| `--line` | Primary divider | `#242424` |
-| `--line2` | Secondary border | `#343434` |
-| `--text` | Primary text | `#f4f4f4` |
-| `--dim` | Secondary text | `#b8b8b8` |
-| `--faint` | Muted text | `#7a7a7a` |
-| `--white` | Hot emphasis | `#ffffff` |
-
-### Functional highlights
-
-| Token | Meaning | Value |
-| --- | --- | --- |
-| `--ok` | Verified / healthy / complete | `#35ff9e` |
-| `--caution` | Caution / review | `#ffcf4d` |
-| `--attn` | Aging backlog / warning | `#ff8a2a` |
-| `--fault` | Failed / blocked / worsening | `#ff4d5e` |
-| `--focus` | Active selection / live signal | `#2fe6ff` |
-| `--new` | New intake / growth signal | `#35ff9e` |
-| `--brand` | Primary hot accent | `#ffffff` or a controlled functional accent |
+- Do not alter Writer authority, Writer transaction logic, queue behavior, automation prompts, or Drive-authority files as part of the UI overhaul.
+- Layout and dashboard work is presentation/supporting evidence only unless Tim explicitly authorizes backend/Writer changes.
 
 ## Phase plan
 
@@ -51,19 +18,23 @@ Pipeline Explorer should feel like a black/grey modern military manufacturing-in
 | --- | --- | --- | --- |
 | 0 | Tracker and governance | Create review-gated tracker and branch discipline | COMPLETE |
 | 1 | Visual foundation and Pipeline density | Neutral black/grey tokens, typography scale, right-panel text reduction, compact queue styling, preserve map and behavior | IMPLEMENTED - ACCEPTED SCALE-WISE |
-| 1B | Persistent Pipeline table layout controls | Smaller default column widths, drag column order left/right, manual width resizing, row-height setting, save/lock persistence | REQUIRED - NOT STARTED |
-| 2 | Navigation consolidation | Collapse left rail/menu into Pipeline, Map, AI Operations, Control Center, Analytics | BLOCKED UNTIL PHASE 1B REVIEW |
-| 3 | AI Operations dashboard | Intake/enrichment throughput, explicit enrichment backlog, backlog trend, Writer health, lane performance, Next Priority | BLOCKED UNTIL PHASE 2 REVIEW |
-| 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | BLOCKED UNTIL PHASE 3 REVIEW |
-| 5 | Workspace layout system | Drag, resize, lock, save, restore, presets, responsive layout separation for panels in every view | TABLE-SPECIFIC CONTROLS MOVED FORWARD TO PHASE 1B; REMAINDER BLOCKED UNTIL PHASE 4 REVIEW |
-| 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | BLOCKED UNTIL PHASE 5 REVIEW |
-| 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | BLOCKED UNTIL PHASE 6 REVIEW |
+| 1B | Persistent Pipeline table layout controls | Smaller default column widths, drag column order left/right, manual width resizing, row-height setting, save/lock persistence | MARKED COMPLETE BY TIM FOR PHASE PROGRESSION; FUTURE TABLE/PANEL PERSISTENCE REMAINS TRACKED |
+| 2 | Navigation consolidation | Collapse visible navigation into Pipeline, Map, AI Operations, Control Center, Analytics | IMPLEMENTED BASELINE |
+| 3 | AI Operations dashboard | Intake/enrichment visibility, explicit backlog, Writer health, lane performance, Next Priority | BASELINE IMPLEMENTED |
+| 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | NEXT |
+| 5 | Workspace layout system | Drag, resize, lock, save, restore, presets, responsive layout separation for panels in every view | BLOCKED UNTIL PHASE 4 SUMMARY |
+| 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | BLOCKED UNTIL PHASE 5 SUMMARY |
+| 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | BLOCKED UNTIL PHASE 6 SUMMARY |
+
+## Visual target
+
+Pipeline Explorer should feel like a black/grey modern military manufacturing-intelligence cockpit with a slick Shield AI / Hivemind software feel. Movie/game/sci-fi interface inspiration is acceptable when it improves intuitiveness, exploration, priority guidance, and operational readability. Avoid blue-cast structural greys; use true black, white, and neutral greys as the base. Accent colors should communicate function and state.
 
 ## Global workspace layout requirement
 
 Every major view must ultimately support operator-owned panel arrangement, not just the Pipeline table.
 
-### Required behavior
+Required behavior:
 
 - Panels in each view can be moved.
 - Panels in each view can be resized.
@@ -74,48 +45,7 @@ Every major view must ultimately support operator-owned panel arrangement, not j
 - User can unlock, adjust, save, restore, or reset a view layout.
 - Layout state is presentation-only; it must never change job data, master state, Writer behavior, scoring, rules, automations, or application history.
 
-### Scope by phase
-
-- Phase 1B handles the Pipeline table first because it is the active pain point and already has partial resize code.
-- Phase 5 remains the full reusable workspace system for movable/resizable/lockable panels across Pipeline, Map, AI Operations, Control Center, Analytics, and supporting views.
-- Phase 5 implementation should not be skipped just because Phase 1B adds table-specific controls.
-
-## Phase 1 detailed scope
-
-### Included
-
-- Replace blue-cast structural colors with true black / neutral grey tokens.
-- Reduce oversized text in the Pipeline right-side working panel.
-- Tighten job detail metadata spacing and hierarchy.
-- Preserve desktop Pipeline layout proportions.
-- Preserve current queue/detail/map behavior.
-- Preserve target density of 15-20 visible queue rows.
-- Keep accent colors limited to state, selection, priority, charts, map pins, and warnings.
-- Add subtle modern-military/sci-fi polish only where it improves readability or priority.
-
-### Excluded
-
-- No navigation restructure.
-- No AI Operations dashboard implementation.
-- No Control Center implementation.
-- No general drag/resize/lock layout engine.
-- No scoring model changes.
-- No Writer changes.
-- No automation prompt/name changes.
-- No Google Drive authority changes.
-
-### Phase 1 acceptance checks
-
-- Existing data loads normally.
-- Existing Pipeline queue still works.
-- Selecting a job still opens the existing working panel.
-- Map remains visible and functional.
-- No master/Writer/scoring logic changed.
-- Right-side panel text is materially less oversized.
-- Base UI reads black/white/neutral grey, not blue.
-- Screenshots reviewed before Phase 2 begins.
-
-### Phase 1 implementation notes
+## Phase 1 implementation notes
 
 - Implemented as CSS-only overrides in `pipeline-ui-workspace.css`.
 - Added neutral black/grey token overrides for the existing variable system.
@@ -127,11 +57,11 @@ Every major view must ultimately support operator-owned panel arrangement, not j
 
 ## Phase 1B table-layout control requirement
 
-User review on 2026-10-10 accepted the Phase 1 scale/look, but required the Pipeline table itself to become operator-adjustable and persistent before Phase 2.
+Tim accepted the scale/look and required Pipeline table geometry to become operator-adjustable and persistent. This remains part of the future layout-work backlog even though Tim authorized phase progression.
 
-### Required behavior
+Required behavior:
 
-- Pipeline columns default to smaller, tighter widths than the current defaults.
+- Pipeline columns default to smaller, tighter widths than the prior defaults.
 - User can drag columns left/right to change visible column order.
 - User can drag-resize column widths.
 - User can choose a row-height setting.
@@ -140,40 +70,40 @@ User review on 2026-10-10 accepted the Phase 1 scale/look, but required the Pipe
 - User can unlock or reset back to default if needed.
 - Saved table layout must be device-safe and must not alter canonical master data, Writer logic, scoring, filters, application state, or row content.
 
-### Implementation notes for Phase 1B
+## Phase 2 implementation notes
 
-- Existing table resize code already exists, but it is currently session-only and resets on fresh canonical load/refresh. Phase 1B must remove that defect.
-- Existing column visibility model is stored in `S.cols` / `LS.get('cols')`; Phase 1B should reuse that governance rather than creating a second conflicting column source.
-- Existing column-width state is `S.colWidths` and `S.colWidthsPhone`; Phase 1B should persist manual changes instead of clearing them on every load.
-- Row-height should use a persisted setting, not only automatic fit logic.
-- Lock/save state must make the user's manual table geometry authoritative until the user unlocks or resets it.
+Runtime file changed: `pipeline-navigation.js`.
 
-### Phase 1B acceptance checks
+Visible navigation is now organized as:
 
-- Fresh load keeps saved column widths.
-- Fresh load keeps saved column order.
-- Fresh load keeps saved row-height setting.
-- Locked table layout does not get overwritten by auto-fit.
-- Reset returns to compact default widths/order/row height.
-- Sorting/filtering/header popover behavior remains intact.
-- Sticky first columns still align after reorder/resize.
-- No master, Writer, scoring, automation, or Drive logic changed.
+- Pipeline
+- Map
+- AI Operations
+- Control Center
+- Analytics
 
-## AI Operations dashboard requirements for later phases
+Existing route IDs stay stable so the old pages remain reachable under the new grouping.
 
-The dashboard must show both flow balance and enrichment backlog. Balance alone is insufficient.
+## Phase 3 implementation notes
 
-Required chart groups:
+Runtime file changed: `pipeline-operations-ui.js`.
 
-- Verified intake vs verified enrichment by hour/day.
-- Cumulative intake vs cumulative enrichment.
-- Enrichment backlog by stage.
-- Enrichment backlog trend over time.
-- Writer failures and unverified writes.
-- Lane health by task.
-- Next Priority card that points to the highest-value next action.
+Baseline AI Operations dashboard now adds:
 
-## Mobile review requirements for later phases
+- Next Priority card.
+- Open enrichment backlog card.
+- Completion ratio card.
+- Writer blocked card.
+- Intake reviewed card.
+- Oldest open age card.
+- Enrichment backlog by stage table.
+- Coverage-limits note distinguishing UNKNOWN from zero.
+
+The dashboard uses existing Writer-owned supporting operations snapshots. It does not mutate canonical job data, scoring, rules, Writer authority, or automation prompts.
+
+Known Phase 3 limitation: historical intake-vs-enrichment trend lines require durable per-run history in the Writer snapshot. Where history is absent, the dashboard reports UNKNOWN rather than inventing a trend.
+
+## Mobile review requirements for Phase 4
 
 - Full phone portrait sizing/readability review.
 - Full phone landscape perimeter-padding review.
@@ -186,17 +116,19 @@ Required chart groups:
 
 - 2026-10-10: Created phased overhaul tracker and branch `phase1-overhaul-visual-foundation`.
 - 2026-10-10: Implemented Phase 1 CSS-only visual foundation overrides in `pipeline-ui-workspace.css`.
-- 2026-10-10: Restored `build-info.json` placeholder after an accidental branch-local stamp; the final file content matches the main placeholder.
-- 2026-10-10: Phase 1 visual scale/look accepted by user; Pipeline table layout persistence is now a required Phase 1B correction before Phase 2.
+- 2026-10-10: Restored `build-info.json` placeholder after accidental branch-local stamp; final file content matched main placeholder.
+- 2026-10-10: Phase 1 visual scale/look accepted by Tim; Pipeline table layout persistence recorded as required.
 - 2026-10-10: Reconfirmed global requirement that panels in every view must be movable, resizable, lockable, saved, restored, and presentation-only.
+- 2026-10-10: Implemented Phase 2 baseline in `pipeline-navigation.js`.
+- 2026-10-10: Implemented Phase 3 baseline in `pipeline-operations-ui.js`.
 
-## Expected review diff
+## Current review surface
 
-The intended Phase 1 review surface is limited to:
+Changed files in PR #85 are expected to include:
 
 - `pipeline-ui-workspace.css`
+- `pipeline-navigation.js`
+- `pipeline-operations-ui.js`
 - `docs/PIPELINE_EXPLORER_OVERHAUL_TRACKER.md`
 
-Phase 1B will intentionally add runtime table-layout control logic. That remains out of scope for the completed Phase 1 visual-only pass, but is now required before Phase 2 begins.
-
-Any Writer, scoring, automation, master-data, or net build-info change should be treated as out of scope for Phase 1 and Phase 1B.
+Any Writer, scoring, automation, master-data, or net build-info change should be treated as out of scope.
