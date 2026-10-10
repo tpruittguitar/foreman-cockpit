@@ -70,6 +70,7 @@ function route(req) {
 }
 
 function publicHealth(snapshot) {
+  const meta = snapshot && snapshot.meta ? snapshot.meta : {};
   return {
     ok: true,
     service: 'structured-runtime',
@@ -78,6 +79,7 @@ function publicHealth(snapshot) {
     dataGate: 'token_required',
     auth: expectedToken() ? 'structured_token_configured' : 'writer_key_supported',
     reason: snapshot ? 'Structured snapshot is loaded; protected endpoints require token.' : 'Structured endpoint is reachable; no structured snapshot has been loaded yet.',
+    snapshot: snapshot ? { jobs: Array.isArray(snapshot.jobs) ? snapshot.jobs.length : 0, generatedAt: meta.generatedAt || '', source: meta.source || '', writerFetchedAt: meta.writerFetchedAt || '', schema: meta.schema || '' } : null,
     endpoints: ['/api/structured/health', '/api/structured/counts', '/api/structured/jobs', '/api/structured/jobs/<PRIMARY_ID>'],
   };
 }

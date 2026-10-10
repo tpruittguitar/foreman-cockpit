@@ -43,12 +43,16 @@
       else items.push({area:'Active master',state:v.freshness||conn.state||'UNKNOWN',detail:conn.lastRead?'last read '+conn.lastRead:(conn.state||'not verified'),bad:false});
       items.push({area:'Terminal archive',state:label(a.state),detail:a.error||('archive rows '+(a.rows?a.rows.length:'not loaded')),bad:a.state==='FAILED'});
       items.push({area:'Evidence companion',state:label(e.state),detail:e.error||('evidence records '+(e.recs?e.recs.length:'not loaded')),bad:e.state==='FAILED'});
+      if(v.meta&&v.meta.source==='structured-runtime'){
+        var sm=v.meta.structured||{},generated=sm.generatedAt||v.meta.modifiedTime||'',age=generated?ageText(generated):'UNKNOWN',rows=v.meta.total||v.meta.rows||'UNKNOWN';
+        items.push({area:'Structured snapshot',state:sm.source?'OK':'UNKNOWN',detail:'rows '+rows+' · generated '+(generated||'UNKNOWN')+' · age '+age,bad:false});
+      }
       var bad=items.filter(function(x){return x.bad;}).length,pending=items.filter(function(x){return x.state==='PENDING';}).length;
       return {items:items,state:bad?'DEGRADED':pending?'LOADING':'OK'};
     }
     function runtimeHealthHtml(){
       var rh=runtimeReadHealth();
-      return '<div class="panel"><h3>Runtime read health</h3><p class="tip">Active master must stay live. Archive and evidence are supporting reads; failures must be visible and degraded, not silent.</p>'+table(['Runtime read','State','Detail'],rh.items.map(function(x){return [x.area,x.state,x.detail];}))+'<div class="row"><span class="chip">Runtime status: '+cell(rh.state)+'</span></div></div>';
+      return '<div class="panel"><h3>Runtime read health</h3><p class="tip">Active master must stay live. In structured production mode, the snapshot age and row count are shown here. Archive and evidence support reads must be visible and degraded, not silent.</p>'+table(['Runtime read','State','Detail'],rh.items.map(function(x){return [x.area,x.state,x.detail];}))+'<div class="row"><span class="chip">Runtime status: '+cell(rh.state)+'</span></div></div>';
     }
     function dashboardHtml(store,summary,observed){
       var m=dashboardMetrics(store,summary),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return [k,m.stages[k]];});

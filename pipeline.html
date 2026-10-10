@@ -728,13 +728,13 @@ function importStructuredFromWriter_(base){
 }
 
 function structuredTextFromPagedJobs_(base,seq){
-  var limit=250,all=[],total=null,fetchedAt=new Date().toISOString();
+  var limit=250,all=[],total=null,fetchedAt=new Date().toISOString(),snapshotMeta=null;
   function page(offset){
     if(seq!==S.loadSeq)return Promise.resolve(null);
     readout('<b>fetching structured runtime.</b> rows '+offset+'-'+(offset+limit));
     return fetch(base+'/jobs?limit='+limit+'&offset='+offset,{cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error((j&&j.error)||('structured jobs HTTP '+r.status));return j})}).then(function(j){
       if(!j||j.ok!==true||!Array.isArray(j.jobs))throw new Error((j&&j.error)||'structured jobs page failed');
-      if(total==null)total=+j.total||0;all=all.concat(j.jobs);
+      if(total==null)total=+j.total||0;if(!snapshotMeta)snapshotMeta=j.meta||{};all=all.concat(j.jobs);
       return all.length<total?page(all.length):all;
     });
   }
@@ -744,7 +744,7 @@ function structuredTextFromPagedJobs_(base,seq){
     var counts={},i;rows.forEach(function(line){var cells=String(line).split(' | '),b=cells[4]||'UNKNOWN';counts[b]=(counts[b]||0)+1});
     var keys=Object.keys(counts).sort(),line='COUNTS: TOTAL='+rows.length+' '+keys.map(function(k){return k+'='+counts[k]}).join(' ')+' UNACCOUNTED=0';
     var text=[line,'STRUCTURED_RUNTIME_VIEW (generated from paged /api/structured/jobs records).','========'].concat(rows).concat(['END V2_CURRENT_POPULATION_MASTER ('+rows.length+' rows)']).join('\n')+'\n';
-    return {ok:true,id:'structured-runtime',source:'structured-runtime',fetchedAt:fetchedAt,modifiedTime:fetchedAt,rows:rows.length,text:text};
+    return {ok:true,id:'structured-runtime',source:'structured-runtime',fetchedAt:fetchedAt,modifiedTime:(snapshotMeta&&snapshotMeta.generatedAt)||fetchedAt,rows:rows.length,total:total,structuredMeta:snapshotMeta||{},text:text};
   });
 }
 function loadStructuredRuntime_(q){
@@ -762,7 +762,7 @@ function loadStructuredRuntime_(q){
   return loader.then(function(j){
     if(seq!==S.loadSeq)return j;
     if(!j||j.ok!==true||typeof j.text!=='string'||!j.text)throw new Error((j&&j.error)||'structured runtime returned no master text');
-    var meta={id:j.id||'structured-runtime',fetchedAt:j.fetchedAt||new Date().toISOString(),modifiedTime:j.modifiedTime||'',bytes:j.text.length,source:j.source||'structured-runtime',structuredApi:base};
+    var meta={id:j.id||'structured-runtime',fetchedAt:j.fetchedAt||new Date().toISOString(),modifiedTime:j.modifiedTime||'',bytes:j.text.length,source:j.source||'structured-runtime',structuredApi:base,rows:j.rows||0,total:j.total||j.rows||0,structured:j.structuredMeta||{}};
     S.load={freshness:'LIVE',error:'',startedAt:meta.fetchedAt,text:j.text,fromCache:false,meta:meta,archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};
     S.connection.state='Connected structured runtime';S.connection.lastRead=meta.fetchedAt;S.connection.error='';
     apply(j.text,meta,false);renderLoadAlert_();renderReadout();

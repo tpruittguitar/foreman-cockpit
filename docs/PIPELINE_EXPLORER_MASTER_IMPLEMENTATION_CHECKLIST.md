@@ -91,6 +91,7 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 - [x] Switch production UI reads to bounded JSON endpoints backed by structured storage. Production default now uses the structured runtime endpoint. Dev-only local path remains available with `?src=local`; Writer/App Script rollback path remains available with `?src=writer`.
 - [~] Keep Google Drive exports generated from the structured store only. Local SQLite generates master/archive/evidence snapshots, records them in `export_snapshots`, and can publish checksum-verified copies into the dedicated synced Drive folder `AI_Coordination/SQLite_Exports`. Canonical live Drive files are still not generated from SQLite, so this remains partial.
 - [x] Retire Google Drive text-file reads from the production UI load path. Tim explicitly approved cutover on 2026-10-10; production default now reads the structured runtime. The old Writer/App Script path is preserved for rollback at `?src=writer`.
+- [x] Show structured runtime freshness in Operations. `/api/structured/health` exposes snapshot metadata and AI Operations runtime read health shows structured snapshot rows, generated time, and age when production reads structured runtime.
 
 Immediate hardening while migration is pending:
 
