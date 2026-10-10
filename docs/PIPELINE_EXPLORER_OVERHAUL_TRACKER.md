@@ -22,8 +22,8 @@ Review model: Tim does not need to navigate GitHub. Each phase is summarized in 
 | 2 | Navigation consolidation | Collapse visible navigation into Pipeline, Map, AI Operations, Control Center, Analytics | IMPLEMENTED BASELINE |
 | 3 | AI Operations dashboard | Intake/enrichment visibility, explicit backlog, Writer health, lane performance, Next Priority | BASELINE IMPLEMENTED |
 | 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | IMPLEMENTED BASELINE |
-| 5 | Workspace layout system | Drag, resize, lock, save, restore, presets, responsive layout separation for panels in every view | NEXT |
-| 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | BLOCKED UNTIL PHASE 5 SUMMARY |
+| 5 | Workspace layout system | Drag, resize, lock, save, restore, responsive layout separation for panels in every view | FOUNDATION IMPLEMENTED |
+| 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | NEXT |
 | 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | BLOCKED UNTIL PHASE 6 SUMMARY |
 
 ## Visual target
@@ -120,6 +120,31 @@ Baseline mobile pass now adds:
 
 This is a CSS-only presentation pass. It does not change map data, route logic, selected-job behavior, Writer, master, scoring, or automations.
 
+## Phase 5 implementation notes
+
+Runtime file changed: `pipeline-pane-split.js`.
+
+Baseline workspace layout foundation now adds:
+
+- A floating Layout toolbar.
+- Explicit layout edit mode so normal app use remains unchanged.
+- Move handles for eligible visible panels while layout edit mode is active.
+- Resize handles for eligible visible panels on desktop/fine-pointer layouts.
+- Per-view lock/unlock behavior.
+- Save behavior using localStorage only.
+- Reset-view behavior that clears presentation geometry for the current view/device.
+- Device-separated layout records for desktop, phone portrait, and phone landscape.
+- Presentation-only persistence under `px.workspace.layouts.v1`.
+
+Safety constraints:
+
+- The layout system stores only panel transforms and sizes.
+- It does not edit canonical job data.
+- It does not change master rows, Writer logic, scoring, rules, automation prompts, route logic, or application history.
+- Phone layouts are intentionally constrained; free drag/resize is desktop/fine-pointer only.
+
+Known Phase 5 limitation: this is the foundation pass. It does not yet implement named layout presets, cross-device layout copy, or full table column-order persistence from Phase 1B.
+
 ## Progress log
 
 - 2026-10-10: Created phased overhaul tracker and branch `phase1-overhaul-visual-foundation`.
@@ -130,6 +155,7 @@ This is a CSS-only presentation pass. It does not change map data, route logic, 
 - 2026-10-10: Implemented Phase 2 baseline in `pipeline-navigation.js`.
 - 2026-10-10: Implemented Phase 3 baseline in `pipeline-operations-ui.js`.
 - 2026-10-10: Implemented Phase 4 baseline in `pipeline-ui-mobile.css`.
+- 2026-10-10: Implemented Phase 5 workspace layout foundation in `pipeline-pane-split.js`.
 
 ## Current review surface
 
@@ -139,6 +165,7 @@ Changed files in PR #85 are expected to include:
 - `pipeline-navigation.js`
 - `pipeline-operations-ui.js`
 - `pipeline-ui-mobile.css`
+- `pipeline-pane-split.js`
 - `docs/PIPELINE_EXPLORER_OVERHAUL_TRACKER.md`
 
 Any Writer, scoring, automation, master-data, or net build-info change should be treated as out of scope.
