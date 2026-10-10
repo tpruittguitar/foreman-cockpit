@@ -58,18 +58,20 @@ Smoke test note, 2026-10-10: production app loaded at `https://foreman-cockpit.n
 
 ---
 
-## Architecture decision — Storage foundation
+## Phase 2 — Storage foundation migration
 
-Goal: preserve the storage lesson correctly: the master was already moved from a Google Doc to a plain text file, which was the right first fix. The remaining issue is that production runtime still depends on Google Drive/App Script text-file reads for large runtime data.
+Goal: make production data loading reliable. The master was already moved from a Google Doc to a plain text file, which was the right first fix. The remaining issue is that production runtime still depends on Google Drive/App Script text-file reads for large runtime data.
 
 Decision file: `docs/STORAGE_ARCHITECTURE_DECISION.md`
+
+Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 
 - [x] Move live population master away from Google Docs document storage to a plain text master file.
 - [x] Record decision: do not use Google Docs as a live app database.
 - [x] Record clarified decision: do not rely on Google Drive/App Script large text-file reads as the production runtime data path.
 - [x] Restrict Google Docs / Drive files to export, backup, reference, migration source, or manual review artifacts once structured storage exists.
-- [ ] Inventory every runtime read that depends on Google Drive text files or Apps Script file reads.
-- [ ] Classify each read as runtime-critical, export-only, backup-only, or removable.
+- [x] Inventory runtime reads that depend on Google Drive text files or Apps Script file reads.
+- [x] Classify first-pass runtime reads by criticality and migration direction.
 - [ ] Choose the replacement durable structured store.
 - [ ] Design structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules.
 - [ ] Build a read-only structured mirror from the current text master.
@@ -78,9 +80,16 @@ Decision file: `docs/STORAGE_ARCHITECTURE_DECISION.md`
 - [ ] Keep Google Drive exports generated from the structured store only.
 - [ ] Retire Google Drive text-file reads from the production UI load path.
 
+Immediate hardening while migration is pending:
+
+- [ ] Add guarded archive read wrapper.
+- [ ] Make `action=archive` return controlled JSON failure on Drive errors.
+- [ ] Never allow archive failure to block active master rendering.
+- [ ] Add archive/evidence degraded status to System Health / AI Operations.
+
 ---
 
-## Phase 2 — Finish Pipeline table controls
+## Phase 3 — Finish Pipeline table controls
 
 Goal: finish the concrete table-control request so Tim can make the job queue fit his workflow and keep the settings.
 
@@ -99,7 +108,7 @@ Goal: finish the concrete table-control request so Tim can make the job queue fi
 
 ---
 
-## Phase 3 — Finish automation visibility
+## Phase 4 — Finish automation visibility
 
 Goal: solve the problem where an automation can do partial work and Tim cannot tell what was skipped or left unfinished.
 
@@ -122,7 +131,7 @@ Goal: solve the problem where an automation can do partial work and Tim cannot t
 
 ---
 
-## Phase 4 — Finish automation strategy enforcement
+## Phase 5 — Finish automation strategy enforcement
 
 Goal: make the five-lane strategy enforceable and visible, not just described in prompts.
 
@@ -148,7 +157,7 @@ Checklist:
 
 ---
 
-## Phase 5 — Finish Control Center
+## Phase 6 — Finish Control Center
 
 Goal: turn Control Center from a shell into a real management surface for authority and governance.
 
@@ -167,7 +176,7 @@ Goal: turn Control Center from a shell into a real management surface for author
 
 ---
 
-## Phase 6 — Finish workspace layout system
+## Phase 7 — Finish workspace layout system
 
 Goal: make each major view operator-adjustable while preserving app behavior.
 
@@ -185,7 +194,7 @@ Goal: make each major view operator-adjustable while preserving app behavior.
 
 ---
 
-## Phase 7 — Finish mobile review
+## Phase 8 — Finish mobile review
 
 Goal: verify the mobile UI on the real target device and tune it from actual use.
 
@@ -199,7 +208,7 @@ Goal: verify the mobile UI on the real target device and tune it from actual use
 
 ---
 
-## Phase 8 — VNext scoring model
+## Phase 9 — VNext scoring model
 
 Goal: prove a new scoring model is better before it becomes live.
 
@@ -222,7 +231,7 @@ Important current status: VNext is not live. PR #85 only adds a warning/backtest
 
 ---
 
-## Phase 9 — Writer test debt cleanup
+## Phase 10 — Writer test debt cleanup
 
 Goal: get the repo test baseline clean so future PRs are easier to judge.
 
@@ -240,7 +249,7 @@ Current status: Writer tests fail on PR #85 and main with the same failures. The
 
 ## Recommended execution order from here
 
-1. Finish remaining production interaction smoke checks.
+1. Finish remaining production interaction smoke checks after data loading is stable.
 2. Execute the storage foundation migration track so runtime data no longer depends on Google Drive/App Script text-file reads.
 3. Finish Pipeline table controls.
 4. Finish automation visibility and durable run history.
