@@ -1,0 +1,10 @@
+name = "foreman-cockpit"
+pages_build_output_dir = "."
+compatibility_date = "2026-10-10"
+
+# Optional file-based KV binding example.
+# You can also bind this in the Cloudflare dashboard instead.
+[[kv_namespaces]]
+binding = "PIPELINE_SNAPSHOT_KV"
+id = "<production kv namespace id>"
+preview_id = "<preview kv namespace id>"

@@ -7,7 +7,9 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "build": "node scripts/write-build-info.cjs",
+    "check:cloudflare": "node scripts/check-cloudflare-function.cjs"
   },
   "repository": {
     "type": "git",
