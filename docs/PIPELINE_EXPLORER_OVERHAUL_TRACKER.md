@@ -140,4 +140,4 @@ The intended review surface is limited to:
 - `pipeline-ui-workspace.css`
 - `docs/PIPELINE_EXPLORER_OVERHAUL_TRACKER.md`
 
-Any net runtime logic, Writer, scoring, automation, master-data, or build-info change should be treated as out of scope for Phase 1.
+Any runtime logic, Writer, scoring, automation, master-data, or net build-info change should be treated as out of scope for Phase 1.
