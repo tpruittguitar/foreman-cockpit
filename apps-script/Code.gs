@@ -131,7 +131,7 @@ function doGet(e) {
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
-    if (a === 'archive') { var stA = readMigrationState_(); return out_(stA && stA.archiveId ? { ok: true, archiveId: stA.archiveId, mode: stA.mode, text: DriveApp.getFileById(stA.archiveId).getBlob().getDataAsString() } : { ok: true, archiveId: '', text: '' }); }
+    if (a === 'archive') return out_(readArchiveSafe_());
     if (a === 'evidence') return out_(readEvidence_(p.primaryId || ''));
     if (a === 'migration_status') return out_({ ok: true, state: migrationSummary_(readMigrationState_()), freeze: readFreeze_() });
     if (a === 'state') return out_({ ok: true, state: readState_() });
@@ -1063,6 +1063,19 @@ function readMigrationState_() {
   return state;
 }
 function writeMigrationState_(s) { s.updatedAt = new Date().toISOString(); findOrCreate_(MIGRATION_STATE_NAME, 'text', '{}').setContent(JSON.stringify(s)); }
+function readArchiveSafe_() {
+  var stA = null, archiveId = '', mode = '';
+  try {
+    stA = readMigrationState_();
+    archiveId = stA && stA.archiveId ? String(stA.archiveId) : '';
+    mode = stA && stA.mode ? String(stA.mode) : '';
+    if (!archiveId) return { ok: true, archiveId: '', mode: mode, text: '', degraded: false };
+    return { ok: true, archiveId: archiveId, mode: mode, text: DriveApp.getFileById(archiveId).getBlob().getDataAsString(), degraded: false };
+  } catch (e) {
+    return { ok: false, archiveId: archiveId, mode: mode, text: '', degraded: true, error: 'archive read failed: ' + errorStack_(e) };
+  }
+}
+
 function readFreeze_() {
   var f = textFileByName_(FREEZE_NAME); if (!f) return null;
   try { var d = JSON.parse(f.getBlob().getDataAsString() || '{}'); return d && d.frozen ? d : null; } catch (e) { return { frozen: true, reason: 'freeze file unreadable (fail closed)' }; }

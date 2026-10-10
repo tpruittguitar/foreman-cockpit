@@ -94,9 +94,11 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 
 Immediate hardening while migration is pending:
 
-- [ ] Add guarded archive read wrapper.
-- [ ] Make `action=archive` return controlled JSON failure on Drive errors.
-- [ ] Never allow archive failure to block active master rendering.
+Archive guard commit: `5628246` added `readArchiveSafe_()` and routes `GET action=archive` through it.
+
+- [x] Add guarded archive read wrapper.
+- [x] Make `action=archive` return controlled JSON failure on Drive errors.
+- [x] Never allow archive failure to block active master rendering. Active master rendering was already separated in `pipeline-loader.js`; this hardening keeps `archive` degraded instead of crashing the Writer endpoint.
 - [ ] Add archive/evidence degraded status to System Health / AI Operations.
 
 ---
