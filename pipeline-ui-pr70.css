@@ -265,3 +265,22 @@ body[data-freshness=loading] #worksplit:after{content:"";position:absolute;left:
 #sheet .sheet-g summary h4{display:inline;font-size:16px;color:inherit;letter-spacing:.3px}
 #sheet .sheet-g[open] summary{color:#91dcff}
 #sheet .sheet-g button{padding-left:18px;font-size:15px;white-space:normal;overflow-wrap:anywhere}
+
+
+/* Right-side job workspace: reduce prominent text by 10% without touching
+   the smallest labels, timestamps, fine print, metadata or tabular details.
+   Typography only: queue, map, window geometry, spacing and mobile unchanged. */
+@media (min-width:981px), (min-width:761px) and (pointer:fine) {
+  #drawer{font-size:15.0205px}
+  #drawer .wh-title h2,#drawer #d-title{font-size:28.35px!important}
+  #drawer .ws-meta{font-size:17.4656px}
+  #drawer .ws-ring b{font-size:30.375px}
+  #drawer .wh-actions button{font-size:16.3013px}
+  #drawer .detail-card h3,#drawer .ck-over h3{font-size:16.3013px}
+  #drawer .ck-kd li,#drawer .ck-checks li,#drawer .ck-next p,#drawer .ck-sum p{font-size:17.4656px}
+  #drawer .edit-grid input,#drawer .edit-grid select,#drawer .edit-grid textarea{font-size:13.6232px}
+  #drawer .next-job-step{font-size:13.5px}
+}
+@media (min-width:2200px) and (min-height:1200px) {
+  #drawer .wh-title h2,#drawer #d-title{font-size:32.4px!important}
+}
