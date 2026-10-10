@@ -1,0 +1,44 @@
+/* Workspace arrangement and incident history. Do not change canonical state or job layout. */
+.inc-history-page{max-width:1500px;margin:0 auto;padding:20px 24px;color:var(--text)}
+.inc-history-header{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line2);padding-bottom:12px}
+.inc-history-header h2{font-size:22px;margin:0}
+.inc-history-tools{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
+.inc-history-tools label{display:flex;flex-direction:column;gap:6px;min-width:230px;color:var(--dim)}
+.inc-history-tools input,.inc-history-tools select{min-height:38px;background:#090909;color:var(--text);border:1px solid var(--line2);padding:7px}
+.inc-history-summary{padding:12px 0;color:var(--dim);font-size:13px}
+.inc-history-summary b{color:#fff;margin-left:12px}
+.inc-history-summary b:first-child{margin-left:0}
+#inc-history-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),1fr));gap:12px;align-items:start}
+#inc-history-items .incident{margin:0;min-width:0}
+.inc-history-link{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0;padding:10px 0;border-top:1px solid var(--line)}
+.inc-history-link button{border:1px solid #686868;background:#141414;color:#fff;padding:8px 12px}
+#view-documents .doc-editor{min-width:0;display:flex;flex-direction:column;border:1px solid #363636;background:#080808;border-radius:6px;overflow:hidden}
+#view-documents .doc-editor-head{display:flex;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid #333}
+#view-documents .doc-editor-head h3{font-size:13px;margin:0;color:#fff;white-space:nowrap}
+#view-documents .doc-editor-head .tip{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#view-documents .doc-editor-text{flex:1;min-height:120px;width:100%;resize:vertical;box-sizing:border-box;background:#080808;color:#e4e8e4;border:0;padding:12px;font:13px/1.55 var(--sans)}
+#view-documents .doc-editor-text:focus-visible{outline:2px solid #91dcff;outline-offset:-2px}
+#view-documents .doc-editor-foot{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:7px 10px;border-top:1px solid #333}
+#view-documents .doc-editor-foot span{color:#999;font-size:10.5px;margin-right:auto}
+#view-documents .doc-editor-foot button{min-height:29px;padding:4px 8px}
+@media(min-width:981px),(min-width:761px) and (pointer:fine){
+ #view-documents .doc-workspace{grid-template-columns:minmax(400px,46%) minmax(0,54%);height:clamp(520px,65vh,760px)}
+ #view-documents .doc-library{display:flex;flex-direction:column;overflow:hidden}
+ #view-documents .docgrid{flex:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:8px}
+ #view-documents .docbox{min-height:0;max-height:98px;overflow:auto;padding:7px}
+ #view-documents .docbox h3{margin-bottom:4px}
+ #view-documents .docitem{padding:4px 3px}
+ #view-documents .doc-editors{flex:1;min-height:0;display:grid;grid-template-rows:1fr 1fr;gap:8px;padding:0 8px 8px}
+ #view-documents .doc-preview-pane{min-height:0}
+ #view-documents .doc-score-panel{grid-column:1/-1}
+}
+@media(max-width:760px),(pointer:coarse) and (max-width:980px){
+ #view-documents .doc-workspace{height:auto;min-height:0}
+ #view-documents .doc-library{max-height:none;overflow:visible;display:flex;flex-direction:column}
+ #view-documents .docbox{min-height:100px;max-height:180px;overflow:auto}
+ #view-documents .doc-editors{display:grid;gap:10px;padding:8px}
+ #view-documents .doc-editor-text{min-height:210px}
+ #view-documents .doc-preview-pane{height:54vh;min-height:380px}
+ .inc-history-page{padding:12px}
+ .inc-history-tools label{width:100%}
+}

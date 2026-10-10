@@ -100,7 +100,7 @@ function applyConditions(store,source,now){
 function prune(store,now){
   var resolved=Object.keys(store.incidents).map(function(k){return store.incidents[k]}).filter(function(i){return (i.status!=='ACTIVE'&&i.status!=='ACKNOWLEDGED_UNRESOLVED')})
     .sort(function(a,b){return (ms(b.resolvedAt)||0)-(ms(a.resolvedAt)||0)});
-  resolved.forEach(function(i,n){if(n>=MAX_RESOLVED||now-(ms(i.resolvedAt)||0)>KEEP_RESOLVED_MS)delete store.incidents[i.id]});
+  // Incident History retains verified recoveries; never discard forensic records by age or count.
 }
 
 /* obs: {runs:[], unverifiedCount:number|null, writer:source|null, load:source|null}. Returns true when the store changed. */
