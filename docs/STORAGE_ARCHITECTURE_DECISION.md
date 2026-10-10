@@ -1,4 +1,4 @@
-﻿# Storage Architecture Decision
+# Storage Architecture Decision
 
 Status date: 2026-10-10
 Status: ACTIVE DECISION
