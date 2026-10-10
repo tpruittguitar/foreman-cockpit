@@ -513,14 +513,28 @@ function incidentHtml_(i){var res=i.status!=='ACTIVE'&&i.status!=='ACKNOWLEDGED_
    +(res?'<small class="inc-res">'+esc(i.resolution||'')+(i.resolvedAt?' · '+esc(incidentTime_(i.resolvedAt)):'')+'</small>'+(i.recoveryEvidence?'<small class="inc-ev">Recovery evidence: '+esc(i.recoveryEvidence)+'</small>':'')
      :'<small class="inc-res">'+(i.kind==='event'?'Prior failure; current outcome not independently verified':'Current fault requiring action')+'</small>'+(i.kind==='event'?'<button type="button" class="inc-ack" data-ack="'+esc(i.id)+'">Acknowledge · retain unresolved</button>':''))
    +(i.timeline&&i.timeline.length?'<details><summary>Attempt chronology</summary>'+i.timeline.map(function(t){return '<small>'+esc(t.at+' · '+t.status+' · '+(t.error||''))+'</small>'}).join('')+'</details>':'')+' </span></div>'}
+function outstandingWorkHtml_(all,limit){
+  if(!all.length)return '<div class="inc-none">No unfinished Writer operations recorded.</div>';
+  var shown=limit?all.slice(0,limit):all;
+  return shown.map(function(o){
+    return '<article class="inc-work-item" data-work-operation="'+esc(o.operation)+'"><div class="inc-work-title">'+esc(o.operation)+'</div>'
+      +'<div class="tip">Unfinished obligation / '+esc(o.status.replace(/_/g,' '))+' / '+o.incidentCount+' incident class(es), '+o.attempts+' failed attempt(s)</div>'
+      +(o.latestFile?'<div class="tip">Latest attempt: '+esc(o.latestFile)+' / '+esc(incidentTime_(o.latestAt))+'</div>':'')
+      +(o.latestError?'<div class="inc-work-error">'+esc(String(o.latestError).slice(0,210))+'</div>':'')
+      +'<div class="inc-work-next"><b>Required next action:</b> '+esc(o.nextStep)+'</div>'
+      +'</article>';
+  }).join('');
+}
 function incidentsHtml_(hv,hh){
   var live=hv.active.filter(function(i){return i.kind!=='event'});
-  var unverified=hv.active.filter(function(i){return i.kind==='event'});
+  var obligations=PipelineIncidents.workQueue(S.incidents);
   var h='<h3 style="margin-top:10px">Current faults - '+live.length+'</h3>'
     +(live.length?live.map(incidentHtml_).join(''):'<div class="inc-none">No confirmed current faults.</div>');
-  if(hh.recoveryRequired)h+='<p class="inc-summary">Confirmed recovery obligations: '+hh.recoveryRequired+'</p>';
-  if(unverified.length)h+='<div class="inc-history-link"><span>'+unverified.length+' prior Writer failure incident(s) need outcome verification, not evidence of current Writer failure.</span></div>';
-  h+='<div class="inc-history-link"><button type="button" id="open-incident-history">Review incident history and verification</button></div>';
+  h+='<h3 style="margin-top:12px">Unfinished work - '+obligations.length+' operation(s)</h3>'
+    +'<p class="tip">Failures do not disappear because Writer is idle. Each operation remains open until its actual outcome is verified. Different failure classes and retries are grouped below.</p>'
+    +outstandingWorkHtml_(obligations,5);
+  if(obligations.length>5)h+='<div class="tip">'+(obligations.length-5)+' additional operation(s) in Incident History.</div>';
+  h+='<div class="inc-history-link"><button type="button" id="open-incident-history">Review full unfinished-work queue and history</button></div>';
   return h;
 }
 function renderIncidentHistory_(){
@@ -531,10 +545,11 @@ function renderIncidentHistory_(){
   var q=oldQ?oldQ.value:'',status=oldStatus?oldStatus.value:'ALL';
   host.innerHTML='<section class="inc-history-page"><div class="inc-history-header"><h2>Incident History</h2><button type="button" id="history-to-system">System Health</button></div>'
     +'<p class="tip">History retained in available synchronized/local storage. Failed attempts remain visible after verified recovery; missing proof is not recovery. Clearing browser storage may remove locally held records.</p>'
-    +'<div class="inc-history-summary"><b>'+hv.active.filter(function(i){return i.kind!=='event'}).length+'</b> current faults <b>'+hv.active.filter(function(i){return i.kind==='event'}).length+'</b> verification pending <b>'+hv.recovered.length+'</b> recovered (24h) <b>'+hv.historical.length+'</b> older resolved</div>'
+    +'<div class="inc-history-summary"><b>'+hv.active.filter(function(i){return i.kind!=='event'}).length+'</b> current faults <b>'+PipelineIncidents.workQueue(S.incidents).length+'</b> unfinished operations <b>'+hv.active.filter(function(i){return i.kind==='event'}).length+'</b> unverified failure classes <b>'+hv.recovered.length+'</b> recovered (24h) <b>'+hv.historical.length+'</b> older resolved</div>'
     +'<div class="inc-history-tools"><label>Search <input id="inc-history-search" type="search" placeholder="Request ID, component, error or owner" value="'+esc(q)+'"></label>'
     +'<label>State <select id="inc-history-state"><option value="ALL">All states</option><option value="UNRESOLVED">Unresolved / verification pending</option><option value="RECOVERED">Verified recovered</option><option value="HISTORICAL">Historical resolved</option></select></label></div>'
-    +'<div id="inc-history-items"></div><div id="inc-history-queue-results"></div></section>';
+    +'<h3>Unfinished work by original operation</h3><p class="tip">This is the recovery backlog, not a count of currently broken Writer processes. The entry remains until verified complete; never retry blindly.</p><div id="inc-history-work"></div><h3>Failure history</h3><div id="inc-history-items"></div><div id="inc-history-queue-results"></div></section>';
+  var work=PipelineIncidents.workQueue(S.incidents);$('inc-history-work').innerHTML=outstandingWorkHtml_(work,0);
   $('inc-history-state').value=status;
   function refresh(){
     var term=$('inc-history-search').value.trim().toLowerCase(),state=$('inc-history-state').value;
@@ -585,7 +600,7 @@ function renderWriterStatus_(){
     html+=writerRow_('trigger',w.triggerInstalled===false?'<span class="pill bad">MISSING</span>':w.triggerInstalled?'installed':'unknown');
     if(w.migration)html+=writerRow_('migration',esc((w.migration.mode||'')+' '+(w.migration.status||'')));}
   if(hh.recurring.length)html+=writerRow_('recurrence',esc(hh.recurring.length+' recurring fault group(s) · experimental: 3 episodes / 1 hour; healthy clearance 15 minutes'));
-  html+=writerRow_('verification',hh.verification?hh.verification+' older Writer incident(s) awaiting independent proof':'none');
+  html+=writerRow_('unfinished work',PipelineIncidents.workQueue(S.incidents).length+' operation(s) awaiting verified outcome');
   html+=incidentsHtml_(hv,hh);
   html+='<h3 style="margin-top:10px">Information · last 24 h</h3>'+noticeListHtml_(info,dis);
   html+='<div class="build-status">'+(w&&w.checkedAt?'Checked '+esc(new Date(w.checkedAt).toLocaleTimeString())+'. Refreshes every minute while this page is visible.':'')+'</div><div class="writer-countdown" data-writer-countdown><span></span><div class="writer-countdown-track" role="progressbar"><i></i></div></div>';

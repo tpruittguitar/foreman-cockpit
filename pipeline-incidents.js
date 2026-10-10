@@ -130,6 +130,38 @@ function view(store,now,windowMs){
   out.recovered.sort(function(a,b){return (ms(b.resolvedAt)||0)-(ms(a.resolvedAt)||0)});out.historical.sort(function(a,b){return (ms(b.resolvedAt)||0)-(ms(a.resolvedAt)||0)});
   return out;
 }
+/* Derive the unfinished-work register from the EXISTING incident ledger, not a
+ * second independently mutable task database. A failed attempt is an open
+ * obligation to reconcile its original intent even when Writer is now healthy.
+ * Count unique normalized operations, while retaining every failure class/attempt.
+ * The observed error determines the NEXT CHECK, not proof that a job was lost.
+ */
+function workQueue(store){
+  var groups={};
+  Object.keys((store&&store.incidents)||{}).forEach(function(k){
+    var i=store.incidents[k];
+    if(i.kind!=='event'||(i.status!=='ACTIVE'&&i.status!=='ACKNOWLEDGED_UNRESOLVED'))return;
+    var op=String(i.operation||normalizeOperation(i.latestFile||'')||i.id);
+    var g=groups[op]||(groups[op]={operation:op,incidents:[],attempts:0,latestAt:'',latestError:'',latestFile:'',status:'VERIFY_OUTCOME'});
+    g.incidents.push(i.id);g.attempts+=i.attempts||1;
+    if(!g.latestAt||ms(i.latestAt)>ms(g.latestAt)){g.latestAt=i.latestAt;g.latestFile=i.latestFile||'';g.latestError=i.latestError||'';}
+    var detail=String(i.latestError||'').toLowerCase(),terminal=String(i.terminalStatus||'').toUpperCase();
+    if(/invalid json|json parse|no json object|rejected_schema|source_url_required|missing required|schema error|must be valid json/.test(detail)||terminal==='REJECTED_SCHEMA'){
+      g.status='REPAIR_OR_RECONCILE';
+    }else if(/partial|hold/.test(detail)||/HOLD/.test(terminal)){
+      if(g.status!=='REPAIR_OR_RECONCILE')g.status='CHECK_PARTIAL_COMPLETION';
+    }
+  });
+  return Object.keys(groups).map(function(k){
+    var g=groups[k];g.incidentCount=g.incidents.length;
+    g.nextStep=g.status==='REPAIR_OR_RECONCILE'
+      ?'Check the rejected original payload and source candidates; correct the cause, dedupe and submit only work proven missing.'
+      :g.status==='CHECK_PARTIAL_COMPLETION'
+      ?'Reconcile each original subrequest against RESULT, receipt index and exact master outcome; retain any unfinished part.'
+      :'Check original intent, retries, Writer RESULT, COMPLETE receipt and exact master outcome before considering a safe retry.';
+    return g;
+  }).sort(function(a,b){return (ms(b.latestAt)||0)-(ms(a.latestAt)||0)});
+}
 function recurrence(store,now,config){
   now=now==null?Date.now():now;config=Object.assign({windowMs:3600000,episodes:3,clearMs:900000,experimental:true},config||{});
   var groups={};Object.keys((store&&store.incidents)||{}).forEach(function(k){var i=store.incidents[k],at=ms(i.latestAt);if(at==null||now-at>config.windowMs)return;(groups[i.group]=groups[i.group]||[]).push(i);});
@@ -172,6 +204,6 @@ function merge(local,remote){
 }
 
 var api={WINDOW_MS:WINDOW_MS,normalizeOperation:normalizeOperation,normalizeFailureClass:normalizeFailureClass,normalizeText:normalizeText,
-  empty:empty,recurrence:recurrence,triage:triage,observe:observe,acknowledge:acknowledge,view:view,health:health,forSync:forSync,merge:merge};
+  empty:empty,recurrence:recurrence,triage:triage,workQueue:workQueue,observe:observe,acknowledge:acknowledge,view:view,health:health,forSync:forSync,merge:merge};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineIncidents=api;
 })(typeof window!=='undefined'?window:globalThis);
