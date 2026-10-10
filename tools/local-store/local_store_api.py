@@ -111,6 +111,7 @@ class Handler(BaseHTTPRequestHandler):
             lines = [
                 counts,
                 "LOCAL_SQLITE_RUNTIME_VIEW (generated from structured SQLite records; not a Google Docs or Drive runtime read).",
+                "========",
             ] + rows
             if archive_rows:
                 lines.append("=== ARCHIVE_ROWS (" + str(len(archive_rows)) + ") ===")

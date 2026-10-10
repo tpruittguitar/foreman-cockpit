@@ -1,4 +1,4 @@
-﻿# Pipeline Explorer Master Implementation Checklist
+# Pipeline Explorer Master Implementation Checklist
 
 Status date: 2026-10-10
 Branch: `main`
@@ -78,6 +78,7 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 - [x] Import the real local text master into SQLite.
 - [x] Add `/api/master` local SQLite endpoint for Pipeline-compatible reads.
 - [x] Add dev-only Pipeline Explorer source adapter: `?src=local`.
+- [x] Verify local app loads from SQLite through `?src=local`: 647 visible roles / 734 row-lines rendered from `http://127.0.0.1:8765/api/master`.
 - [~] Build a read-only structured mirror from the current text master. Prototype exists locally; not production source yet.
 - [~] Validate counts, bucket totals, archive totals, and evidence resolution against the current text master. Bucket counts validated for imported live rows; archive/evidence validation remains open.
 - [ ] Design final structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules.
