@@ -22,7 +22,7 @@
 #view-documents .doc-editor-foot span{color:#999;font-size:10.5px;margin-right:auto}
 #view-documents .doc-editor-foot button{min-height:29px;padding:4px 8px}
 @media(min-width:981px),(min-width:761px) and (pointer:fine){
- #view-documents .doc-workspace{grid-template-columns:minmax(400px,46%) minmax(0,54%);height:clamp(710px,84vh,1050px)}
+ #view-documents .doc-workspace{grid-template-columns:minmax(400px,46%) minmax(0,54%);height:clamp(520px,65vh,760px)}
  #view-documents .doc-library{display:flex;flex-direction:column;overflow:hidden}
  #view-documents .docgrid{flex:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:8px}
  #view-documents .docbox{min-height:0;max-height:98px;overflow:auto;padding:7px}
