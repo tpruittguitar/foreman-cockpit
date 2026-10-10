@@ -39,20 +39,22 @@ Goal: put the new command-center structure into the app without changing Writer,
 - [x] Run full test suite on main for comparison.
 - [x] Confirm PR #85 does not introduce a new test regression versus main.
 - [x] Merge PR #85.
-- [ ] Let production deploy complete.
-- [ ] Run production smoke test.
+- [x] Let production deploy complete.
+- [x] Run production smoke test.
 
 Production smoke test checklist:
 
-- [ ] App opens.
-- [ ] Pipeline loads.
+- [x] App opens.
+- [x] Pipeline loads.
 - [ ] Job click opens detail panel.
 - [ ] Map appears.
-- [ ] Navigation shows Pipeline, Map, AI Operations, Control Center, Analytics.
+- [x] Navigation shows Pipeline, Map, AI Operations, Control Center, Analytics.
 - [ ] AI Operations page opens.
 - [ ] Control Center page opens.
 - [ ] Mobile bottom nav works.
-- [ ] No blank screen or fatal UI break is visible.
+- [x] No blank screen or fatal UI break is visible.
+
+Smoke test note, 2026-10-10: production app loaded at `https://foreman-cockpit.netlify.app`; visible table showed 647 roles and 1255 row-lines; top navigation rendered Pipeline, Map, AI Ops, Control, and Analytics. Browser automation did not click through job detail, map, AI Operations, Control Center, or mobile bottom nav, so those remain unchecked for real interaction verification.
 
 ---
 
@@ -216,17 +218,16 @@ Current status: Writer tests fail on PR #85 and main with the same failures. The
 
 ## Recommended execution order from here
 
-1. Confirm production deploy completes.
-2. Run the production smoke test.
-3. Finish Pipeline table controls.
-4. Finish automation visibility and durable run history.
-5. Finish automation strategy enforcement.
-6. Finish Control Center authority workflow.
-7. Finish workspace layout system polish.
-8. Finish mobile real-device review.
-9. Run VNext scoring backtest.
-10. Only publish VNext if it wins and Tim explicitly approves.
-11. Clean up Writer test debt.
+1. Finish remaining production interaction smoke checks.
+2. Finish Pipeline table controls.
+3. Finish automation visibility and durable run history.
+4. Finish automation strategy enforcement.
+5. Finish Control Center authority workflow.
+6. Finish workspace layout system polish.
+7. Finish mobile real-device review.
+8. Run VNext scoring backtest.
+9. Only publish VNext if it wins and Tim explicitly approves.
+10. Clean up Writer test debt.
 
 ---
 
