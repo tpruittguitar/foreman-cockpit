@@ -17,7 +17,9 @@ The weighted rating is an assessment, not an automatic application decision. A h
 - Never write a score into the canonical master unless the requested writer action explicitly permits it. Preserve the evidence fields that support each score.
 - The Writer enforces this: an ENRICH, ruling or upsert that sets `OVERALL_RATING`, `EXPERIENCE_FIT`, `GEO_SCORE`, `NET_COMP_SCORE`, `RATING_CONFIDENCE` or `FLEX_RATING_IMPACT` is rejected with `SCORE_OUTPUT_FIELD` and nothing is written. The Explorer calculates these from the published model, so a stored copy could only drift. Submit the evidence instead: `FLEX_CLASS` or the degree evidence, `SCOPE_FIT_RAW`, salary evidence, location, and the evidence inputs `TITLE_SCORE`, `ATS_MATCH_SCORE`, `CULTURE_SCORE`, `OWNERSHIP_SCORE`. The Writer itself derives `FLEX_MODIFIER`, `ADJUSTED_FIT` and `PURSUIT_STATUS` from the canonical FLEX policy whenever FLEX or fit evidence is written, so a value an agent supplies for them is replaced.
 
-## Current weights (100 points)
+## Code default weights (100 points)
+
+These are the fallback weights in `pipeline-scoring.js`. When `PIPELINE_SCORING_MODEL.json` is published, its weights are the current weights; read them from the Writer `scoring` action, not from this table.
 
 | Component | Weight | What it measures |
 |---|---:|---|
@@ -36,10 +38,12 @@ Weights must total exactly 100. The Pipeline Scoring page is the place to adjust
 
 FLEX is a weighted score input, not an automatic rejection, except `STRICT`.
 
-- `HIGH_FLEX`: no degree requirement is stated, or the posting explicitly accepts equivalent experience/non-degree experience as a substitute. No degree gate is imposed. Default modifier `+15`; FLEX component score `80`.
-- `SOFT_FLEX`: a degree is listed and an experience-equivalency path is also provided or clearly considered, but the degree remains the normal or preferred path. Default modifier `+6`; FLEX component score `62`.
-- `NO_FLEX`: a degree is required and no experience-equivalency path is provided. Default modifier `-10`; FLEX component score `30`. Still pursue when adjusted fit is about 80+ and pay/title are clear.
-- `STRICT`: a specific degree is required through one exclusive path, with no meaningful equivalency. FLEX component score `0`; hold unless Tim explicitly overrides.
+FLEX policy is owned by the canonical Rules (`TIM_PIPELINE_RULES_CANONICAL`, `SECTION=DEGREE_FLEX`): which degree wording maps to which class, and each class's modifier. Read the live values there; this file does not restate them. The path is canonical Rules → `PipelineRules.flexPolicy()` → Explorer scoring config → `PipelineScoring.scoreRow()` → `PipelinePolicy.assess()`, and the Writer reads the same section. The code defaults in `pipeline-policy.js` apply only when the Rules section cannot be read.
+
+This file owns the FLEX component score used in the weighted rating: `HIGH_FLEX` 80, `SOFT_FLEX` 62, `NO_FLEX` 30, `STRICT` 0, `UNKNOWN` excluded (weight not counted, confidence reduced).
+
+- The Rules modifier produces adjusted fit = clamp(raw scope fit + modifier, 0, 100). Adjusted fit drives decisions (for example `NO_FLEX` pursues only at adjusted fit 80+). It is never substituted into the weighted experience component: that component uses raw fit, and FLEX counts once, as its own weighted component.
+- `STRICT` is held unless the row carries `TIM_FLEX_OVERRIDE=YES`.
 - If the posting does not mention a degree, do not invent a degree gate. If the text is insufficient to determine whether experience is accepted, use `UNKNOWN`.
 Always report the FLEX class, modifier, raw fit, adjusted fit, and evidence wording.
 
