@@ -1,12 +1,50 @@
-/* Readable views of Writer-owned supporting records. Missing evidence stays unknown. */
+/* Phase 3 AI Operations dashboard. Readable views of Writer-owned supporting records.
+   This is presentation/supporting evidence only: no canonical state, scoring, Writer, or master mutation logic changes. */
 (function(root){
   'use strict';
   function create(api){
-    var snapshot=null,schedules=null,error='',busy=false,tab='backlog',loadedAt='',message='';
-    var tabLabels={backlog:'Work queue',email:'Intake coverage',recovery:'Verification & recovery',schedules:'Schedules',acceptance:'Diagnostics'};
+    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='';
+    var tabLabels={dashboard:'Dashboard',backlog:'Work queue',email:'Intake coverage',recovery:'Verification & recovery',schedules:'Schedules',acceptance:'Diagnostics'};
     var esc=api.escape;
     function cell(value){return esc(value==null?'UNKNOWN':String(value));}
     function table(head,rows){return '<div class="ops-table"><table><thead><tr>'+head.map(function(v){return '<th>'+cell(v)+'</th>';}).join('')+'</tr></thead><tbody>'+rows.map(function(row){return '<tr>'+row.map(function(v){return '<td>'+cell(v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';}
+    function pct(done,total){return total?Math.round(done/total*100):0;}
+    function ageText(iso){var t=Date.parse(iso||'');if(!Number.isFinite(t))return 'UNKNOWN';var m=Math.max(0,Math.round((Date.now()-t)/60000));if(m<90)return m+' min';if(m<2880)return (m/60).toFixed(1)+' h';return Math.round(m/1440)+' d';}
+    function obligationList(store){return store&&store.obligations?Object.keys(store.obligations).map(function(id){var o=store.obligations[id]||{};o.id=id;return o;}):[];}
+    function isDone(o){return /^(VERIFIED|COMPLETE|DONE|RESOLVED|WRITE_VERIFIED|VERIFIED_MASTER)$/i.test(String(o.state||o.outcome||''));}
+    function isOpen(o){return !isDone(o);}
+    function stageOf(o){var s=[o.id,o.state,o.owner,o.source&&JSON.stringify(o.source),o.outcome,o.nextAction,o.error].join(' ').toUpperCase();
+      if(/WRITER|WRITE|RECEIPT|RESULT|VERIFY|VERIFICATION|UNVERIFIED/.test(s))return 'Writer / verification';
+      if(/SALARY|COMP|PAY|FLEX|DEGREE|QUALIFICATION|LOCATION|LIVENESS/.test(s))return 'Qualification enrichment';
+      if(/FIT|SCOPE|STRATEGIC|MANUFACTURING|DOMAIN|OWNERSHIP|TEAM/.test(s))return 'Strategic enrichment';
+      if(/EMAIL|GMAIL|LINKEDIN|INDEED|GLASSDOOR|ZIP|INTAKE|DISCOVERY|SCOUT/.test(s))return 'Intake / discovery';
+      if(/IDENTITY|DUPLICATE|REQ|URL/.test(s))return 'Identity / dedupe';
+      return 'Other open work';
+    }
+    function runList(store){return store&&store.runs?Object.keys(store.runs).map(function(id){return Object.assign({id:id},store.runs[id]||{});}):[];}
+    function dashboardMetrics(store,summary){
+      var obligations=obligationList(store),open=obligations.filter(isOpen),done=obligations.length-open.length,stages={},oldest=null;
+      open.forEach(function(o){var st=stageOf(o);stages[st]=(stages[st]||0)+1;var candidates=[o.createdAt,o.updatedAt,o.at,o.source&&o.source.timestamp].filter(Boolean);candidates.forEach(function(v){var t=Date.parse(v);if(Number.isFinite(t)&&(!oldest||t<oldest.t))oldest={t:t,iso:v,o:o};});});
+      var runs=runList(store),intakeFound=0,intakeReviewed=0,intakeUnprocessed=0;
+      runs.forEach(function(r){try{var c=PipelineOperations.emailCoverage(r,store.obligations);intakeFound+=+c.found||0;intakeReviewed+=+c.reviewed||0;intakeUnprocessed+=+c.unprocessed||0;}catch(e){}});
+      var writerBlocked=open.filter(function(o){return stageOf(o)==='Writer / verification';}).length;
+      var next='Refresh Writer evidence';
+      if(writerBlocked)next='Resolve '+writerBlocked+' Writer / verification blocker'+(writerBlocked===1?'':'s');
+      else if(open.length)next='Work oldest open obligation: '+(oldest&&oldest.o&&oldest.o.id||open[0].id);
+      else if(intakeUnprocessed)next='Finish '+intakeUnprocessed+' unprocessed intake candidate'+(intakeUnprocessed===1?'':'s');
+      else if(summary&&summary.total)next='No open tracked obligations in current snapshot';
+      return {total:obligations.length,done:done,open:open.length,openList:open,stages:stages,oldest:oldest,intakeFound:intakeFound,intakeReviewed:intakeReviewed,intakeUnprocessed:intakeUnprocessed,writerBlocked:writerBlocked,next:next};
+    }
+    function metricCard(label,value,sub,cls){return '<article class="dash-card ops-kpi '+(cls||'')+'"><h4>'+cell(label)+'</h4><b>'+cell(value)+'</b><span class="tip">'+cell(sub||'')+'</span></article>';}
+    function dashboardHtml(store,summary,observed){
+      var m=dashboardMetrics(store,summary),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return [k,m.stages[k]];});
+      var h='<section class="ops-dashboard"><div class="ops-next-priority"><span class="u">Next Priority</span><b>'+cell(m.next)+'</b><small>Based on current Writer-owned supporting evidence. This does not replace canonical master state.</small></div>';
+      h+='<div class="dash-grid ops-kpis">'+metricCard('Open enrichment backlog',m.open,m.total?m.done+' complete of '+m.total:'No snapshot',m.open?'warn':'')+metricCard('Completion ratio',m.total?pct(m.done,m.total)+'%':'UNKNOWN',m.total?m.done+'/'+m.total+' obligations':'Writer snapshot unavailable')+metricCard('Writer blocked',m.writerBlocked,m.writerBlocked?'Requires verification/recovery':'No tracked writer blockers',m.writerBlocked?'bad':'')+metricCard('Intake reviewed',m.intakeReviewed,m.intakeFound?m.intakeFound+' found · '+m.intakeUnprocessed+' unprocessed':'No email/source run coverage read')+metricCard('Oldest open age',m.oldest?ageText(m.oldest.iso):'NONE',m.oldest?m.oldest.o.id:'No open tracked obligation')+'</div>';
+      if(m.total)h+=PipelineProgress.html('Tracked obligations independently resolved',m.done,m.total,'large');
+      h+='<div class="panel"><h3>Enrichment backlog by stage</h3>'+(stageRows.length?table(['Stage','Open count'],stageRows):'<p class="tip">No open tracked obligations in the current snapshot.</p>')+'</div>';
+      h+='<div class="panel"><h3>Coverage limits</h3><p class="tip">Current dashboard can show tracked obligations, current source-window coverage, verification blockers, and oldest unresolved work. Historical intake-vs-enrichment trend lines require durable per-run history in the Writer snapshot; absent history remains UNKNOWN, not assumed zero.</p><div class="row"><span class="chip">Observed: '+cell(observed||'UNKNOWN')+'</span><span class="chip">Dashboard status: '+cell(error?'DEGRADED':'LIVE SNAPSHOT')+'</span></div></div></section>';
+      return h;
+    }
     async function refresh(view){
       if(busy)return;busy=true;paint(view);
       var progress=PipelineProgress.begin('[data-ops-refresh]','Reading Writer evidence');
@@ -20,15 +58,17 @@
     }
     function paint(view){
       var store=snapshot&&snapshot.store,summary=store&&PipelineOperations.summary(store),observed=snapshot&&snapshot.observedAt;
-      var h='<section class="panel ops-console"><h2>Operations</h2><div class="row"><button data-ops-refresh'+(busy?' disabled':'')+'>Refresh evidence</button><span class="tip">'+cell(busy?'Reading Writer…':error?'BLOCKED / UNKNOWN':observed?'Writer observation '+observed:'UNKNOWN · no durable snapshot loaded')+'</span></div>';
+      var h='<section class="panel ops-console"><h2>AI Operations</h2><div class="row"><button data-ops-refresh'+(busy?' disabled':'')+'>Refresh evidence</button><span class="tip">'+cell(busy?'Reading Writer…':error?'BLOCKED / UNKNOWN':observed?'Writer observation '+observed:'UNKNOWN · no durable snapshot loaded')+'</span></div>';
       if(error)h+='<p class="ops-warning">'+cell(error)+(store?' · Last successful snapshot retained; its freshness is unverified.':'')+'</p>';
-      h+='<div class="row ops-tabs" role="tablist">'+['backlog','email','recovery','schedules','acceptance'].map(function(t){return '<button role="tab" aria-selected="'+(tab===t)+'" data-ops-tab="'+t+'">'+tabLabels[t]+'</button>';}).join('')+'</div><div role="tabpanel">';
-      if(tab==='backlog'){
+      h+='<div class="row ops-tabs" role="tablist">'+['dashboard','backlog','email','recovery','schedules','acceptance'].map(function(t){return '<button role="tab" aria-selected="'+(tab===t)+'" data-ops-tab="'+t+'">'+tabLabels[t]+'</button>';}).join('')+'</div><div role="tabpanel">';
+      if(tab==='dashboard'){
+        h+=store?dashboardHtml(store,summary,observed):'<div class="ops-next-priority"><span class="u">Next Priority</span><b>Refresh Writer evidence</b><small>No durable operations snapshot loaded yet.</small></div>';
+      }else if(tab==='backlog'){
         h+='<h3>Research and verification obligations</h3><p class="tip">'+(summary?'Tracked '+summary.total+' · verified dispositions '+summary.done+' · unresolved '+summary.open.length:'UNKNOWN · tracked population has not been read')+'. This is supporting evidence, not a second job master.</p>';
         if(summary&&summary.total)h+=PipelineProgress.html('Tracked obligations independently resolved',summary.done,summary.total,'large');
-        if(store)h+=table(['Obligation','State','Owner','Source','Outcome','Next action'],Object.keys(store.obligations).map(function(id){var o=store.obligations[id];return [id,o.state,o.owner,o.source.INITIATING_URL||o.source.initiatingUrl||o.source.SOURCE_URL,o.outcome,o.nextAction||o.error];}));
+        if(store)h+=table(['Obligation','Stage','State','Owner','Source','Outcome','Next action'],obligationList(store).map(function(o){return [o.id,stageOf(o),o.state,o.owner,o.source&&((o.source.INITIATING_URL||o.source.initiatingUrl||o.source.SOURCE_URL)||''),o.outcome,o.nextAction||o.error];}));
       }else if(tab==='email'){
-        h+='<h3>Email coverage</h3><p class="tip">Completion requires message bodies, digest cards, pagination and independent candidate disposition evidence. A finished task alone does not clear the window.</p>';
+        h+='<h3>Email and source coverage</h3><p class="tip">Completion requires message bodies, digest cards, pagination and independent candidate disposition evidence. A finished task alone does not clear the window.</p>';
         if(store){var runs=Object.keys(store.runs);h+=runs.length?table(['Window / run','Coverage','Found','Reviewed','Unreviewed','Unprocessed candidates','Oldest unreviewed','Watermark'],runs.map(function(id){var c=PipelineOperations.emailCoverage(store.runs[id],store.obligations);return [id,c.state,c.found,c.reviewed,c.unreviewed,c.unprocessed,c.oldest||'UNKNOWN',c.watermark||'Not advanced'];})):'<p>UNKNOWN · no durable source windows have been reported.</p>';
           runs.forEach(function(id){var c=PipelineOperations.emailCoverage(store.runs[id],store.obligations);if(c.found)h+=PipelineProgress.html(id+' · message bodies reviewed',c.reviewed,c.found,'medium');});
           h+='<div class="row"><label>Window start <input data-ops-start type="datetime-local"></label><label>Window end <input data-ops-end type="datetime-local"></label><button data-ops-catchup>Request Catch Up</button></div><p class="tip">Stores a bounded request. Provider acknowledgement is required before RUNNING can be shown.</p>';
@@ -37,7 +77,7 @@
         }else h+='<p>UNKNOWN · Writer coverage snapshot unavailable.</p>';
       }else if(tab==='recovery'){
         h+='<h3>Unresolved obligations</h3><p class="tip">Acknowledgement records that you saw an item. It retains the obligation until independent resolution evidence exists. Writer service incidents are available in System status.</p>';
-        if(summary)summary.open.forEach(function(o){h+='<article class="ops-obligation"><b>'+cell(o.id)+' · '+cell(o.state)+'</b><p>'+cell(o.error||o.nextAction||'Resolution evidence required')+'</p><span class="tip">'+cell(o.acknowledgedAt?'Acknowledged '+o.acknowledgedAt:'Unacknowledged')+'</span> <button data-ops-ack="'+esc(o.id)+'">Acknowledge</button></article>';});
+        if(summary)summary.open.forEach(function(o){h+='<article class="ops-obligation"><b>'+cell(o.id)+' · '+cell(stageOf(o))+' · '+cell(o.state)+'</b><p>'+cell(o.error||o.nextAction||'Resolution evidence required')+'</p><span class="tip">'+cell(o.acknowledgedAt?'Acknowledged '+o.acknowledgedAt:'Unacknowledged')+'</span> <button data-ops-ack="'+esc(o.id)+'">Acknowledge</button></article>';});
       }else if(tab==='schedules'){
         var manifest=schedules&&schedules.manifest;
         h+='<h3>Desired schedules and native provider evidence</h3><p class="tip">Native control: '+cell(schedules&&schedules.nativeControl||'UNKNOWN')+'. Saving stages a proposal; provider changes require the native scheduler. Writer + Forge are active. Claude and Grok are deferred. Freeze remains 07:00 America/New_York. Paused tasks stay paused.</p>';
@@ -49,7 +89,7 @@
         if(store)h+=table(['Criterion','State','Evidence'],Object.keys(store.acceptance||{}).map(function(id){var a=store.acceptance[id];return [id,a.state,a.evidenceRef];}));
       }
       h+='</div><p data-ops-message aria-live="polite">'+cell(message)+'</p></section>';view.innerHTML=h;
-      view.querySelector('[data-ops-refresh]').onclick=function(){refresh(view);};
+      var refreshBtn=view.querySelector('[data-ops-refresh]');if(refreshBtn)refreshBtn.onclick=function(){refresh(view);};
       view.querySelectorAll('[data-ops-tab]').forEach(function(b){b.onclick=function(){tab=b.dataset.opsTab;paint(view);};});
       async function write(body){try{if(error)throw new Error('Refresh a complete current Writer snapshot before saving');var j=await api.post(body);if(!j||!j.ok)throw new Error(j&&j.error||j&&j.mode||'Writer request failed');message='Saved supporting state; native execution is not verified.';await refresh(view);}catch(e){message=e.message;paint(view);}}
       view.querySelectorAll('[data-ops-ack]').forEach(function(b){b.onclick=function(){write({action:'acknowledge_obligation',id:b.dataset.opsAck,baseRevision:store.revision});};});
