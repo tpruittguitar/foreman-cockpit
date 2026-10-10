@@ -23,8 +23,8 @@ Review model: Tim does not need to navigate GitHub. Each phase is summarized in 
 | 3 | AI Operations dashboard | Intake/enrichment visibility, explicit backlog, Writer health, lane performance, Next Priority | BASELINE IMPLEMENTED |
 | 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | IMPLEMENTED BASELINE |
 | 5 | Workspace layout system | Drag, resize, lock, save, restore, responsive layout separation for panels in every view | FOUNDATION IMPLEMENTED |
-| 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | NEXT |
-| 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | BLOCKED UNTIL PHASE 6 SUMMARY |
+| 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | BASELINE IMPLEMENTED |
+| 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | NEXT |
 
 ## Visual target
 
@@ -145,6 +145,32 @@ Safety constraints:
 
 Known Phase 5 limitation: this is the foundation pass. It does not yet implement named layout presets, cross-device layout copy, or full table column-order persistence from Phase 1B.
 
+## Phase 6 implementation notes
+
+Runtime file changed: `pipeline-navigation.js`.
+
+Baseline Control Center now adds a non-mutating shell on the existing scoring/control route:
+
+- Control Center header and governance statement.
+- Live scoring status card.
+- Rules authority card.
+- Writer connection card.
+- Display/columns card.
+- Documents / ATS tools card.
+- Governance / AI Operations card.
+- Shortcut buttons into existing screens.
+
+Safety constraints:
+
+- The Control Center shell is navigation/status only.
+- It does not publish scoring.
+- It does not save rules.
+- It does not touch Writer transport.
+- It does not edit Drive authority files.
+- It does not alter master data, job state, application history, automation prompts, or VNext scoring status.
+
+Known Phase 6 limitation: this is a cockpit shell, not the final editable authority manager. Future work needs versioned drafts, validation, compare/rollback, provider registry, and explicit publish workflows before it becomes a true authority editor.
+
 ## Progress log
 
 - 2026-10-10: Created phased overhaul tracker and branch `phase1-overhaul-visual-foundation`.
@@ -156,6 +182,7 @@ Known Phase 5 limitation: this is the foundation pass. It does not yet implement
 - 2026-10-10: Implemented Phase 3 baseline in `pipeline-operations-ui.js`.
 - 2026-10-10: Implemented Phase 4 baseline in `pipeline-ui-mobile.css`.
 - 2026-10-10: Implemented Phase 5 workspace layout foundation in `pipeline-pane-split.js`.
+- 2026-10-10: Implemented Phase 6 Control Center shell in `pipeline-navigation.js`.
 
 ## Current review surface
 
