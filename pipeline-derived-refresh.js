@@ -6,7 +6,7 @@
  * Calculated ratings (OVERALL_RATING and the component scores) are not stored in the master and are out of scope here. */
 (function(root){'use strict';
 var Policy=typeof module==='object'&&module.exports?require('./pipeline-policy'):root.PipelinePolicy;
-var ACTIVE_BUCKETS=['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','BLOCKED'];
+var ACTIVE_BUCKETS=['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','BLOCKED','APPLIED','DECLINED_BY_TIM'];
 var CHUNK=25;
 function str(v){return v==null?'':String(v).trim()}
 function same(a,b){a=str(a);b=str(b);if(a===''||b==='')return a===b;var x=Number(a),y=Number(b);return isFinite(x)&&isFinite(y)?x===y:a===b}
@@ -25,7 +25,7 @@ function plan(rows,policyRaw,opts){
   var out={policyId:policyId(policy),policy:{HIGH_FLEX:policy.HIGH_FLEX_MODIFIER,SOFT_FLEX:policy.SOFT_FLEX_MODIFIER,NO_FLEX:policy.NO_FLEX_MODIFIER,STRICT:policy.STRICT_MODIFIER},
     scanned:0,inScope:0,upToDate:0,noClass:0,classConflict:[],stale:[],outOfScopeStale:0,byClass:{}};
   (rows||[]).forEach(function(r){var p=r.payload||{};if(!str(p.FLEX_CLASS)&&!str(p.FLEX_MODIFIER)&&!str(p.ADJUSTED_FIT))return;out.scanned++;
-    var inScope=buckets.indexOf(r.BUCKET)>=0,cls=str(p.FLEX_CLASS);
+    var inScope=buckets.indexOf(r.BUCKET)>=0&&!str(p.ARCHIVE_STATE),cls=str(p.FLEX_CLASS);
     if(!cls){if(inScope){out.inScope++;out.noClass++}return}
     var d=derive(p,policy);
     if(d.cls!==cls){if(inScope){out.inScope++;out.classConflict.push({id:r.id,primaryId:r.PRIMARY_ID,company:r.COMPANY,title:r.TITLE,stored:cls,derived:d.cls})}return}
