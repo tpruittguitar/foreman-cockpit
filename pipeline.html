@@ -753,8 +753,13 @@ function loadStructuredRuntime_(q){
   readout('<b>fetching structured runtime.</b>');
   S.connection.state='Checking structured runtime';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};renderLoadAlert_();
   function readStructuredOnce(){return structuredTextFromPagedJobs_(base,seq)}
-  var loader=readStructuredOnce().catch(function(e){
-    if(q.get('import')==='1'&&String(e.message||'').indexOf('STRUCTURED_SNAPSHOT_NOT_LOADED')>=0){
+  var loader=readStructuredOnce().then(function(j){
+    if(j&&j.ok&&q.get('src')!=='writer'&&q.get('noImport')!=='1'&&(+j.rows||0)===0){
+      return importStructuredFromWriter_(base).then(function(){return readStructuredOnce()});
+    }
+    return j;
+  }).catch(function(e){
+    if(q.get('noImport')!=='1'&&String(e.message||'').indexOf('STRUCTURED_SNAPSHOT_NOT_LOADED')>=0){
       return importStructuredFromWriter_(base).then(function(){return readStructuredOnce()});
     }
     throw e;

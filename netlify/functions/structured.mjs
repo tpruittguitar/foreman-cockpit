@@ -103,19 +103,23 @@ function normalizeLimitOffset(url) {
 
 function parseMasterText(text) {
   const lines = String(text || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const rows = lines.filter(line => /^V2[A-Z]-/.test(line) || /^V2I-/.test(line) || /^V2F-/.test(line));
+  const rows = lines.filter(line => {
+    const cells = line.split(' | ');
+    return cells.length >= 10 && /^\d+$/.test(cells[0] || '') && /^V2[A-Z]-/.test(cells[1] || '');
+  });
   const jobs = rows.map((line, index) => {
     const cells = line.split(' | ');
     return {
-      PRIMARY_ID: cells[0] || '',
-      INV: cells[1] || '',
+      INV: cells[0] || '',
+      PRIMARY_ID: cells[1] || '',
       COMPANY: cells[2] || '',
       TITLE: cells[3] || '',
       BUCKET: cells[4] || '',
       DISPOSITION: cells[5] || '',
-      DATE_ADDED: cells[6] || '',
+      TAGS: cells[6] || '',
       REQ: cells[7] || '',
       LOCATION: cells[8] || '',
+      SCOUT_ACTION: cells.slice(9).join(' | '),
       SOURCE_LINE: line,
       SOURCE_INDEX: index,
     };
