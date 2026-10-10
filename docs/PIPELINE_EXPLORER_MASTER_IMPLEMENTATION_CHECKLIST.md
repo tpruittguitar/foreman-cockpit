@@ -47,14 +47,14 @@ Production smoke test checklist:
 - [x] App opens.
 - [x] Pipeline loads.
 - [ ] Job click opens detail panel.
-- [ ] Map appears.
+- [x] Map appears.
 - [x] Navigation shows Pipeline, Map, AI Operations, Control Center, Analytics.
-- [ ] AI Operations page opens.
-- [ ] Control Center page opens.
+- [x] AI Operations page opens.
+- [x] Control Center page opens.
 - [ ] Mobile bottom nav works.
 - [x] No blank screen or fatal UI break is visible.
 
-Smoke test note, 2026-10-10: production app loaded at `https://foreman-cockpit.netlify.app`; visible table showed 647 roles and 1255 row-lines; top navigation rendered Pipeline, Map, AI Ops, Control, and Analytics. Browser automation did not click through job detail, map, AI Operations, Control Center, or mobile bottom nav, so those remain unchecked for real interaction verification.
+Smoke test note, 2026-10-10: production app loaded at `https://foreman-cockpit.netlify.app`; visible table showed 647 roles and 1255 row-lines; top navigation rendered Pipeline, Map, AI Ops, Control, and Analytics. Follow-up interaction smoke test verified Map, AI Operations, and Control Center page navigation. That run observed a transient/backend data-load error (`Writer returned an HTML error page instead of JSON`), so job-row click/detail behavior could not be verified end-to-end. Mobile bottom navigation remains unverified because the browser automation could not use a true narrow mobile viewport.
 
 ---
 
