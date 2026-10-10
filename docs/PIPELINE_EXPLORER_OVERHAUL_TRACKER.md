@@ -24,7 +24,7 @@ Review model: Tim does not need to navigate GitHub. Each phase is summarized in 
 | 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | IMPLEMENTED BASELINE |
 | 5 | Workspace layout system | Drag, resize, lock, save, restore, responsive layout separation for panels in every view | FOUNDATION IMPLEMENTED |
 | 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | BASELINE IMPLEMENTED |
-| 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | NEXT |
+| 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | BACKTEST GATE IMPLEMENTED; CUTOVER NOT AUTHORIZED |
 
 ## Visual target
 
@@ -171,6 +171,35 @@ Safety constraints:
 
 Known Phase 6 limitation: this is a cockpit shell, not the final editable authority manager. Future work needs versioned drafts, validation, compare/rollback, provider registry, and explicit publish workflows before it becomes a true authority editor.
 
+## Phase 7 implementation notes
+
+Runtime file changed: `pipeline-scoring-preview.js`.
+
+Baseline VNext backtest gate now adds:
+
+- VNext scoring backtest gate panel on the scoring/control surface.
+- Explicit `DESIGN_AND_BACKTEST_ONLY` status.
+- Proposed VNext weight shape display:
+  - manufacturing/domain alignment 25%.
+  - prototype-to-rate opportunity 20%.
+  - analogous operating experience 15%.
+  - strategic employer clout 10%.
+  - scope/authority/title progression 15%.
+  - compensation/economics 10%.
+  - geography 5%.
+- Cutover gates requiring 24+ labeled rows, >70% pairwise accuracy, Good/Bad separation, evidence-field mapping, and explicit Tim approval.
+- API helpers `vnextSpec()` and `vnextReadiness()` for future backtest tooling.
+
+Safety constraints:
+
+- VNext cannot publish from this panel.
+- Live scoring remains `TIM_WEIGHTED_JOB_RATING 2026-10-04.1` unless separately authorized.
+- No live scoring weights changed.
+- No Writer, master, rules, automations, or Drive authority changes.
+- This is an evidence gate, not a cutover.
+
+Known Phase 7 limitation: actual VNext backtest calculations still require a mapped labeled-row dataset and field mapping from real row evidence into VNext categories.
+
 ## Progress log
 
 - 2026-10-10: Created phased overhaul tracker and branch `phase1-overhaul-visual-foundation`.
@@ -183,6 +212,7 @@ Known Phase 6 limitation: this is a cockpit shell, not the final editable author
 - 2026-10-10: Implemented Phase 4 baseline in `pipeline-ui-mobile.css`.
 - 2026-10-10: Implemented Phase 5 workspace layout foundation in `pipeline-pane-split.js`.
 - 2026-10-10: Implemented Phase 6 Control Center shell in `pipeline-navigation.js`.
+- 2026-10-10: Implemented Phase 7 VNext backtest gate in `pipeline-scoring-preview.js`; cutover remains unauthorized.
 
 ## Current review surface
 
@@ -193,6 +223,7 @@ Changed files in PR #85 are expected to include:
 - `pipeline-operations-ui.js`
 - `pipeline-ui-mobile.css`
 - `pipeline-pane-split.js`
+- `pipeline-scoring-preview.js`
 - `docs/PIPELINE_EXPLORER_OVERHAUL_TRACKER.md`
 
-Any Writer, scoring, automation, master-data, or net build-info change should be treated as out of scope.
+Any Writer, scoring publish, automation, master-data, or net build-info change should be treated as out of scope.
