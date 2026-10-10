@@ -10,3 +10,5 @@ data/*.db-wal
 __pycache__/
 tools/local-store/__pycache__/
 *.pyc
+# Generated structured runtime snapshots
+data/structured_snapshot*.json

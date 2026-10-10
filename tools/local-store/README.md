@@ -204,4 +204,23 @@ Netlify endpoint:
 
     /api/structured/health
 
-Current behavior: reachable health/status only. `/api/structured/counts` and `/api/structured/jobs` intentionally return unavailable until a private structured data source is configured. This prevents accidental public exposure of the pipeline population.
+Current behavior: public health/status only; `/api/structured/counts`, `/api/structured/jobs`, and `/api/structured/jobs/<PRIMARY_ID>` require `STRUCTURED_READ_TOKEN` or `PIPELINE_STRUCTURED_TOKEN` and a loaded Netlify Blob snapshot. This prevents accidental public exposure while preserving full structured-read functionality.
+
+### Build and publish a protected structured snapshot
+
+Build the snapshot from the current local SQLite mirror:
+
+    python tools/local-store/make_structured_snapshot.py
+
+Publish it to Netlify Blobs after Netlify auth/site context is configured:
+
+    node tools/local-store/publish_structured_snapshot.mjs data/structured_snapshot.json
+
+The protected production endpoints are:
+
+    /api/structured/counts
+    /api/structured/jobs?limit=250&offset=0
+    /api/structured/jobs/<PRIMARY_ID>
+
+They require a personal read token in `Authorization: Bearer <token>` or `x-structured-token`. The snapshot file is ignored by Git and must not be committed.
+
