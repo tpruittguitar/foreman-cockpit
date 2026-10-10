@@ -16,6 +16,7 @@ Endpoints:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import sqlite3
 import urllib.parse
@@ -64,6 +65,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.health()
             if parsed.path == "/api/counts":
                 return self.counts()
+            if parsed.path == "/api/master":
+                return self.master()
             if parsed.path == "/api/jobs":
                 return self.jobs(params)
             if parsed.path.startswith("/api/jobs/"):
@@ -96,6 +99,33 @@ class Handler(BaseHTTPRequestHandler):
                 "archive_jobs": conn.execute("SELECT COUNT(*) FROM archive_jobs").fetchone()[0],
                 "payload_fields": conn.execute("SELECT COUNT(*) FROM job_payload_fields").fetchone()[0],
                 "buckets": buckets,
+            })
+
+    def master(self) -> None:
+        with connect(self.db_path) as conn:
+            rows = [r[0] for r in conn.execute("SELECT source_line FROM jobs ORDER BY inv, primary_id")]
+            archive_rows = [r[0] + "; ARCHIVE_STATE=ARCHIVED_TERMINAL" for r in conn.execute("SELECT source_line FROM archive_jobs ORDER BY inv, primary_id")]
+            bucket_counts = conn.execute("SELECT bucket, COUNT(*) FROM jobs GROUP BY bucket ORDER BY bucket").fetchall()
+            total = len(rows) + len(archive_rows)
+            counts = "COUNTS: TOTAL=" + str(total) + " " + " ".join([str(b) + "=" + str(c) for b, c in bucket_counts]) + " UNACCOUNTED=0"
+            lines = [
+                counts,
+                "LOCAL_SQLITE_RUNTIME_VIEW (generated from structured SQLite records; not a Google Docs or Drive runtime read).",
+            ] + rows
+            if archive_rows:
+                lines.append("=== ARCHIVE_ROWS (" + str(len(archive_rows)) + ") ===")
+                lines.extend(archive_rows)
+            lines.append("END V2_CURRENT_POPULATION_MASTER (" + str(total) + " rows)")
+            meta = conn.execute("SELECT key, value FROM meta").fetchall()
+            meta_map = {r[0]: r[1] for r in meta}
+            self.send_json({
+                "ok": True,
+                "id": "local-sqlite",
+                "source": "local-sqlite",
+                "fetchedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "modifiedTime": meta_map.get("last_import_at", ""),
+                "rows": total,
+                "text": "\n".join(lines) + "\n",
             })
 
     def jobs(self, params: Dict[str, List[str]]) -> None:
@@ -159,3 +189,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

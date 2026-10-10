@@ -49,3 +49,25 @@ Next steps:
 ## Design rule
 
 The SQLite database becomes the local runtime source. Google Drive files become export/backup/source material only.
+
+## Pipeline Explorer dev source
+
+With the local API running, open Pipeline Explorer with:
+
+```text
+https://foreman-cockpit.netlify.app/?src=local
+```
+
+Default local API:
+
+```text
+http://127.0.0.1:8765
+```
+
+Override the API base when needed:
+
+```text
+https://foreman-cockpit.netlify.app/?src=local&localApi=http://127.0.0.1:8765
+```
+
+This is a read-only development source. It does not use Writer, Apps Script, Google Docs, or Google Drive runtime reads for the Pipeline table load. It reads the local SQLite `/api/master` endpoint and feeds the existing Pipeline parser.

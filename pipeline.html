@@ -702,8 +702,28 @@ function loadCanonicalScoring_(){
     return j;
   }).catch(function(e){S.scoringCanonicalMeta={ok:false,error:e.message};return null});
 }
+function loadLocalSqlite_(q){
+  var seq=S.loadSeq=(S.loadSeq||0)+1,base=(q.get('localApi')||'http://127.0.0.1:8765').replace(/\/+$/,'');
+  readout('<b>fetching local SQLite.</b>');
+  S.connection.state='Checking local SQLite';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};renderLoadAlert_();
+  return fetch(base+'/api/master',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('local SQLite HTTP '+r.status);return r.json()}).then(function(j){
+    if(seq!==S.loadSeq)return j;
+    if(!j||j.ok!==true||typeof j.text!=='string'||!j.text)throw new Error((j&&j.error)||'local SQLite returned no master text');
+    var meta={id:j.id||'local-sqlite',fetchedAt:j.fetchedAt||new Date().toISOString(),modifiedTime:j.modifiedTime||'',bytes:j.text.length,source:'local-sqlite',localApi:base};
+    S.load={freshness:'LIVE',error:'',startedAt:meta.fetchedAt,text:j.text,fromCache:false,meta:meta,archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};
+    S.connection.state='Connected local SQLite';S.connection.lastRead=meta.fetchedAt;S.connection.error='';
+    apply(j.text,meta,false);renderLoadAlert_();renderReadout();
+    return S.load;
+  }).catch(function(e){
+    if(seq!==S.loadSeq)return null;
+    S.load={freshness:'NONE',error:e.message,startedAt:new Date().toISOString(),failedAt:new Date().toISOString(),text:'',meta:{source:'local-sqlite',localApi:base},fromCache:false,archive:{state:'NOT_LOADED'},evidence:{state:'NOT_LOADED'}};
+    S.connection.state='LOCAL SQLITE FAILED';S.connection.error=e.message;renderLoadAlert_();readout('<span class="bad">LOCAL SQLITE FETCH FAILED</span> '+esc(e.message));
+    return S.load;
+  });
+}
 function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
+  if(src==='local')return loadLocalSqlite_(q);
   readout('<b>fetching…</b>');
   if(!hasWriter()){S.connection.state='Not configured';readout('Protected master · configure your writer to connect');switchTab('settings');return}
   S.connection.state='Checking';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'PENDING'},evidence:{state:'PENDING'}};renderLoadAlert_();
