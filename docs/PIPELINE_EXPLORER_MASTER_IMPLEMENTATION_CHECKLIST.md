@@ -46,7 +46,7 @@ Production smoke test checklist:
 
 - [x] App opens.
 - [x] Pipeline loads.
-- [ ] Job click opens detail panel.
+- [x] Job click opens detail panel.
 - [x] Map appears.
 - [x] Navigation shows Pipeline, Map, AI Operations, Control Center, Analytics.
 - [x] AI Operations page opens.
@@ -57,6 +57,8 @@ Production smoke test checklist:
 Smoke test note, 2026-10-10: production app loaded at `https://foreman-cockpit.netlify.app`; visible table showed 647 roles and 1255 row-lines; top navigation rendered Pipeline, Map, AI Ops, Control, and Analytics. Follow-up interaction smoke test verified Map, AI Operations, and Control Center page navigation. That run observed a transient/backend data-load error (`Writer returned an HTML error page instead of JSON`), so job-row click/detail behavior could not be verified end-to-end. Mobile bottom navigation remains unverified because the browser automation could not use a true narrow mobile viewport.
 
 Smoke test note, 2026-10-10 after Netlify credit restore: production deployed commit `3ff637f` and returned HTTP 200. Focused headless Chrome smoke test rendered Pipeline Explorer with 647 visible roles, 1255 row-lines, Writer/data `Connected`, queue 0, last sync `now`, top navigation Pipeline / Map / AI Ops / Control / Analytics, and no captured browser runtime errors. Job-click detail and mobile bottom nav remain unchecked because this smoke test intentionally did not perform interaction testing.
+
+Interaction smoke note, 2026-10-10: focused production job-click test passed. Headless Chrome loaded 647 visible roles, clicked the first job row without pressing any action buttons, opened the detail drawer, preserved the selected job in the URL as `j=V2I-B7271A614138`, and rendered Overview, Posting, Fit & Score, Application, Documents, and History tab labels. The drawer showed FPC of Brighton / Head of Manufacturing details. Archive/evidence was still loading during part of the run, but the active master and detail drawer rendered successfully.
 
 ---
 
