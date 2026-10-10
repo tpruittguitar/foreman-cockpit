@@ -83,3 +83,66 @@
   #job-map-card .map-prefs select{font-size:16px;min-height:40px}
   #job-map-card .map-prefs input{width:20px;height:20px}
 }
+
+/* Phase 4 overhaul: mobile sizing/readability corrections.
+   Presentation-only pass: no Writer, scoring, master, automation, or data-flow changes. */
+@media(max-width:760px),(pointer:coarse) and (max-width:980px){
+  header{padding:7px 8px calc(7px + env(safe-area-inset-top)*.2) 6px!important;gap:5px!important}
+  header .menu-btn{min-width:42px!important;min-height:42px!important;padding:0!important}
+  header .brand{font-size:11.6px!important;letter-spacing:.85px!important;max-width:38vw!important}
+  header .brand small{font-size:6.2px!important;letter-spacing:.75px!important}
+  header .hcell,header .writer-badge{min-height:36px!important;padding:0 5px!important}
+  header .hcell b,header .writer-badge b{font-size:12.5px!important}
+
+  #view-pipeline.on{padding:7px 8px calc(82px + env(safe-area-inset-bottom))!important;row-gap:7px!important}
+  #queue-head .decide-strip{grid-template-columns:repeat(4,minmax(0,1fr));border-color:#262626!important}
+  #queue-head .decide{padding:7px 3px!important}
+  #queue-head .decide b{font-size:19px!important;line-height:1!important}
+  #queue-head .decide small{font-size:7.6px!important;letter-spacing:.45px!important;line-height:1.05!important}
+
+  #job-map-card{height:clamp(220px,31vh,290px)!important;border-color:#262626!important}
+  #job-map-card .map-legend{font-size:10.6px!important;line-height:1.05!important;gap:3px!important;max-width:42vw!important;bottom:8px!important;left:8px!important}
+  #job-map-card .map-head{padding:6px 8px!important;min-height:30px!important}
+  #job-map-card .map-head h4{font-size:10px!important;letter-spacing:1.1px!important}
+  #job-map-card .map-actions{right:56px!important;bottom:7px!important;gap:4px!important}
+  #job-map-card .map-actions button{min-height:32px!important;padding:2px 7px!important;font-size:9px!important}
+  #job-map-card .map-zoom{right:7px!important;top:7px!important;gap:4px!important}
+  #job-map-card .map-zoom button{min-width:38px!important;min-height:36px!important;font-size:13px!important}
+  #job-map-card .map-zoom #map-zoom-level{min-height:22px!important;font-size:8.8px!important}
+  #job-map-card .map-layers{right:7px!important;top:132px!important;min-width:38px!important;min-height:36px!important;font-size:12px!important}
+  #job-map-card.layers-open #mapfilters{right:50px!important;left:8px!important;top:7px!important;max-height:calc(100% - 14px)!important;overflow:auto!important}
+  .map-target-label{max-width:128px!important;max-height:50px!important;padding:3px 5px!important;font-size:8.1px!important;line-height:1.05!important;border-radius:2px!important}
+  .map-target-label strong{font-size:8.7px!important;line-height:1.05!important}.map-target-label span,.map-target-label small{font-size:7.4px!important;line-height:1.05!important}
+
+  .qh-title{padding-top:5px!important}.qh-title:before{font-size:14px!important}.qh-title .mono{font-size:12px!important}
+  .qh-tools{padding-top:4px!important}.qh-view{min-height:34px!important;max-width:118px!important;font-size:10.5px!important;padding:0 7px!important}
+  #worksplit{height:min(40vh,285px)!important;min-height:185px!important}
+  #grid th{height:26px!important;min-height:26px!important;padding:2px 5px!important;font-size:8.3px!important;letter-spacing:.55px!important}
+  #grid td,body:not([data-density=comfortable]) #grid td{height:30px!important;min-height:30px!important;padding:3px 5px!important;font-size:10.8px!important;line-height:1.08!important}
+
+  #drawer{border-color:#262626!important}
+  #drawer .wh-top{padding:9px 10px 3px!important;gap:6px!important}
+  #drawer .wh-title h2,#drawer #d-title{font-size:18px!important;line-height:1.08!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .ws-meta{font-size:10.8px!important;line-height:1.18!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .ws-ring{width:62px!important;height:62px!important}.ws-ring:before{inset:5px!important}.ws-ring b{font-size:18px!important}.ws-ring small{font-size:8px!important}
+  #drawer .wh-chips{padding:1px 10px 5px!important;gap:3px!important}.wh-chips .bpill,.wh-chips .chip{font-size:8.6px!important;padding:1px 4px!important;max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #detail-tabs{margin:0 6px!important}#detail-tabs button{min-height:38px!important;padding:0 10px!important;font-size:10px!important}
+  #drawer #d-body{padding:8px 10px!important}.detail-card{padding:7px!important}.ck-kd li,.ck-checks li,.ck-sum p,.ck-next p{font-size:11.2px!important;line-height:1.28!important}
+  #drawer .wh-actions{padding:7px 8px calc(7px + env(safe-area-inset-bottom)*.35)!important;gap:5px!important}#drawer .wh-actions button{min-height:38px!important;font-size:10.6px!important;padding:0 8px!important}
+
+  #bottombar{height:calc(58px + env(safe-area-inset-bottom))!important;padding-bottom:env(safe-area-inset-bottom)!important}
+  #bottombar button{font-size:9.4px!important;letter-spacing:.2px!important;gap:2px!important;min-width:0!important;padding:3px 1px!important}
+  #bottombar button svg{width:19px!important;height:19px!important}
+  #sheet .sheet-in{max-height:82vh!important;overflow:auto!important;padding-bottom:calc(16px + env(safe-area-inset-bottom))!important}
+  #sheet .sheet-g button{min-height:38px!important;font-size:11px!important}
+}
+@media(max-width:980px) and (orientation:landscape){
+  header{padding-left:calc(12px + env(safe-area-inset-left))!important;padding-right:calc(12px + env(safe-area-inset-right))!important}
+  #view-pipeline.on{padding-left:calc(14px + env(safe-area-inset-left))!important;padding-right:calc(14px + env(safe-area-inset-right))!important;padding-bottom:calc(70px + env(safe-area-inset-bottom))!important;grid-template-columns:minmax(0,1fr)!important}
+  #job-map-card{height:clamp(190px,44vh,250px)!important}
+  #job-map-card .map-actions{right:calc(58px + env(safe-area-inset-right))!important}
+  #job-map-card .map-zoom,#job-map-card .map-layers{right:calc(8px + env(safe-area-inset-right))!important}
+  #worksplit{height:clamp(185px,42vh,270px)!important}
+  #drawer .wh-actions{padding-left:calc(10px + env(safe-area-inset-left))!important;padding-right:calc(10px + env(safe-area-inset-right))!important}
+  #bottombar{padding-left:env(safe-area-inset-left)!important;padding-right:env(safe-area-inset-right)!important}
+}
