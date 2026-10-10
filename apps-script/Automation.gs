@@ -410,4 +410,4 @@ function parseQueueContent_(text) {
   return { ok: true, body: body };
 }
 
-if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_, appendQueueLog_: appendQueueLog_, processWriterQueue: processWriterQueue, writerWarnings_: writerWarnings_, writerStatus_: writerStatus_, terminalStatus_: terminalStatus_, requestIdsOf_: requestIdsOf_, partialHoldRecovered_: partialHoldRecovered_, QUEUE_CLAIM_CUTOFF_MS: QUEUE_CLAIM_CUTOFF_MS, QUEUE_BUDGET_MS: QUEUE_BUDGET_MS };
+if (typeof module !== 'undefined') module.exports = { intakeAccountingError_: intakeAccountingError_, queuePayloadProof_: queuePayloadProof_, parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_, appendQueueLog_: appendQueueLog_, processWriterQueue: processWriterQueue, writerWarnings_: writerWarnings_, writerStatus_: writerStatus_, terminalStatus_: terminalStatus_, requestIdsOf_: requestIdsOf_, partialHoldRecovered_: partialHoldRecovered_, QUEUE_CLAIM_CUTOFF_MS: QUEUE_CLAIM_CUTOFF_MS, QUEUE_BUDGET_MS: QUEUE_BUDGET_MS };
