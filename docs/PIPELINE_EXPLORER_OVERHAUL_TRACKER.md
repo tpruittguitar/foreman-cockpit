@@ -49,8 +49,8 @@ Pipeline Explorer should feel like a black/grey modern military manufacturing-in
 
 | Phase | Name | Scope | Status |
 | --- | --- | --- | --- |
-| 0 | Tracker and governance | Create review-gated tracker and branch discipline | IN PROGRESS |
-| 1 | Visual foundation and Pipeline density | Neutral black/grey tokens, typography scale, right-panel text reduction, compact queue styling, preserve map and behavior | NOT STARTED |
+| 0 | Tracker and governance | Create review-gated tracker and branch discipline | COMPLETE |
+| 1 | Visual foundation and Pipeline density | Neutral black/grey tokens, typography scale, right-panel text reduction, compact queue styling, preserve map and behavior | IMPLEMENTED - AWAITING REVIEW |
 | 2 | Navigation consolidation | Collapse left rail/menu into Pipeline, Map, AI Operations, Control Center, Analytics | BLOCKED UNTIL PHASE 1 REVIEW |
 | 3 | AI Operations dashboard | Intake/enrichment throughput, explicit enrichment backlog, backlog trend, Writer health, lane performance, Next Priority | BLOCKED UNTIL PHASE 2 REVIEW |
 | 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | BLOCKED UNTIL PHASE 3 REVIEW |
@@ -93,6 +93,16 @@ Pipeline Explorer should feel like a black/grey modern military manufacturing-in
 - Base UI reads black/white/neutral grey, not blue.
 - Screenshots reviewed before Phase 2 begins.
 
+### Phase 1 implementation notes
+
+- Implemented as CSS-only overrides in `pipeline-ui-workspace.css`.
+- Added neutral black/grey token overrides for the existing variable system.
+- Neutralized blue-cast backgrounds across shell, rail, drawer, cards, queue, dashboard cards, map, popovers, and document panels.
+- Tightened desktop queue row height, padding, and table typography.
+- Reduced right-side job workspace title, metadata, tab, card, key/value, and action typography.
+- Constrained map target label size, especially on phone/coarse-pointer layouts.
+- Preserved existing selectors and behavior; no JavaScript or data logic changed in this pass.
+
 ## AI Operations dashboard requirements for later phases
 
 The dashboard must show both flow balance and enrichment backlog. Balance alone is insufficient.
@@ -119,3 +129,5 @@ Required chart groups:
 ## Progress log
 
 - 2026-10-10: Created phased overhaul tracker and branch `phase1-overhaul-visual-foundation`.
+- 2026-10-10: Implemented Phase 1 CSS-only visual foundation overrides in `pipeline-ui-workspace.css`.
+- 2026-10-10: Phase 1 is awaiting visual review before any Phase 2 navigation work begins.
