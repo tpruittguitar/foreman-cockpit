@@ -90,7 +90,7 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 - [x] Design final structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules. See `docs/STORAGE_SQLITE_SCHEMA_DESIGN.md` and additive Phase 2 tables in `tools/local-store/schema.sql`.
 - [~] Switch production UI reads to bounded JSON endpoints backed by structured storage. Dev-only local path now loads from paged SQLite `/api/jobs?mode=source` when the app is served locally; production default is not cut over.
 - [~] Keep Google Drive exports generated from the structured store only. Local SQLite generates master/archive/evidence snapshots, records them in `export_snapshots`, and can publish checksum-verified copies into the dedicated synced Drive folder `AI_Coordination/SQLite_Exports`. Canonical live Drive files are still not generated from SQLite, so this remains partial.
-- [ ] Retire Google Drive text-file reads from the production UI load path.
+- [ ] Retire Google Drive text-file reads from the production UI load path. Blocked by `docs/STORAGE_CUTOVER_GATE.md`; `tools/local-store/preflight_cutover_gate.py` currently passes local SQLite/parity/export gates and intentionally fails production endpoint, rollback, and Tim approval gates.
 
 Immediate hardening while migration is pending:
 

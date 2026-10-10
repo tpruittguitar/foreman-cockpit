@@ -188,3 +188,12 @@ This checks live-row count, live-row text membership, archive-row count, archive
 
 Validated on 2026-10-10: 741 live rows, 522 archive rows, 1,936 evidence chains, 4,683 evidence field rows, and 0 unresolved evidence chains.
 
+## Cutover preflight gate
+
+Before any production default can move to structured storage, run:
+
+    python tools/local-store/preflight_cutover_gate.py
+
+Expected current result: local SQLite/parity/export checks pass, but production cutover remains blocked because no production-reachable structured endpoint, rollback path, or explicit Tim approval is in place.
+
+See `docs/STORAGE_CUTOVER_GATE.md`.
