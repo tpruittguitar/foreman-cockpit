@@ -91,7 +91,7 @@ Minimum migration checklist:
 - [ ] inventory every runtime read that depends on Google Drive text files or Apps Script file reads;
 - [ ] classify each read as runtime-critical, export-only, backup-only, or removable;
 - [x] design replacement structured storage schema (`docs/STORAGE_SQLITE_SCHEMA_DESIGN.md` and `tools/local-store/schema.sql`);
-- [ ] choose the durable store;
+- [x] choose the durable store: local-first SQLite, not enterprise cloud;
 - [ ] build read-only mirror endpoint from the current text master into structured records;
 - [ ] validate row counts, bucket counts, archive counts, and evidence resolution against the current text master;
 - [ ] switch UI reads to structured JSON;
