@@ -5,3 +5,8 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 
+
+# Python local runtime artifacts
+__pycache__/
+tools/local-store/__pycache__/
+*.pyc
