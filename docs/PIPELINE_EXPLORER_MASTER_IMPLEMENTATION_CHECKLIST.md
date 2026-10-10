@@ -75,9 +75,12 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 - [x] Choose the replacement durable structured store for the personal/local-first path: SQLite first, not enterprise cloud.
 - [x] Create local SQLite schema and tiny local JSON API prototype under `tools/local-store/`.
 - [x] Test synthetic import into SQLite and verify `/health`, `/api/counts`, `/api/jobs`, and `/api/jobs/<PRIMARY_ID>` endpoints.
+- [x] Import the real local text master into SQLite.
+- [x] Add `/api/master` local SQLite endpoint for Pipeline-compatible reads.
+- [x] Add dev-only Pipeline Explorer source adapter: `?src=local`.
+- [~] Build a read-only structured mirror from the current text master. Prototype exists locally; not production source yet.
+- [~] Validate counts, bucket totals, archive totals, and evidence resolution against the current text master. Bucket counts validated for imported live rows; archive/evidence validation remains open.
 - [ ] Design final structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules.
-- [ ] Build a read-only structured mirror from the current text master.
-- [ ] Validate counts, bucket totals, archive totals, and evidence resolution against the current text master.
 - [ ] Switch production UI reads to bounded JSON endpoints backed by structured storage.
 - [ ] Keep Google Drive exports generated from the structured store only.
 - [ ] Retire Google Drive text-file reads from the production UI load path.
@@ -278,4 +281,3 @@ Separate PRs should be used for:
 - Drive authority changes
 - master data changes
 - storage architecture / runtime data store changes
-
