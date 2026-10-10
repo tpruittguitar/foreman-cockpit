@@ -12,7 +12,7 @@ Save one file into **AI_Coordination/WRITER_QUEUE** (folder `1IVyEKPxqY_7uL9GG9R
 
 - A trigger claims and applies the queue about every 1 minute. A GET with `action=process_queue` applies it immediately when that endpoint is available.
 - A successful request moves to `WRITER_QUEUE/processed`. Anything else moves to `WRITER_QUEUE/failed`. Either way a `RESULT__<name>.json` file appears beside it with the writer's full response and a `terminalStatus`:
-  - `SUCCESS`: applied.
+  - `SUCCESS`: accepted/applied; durable verification may still be PENDING. Require independent COMPLETE receipt/index and fresh exact-row readback before reporting WRITE_VERIFIED.
   - `FAILED`: nothing in the RESULT applied unless its per-request results say so. This includes `REJECTED_SCHEMA`: the body was malformed and nothing was attempted.
   - `PARTIAL_HOLD`: a mixed batch stopped part-way, either at the write fence (one master write per execution) or at the time budget. `results` shows what ran; `remainder` is the untouched rest, ready to resubmit as its own file. It is never re-run automatically.
   - `HOLD_ABANDONED`: the execution that claimed the file died before finishing, for example at the 6-minute Apps Script limit. The RESULT lists each request ID's receipt-index state. Reconcile those IDs against the receipts and the master before resubmitting; the worker never re-runs an abandoned claim.
@@ -50,7 +50,7 @@ Keep GET payloads small, roughly one ruling or 1 to 5 intake records. Use the qu
 
 | action | use | body |
 |---|---|---|
-| `intake` | Scout discoveries, creating new SCOUT_INTAKE / DISCOVERY_LEAD rows | `{"action":"intake","run":{"SCOUT_RUN_ID":"…","GROSS_FOUND":N},"records":[{COMPANY,TITLE,LOCATION,REQ_ID,SOURCE_URL,SOURCE_PROVIDER,DISCOVERY_SOURCE,DISCOVERED_AT_ET,IDENTITY_CONFIDENCE,INITIAL_UNKNOWN_FIELDS,…}]}`, per docs/SCOUT_INTAKE_CONTRACT.md |
+| `intake` | Scout discoveries, creating new SCOUT_INTAKE / DISCOVERY_LEAD rows | `{"action":"intake","requestId":"<stable mutation ID>","run":{"SCOUT_RUN_ID":"…","GROSS_FOUND":N},"records":[{COMPANY,TITLE,LOCATION,REQ_ID,SOURCE_URL,SOURCE_PROVIDER,DISCOVERY_SOURCE,DISCOVERED_AT_ET,IDENTITY_CONFIDENCE,INITIAL_UNKNOWN_FIELDS,…}]}`, per docs/SCOUT_INTAKE_CONTRACT.md |
 | `ruling` | change one existing row by exact PRIMARY_ID | `{"action":"ruling","ruling":{"primaryId":"V2S-…","kind":"…","actor":"FORGE","requestId":"…","note":"…","fields":{…}}}`. The fields must be nested inside `ruling` and use camelCase (`primaryId`, `requestId`). A flat or snake_case ruling (`"primary_id"` beside `"action"`) is rejected as `REJECTED_SCHEMA`, and a batch containing one is rejected whole. |
 | `upsert_application` | email-confirmed application or rejection (Tim directive 2026-09-29) | `{"action":"upsert_application","event":{"COMPANY":"…","TITLE":"…","STATE":"APPLIED"\|"REJECTED_BY_EMPLOYER","EVENT_DATE":"YYYY-MM-DD","EVIDENCE":"Gmail <id> <sender> \"<subject>\"","REQ_ID":"…","LOCATION":"…","SOURCE_URL":"…","TARGET_PRIMARY_ID":"(optional)"}}` |
 | `batch` | up to 25 of the above, applied in order | `{"action":"batch","requests":[…]}` |
@@ -112,3 +112,11 @@ The live writer also exposes `data_discovery` (durable requests to research miss
 ```json
 {"action":"ruling","ruling":{"primaryId":"V2I-CCCCCCCCCCCC","kind":"ENRICH","actor":"CLAUDE","requestId":"FOREMAN-EXAMPLE","fields":{"CLAUDE_FIT":"HIGH","PROPOSED_BUCKET":"MANUAL_RESEARCH","ANALYSIS_NOTE":"worksite confirmed on first-party req"}}}
 ```
+
+## Intake identity and receipt recovery
+
+Normalize intake identity once: explicit requestId, request_id alias, then legacy run.SCOUT_RUN_ID fallback. Persist it through queue/result, durable intent and receipts; use the same ID in request_result and receipt_index. Preserve SCOUT_RUN_ID as source provenance separately. A source notification or extracted posting with unknown pay/degree/FLEX is partial research, not a failed persistence attempt; preserve its initiating URL and unknowns under existing Rules.
+
+To repair a legacy missing mapping, send {"action":"reconcile_intake_receipt","requestId":"<original SCOUT_RUN_ID>","writeId":"<original WRITE_ID>"} through an authorized Writer transport. It requires an intact final independent COMPLETE intake receipt for the live master, reconciled accounting, unique current rows, consistent counts/END markers and no unresolved transaction or conflicting index entry. It changes the index only, never replays intake, and records evidence completeness as NOT_ASSESSED. Verify request_result durable=true and writer_status recovered=true after the repair. An original RESULT PENDING remains historical; use the latest receipt/index verdict.
+
+See [intake handoff](automation/intake-handoff.md) for the recovered batch and shared directive links. Existing protected states, explicit holds and owner assignments remain in force. Claude and Grok remain deferred.

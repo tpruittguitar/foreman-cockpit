@@ -45,3 +45,11 @@ If a remembered prompt, cached model, project instruction, task-board file, amen
 ## Verification
 
 Before reporting a change as complete, read the live writer response or `RESULT__` file, then read the fixed master again and confirm the exact row and receipt. Never infer live capability from an old document; use `action=ping`.
+
+## Intake handoff clarification (2026-10-09)
+
+Use a stable requestId for intake; request_id is an accepted alias and older intake clients fall back to run.SCOUT_RUN_ID. Keep the source run ID separately when it differs from the request identity. RESULT SUCCESS means accepted/applied; it may still carry verification PENDING. Independent COMPLETE receipt/index and fresh exact-row readback establish durable persistence, separately from research completeness and pursuit readiness.
+
+For already-present rows with a missing request mapping, reconcile the original final independent receipt by SCOUT_RUN_ID and WRITE_ID. The authorized reconcile_intake_receipt action repairs identity only after proof checks. Never replay to manufacture a receipt mapping. Read receipt_index, request_result and writer_status before clearing the affected gate. Details and the recovered batch record: [intake handoff](automation/intake-handoff.md).
+
+Partial email/posting evidence remains eligible for governed intake review with preserved initiating provenance and explicit unknowns, subject to existing admission safeguards and owner holds. Claude, Grok and the cross-AI relay remain deferred; no native prompt or schedule change is implied.

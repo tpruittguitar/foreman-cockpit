@@ -114,3 +114,11 @@ The migration procedure (both options) is transactional and keeps the canonical 
 
 Rehearse it on a copy of the master first. The rebuild write method (DocumentApp clear+setText versus a Drive content
 replace) must be proven on that copy, because the live write path is the thing that is failing.
+
+## Intake receipt identity recovery (2026-10-09)
+
+An original submission RESULT with PENDING is historical. Read the latest final receipt/index by stable requestId (request_id alias; older intake fallback run.SCOUT_RUN_ID). Empty pending obligations and a missing mapping do not prove the rows failed to persist.
+
+The identity-only reconcile_intake_receipt action accepts the original requestId/run ID and WRITE_ID and validates a final independently verified COMPLETE intake receipt for the live master, current unique rows and matching counts/END markers before backfilling the index. Identical legacy END markers are tolerated; conflicting markers are rejected. It does not mutate the master, replay intake or promote partial evidence. A recovery based on a legacy receipt records historical independent proof plus current row presence; it does not reconstruct unavailable original row hashes.
+
+See [intake handoff](automation/intake-handoff.md) for the recovered email batch, shared instruction files and readback evidence. Persistence verification remains distinct from research completeness and readiness to pursue.
