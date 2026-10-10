@@ -58,6 +58,28 @@ Smoke test note, 2026-10-10: production app loaded at `https://foreman-cockpit.n
 
 ---
 
+## Architecture decision — Storage foundation
+
+Goal: preserve the storage lesson correctly: the master was already moved from a Google Doc to a plain text file, which was the right first fix. The remaining issue is that production runtime still depends on Google Drive/App Script text-file reads for large runtime data.
+
+Decision file: `docs/STORAGE_ARCHITECTURE_DECISION.md`
+
+- [x] Move live population master away from Google Docs document storage to a plain text master file.
+- [x] Record decision: do not use Google Docs as a live app database.
+- [x] Record clarified decision: do not rely on Google Drive/App Script large text-file reads as the production runtime data path.
+- [x] Restrict Google Docs / Drive files to export, backup, reference, migration source, or manual review artifacts once structured storage exists.
+- [ ] Inventory every runtime read that depends on Google Drive text files or Apps Script file reads.
+- [ ] Classify each read as runtime-critical, export-only, backup-only, or removable.
+- [ ] Choose the replacement durable structured store.
+- [ ] Design structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules.
+- [ ] Build a read-only structured mirror from the current text master.
+- [ ] Validate counts, bucket totals, archive totals, and evidence resolution against the current text master.
+- [ ] Switch production UI reads to bounded JSON endpoints backed by structured storage.
+- [ ] Keep Google Drive exports generated from the structured store only.
+- [ ] Retire Google Drive text-file reads from the production UI load path.
+
+---
+
 ## Phase 2 — Finish Pipeline table controls
 
 Goal: finish the concrete table-control request so Tim can make the job queue fit his workflow and keep the settings.
@@ -219,15 +241,16 @@ Current status: Writer tests fail on PR #85 and main with the same failures. The
 ## Recommended execution order from here
 
 1. Finish remaining production interaction smoke checks.
-2. Finish Pipeline table controls.
-3. Finish automation visibility and durable run history.
-4. Finish automation strategy enforcement.
-5. Finish Control Center authority workflow.
-6. Finish workspace layout system polish.
-7. Finish mobile real-device review.
-8. Run VNext scoring backtest.
-9. Only publish VNext if it wins and Tim explicitly approves.
-10. Clean up Writer test debt.
+2. Execute the storage foundation migration track so runtime data no longer depends on Google Drive/App Script text-file reads.
+3. Finish Pipeline table controls.
+4. Finish automation visibility and durable run history.
+5. Finish automation strategy enforcement.
+6. Finish Control Center authority workflow.
+7. Finish workspace layout system polish.
+8. Finish mobile real-device review.
+9. Run VNext scoring backtest.
+10. Only publish VNext if it wins and Tim explicitly approves.
+11. Clean up Writer test debt.
 
 ---
 
@@ -243,3 +266,4 @@ Separate PRs should be used for:
 - scoring model cutover
 - Drive authority changes
 - master data changes
+- storage architecture / runtime data store changes
