@@ -42,3 +42,12 @@
  .inc-history-page{padding:12px}
  .inc-history-tools label{width:100%}
 }
+
+/* Writer recovery obligations: existing incidents grouped by original operation. */
+.inc-work-item{border:1px solid #3b443e;border-left:3px solid #d6a64a;background:#0c0d0c;border-radius:5px;padding:11px;margin:8px 0;min-width:0;overflow-wrap:anywhere}
+.inc-work-title{font-size:13px;font-weight:700;color:#f0f0ed;margin-bottom:5px;word-break:break-word}
+.inc-work-error{font:11.5px/1.45 var(--mono);color:#b4b4b4;margin-top:7px}
+.inc-work-next{margin-top:9px;color:#dce4da;font-size:12px;line-height:1.5}
+.inc-work-next b{color:#e4bd71}
+#inc-history-work{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,390px),1fr));gap:10px;margin:12px 0 25px}
+#inc-history-work .inc-work-item{margin:0}
