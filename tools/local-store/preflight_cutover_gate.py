@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DB = ROOT / "data" / "pipeline_local.db"
 VALIDATOR = ROOT / "tools" / "local-store" / "validate_mirror_parity.py"
 EXPORT_DIR = Path(r"C:\Users\Tim\My Drive\AI_Coordination\SQLite_Exports")
+ROLLBACK_PLAN = Path("docs/STORAGE_RUNTIME_ROLLBACK_PLAN.md")
 
 
 def run(cmd):
@@ -40,6 +41,25 @@ def db_counts():
         conn.close()
 
 
+def rollback_check():
+    required = [
+        "restore the Drive/App Script runtime default",
+        "Pipeline renders active jobs",
+        "job-row click opens the detail drawer",
+        "Build/version/commit is recorded",
+    ]
+    plan = ROOT / ROLLBACK_PLAN
+    if not plan.exists():
+        return {"gate": "production_rollback_path", "ok": False, "detail": "Rollback plan missing"}
+    text = plan.read_text(encoding="utf-8")
+    missing = [item for item in required if item not in text]
+    return {
+        "gate": "production_rollback_path",
+        "ok": not missing,
+        "detail": {"path": str(plan), "missing": missing},
+    }
+
+
 def export_files():
     if not EXPORT_DIR.exists():
         return []
@@ -56,7 +76,7 @@ def main() -> int:
         {"gate": "parity_validator", "ok": parity_code == 0, "detail": json.loads(parity_out) if parity_out.startswith("{") else {"stdout": parity_out, "stderr": parity_err}},
         {"gate": "drive_synced_exports_present", "ok": len(files) >= 3, "detail": {"folder": str(EXPORT_DIR), "sample": files}},
         {"gate": "production_reachable_structured_endpoint", "ok": False, "detail": "Not implemented"},
-        {"gate": "production_rollback_path", "ok": False, "detail": "Not implemented"},
+        rollback_check(),
         {"gate": "tim_explicit_cutover_approval", "ok": False, "detail": "Not given"},
     ]
     report = {"ok": all(c["ok"] for c in checks), "checks": checks}
