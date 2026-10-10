@@ -27,3 +27,5 @@ test('writer fingerprint is based on unmodified input bytes',()=>{
  assert.notEqual(a.rawSha256,b.rawSha256);
  assert.equal(a.rawSha256.length,64);
 });
+
+test('legacy request without gross count remains accepted',()=>{assert.equal(A.intakeAccountingError_({action:'intake',run:{SCOUT_RUN_ID:'LEGACY'},records:[{}]}),'');});
