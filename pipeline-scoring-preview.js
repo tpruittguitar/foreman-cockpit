@@ -37,7 +37,7 @@ function compare(rows,scoreRow,beforeCfg,afterCfg,opts){
   out.movers=both.filter(function(x){return x.rankDelta!==0}).sort(function(a,b){return Math.abs(b.rankDelta)-Math.abs(a.rankDelta)||(a.id<b.id?-1:1)}).slice(0,moverN)
     .map(function(x){return {id:x.id,company:x.company,title:x.title,before:brief(x,'before'),after:brief(x,'after'),rankDelta:x.rankDelta}});
   var tb=rb.slice(0,topN),ta=ra.slice(0,topN),idsB={},idsA={};tb.forEach(function(x){idsB[x.id]=1});ta.forEach(function(x){idsA[x.id]=1});
-  out.top={before:tb.map(function(x){return brief(x,'before')}),after:ta.map(function(x){return brief(x,'after'}),
+  out.top={before:tb.map(function(x){return brief(x,'before')}),after:ta.map(function(x){return brief(x,'after')}),
     entered:ta.filter(function(x){return !idsB[x.id]}).map(function(x){return brief(x,'after')}),left:tb.filter(function(x){return !idsA[x.id]}).map(function(x){return brief(x,'before')})};
   out.identical=out.errors===0&&out.ratingUp===0&&out.ratingDown===0&&out.newlyRated===0&&out.newlyUnrated===0&&out.rankUp===0&&out.rankDown===0;
   return out;
