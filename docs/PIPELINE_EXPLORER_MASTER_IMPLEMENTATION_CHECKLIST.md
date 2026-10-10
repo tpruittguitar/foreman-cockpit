@@ -1,7 +1,7 @@
 # Pipeline Explorer Master Implementation Checklist
 
 Status date: 2026-10-10
-Branch: `phase1-overhaul-visual-foundation`
+Branch: `main`
 Purpose: preserve the full implementation plan so it does not get lost in chat history.
 
 ## Status key
@@ -38,7 +38,7 @@ Goal: put the new command-center structure into the app without changing Writer,
 - [x] Run full test suite on PR branch.
 - [x] Run full test suite on main for comparison.
 - [x] Confirm PR #85 does not introduce a new test regression versus main.
-- [ ] Merge PR #85.
+- [x] Merge PR #85.
 - [ ] Let production deploy complete.
 - [ ] Run production smoke test.
 
@@ -216,7 +216,7 @@ Current status: Writer tests fail on PR #85 and main with the same failures. The
 
 ## Recommended execution order from here
 
-1. Merge and deploy PR #85.
+1. Confirm production deploy completes.
 2. Run the production smoke test.
 3. Finish Pipeline table controls.
 4. Finish automation visibility and durable run history.
