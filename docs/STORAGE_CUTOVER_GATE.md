@@ -38,7 +38,7 @@ All gates must pass before production default can use structured storage.
 Do not switch production default data loading until:
 
 1. a production-reachable structured endpoint exists;
-2. current Writer/App Script loading remains available as rollback;
+2. current Writer/App Script loading remains available as rollback and `docs/STORAGE_RUNTIME_ROLLBACK_PLAN.md` exists;
 3. parity validation passes immediately before cutover;
 4. a production smoke test passes on structured storage;
 5. Tim explicitly approves the production default change.
