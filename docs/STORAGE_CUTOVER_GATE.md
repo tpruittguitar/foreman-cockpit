@@ -68,3 +68,13 @@ Not allowed without explicit approval:
 - changing production default data source;
 - removing the current Writer/App Script runtime path;
 - marking Phase 2 runtime retirement complete.
+
+## Production structured endpoint scaffold
+
+A parallel Netlify endpoint exists at:
+
+    /api/structured/health
+
+It is intentionally a scaffold. It proves a production-reachable structured runtime route can exist without changing the Pipeline Explorer default data path. It does not expose population rows and reports `dataAvailable=false` until a private structured data source is configured.
+
+The UI must not cut over while `production_structured_data_available` is false.

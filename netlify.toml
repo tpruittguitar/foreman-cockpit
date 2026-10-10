@@ -8,6 +8,17 @@
   to = "/.netlify/functions/feed"
   status = 200
 
+
+[[redirects]]
+  from = "/api/structured/*"
+  to = "/.netlify/functions/structured/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/api/structured"
+  to = "/.netlify/functions/structured"
+  status = 200
+
 [[redirects]]
   from = "/api/master"
   to = "/.netlify/functions/master"

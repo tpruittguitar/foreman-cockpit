@@ -197,3 +197,11 @@ Before any production default can move to structured storage, run:
 Expected current result: local SQLite/parity/export/rollback checks pass, but production cutover remains blocked because no production-reachable structured endpoint or explicit Tim approval is in place.
 
 See `docs/STORAGE_CUTOVER_GATE.md`.
+
+## Production structured endpoint scaffold
+
+Netlify endpoint:
+
+    /api/structured/health
+
+Current behavior: reachable health/status only. `/api/structured/counts` and `/api/structured/jobs` intentionally return unavailable until a private structured data source is configured. This prevents accidental public exposure of the pipeline population.

@@ -10,6 +10,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,6 +18,7 @@ DB = ROOT / "data" / "pipeline_local.db"
 VALIDATOR = ROOT / "tools" / "local-store" / "validate_mirror_parity.py"
 EXPORT_DIR = Path(r"C:\Users\Tim\My Drive\AI_Coordination\SQLite_Exports")
 ROLLBACK_PLAN = Path("docs/STORAGE_RUNTIME_ROLLBACK_PLAN.md")
+STRUCTURED_HEALTH_URL = "https://foreman-cockpit.netlify.app/api/structured/health"
 
 
 def run(cmd):
@@ -60,6 +62,20 @@ def rollback_check():
     }
 
 
+def structured_endpoint_check():
+    try:
+        with urllib.request.urlopen(STRUCTURED_HEALTH_URL, timeout=10) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            return {"gate": "production_reachable_structured_endpoint", "ok": bool(data.get("ok") and data.get("service") == "structured-runtime"), "detail": {"url": STRUCTURED_HEALTH_URL, "status": res.status, "body": data}}
+    except Exception as exc:
+        return {"gate": "production_reachable_structured_endpoint", "ok": False, "detail": {"url": STRUCTURED_HEALTH_URL, "error": str(exc)}}
+
+
+def structured_data_check(endpoint_result):
+    body = ((endpoint_result.get("detail") or {}).get("body") or {})
+    return {"gate": "production_structured_data_available", "ok": body.get("dataAvailable") is True, "detail": body.get("reason") or "Structured population data source is not configured"}
+
+
 def export_files():
     if not EXPORT_DIR.exists():
         return []
@@ -70,12 +86,14 @@ def main() -> int:
     parity_code, parity_out, parity_err = run([sys.executable, str(VALIDATOR)])
     counts = db_counts()
     files = export_files()
+    endpoint_result = structured_endpoint_check()
     checks = [
         {"gate": "sqlite_db_exists", "ok": DB.exists(), "detail": str(DB)},
         {"gate": "sqlite_counts_present", "ok": bool(counts and counts["jobs"] and counts["archive_jobs"] and counts["evidence_chains"]), "detail": counts},
         {"gate": "parity_validator", "ok": parity_code == 0, "detail": json.loads(parity_out) if parity_out.startswith("{") else {"stdout": parity_out, "stderr": parity_err}},
         {"gate": "drive_synced_exports_present", "ok": len(files) >= 3, "detail": {"folder": str(EXPORT_DIR), "sample": files}},
-        {"gate": "production_reachable_structured_endpoint", "ok": False, "detail": "Not implemented"},
+        endpoint_result,
+        structured_data_check(endpoint_result),
         rollback_check(),
         {"gate": "tim_explicit_cutover_approval", "ok": False, "detail": "Not given"},
     ]
