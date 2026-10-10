@@ -1,1 +1,7 @@
 node_modules/
+
+# Local SQLite runtime store
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
