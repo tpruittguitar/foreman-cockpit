@@ -18,6 +18,7 @@ DB = ROOT / "data" / "pipeline_local.db"
 VALIDATOR = ROOT / "tools" / "local-store" / "validate_mirror_parity.py"
 EXPORT_DIR = Path(r"C:\Users\Tim\My Drive\AI_Coordination\SQLite_Exports")
 ROLLBACK_PLAN = Path("docs/STORAGE_RUNTIME_ROLLBACK_PLAN.md")
+CUTOVER_APPROVAL = Path("docs/STORAGE_CUTOVER_APPROVAL_2026-10-10.md")
 STRUCTURED_HEALTH_URL = "https://foreman-cockpit.netlify.app/api/structured/health"
 
 
@@ -95,7 +96,7 @@ def main() -> int:
         endpoint_result,
         structured_data_check(endpoint_result),
         rollback_check(),
-        {"gate": "tim_explicit_cutover_approval", "ok": False, "detail": "Not given"},
+        {"gate": "tim_explicit_cutover_approval", "ok": (ROOT / CUTOVER_APPROVAL).exists(), "detail": str(ROOT / CUTOVER_APPROVAL) if (ROOT / CUTOVER_APPROVAL).exists() else "Not given"},
     ]
     report = {"ok": all(c["ok"] for c in checks), "checks": checks}
     print(json.dumps(report, indent=2))

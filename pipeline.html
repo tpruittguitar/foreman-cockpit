@@ -798,11 +798,11 @@ function loadLocalSqlite_(q){
 function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
   if(src==='local')return loadLocalSqlite_(q);
-  if(src==='structured')return loadStructuredRuntime_(q);
+  if(src==='structured'||!src)return loadStructuredRuntime_(q);
   readout('<b>fetching…</b>');
   if(!hasWriter()){S.connection.state='Not configured';readout('Protected master · configure your writer to connect');switchTab('settings');return}
   S.connection.state='Checking';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'PENDING'},evidence:{state:'PENDING'}};renderLoadAlert_();
-  if(hasWriter()&&!src){syncStateDown();loadCanonicalScoring_();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality()}}).catch(function(){});gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;scoreCache={fp:"",rows:{}};if(S.tab==='rules')renderRules();else if(S.rows&&S.rows.length)render()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
+  if(hasWriter()){syncStateDown();loadCanonicalScoring_();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality()}}).catch(function(){});gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;scoreCache={fp:"",rows:{}};if(S.tab==='rules')renderRules();else if(S.rows&&S.rows.length)render()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
   var seq=S.loadSeq=(S.loadSeq||0)+1,lastText=null;S.loadRetry=null;
   // Three separate reads merged in the browser (PipelineLoader); the canonical master alone decides freshness.
   return PipelineLoader.load({get:gsGet,onRetry:function(r){if(seq!==S.loadSeq)return;S.loadRetry=r;if(r.action==='master'||!S.master||(S.load&&S.load.freshness==='LOADING'))readout('<b>fetching…</b> retry '+r.attempt+' of '+r.of+' ('+esc(r.action)+': '+esc(r.reason)+')');else renderReadout()},cache:{read:function(){return LS.get('cache',null)},write:function(v){LS.set('cache',v)}},onUpdate:function(v){

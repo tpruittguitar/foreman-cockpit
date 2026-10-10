@@ -1,28 +1,28 @@
 # Storage Runtime Rollback Plan
 
 Status date: 2026-10-10
-Status: PRE-CUTOVER ROLLBACK PLAN
+Status: POST-CUTOVER ROLLBACK PLAN
 
 ## Purpose
 
-This plan defines how to return Pipeline Explorer production reads to the current Drive/App Script runtime path if a future structured-storage cutover fails.
+This plan defines how to return Pipeline Explorer production reads to the Drive/App Script runtime path if the structured-storage production default fails.
 
-This document does not authorize cutover. It is a required safety artifact before cutover can even be considered.
+Cutover was explicitly approved by Tim on 2026-10-10. This document remains the rollback authority.
 
 ## Current production default
 
-Production currently reads through the existing Writer/App Script path. SQLite is available as a local/dev structured mirror only.
+Production now defaults to the structured runtime endpoint. The previous Writer/App Script runtime remains available as an explicit rollback path.
 
-Current safe default:
+Current production default:
 
 ```text
-Production UI -> Writer/App Script -> Drive text files
+Production UI -> bounded structured JSON endpoint -> structured Netlify Blob snapshot
 ```
 
-Future candidate path:
+Rollback path:
 
 ```text
-Production UI -> bounded structured JSON endpoint -> SQLite-backed structured store
+Production UI ?src=writer -> Writer/App Script -> Drive text files
 ```
 
 ## Hard rollback rule
@@ -39,13 +39,13 @@ If a structured-storage production cutover causes any of the following, immediat
 
 ## Rollback target
 
-Rollback means production default returns to the same non-`src=local` code path used before cutover:
+Rollback means restoring production default to the explicit Writer/App Script code path currently available at:
 
 ```text
-load() -> PipelineLoader.load({ get: gsGet, ... })
+https://foreman-cockpit.netlify.app/pipeline.html?src=writer
 ```
 
-The local SQLite/dev source may remain available behind explicit opt-in query parameters, but it must not be the production default after rollback.
+The structured source may remain available behind explicit opt-in query parameters, but it must not be the production default after rollback.
 
 ## Required rollback evidence
 
@@ -61,7 +61,7 @@ Before marking rollback complete, verify:
 
 ## Manual rollback method
 
-If the future cutover is implemented by changing default source selection in `pipeline.html`, rollback by reverting that specific commit or restoring default `load()` behavior to Writer/App Script.
+This cutover is implemented by changing default source selection in `pipeline.html`. Rollback by reverting the cutover commit or restoring default `load()` behavior to Writer/App Script (`?src=writer`).
 
 If the future cutover is implemented by environment or deploy config, rollback by restoring the previous production environment/config and redeploying the prior known-good commit.
 
@@ -101,7 +101,4 @@ Do not treat any of the following as rollback completion:
 
 ## Current gate status
 
-As of 2026-10-10, this rollback plan exists, but production cutover remains blocked by:
-
-- no production-reachable structured endpoint;
-- no explicit Tim cutover approval.
+As of 2026-10-10, production cutover has been approved and executed. Rollback remains available through `?src=writer` and by reverting the cutover commit.
