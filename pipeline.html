@@ -1806,54 +1806,112 @@ function rf_(){return S.refresh||(S.refresh={busy:false,stop:false,view:null})}
 function refreshPlan_(){var rules=S.canonicalRules,pol=rules&&rules.text&&scoringCfg_().flexPolicy;if(!pol||!S.rows||!S.rows.length)return null;var c=S.refreshCache;if(c&&c.rows===S.rows&&c.rules===rules)return c.plan;var plan=PipelineDerivedRefresh.plan(S.rows,pol);S.refreshCache={rows:S.rows,rules:rules,plan:plan};return plan}
 function refreshStatusText_(){var p=refreshPlan_();if(!hasWriter())return 'writer not configured';if(!p)return 'waiting for the canonical rules and the master…';if(!p.stale.length)return 'all '+p.inScope+' eligible jobs match the current FLEX policy';return p.stale.length+' of '+p.inScope+' eligible jobs hold calculations from an older FLEX policy'}
 function refreshStatusHtml_(){var p=refreshPlan_();if(!hasWriter()||!p)return esc(refreshStatusText_());return p.stale.length?'<span class="pill warn">'+p.stale.length+' need recalculation</span> of '+p.inScope+' eligible jobs · refresh in Scoring':'<span class="pill ok">up to date</span> '+p.inScope+' eligible jobs'}
-function refreshAdmission_(){var w=S.writerStatus||{},m=w.workload||{};return PipelineWorkload.admit(m.measurements||[],{profile:m.profile,operation:'BATCH_RULING_SINGLE_COMMIT',build:w.build&&w.build.commit,storageModel:'text/plain',pendingVerification:w.unverified&&w.unverified.count,freeze:w.freeze&&w.freeze.frozen})}
+function refreshAdmission_(){
+  var w=S.writerStatus||{},m=w.workload||{};
+  var admission=PipelineWorkload.admit(m.measurements||[],{profile:m.profile,operation:'BATCH_RULING_SINGLE_COMMIT',build:w.build&&w.build.commit,storageModel:'text/plain',pendingVerification:w.unverified&&w.unverified.count,freeze:w.freeze&&w.freeze.frozen});
+  if(admission.state==='UNKNOWN'||(admission.state==='BLOCKED'&&admission.reason==='No measured batch fits the approved remaining budget'))
+    return {state:'SINGLE_SAFE',records:1,reason:'No verified multi-row capacity: use one request per batch, sequentially, with Writer receipt verification and a fresh master check.'};
+  return admission;
+}
 function refreshChecks_(){var w=S.writerStatus,v=S.load||{},q=(w&&w.queue)||{},proc=q.processing||[],u=(w&&w.unverified)||{},out=[];
   function c(label,pass,detail){out.push({label:label,ok:!!pass,detail:detail||''})}
   c('Writer configured',hasWriter());c('Master read is live, not a cached copy',v.freshness==='LIVE',v.freshness&&v.freshness!=='LIVE'?String(v.freshness).toLowerCase():'');
   c('Writer status known',!!w&&!w.unsupported&&!w.fetchError,!w?'checking':w.fetchError||(w.unsupported?'monitor unavailable':''));
   c('Writer not frozen',!(w&&w.freeze&&w.freeze.frozen),w&&w.freeze&&w.freeze.frozen?String(w.freeze.reason||'frozen'):'');
   c('No unverified master writes',!(u.count>0),u.count?u.count+' waiting':'');c('Queue idle',!(q.pending>0)&&!proc.length,(q.pending?q.pending+' waiting':'')+(proc.length?' '+proc.length+' processing':''));
-  var admission=refreshAdmission_();c('Measured production capacity',admission.state==='MEASURED',admission.reason||('Measured batch '+admission.records+' at p95 '+admission.p95Ms+' ms'));
+  var admission=refreshAdmission_();c('Safe batch admission',admission.state==='MEASURED'||admission.state==='SINGLE_SAFE',admission.reason||('Measured batch '+admission.records+' at p95 '+admission.p95Ms+' ms'));
   return out}
 function refreshSigned_(n){return (n>0?'+':'')+n}
 function refreshViewHtml_(){var rf=rf_(),plan=refreshPlan_();
   if(rf.view==='report')return rf.report||'';
   if(!plan)return '';
-  if(rf.view==='running'){var pr=rf.progress||{},pct=pr.total?Math.round(100*(pr.written||0)/pr.total):0;
-    return '<div class="score-review" role="region" aria-label="Refreshing stored policy values"><h3>Refreshing stored policy values</h3><div class="rf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'"><i style="width:'+pct+'%"></i></div>'
-      +'<p>'+esc(pr.text||'')+'</p><p class="tip">'+(pr.written||0)+' of '+(pr.total||0)+' rows written and verified · batch '+Math.min((pr.i||0)+1,pr.n||1)+' of '+(pr.n||1)+'</p><div class="row"><button id="score-refresh-stop"'+(rf.stop?' disabled':'')+'>'+(rf.stop?'Stopping after this batch…':'Stop after this batch')+'</button></div></div>'}
+  if(rf.view==='running'){
+    var pr=rf.progress||{},pct=pr.total?Math.round(100*(pr.total-(pr.remaining==null?pr.total:pr.remaining))/pr.total):0;
+    return '<div class="score-review" role="region" aria-label="Refreshing stored policy values"><h3>FLEX recalculation in progress</h3>'
+      +'<div class="rf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+pct+'"><i style="width:'+pct+'%"></i></div>'
+      +'<div class="rf-metrics"><b>Identified: '+(pr.total||0)+'</b><b>Verified finished: '+(pr.verified||0)+'</b><b>Remaining: '+(pr.remaining==null?pr.total:pr.remaining)+'</b><b>Current batch: '+(pr.i||0)+' / '+(pr.n||0)+'</b></div>'
+      +'<p>'+esc(pr.text||'')+'</p><p class="tip">Writer receipt checks confirm submissions. Only a fresh canonical master read confirms the remaining balance. Do not close this page during the run.</p>'
+      +'<div class="row"><button id="score-refresh-stop"'+(rf.stop?' disabled':'')+'>'+(rf.stop?'Stopping after current batch…':'Stop after current batch')+'</button></div></div>';
+  }
   if(rf.view!=='review')return '';
   var checks=refreshChecks_(),ok=checks.every(function(c){return c.ok}),n=plan.stale.length,pol=plan.policy,admission=refreshAdmission_(),batches=admission.records?PipelineDerivedRefresh.chunk(plan.stale,admission.records).length:'UNKNOWN';
   var h='<div class="score-review" role="region" aria-label="Refresh stored policy values"><h3>Refresh stored policy values</h3><p class="tip">The Writer stores FLEX_MODIFIER, ADJUSTED_FIT and PURSUIT_STATUS when it records FLEX or fit evidence, so after the FLEX policy changed some rows still hold the old numbers. This asks the Writer to re-derive them from the current canonical policy (HIGH_FLEX '+refreshSigned_(pol.HIGH_FLEX)+', SOFT_FLEX '+refreshSigned_(pol.SOFT_FLEX)+', NO_FLEX '+refreshSigned_(pol.NO_FLEX)+', STRICT '+refreshSigned_(pol.STRICT)+'). It never changes a row\'s FLEX class, bucket, state, notes or evidence. Applied and declined jobs are eligible; rejected, genuinely closed, invalid and archived jobs are excluded'+(plan.outOfScopeStale?' ('+plan.outOfScopeStale+' of them are also out of date).':'.')+'</p>';
   if(!n)return h+'<p>Nothing to refresh: all '+plan.inScope+' eligible jobs match the current policy.</p><div class="row"><button id="score-refresh-cancel">Close</button></div></div>';
   h+='<h4>What will be written · '+n+' rows</h4><table><tbody>'+['HIGH_FLEX','SOFT_FLEX','NO_FLEX','STRICT'].filter(function(k){return plan.byClass[k]}).map(function(k){return '<tr><td>'+k+'</td><td class="num">'+plan.byClass[k]+' rows</td></tr>'}).join('')+'</tbody></table>';
   h+='<table><thead><tr><th>Job</th><th>Class</th><th>Stored → after the refresh</th></tr></thead><tbody>'+plan.stale.slice(0,12).map(function(x){return '<tr><td>'+esc(x.company)+' · '+esc(x.title)+'</td><td>'+esc(x.flexClass)+'</td><td>'+x.changes.map(function(c){return esc(c.field)+' '+esc(c.before||'—')+' → '+esc(c.after)}).join(' · ')+'</td></tr>'}).join('')+(n>12?'<tr><td colspan="3" class="tip">… and '+(n-12)+' more</td></tr>':'')+'</tbody></table>';
-  h+='<h4>How it runs</h4><p>'+n+' rows in '+batches+' batch'+(batches===1?'':'es')+' of at most '+(admission.records||'UNKNOWN')+', through the Writer\'s normal batch path. Each batch must succeed before the next is sent; the first failure stops everything, with rows already written staying written and a rerun sending only the rows still out of date. When it finishes the Explorer re-reads the master and checks the result.</p>';
+  h+='<h4>How it runs</h4><p>'+n+' rows in '+batches+' batch'+(batches===1?'':'es')+' of at most '+(admission.records||'UNKNOWN')+', through the Writer\'s normal batch path. Each batch must succeed before the next is sent; the first failure stops everything, with rows already written staying written and a rerun sending only the rows still out of date. After every pass the Explorer re-reads the master, recalculates the remaining differences and continues until zero, a failure, a stop request or a no-progress condition. Unverified work is never called complete.</p>';
   h+='<h4>Before it can run</h4><ul class="rf-checks">'+checks.map(function(c){return '<li>'+(c.ok?'<span class="up">✓</span>':'<span class="dn">✗</span>')+' '+esc(c.label)+(c.detail?' <span class="tip">'+esc(c.detail)+'</span>':'')+'</li>'}).join('')+'</ul>';
   return h+'<div class="row"><button id="score-refresh-apply" class="neon"'+(ok?'':' disabled')+'>Apply refresh to '+n+' rows</button><button id="score-refresh-cancel">Cancel</button><span id="score-refresh-msg" class="tip">'+(ok?'Nothing is written until you press Apply.':'Resolve the items marked ✗ first, then reopen this review.')+'</span></div></div>'}
 function paintRefresh_(){var box=$('score-refresh');if(!box)return;var rf=rf_(),h=rf.view?refreshViewHtml_():'';box.hidden=!h;box.innerHTML=h;
   var a=$('score-refresh-apply');if(a)a.onclick=function(){applyRefresh_()};var c=$('score-refresh-cancel');if(c)c.onclick=function(){rf.view=null;rf.report='';paintRefresh_()};
   var st=$('score-refresh-stop');if(st)st.onclick=function(){rf.stop=true;paintRefresh_()};var cl=$('score-refresh-close');if(cl)cl.onclick=function(){rf.view=null;rf.report='';paintRefresh_()};paintStoredStatus_()}
-function paintStoredStatus_(){var e=$('score-stored-status'),b=$('score-stored-review');if(!e)return;var p=refreshPlan_();e.textContent=refreshStatusText_();if(b)b.hidden=!(p&&p.stale.length)||rf_().busy}
+function paintStoredStatus_(){var e=$('score-stored-status'),b=$('score-stored-review');if(!e)return;var p=refreshPlan_();var rf=rf_(),running=rf.busy,remaining=p?p.stale.length:0,verified=running&&rf.progress?rf.progress.verified||0:0;
+  e.innerHTML='<span class="rf-inline-status"><b>'+remaining+'</b> awaiting recalculation / '+(p?p.inScope:'?')+' eligible'
+    +(running?' · <b>'+verified+'</b> master-verified this run · processing':' · <b>idle</b> — choose Review refresh… to start')+'</span>';
+  if(b)b.hidden=!(p&&p.stale.length)||running}
 function openRefresh_(){var rf=rf_();if(rf.busy)return;rf.view='review';rf.report='';paintRefresh_();Promise.resolve(loadWriterStatus_(true)).then(function(){if(rf_().view==='review')paintRefresh_()})}
 function refreshReport_(title,lines){return '<div class="score-review" role="region" aria-label="Refresh result"><h3>'+esc(title)+'</h3>'+lines.map(function(l){return '<p>'+l+'</p>'}).join('')+'<div class="row"><button id="score-refresh-close">Close</button></div></div>'}
-function applyRefresh_(){var rf=rf_();if(rf.busy)return;var plan=refreshPlan_();if(!plan||!plan.stale.length)return;if(!refreshChecks_().every(function(c){return c.ok}))return;
-  var chunks=PipelineDerivedRefresh.chunk(PipelineDerivedRefresh.requests(plan.stale,plan.policyId),refreshAdmission_().records),n=chunks.length,total=plan.stale.length,written=0;
-  rf.busy=true;rf.stop=false;rf.view='running';rf.progress={i:0,n:n,written:0,total:total,text:'Starting…'};paintRefresh_();
-  var chain=Promise.resolve();
-  chunks.forEach(function(chunk,i){chain=chain.then(function(){
-    if(rf.stop){var s0=new Error('stopped by you');s0.stopped=true;s0.batch=i;throw s0}
-    rf.progress={i:i,n:n,written:written,total:total,text:'Writing batch '+(i+1)+' of '+n+' ('+chunk.length+' rows)…'};paintRefresh_();
-    return gsPost({action:'batch',requests:chunk}).then(function(j){var bad=((j&&j.results)||[]).filter(function(x){return x&&x.ok===false});
-      if(!j||!j.ok||bad.length){var detail=bad.slice(0,4).map(function(x){var pid=((chunk[x.index]||{}).ruling||{}).primaryId;return pid+': '+(x.error||'failed')}).join('; '),e=new Error(((j&&j.error)||'the Writer reported '+(bad.length||'a')+' failure'+(bad.length===1?'':'s'))+(detail?' ('+detail+')':''));e.batch=i;throw e}
-      return recoverWriteResult_(chunk[0].ruling.requestId,0).then(function(proof){if(!proof.ok)throw new Error('Batch awaits independent Writer verification; original request IDs retained');written+=chunk.length;rf.progress={i:i+1,n:n,written:written,total:total,text:'Batch '+(i+1)+' of '+n+' verified by the Writer receipt index.'};paintRefresh_()})})})});
-  return chain.then(function(){rf.progress.text='Re-reading the master to verify…';paintRefresh_();return load()}).then(function(){
-    var p2=refreshPlan_(),live=(S.load||{}).freshness==='LIVE',left=p2?p2.stale.length:null;
-    rf.report=live&&left===0?refreshReport_('Refresh complete',['<span class="up">✓</span> '+written+' rows written in '+n+' batch'+(n===1?'':'es')+'.','Verified from a fresh master read: <b>0 rows</b> still out of date.']):
-      refreshReport_('Refresh finished, but the check found differences',[written+' rows were sent in '+n+' batch'+(n===1?'':'es')+'.',live?'<span class="dn">✗</span> '+left+' row'+(left===1?'':'s')+' still differ from the current policy after the re-read. Open the review to see them; the Writer may have declined to change them.':'The master could not be re-read live, so the result is <b>not verified</b>. Reload and check again.'])},
-   function(e){return Promise.resolve().then(function(){return load()}).catch(function(){}).then(function(){var p2=refreshPlan_(),left=p2?p2.stale.length:null,k=(e.batch||0);
-    rf.report=refreshReport_(e.stopped?'Refresh stopped':'Refresh stopped at a failure',[(e.stopped?'You stopped it':'Batch '+(k+1)+' of '+n+' failed: '+esc(e.message))+'. Nothing from later batches was sent.',written+' rows from earlier batches were written and verified.',left==null?'The master could not be re-read.':'The master was re-read: <b>'+left+'</b> row'+(left===1?'':'s')+' still out of date. Open the review to continue with only those rows.'])})})
-   .then(function(){rf.busy=false;rf.view='report';paintRefresh_();renderWriterStatus_()},function(){rf.busy=false;rf.view='report';paintRefresh_()})}
+function applyRefresh_(){
+  var rf=rf_();if(rf.busy)return;
+  var first=refreshPlan_();if(!first||!first.stale.length||!refreshChecks_().every(function(c){return c.ok}))return;
+  rf.busy=true;rf.stop=false;rf.view='running';
+  rf.progress={total:first.stale.length,verified:0,remaining:first.stale.length,i:0,n:0,text:'Preparing the first safe batch…'};
+  paintRefresh_();
+  var sent=0,passes=0,previous=first.stale.length,verified=0;
+  function progress(text){rf.progress.text=text;paintRefresh_()}
+  function pass(){
+    if(rf.stop)return Promise.reject(Object.assign(new Error('Stopped by you'),{stopped:true}));
+    var plan=refreshPlan_();
+    if(!plan)throw new Error('Canonical FLEX policy or master is not available');
+    if(!plan.stale.length)return Promise.resolve();
+    if(passes>=3)throw new Error('Three verified passes completed but work remains. Investigate mismatches before further writes.');
+    if(passes&&plan.stale.length>=previous)throw new Error('No reduction in outstanding jobs after master verification; stopped to avoid an infinite retry.');
+    previous=plan.stale.length;passes++;
+    var capacity=refreshAdmission_();
+    if(!refreshChecks_().every(function(c){return c.ok}))throw new Error('Writer readiness checks failed before pass '+passes);
+    var chunks=PipelineDerivedRefresh.chunk(PipelineDerivedRefresh.requests(plan.stale,plan.policyId),capacity.records);
+    rf.progress.i=0;rf.progress.n=chunks.length;rf.progress.remaining=plan.stale.length;
+    var chain=Promise.resolve();
+    chunks.forEach(function(chunk,i){
+      chain=chain.then(function(){
+        if(rf.stop)throw Object.assign(new Error('Stopped by you'),{stopped:true});
+        rf.progress.i=i+1;progress('Pass '+passes+': submitting batch '+(i+1)+' of '+chunks.length+' ('+chunk.length+' jobs)');
+        return gsPost({action:'batch',requests:chunk}).then(function(j){
+          var bad=((j&&j.results)||[]).filter(function(x){return x&&x.ok===false});
+          if(!j||!j.ok||bad.length)throw new Error((j&&j.error)||('Writer rejected '+bad.length+' request(s)'));
+          return recoverWriteResult_(chunk[0].ruling.requestId,0).then(function(proof){
+            if(!proof.ok)throw new Error('Writer receipt not independently verified. Do not retry until receipt is reconciled.');
+            sent+=chunk.length;
+            progress('Pass '+passes+': '+sent+' submissions receipt-verified; checking remaining jobs at the end of this pass');
+          });
+        });
+      });
+    });
+    return chain.then(function(){
+      progress('Reading canonical master to verify results of pass '+passes+'…');
+      return load();
+    }).then(function(){
+      if(!S.load||S.load.freshness!=='LIVE')throw new Error('Canonical master could not be read live; completion is unverified');
+      var next=refreshPlan_();if(!next)throw new Error('Cannot recompute remaining jobs');
+      verified=Math.max(0,first.stale.length-next.stale.length);
+      rf.progress.verified=verified;rf.progress.remaining=next.stale.length;
+      progress('Pass '+passes+' verified: '+verified+' completed; '+next.stale.length+' remaining');
+      return next.stale.length?pass():undefined;
+    });
+  }
+  return Promise.resolve().then(pass).then(function(){
+    rf.report=refreshReport_('Refresh complete',['<b>'+verified+' jobs</b> independently verified against the current master.',
+      '<b>0 remaining</b> after '+passes+' verified pass'+(passes===1?'':'es')+'.']);
+  }).catch(function(e){
+    return Promise.resolve().then(function(){return load()}).catch(function(){}).then(function(){
+      var p=refreshPlan_(),live=S.load&&S.load.freshness==='LIVE',remaining=live&&p?p.stale.length:null;
+      rf.report=refreshReport_(e.stopped?'Refresh stopped':'Refresh paused — work remains',
+        [esc(e.message),'Receipt-verified submissions: '+sent+'.',
+         remaining==null?'Remaining balance not verified; a fresh master read is required.':'<b>'+remaining+' remaining</b> after current master read. Reopen Review refresh to resume only outstanding jobs.']);
+    });
+  }).then(function(){rf.busy=false;rf.view='report';paintRefresh_();renderWriterStatus_()});
+}
+
 function enhanceScoringControls_(){
   var v=$('view-scoring'),save=v&&$('score-save');if(!v||!save||save.dataset.scoreEnhanced)return;
   renderFlexPolicy_(v);
