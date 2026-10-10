@@ -12,27 +12,6 @@ function response(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-function bearer(req) {
-  const h = req.headers.get('authorization') || '';
-  const m = h.match(/^Bearer\s+(.+)$/i);
-  return m ? m[1].trim() : '';
-}
-
-function token(req, url) {
-  return req.headers.get('x-structured-token') || bearer(req) || url.searchParams.get('token') || '';
-}
-
-function env(name) {
-  try {
-    if (globalThis.Netlify && globalThis.Netlify.env && typeof globalThis.Netlify.env.get === 'function') return globalThis.Netlify.env.get(name) || '';
-  } catch {}
-  return process.env[name] || '';
-}
-
-function expectedToken() {
-  return env('STRUCTURED_READ_TOKEN') || env('PIPELINE_STRUCTURED_TOKEN') || '';
-}
-
 const WRITER_URL = 'https://script.google.com/macros/s/AKfycbwShspSkto70NeFWjgTuyIf-W3EDgUmKmoWevE-jZq95pm6SAulrJYHX1HmiPg8tx3i/exec';
 
 function writerKey(req, url) {
@@ -53,8 +32,6 @@ async function writerKeyOk(req, url) {
 }
 
 async function hasReadAccess(req, url) {
-  const expected = expectedToken();
-  if (expected && token(req, url) === expected) return true;
   return writerKeyOk(req, url);
 }
 
@@ -74,11 +51,11 @@ function publicHealth(snapshot) {
   return {
     ok: true,
     service: 'structured-runtime',
-    mode: 'token-gated',
+    mode: 'writer-key',
     dataAvailable: !!snapshot,
-    dataGate: 'token_required',
-    auth: expectedToken() ? 'structured_token_configured' : 'writer_key_supported',
-    reason: snapshot ? 'Structured snapshot is loaded; protected endpoints require token.' : 'Structured endpoint is reachable; no structured snapshot has been loaded yet.',
+    dataGate: 'writer_key_required',
+    auth: 'writer_key',
+    reason: snapshot ? 'Structured snapshot is loaded.' : 'Structured endpoint is reachable; no structured snapshot has been loaded yet.',
     snapshot: snapshot ? { jobs: Array.isArray(snapshot.jobs) ? snapshot.jobs.length : 0, generatedAt: meta.generatedAt || '', source: meta.source || '', writerFetchedAt: meta.writerFetchedAt || '', schema: meta.schema || '' } : null,
     endpoints: ['/api/structured/health', '/api/structured/counts', '/api/structured/jobs', '/api/structured/jobs/<PRIMARY_ID>'],
   };
@@ -88,9 +65,9 @@ function locked(snapshot) {
   return response({
     ok: false,
     service: 'structured-runtime',
-    error: 'STRUCTURED_AUTH_REQUIRED',
+    error: 'WRITER_KEY_REQUIRED',
     dataAvailable: !!snapshot,
-    detail: 'Protected structured endpoints require either a personal structured read token or the existing Writer key. Public health remains harmless.',
+    detail: 'Structured endpoints use the existing Writer key.',
   }, 401);
 }
 
