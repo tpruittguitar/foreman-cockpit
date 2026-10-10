@@ -99,7 +99,7 @@ Archive guard commit: `29e33d7` added `readArchiveSafe_()` and routes `GET actio
 - [x] Add guarded archive read wrapper.
 - [x] Make `action=archive` return controlled JSON failure on Drive errors.
 - [x] Never allow archive failure to block active master rendering. Active master rendering was already separated in `pipeline-loader.js`; this hardening keeps `archive` degraded instead of crashing the Writer endpoint.
-- [ ] Add archive/evidence degraded status to System Health / AI Operations.
+- [x] Add archive/evidence degraded status to System Health / AI Operations. AI Operations dashboard now includes Runtime read health for Active master, Terminal archive, and Evidence companion.
 
 ---
 

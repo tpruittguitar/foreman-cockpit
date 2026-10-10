@@ -36,13 +36,28 @@
       return {total:obligations.length,done:done,open:open.length,openList:open,stages:stages,oldest:oldest,intakeFound:intakeFound,intakeReviewed:intakeReviewed,intakeUnprocessed:intakeUnprocessed,writerBlocked:writerBlocked,next:next};
     }
     function metricCard(label,value,sub,cls){return '<article class="dash-card ops-kpi '+(cls||'')+'"><h4>'+cell(label)+'</h4><b>'+cell(value)+'</b><span class="tip">'+cell(sub||'')+'</span></article>';}
+    function runtimeReadHealth(){
+      var v=api.loadStatus?api.loadStatus():{},conn=api.connection?api.connection():{},a=v.archive||{},e=v.evidence||{},items=[];
+      function label(x){return x==='OK'?'OK':x==='PENDING'?'PENDING':x==='NOT_APPLICABLE'?'N/A':x==='FAILED'?'FAILED':(x||'UNKNOWN');}
+      if(v.freshness==='STALE'||v.freshness==='NONE')items.push({area:'Active master',state:v.freshness||'UNKNOWN',detail:v.error||conn.error||'canonical master is not live',bad:true});
+      else items.push({area:'Active master',state:v.freshness||conn.state||'UNKNOWN',detail:conn.lastRead?'last read '+conn.lastRead:(conn.state||'not verified'),bad:false});
+      items.push({area:'Terminal archive',state:label(a.state),detail:a.error||('archive rows '+(a.rows?a.rows.length:'not loaded')),bad:a.state==='FAILED'});
+      items.push({area:'Evidence companion',state:label(e.state),detail:e.error||('evidence records '+(e.recs?e.recs.length:'not loaded')),bad:e.state==='FAILED'});
+      var bad=items.filter(function(x){return x.bad;}).length,pending=items.filter(function(x){return x.state==='PENDING';}).length;
+      return {items:items,state:bad?'DEGRADED':pending?'LOADING':'OK'};
+    }
+    function runtimeHealthHtml(){
+      var rh=runtimeReadHealth();
+      return '<div class="panel"><h3>Runtime read health</h3><p class="tip">Active master must stay live. Archive and evidence are supporting reads; failures must be visible and degraded, not silent.</p>'+table(['Runtime read','State','Detail'],rh.items.map(function(x){return [x.area,x.state,x.detail];}))+'<div class="row"><span class="chip">Runtime status: '+cell(rh.state)+'</span></div></div>';
+    }
     function dashboardHtml(store,summary,observed){
       var m=dashboardMetrics(store,summary),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return [k,m.stages[k]];});
       var h='<section class="ops-dashboard"><div class="ops-next-priority"><span class="u">Next Priority</span><b>'+cell(m.next)+'</b><small>Based on current Writer-owned supporting evidence. This does not replace canonical master state.</small></div>';
       h+='<div class="dash-grid ops-kpis">'+metricCard('Open enrichment backlog',m.open,m.total?m.done+' complete of '+m.total:'No snapshot',m.open?'warn':'')+metricCard('Completion ratio',m.total?pct(m.done,m.total)+'%':'UNKNOWN',m.total?m.done+'/'+m.total+' obligations':'Writer snapshot unavailable')+metricCard('Writer blocked',m.writerBlocked,m.writerBlocked?'Requires verification/recovery':'No tracked writer blockers',m.writerBlocked?'bad':'')+metricCard('Intake reviewed',m.intakeReviewed,m.intakeFound?m.intakeFound+' found · '+m.intakeUnprocessed+' unprocessed':'No email/source run coverage read')+metricCard('Oldest open age',m.oldest?ageText(m.oldest.iso):'NONE',m.oldest?m.oldest.o.id:'No open tracked obligation')+'</div>';
       if(m.total)h+=PipelineProgress.html('Tracked obligations independently resolved',m.done,m.total,'large');
       h+='<div class="panel"><h3>Enrichment backlog by stage</h3>'+(stageRows.length?table(['Stage','Open count'],stageRows):'<p class="tip">No open tracked obligations in the current snapshot.</p>')+'</div>';
-      h+='<div class="panel"><h3>Coverage limits</h3><p class="tip">Current dashboard can show tracked obligations, current source-window coverage, verification blockers, and oldest unresolved work. Historical intake-vs-enrichment trend lines require durable per-run history in the Writer snapshot; absent history remains UNKNOWN, not assumed zero.</p><div class="row"><span class="chip">Observed: '+cell(observed||'UNKNOWN')+'</span><span class="chip">Dashboard status: '+cell(error?'DEGRADED':'LIVE SNAPSHOT')+'</span></div></div></section>';
+      h+=runtimeHealthHtml();
+      h+='<div class="panel"><h3>Coverage limits</h3><p class="tip">Current dashboard can show tracked obligations, current source-window coverage, verification blockers, oldest unresolved work, and runtime read health. Historical intake-vs-enrichment trend lines require durable per-run history in the Writer snapshot; absent history remains UNKNOWN, not assumed zero.</p><div class="row"><span class="chip">Observed: '+cell(observed||'UNKNOWN')+'</span><span class="chip">Dashboard status: '+cell(error?'DEGRADED':'LIVE SNAPSHOT')+'</span></div></div></section>';
       return h;
     }
     async function refresh(view){
@@ -62,7 +77,7 @@
       if(error)h+='<p class="ops-warning">'+cell(error)+(store?' · Last successful snapshot retained; its freshness is unverified.':'')+'</p>';
       h+='<div class="row ops-tabs" role="tablist">'+['dashboard','backlog','email','recovery','schedules','acceptance'].map(function(t){return '<button role="tab" aria-selected="'+(tab===t)+'" data-ops-tab="'+t+'">'+tabLabels[t]+'</button>';}).join('')+'</div><div role="tabpanel">';
       if(tab==='dashboard'){
-        h+=store?dashboardHtml(store,summary,observed):'<div class="ops-next-priority"><span class="u">Next Priority</span><b>Refresh Writer evidence</b><small>No durable operations snapshot loaded yet.</small></div>';
+        h+=store?dashboardHtml(store,summary,observed):'<div class="ops-next-priority"><span class="u">Next Priority</span><b>Refresh Writer evidence</b><small>No durable operations snapshot loaded yet.</small></div>'+runtimeHealthHtml();
       }else if(tab==='backlog'){
         h+='<h3>Research and verification obligations</h3><p class="tip">'+(summary?'Tracked '+summary.total+' · verified dispositions '+summary.done+' · unresolved '+summary.open.length:'UNKNOWN · tracked population has not been read')+'. This is supporting evidence, not a second job master.</p>';
         if(summary&&summary.total)h+=PipelineProgress.html('Tracked obligations independently resolved',summary.done,summary.total,'large');
