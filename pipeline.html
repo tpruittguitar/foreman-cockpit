@@ -432,7 +432,7 @@ var DATE_KEYS={DATE_ADDED:1,MASTER_LOADED_AT:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_
 var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
 var mapView={zoom:1,x:480,y:255,focus:null,hasFocused:false,animation:0,request:0,found:[],active:null,overview:null,returnView:null};
 var scoreCache={fp:"",rows:{}};
-var S={cfg:LS.get('cfg',PipelineConnection),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:{col:'EXPERIENCE_FIT',dir:'desc'},filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),incidents:LS.get('incidents',null)||PipelineIncidents.empty(),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),chartsArchive:!!LS.get('chartsArchive',false),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,buildInfo:null,buildLatest:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,targetCompanies:null,events:{},interview:{}};
+var S={cfg:LS.get('cfg',PipelineConnection),master:null,rows:[],text:'',meta:{},preset:'ALL',sort:{col:'OVERALL_RATING',dir:'desc'},filters:{},seen:LS.get('seen',{}),rulings:LS.get('rulings',{}),incidents:LS.get('incidents',null)||PipelineIncidents.empty(),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:LS.get('mapMode','selected'),chartsArchive:!!LS.get('chartsArchive',false),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,buildInfo:null,buildLatest:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,targetCompanies:null,events:{},interview:{}};
 if(!S.cfg.url){S.cfg=Object.assign({},PipelineConnection);LS.set('cfg',S.cfg)}else if(!S.cfg.key&&S.cfg.url===PipelineConnection.url){S.cfg.key=PipelineConnection.key;LS.set('cfg',S.cfg)}
 function buildTime_(value){if(!value)return 'not recorded';var d=new Date(value);return isNaN(d.getTime())?String(value):d.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
 function buildCommitUrl_(commit){return commit&&commit!=='local'?'https://github.com/tpruittguitar/foreman-cockpit/commit/'+encodeURIComponent(commit):'https://github.com/tpruittguitar/foreman-cockpit/commits/main';}
@@ -906,7 +906,28 @@ function defaultSort(a,b){var pa=S.pins[a.id]?0:1,pb=S.pins[b.id]?0:1;if(pa!==pb
   var ta=a.dateAdded?a.dateAdded.getTime():-1,tb=b.dateAdded?b.dateAdded.getTime():-1;if(ta!==tb)return tb-ta;
   return cmp(b.payload.SALARY_ASOF||'',a.payload.SALARY_ASOF||'')||cmp(a.COMPANY,b.COMPANY);
 }
-function filteredRows(){var rows=S.rows.filter(passes);if(S.sort){var c=S.sort.col,dir=S.sort.dir==='desc'?-1:1;rows.sort(function(a,b){var x=cmp(c==='COMP_MID'?(a.compMid==null?'':String(a.compMid)):val(a,c),c==='COMP_MID'?(b.compMid==null?'':String(b.compMid)):val(b,c));return x*dir||defaultSort(a,b)})}else rows.sort(defaultSort);return rows}
+function filteredRows(){
+  var rows=S.rows.filter(passes);
+  if(S.sort){
+    var c=S.sort.col,dir=S.sort.dir==='desc'?-1:1;
+    rows.sort(function(a,b){
+      function sortValue(r){if(c==='COMP_MID')return r.compMid; if(c==='OVERALL_RATING')return scoreFor_(r).overall;return val(r,c)}
+      var x=sortValue(a),y=sortValue(b);
+      function missing(v){return v==null||String(v).trim()===''||String(v).trim()==='-'}
+      var ma=missing(x),mb=missing(y);
+      if(ma!==mb)return ma?1:-1; // Unknown stays at bottom, even descending.
+      var numeric=['OVERALL_RATING','EXPERIENCE_FIT','RAW_FIT','ADJUSTED_FIT','GEO_SCORE','NET_COMP_SCORE','ATS_MATCH_SCORE','TITLE_SCORE','CULTURE_SCORE','OWNERSHIP_SCORE','RATING_CONFIDENCE','COMP_MID'];
+      var difference;
+      if(numeric.indexOf(c)>=0){
+        var nx=Number(x),ny=Number(y),vx=!ma&&Number.isFinite(nx),vy=!mb&&Number.isFinite(ny);
+        if(vx!==vy)return vx?-1:1;
+        difference=vx&&vy?nx-ny:0;
+      }else difference=cmp(x,y);
+      return difference*dir||defaultSort(a,b);
+    });
+  }else rows.sort(defaultSort);
+  return rows;
+}
 /* ---------- rendering ---------- */
 function readout(h){$('readout').innerHTML=h}
 function renderReadout(){renderWriterStatus_();renderHeaderStatus_();
@@ -952,7 +973,7 @@ function render(){
   $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
   $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView)setTimeout(function(){dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}}});
   $('grid').querySelectorAll('.row-select').forEach(function(cb){cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets();mapSelectionChanged_()}});
-  applyColumnWidths();enableColumnResize();fitRows_();
+  autoFitRenderedColumns_();applyColumnWidths();enableColumnResize();fitRows_();
   if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();if(S.tab==='columns')renderColumns();if(S.tab==='scoring')renderScoring();document.querySelectorAll('[data-chart-filter]').forEach(function(el){el.setAttribute('aria-pressed',S.chartFilter&&JSON.parse(el.dataset.chartFilter).label===S.chartFilter.label?'true':'false')});
 }
 function fixSticky(){var ths=$('grid').querySelectorAll('thead th.sticky');var left=0;ths.forEach(function(th,i){th.style.left=left+'px';var w=th.getBoundingClientRect().width;$('grid').querySelectorAll('tbody tr').forEach(function(tr){var td=tr.children[i];if(td)td.style.left=left+'px'});left+=w})}
@@ -1226,21 +1247,37 @@ function bulkAction(kind){
  * compact content-based widths and default highest experience-fit sorting.
  * Re-renders, filter changes, and tab changes must never reset manual resizing. */
 function resetOpeningTableLayout_(){
-  S.sort={col:'EXPERIENCE_FIT',dir:'desc'};
-  var rows=S.rows.filter(function(r){return allowedInView_(r,S.preset)}).slice(0,100);
-  var sets=[{cols:S.cols&&S.cols.desktop,phone:false,target:S.colWidths},{cols:S.cols&&S.cols.phone,phone:true,target:S.colWidthsPhone}];
-  sets.forEach(function(set){
-    if(!set.cols)return;
-    Object.keys(set.target).forEach(function(k){delete set.target[k]});
-    set.cols.forEach(function(c){
-      if(c==='NEW'||c==='LINK'){set.target[c]=44;return}
-      var longest=String(c).replace(/_/g,' ').length;
-      rows.forEach(function(r){var v=String(val(r,c)||'').replace(/\s+/g,' ').trim();longest=Math.max(longest,Math.min(42,v.length))});
-      var w=Math.round(longest*6.6+22);
-      set.target[c]=Math.max(columnMin(c),Math.min(set.phone?235:290,w));
-    });
-  });
+  S.sort={col:'OVERALL_RATING',dir:'desc'};
+  S.pendingTableAutoFit=true;
+  Object.keys(S.colWidths).forEach(function(k){delete S.colWidths[k]});
+  Object.keys(S.colWidthsPhone).forEach(function(k){delete S.colWidthsPhone[k]});
 }
+/* Measure visible table text in its actual font, only after load/refresh.
+ * Subsequent manual column changes are preserved until the next load. */
+function autoFitRenderedColumns_(){
+  if(!S.pendingTableAutoFit)return;
+  var grid=$('grid'),cols=visibleCols(),head=grid.querySelectorAll('thead th');
+  if(!head.length)return;
+  var ctx=document.createElement('canvas').getContext('2d');if(!ctx)return;
+  var rows=Array.from(grid.querySelectorAll('tbody tr')).slice(0,120),widths=columnWidths(),phone=phoneLayout();
+  cols.forEach(function(c,i){
+    if(c==='NEW'||c==='LINK'){widths[c]=44;return}
+    var th=head[i],computed=getComputedStyle(th);
+    ctx.font=computed.font||computed.fontSize+' '+computed.fontFamily;
+    var width=ctx.measureText(c.replace(/_/g,' ')).width+34;
+    rows.forEach(function(tr){
+      var td=tr.children[i];if(!td)return;
+      var style=getComputedStyle(td);
+      ctx.font=style.font||style.fontSize+' '+style.fontFamily;
+      var displayed=(td.textContent||'').replace(/\s+/g,' ').trim();
+      width=Math.max(width,ctx.measureText(displayed).width+20);
+    });
+    var max=c==='TITLE'?(phone?320:450):c==='COMPANY'?(phone?250:320):(phone?210:275);
+    widths[c]=Math.ceil(Math.max(columnMin(c),Math.min(max,width)));
+  });
+  S.pendingTableAutoFit=false;
+}
+
 function columnWidths(){return phoneLayout()?S.colWidthsPhone:S.colWidths}
 function persistColumnWidths(){/* Manual sizing stays authoritative in this session until next load or refresh. */}
 function columnMin(c){return c==='NEW'||c==='LINK'?44:60}
