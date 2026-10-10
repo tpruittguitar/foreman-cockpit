@@ -1,3 +1,4 @@
+if (typeof module === 'object' && module.exports) { var WriterTransactions = require('./WriterTransactions.gs'); }
 /**
  * WRITER QUEUE — Drive drop-folder access to the Authorized State Writer.
  *
@@ -153,14 +154,14 @@ function partialHoldRecovered_(body, states) {
   var reqs = body && Array.isArray(body.requests) ? body.requests : [body];
   if (!reqs.length) return false;
   return reqs.every(function (q) {
-    var ids = requestIdsOf_(q);
+    var ids = WriterTransactions.requestIds(q);
     return ids.length > 0 && ids.every(function (id) { return !!(states[id] && states[id].s === 'COMPLETE'); });
   });
 }
 
 /** Pure: every request ID named in a write body (ruling.requestId, requestId, request_id), in order, without duplicates. */
 function requestIdsOf_(body) {
-  var out = [];
+  var out = WriterTransactions.requestIds(body).slice();
   (function walk(v) {
     if (!v || typeof v !== 'object') return;
     if (Array.isArray(v)) { v.forEach(walk); return; }

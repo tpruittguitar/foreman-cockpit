@@ -127,7 +127,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -168,7 +168,7 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived'];
 function dispatchWrite_(req) {
   req = req || {};
   if(req.automation){var alignmentError=automationEnvelopeError_(req,automationAlignmentRead_());if(alignmentError)return {ok:false,mode:'PAUSED_CONFLICT',error:alignmentError};}
@@ -191,6 +191,7 @@ function dispatchWrite_(req) {
   if (a === 'unfreeze_writer') return setFreeze_(req, false);
   if (a === 'restore_archived') return restoreArchived_(req);
   if (a === 'correct_receipts') return correctReceipts_(req);
+  if (a === 'reconcile_intake_receipt') return reconcileIntakeReceipt_(req);
   if (a === 'install_automation') { var ir = installAutomation(); return { ok:true, action:'install_automation', result:ir || null, installedAt:new Date().toISOString() }; }
   if (a === 'batch') {
     var list = Array.isArray(req.requests) ? req.requests : [];
@@ -435,6 +436,67 @@ function appendEvents_(list) {
     out.push(JSON.stringify(rec));
   }
   file.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + out.join('\n') + '\n');
+}
+
+/** Only an intact independently verified intake receipt can supply legacy run identity. */
+function legacyIntakeProof_(text, rid, writeId) {
+  var blocks = [], block = null;
+  String(text || '').split(/[\r\n]+/).forEach(function (line) {
+    line = line.trim();
+    if (/^RECEIPT=/.test(line)) block = { fields: {}, bad: false };
+    if (!block) return;
+    var end = line.match(/^END (\S+)$/);
+    if (end) { if (end[1] === block.fields.RECEIPT && !block.bad) blocks.push(block.fields); block = null; return; }
+    var eq = line.indexOf('='); if (eq < 1) return;
+    var key = line.slice(0, eq), value = line.slice(eq + 1).trim();
+    if (block.fields[key] !== undefined && block.fields[key] !== value) block.bad = true;
+    block.fields[key] = value;
+  });
+  if (blocks.some(function (b) { return b.RECEIPT === 'RECEIPT_CORRECTION' &&
+      (b.REQUEST_ID === rid || b.SCOUT_RUN_ID === rid) && b.CORRECTION === 'FALSE_COMPLETE'; })) return null;
+  var proofs = blocks.filter(function (b) {
+    return b.RECEIPT === 'INTAKE_RECEIPT' && b.SCOUT_RUN_ID === rid && (!b.REQUEST_ID || b.REQUEST_ID === rid) &&
+      b.WRITE_ID === writeId && b.TARGET_FILE_ID === MASTER_ID && b.COMPLETION_STATUS === 'COMPLETE' &&
+      b.READBACK_VERIFIED === 'YES' && b.WRITE_VERIFIED === 'YES' && b.RUN_ACCOUNTING === 'RECONCILED' &&
+      b.VERIFICATION === 'POST_EXECUTION_INDEPENDENT' && b.VERIFICATION_RESULT === 'COMPLETE' &&
+      Date.parse(b.VERIFIED_AT) > Date.parse(b.WRITE_EXECUTED_AT || b.EXECUTED_AT);
+  });
+  if (!proofs.length) return null;
+  var proof = proofs[0], ids;
+  try { ids = JSON.parse(proof.NEW_PRIMARY_IDS); } catch (e) { return null; }
+  if (!Array.isArray(ids) || !ids.length || ids.some(function (id, i) {
+    return typeof id !== 'string' || !id.trim() || ids.indexOf(id) !== i;
+  })) return null;
+  if (proofs.some(function (b) { return b.NEW_PRIMARY_IDS !== proof.NEW_PRIMARY_IDS; })) return null;
+  return { requestId: rid, writeId: writeId, verifiedAt: proof.VERIFIED_AT, primaryIds: ids };
+}
+/** Repairs identity only; never submits intake or changes the master/evidence. */
+function reconcileIntakeReceipt_(req) {
+  var rid = String(req.requestId || '').trim(), wid = String(req.writeId || '').trim();
+  if (!rid || !wid) return { ok: false, error: 'requestId and original writeId required' };
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    var idx = readIndex_() || emptyIndex_(), existing = idx.requests[rid];
+    if (existing) return { ok: existing.s === 'COMPLETE' && existing.w === wid, mode: 'ALREADY_RECORDED', request: existing };
+    if (idx.pending.length) return { ok: false, error: 'pending writes must be resolved first' };
+    var proof = legacyIntakeProof_(readReceipts_(), rid, wid);
+    if (!proof) return { ok: false, error: 'No intact independent COMPLETE intake proof for this run/write/master' };
+    var lines = readMasterLines_('VERIFY_READ'), rows = rowsByPid_(lines);
+    if (proof.primaryIds.some(function (id) { return !rows[id] || rows[id].length !== 1; }) ||
+        Object.keys(rows).some(function (id) { return rows[id].length !== 1; }))
+      return { ok: false, error: 'Receipt rows absent or ambiguous in live master' };
+    var counts = lines.filter(function (l) { return /^COUNTS:/.test(l); });
+    var ends = lines.filter(function (l) { return /^END V2_CURRENT_POPULATION_MASTER/.test(l); });
+    if (counts.length !== 1 || ends.length !== 1 || counts[0] !== recomputeCountsLine(lines) || ends[0] !== recomputeEndLine(lines))
+      return { ok: false, error: 'Live master trailer mismatch' };
+    var entry = { s: 'COMPLETE', at: proof.verifiedAt, w: wid, src: 'LEGACY_INDEPENDENT_INTAKE_RECEIPT',
+      primaryIds: proof.primaryIds, reconciledAt: new Date().toISOString(), receiptHash: textHash_(JSON.stringify(proof)),
+      currentRowsPresent: true, evidenceCompleteness: 'NOT_ASSESSED' };
+    idx.requests[rid] = entry; writeIndex_(idx);
+    var saved = readIndex_();
+    if (!saved || JSON.stringify(saved.requests[rid]) !== JSON.stringify(entry)) throw new Error('RECONCILIATION_READBACK_FAILED');
+    return { ok: true, mode: 'IDENTITY_RECONCILED', requestId: rid, request: entry, masterChanged: false };
+  } finally { lock.releaseLock(); }
 }
 
 /* ================= request-result recovery ================= */
@@ -1363,7 +1425,7 @@ function applyIntakeToMaster_(req) {
     var counters = runCounters_(req.run || {}, plan, rules, verified);
     var executedAt = new Date().toISOString();
     var receipt = {
-      RECEIPT: 'INTAKE_RECEIPT', REQUEST_ID: req.requestId || (req.run && req.run.SCOUT_RUN_ID) || '', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
+      RECEIPT: 'INTAKE_RECEIPT', REQUEST_ID: WriterTransactions.requestIds(req)[0] || '', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
       RECORDS_RECEIVED: (req.records || []).length, COUNTERS: counters, RULES_STATUS: rules.status, RULES_DOC_ID: CANONICAL_RULES_DOC_ID,
       DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, NEVER_CONSIDER_REVIEW_NEEDED: plan.summary.NEVER_CONSIDER_REVIEW_NEEDED,
       NEW_PRIMARY_IDS: plan.newLines.map(function (l) { return l.split(' | ')[1]; }),
@@ -2323,4 +2385,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

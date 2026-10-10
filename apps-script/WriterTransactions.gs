@@ -14,7 +14,8 @@ var WriterTransactions = (function () {
     if (!request) return [];
     if (request.action === 'batch') return (request.requests || []).reduce(function (a, r) { return a.concat(requestIds(r)); }, []);
     var body = request.ruling || request.event || request.undo || request;
-    var id = String(body.requestId || (request.run && request.run.SCOUT_RUN_ID) || '').trim();
+    var id = [body.requestId, body.request_id, request.requestId, request.request_id, request.run && request.run.SCOUT_RUN_ID]
+      .filter(function (v) { return typeof v === 'string' && v.trim(); }).map(function (v) { return v.trim(); })[0] || '';
     return id ? [id] : [];
   }
   function intent(before, after, request, now, hash, masterId, build) {
