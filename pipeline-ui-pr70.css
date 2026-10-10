@@ -278,8 +278,6 @@ body[data-freshness=loading] #worksplit:after{content:"";position:absolute;left:
   #drawer .wh-actions button{font-size:16.3013px}
   #drawer .detail-card h3,#drawer .ck-over h3{font-size:16.3013px}
   #drawer .ck-kd li,#drawer .ck-checks li,#drawer .ck-next p,#drawer .ck-sum p{font-size:17.4656px}
-  #drawer .edit-grid input,#drawer .edit-grid select,#drawer .edit-grid textarea{font-size:13.6232px}
-  #drawer .next-job-step{font-size:13.5px}
 }
 @media (min-width:2200px) and (min-height:1200px) {
   #drawer .wh-title h2,#drawer #d-title{font-size:32.4px!important}
