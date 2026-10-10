@@ -135,9 +135,27 @@ function recurrence(store,now,config){
   var groups={};Object.keys((store&&store.incidents)||{}).forEach(function(k){var i=store.incidents[k],at=ms(i.latestAt);if(at==null||now-at>config.windowMs)return;(groups[i.group]=groups[i.group]||[]).push(i);});
   return Object.keys(groups).filter(function(k){var list=groups[k],last=Math.max.apply(null,list.map(function(i){return ms(i.latestAt);})),healthy=(store.healthySince||{})[list[0].source];return list.length>=config.episodes&&!(healthy&&now-healthy>=config.clearMs&&healthy>last);}).map(function(k){return {group:k,episodes:groups[k].length,experimental:config.experimental};});
 }
+/* Health is current operability, not the number of historical failed attempts.
+ * A queue failure with no independent completion proof remains VERIFICATION_REQUIRED
+ * in the existing incident ledger and history, but does not prove an active fault.
+ * No incident is deleted, acknowledged, or declared recovered by this classification. */
+function triage(store) {
+  var out={critical:0,warning:0,verification:0,recoveryRequired:0};
+  Object.keys((store&&store.incidents)||{}).forEach(function(k){
+    var i=store.incidents[k],unresolved=i.status==='ACTIVE'||i.status==='ACKNOWLEDGED_UNRESOLVED';
+    if(!unresolved)return;
+    if(i.kind==='event'){
+      if(i.recoveryRequired===true && i.recoveryEvidence)out.recoveryRequired++;
+      else out.verification++;
+    }else if(i.severity==='critical')out.critical++;
+    else out.warning++;
+  });
+  return out;
+}
 function health(store,now,config){
-  var c=0,w=0;Object.keys((store&&store.incidents)||{}).forEach(function(k){var i=store.incidents[k];if((i.status!=='ACTIVE'&&i.status!=='ACKNOWLEDGED_UNRESOLVED'))return;if(i.severity==='critical')c++;else w++});
-  var recurring=recurrence(store,now,config);return {state:c||recurring.length?'DEGRADED':w?'LIVE / WARNING':'LIVE',critical:c,warning:w,recurring:recurring};
+  var t=triage(store),recurring=recurrence(store,now,config);
+  return {state:t.critical||recurring.length?'DEGRADED':t.warning?'LIVE / WARNING':'LIVE',
+    critical:t.critical,warning:t.warning,verification:t.verification,recoveryRequired:t.recoveryRequired,recurring:recurring};
 }
 
 /* Shared state across devices: only queue incidents are synced (their ids derive from event times, so every device
@@ -154,6 +172,6 @@ function merge(local,remote){
 }
 
 var api={WINDOW_MS:WINDOW_MS,normalizeOperation:normalizeOperation,normalizeFailureClass:normalizeFailureClass,normalizeText:normalizeText,
-  empty:empty,recurrence:recurrence,observe:observe,acknowledge:acknowledge,view:view,health:health,forSync:forSync,merge:merge};
+  empty:empty,recurrence:recurrence,triage:triage,observe:observe,acknowledge:acknowledge,view:view,health:health,forSync:forSync,merge:merge};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineIncidents=api;
 })(typeof window!=='undefined'?window:globalThis);
