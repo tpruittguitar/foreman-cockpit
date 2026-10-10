@@ -74,6 +74,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.job(pid)
             if parsed.path == "/api/archive":
                 return self.archive(params)
+            if parsed.path == "/api/runtime-status":
+                return self.runtime_status()
+            if parsed.path.startswith("/api/evidence/"):
+                pid = urllib.parse.unquote(parsed.path.split("/api/evidence/", 1)[1])
+                return self.evidence(pid)
             return self.send_json({"ok": False, "error": "not found", "path": parsed.path}, 404)
         except Exception as exc:
             return self.send_json({"ok": False, "error": str(exc)}, 500)
@@ -85,6 +90,8 @@ class Handler(BaseHTTPRequestHandler):
             with connect(self.db_path) as conn:
                 payload["jobs"] = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
                 payload["archive_jobs"] = conn.execute("SELECT COUNT(*) FROM archive_jobs").fetchone()[0]
+                payload["evidence_records"] = conn.execute("SELECT COUNT(*) FROM evidence_records").fetchone()[0]
+                payload["evidence_chains"] = conn.execute("SELECT COUNT(*) FROM evidence_chains").fetchone()[0]
                 payload["meta"] = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM meta")}
         else:
             payload["error"] = "database not found; run import_master.py first"
@@ -98,6 +105,9 @@ class Handler(BaseHTTPRequestHandler):
                 "jobs": conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0],
                 "archive_jobs": conn.execute("SELECT COUNT(*) FROM archive_jobs").fetchone()[0],
                 "payload_fields": conn.execute("SELECT COUNT(*) FROM job_payload_fields").fetchone()[0],
+                "evidence_records": conn.execute("SELECT COUNT(*) FROM evidence_records").fetchone()[0],
+                "evidence_chains": conn.execute("SELECT COUNT(*) FROM evidence_chains").fetchone()[0],
+                "evidence_unresolved": conn.execute("SELECT COUNT(*) FROM evidence_chains WHERE unresolved = 1").fetchone()[0],
                 "buckets": buckets,
             })
 
@@ -168,6 +178,22 @@ class Handler(BaseHTTPRequestHandler):
             rows = [row_to_dict(r) for r in conn.execute("SELECT archive_key, primary_id, inv, company, title, bucket, disposition, req_id, location FROM archive_jobs ORDER BY inv LIMIT ? OFFSET ?", (limit, offset))]
             total = conn.execute("SELECT COUNT(*) FROM archive_jobs").fetchone()[0]
             self.send_json({"ok": True, "total": total, "limit": limit, "offset": offset, "rows": rows})
+
+    def evidence(self, primary_id: str) -> None:
+        with connect(self.db_path) as conn:
+            chains = [row_to_dict(r) for r in conn.execute("SELECT evidence_ref, primary_id, head_version, resolved_json, unresolved, observed_at FROM evidence_chains WHERE primary_id = ? ORDER BY head_version", (primary_id,))]
+            records = [row_to_dict(r) for r in conn.execute("SELECT evidence_id, primary_id, version, field_key, field_value, source, created_at FROM evidence_records WHERE primary_id = ? ORDER BY version, field_key", (primary_id,))]
+            for c in chains:
+                try:
+                    c["resolved"] = json.loads(c.pop("resolved_json") or "{}")
+                except Exception:
+                    c["resolved"] = {}
+            self.send_json({"ok": True, "primary_id": primary_id, "chains": chains, "records": records})
+
+    def runtime_status(self) -> None:
+        with connect(self.db_path) as conn:
+            rows = [row_to_dict(r) for r in conn.execute("SELECT read_name, state, detail, row_count, last_ok_at, last_checked_at FROM runtime_read_status ORDER BY read_name")]
+            self.send_json({"ok": True, "rows": rows})
 
 
 def main() -> int:

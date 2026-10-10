@@ -92,8 +92,8 @@ Minimum migration checklist:
 - [ ] classify each read as runtime-critical, export-only, backup-only, or removable;
 - [x] design replacement structured storage schema (`docs/STORAGE_SQLITE_SCHEMA_DESIGN.md` and `tools/local-store/schema.sql`);
 - [x] choose the durable store: local-first SQLite, not enterprise cloud;
-- [ ] build read-only mirror endpoint from the current text master into structured records;
-- [ ] validate row counts, bucket counts, archive counts, and evidence resolution against the current text master;
+- [x] build read-only mirror endpoint from the current text master, terminal archive, and evidence companion into structured records;
+- [x] validate row counts, bucket counts, archive counts, and evidence resolution against the current local files;
 - [ ] switch UI reads to structured JSON;
 - [ ] keep Drive exports as generated artifacts only;
 - [ ] retire Drive text-file reads from the production UI load path.

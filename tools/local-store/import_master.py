@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import sqlite3
@@ -99,6 +100,108 @@ def iter_rows(master_text: str) -> Iterable[ParsedRow]:
             yield parsed
 
 
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def import_archive(conn: sqlite3.Connection, archive_path: Path) -> Dict[str, int]:
+    text = archive_path.read_text(encoding="utf-8-sig")
+    rows = [r for r in iter_rows(text)]
+    now = utc_now()
+    with conn:
+        conn.execute("DELETE FROM archive_jobs")
+        for row in rows:
+            archive_key = f"{row.primary_id}#{row.inv}"
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO archive_jobs
+                (archive_key, primary_id, inv, company, title, bucket, disposition, req_id, location, payload_text, source_line, source_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (archive_key, row.primary_id, row.inv, row.company, row.title, row.bucket, row.disposition, row.req_id, row.location, row.payload_text, row.source_line, row.source_hash),
+            )
+        conn.execute("INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES ('source_archive_path', ?, ?)", (str(archive_path), now))
+        conn.execute("INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES ('source_archive_hash', ?, ?)", (file_sha256(archive_path), now))
+        conn.execute("INSERT OR REPLACE INTO runtime_read_status (read_name, state, detail, row_count, last_ok_at, last_checked_at) VALUES ('terminal_archive', 'OK', ?, ?, ?, ?)", (str(archive_path), len(rows), now, now))
+    return {"archive_source_lines": len(text.splitlines()), "archive_jobs": len(rows)}
+
+
+def import_evidence(conn: sqlite3.Connection, evidence_path: Path) -> Dict[str, int]:
+    now = utc_now()
+    parsed = []
+    header = None
+    for line_number, line in enumerate(evidence_path.read_text(encoding="utf-8-sig").splitlines(), start=1):
+        line = line.strip()
+        if not line:
+            continue
+        record = json.loads(line)
+        if record.get("type") == "HEADER":
+            header = record
+            continue
+        pid = str(record.get("pid") or "").strip()
+        version = int(record.get("v") or 0)
+        fields = record.get("f") or {}
+        if not pid or version <= 0 or not isinstance(fields, dict):
+            raise ValueError(f"invalid evidence record at line {line_number}")
+        parsed.append({"pid": pid, "v": version, "base": int(record.get("base") or 0), "ts": str(record.get("ts") or ""), "src": str(record.get("src") or ""), "fields": fields})
+    by_pid_version = {(r["pid"], r["v"]): r for r in parsed}
+
+    def resolve(pid: str, version: int) -> Tuple[Dict[str, str], bool]:
+        chain = []
+        seen = set()
+        cur = version
+        unresolved = False
+        while cur:
+            key = (pid, cur)
+            if key in seen or key not in by_pid_version:
+                unresolved = True
+                break
+            seen.add(key)
+            rec = by_pid_version[key]
+            chain.append(rec)
+            cur = rec["base"]
+        merged: Dict[str, str] = {}
+        for rec in reversed(chain):
+            for k, v in rec["fields"].items():
+                merged[str(k)] = str(v)
+        return merged, unresolved
+
+    with conn:
+        conn.execute("DELETE FROM evidence_records")
+        conn.execute("DELETE FROM evidence_chains")
+        for rec in parsed:
+            pid, version = rec["pid"], rec["v"]
+            for field_key, field_value in rec["fields"].items():
+                evidence_id = f"{pid}:EVC1:{version}:{field_key}"
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO evidence_records
+                    (evidence_id, primary_id, version, field_key, field_value, source, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (evidence_id, pid, version, str(field_key), str(field_value), rec["src"], rec["ts"] or now),
+                )
+            merged, unresolved = resolve(pid, version)
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO evidence_chains
+                (evidence_ref, primary_id, head_version, resolved_json, unresolved, observed_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (f"{pid}:EVC1:{version}", pid, version, json.dumps(merged, sort_keys=True), 1 if unresolved else 0, now),
+            )
+        conn.execute("INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES ('source_evidence_path', ?, ?)", (str(evidence_path), now))
+        conn.execute("INSERT OR REPLACE INTO meta (key, value, updated_at) VALUES ('source_evidence_hash', ?, ?)", (file_sha256(evidence_path), now))
+        conn.execute("INSERT OR REPLACE INTO runtime_read_status (read_name, state, detail, row_count, last_ok_at, last_checked_at) VALUES ('evidence_companion', 'OK', ?, ?, ?, ?)", (str(evidence_path), len(parsed), now, now))
+    return {
+        "evidence_header": 1 if header else 0,
+        "evidence_records": len(parsed),
+        "evidence_fields": sum(len(r["fields"]) for r in parsed),
+        "evidence_chains": len(parsed),
+        "evidence_unresolved": conn.execute("SELECT COUNT(*) FROM evidence_chains WHERE unresolved = 1").fetchone()[0],
+    }
+
+
 def open_db(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -156,6 +259,8 @@ def import_master(conn: sqlite3.Connection, master_path: Path) -> Dict[str, int]
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--master", required=True, help="Path to V2_CURRENT_POPULATION_MASTER.txt or exported master text")
+    parser.add_argument("--archive", help="Optional path to V2_TERMINAL_ARCHIVE.txt")
+    parser.add_argument("--evidence", help="Optional path to V2_EVIDENCE_COMPANION.jsonl")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite database path")
     args = parser.parse_args()
     master_path = Path(args.master)
@@ -164,6 +269,16 @@ def main() -> int:
         raise SystemExit(f"Master file not found: {master_path}")
     conn = open_db(db_path)
     stats = import_master(conn, master_path)
+    if args.archive:
+        archive_path = Path(args.archive)
+        if not archive_path.exists():
+            raise SystemExit(f"Archive file not found: {archive_path}")
+        stats.update(import_archive(conn, archive_path))
+    if args.evidence:
+        evidence_path = Path(args.evidence)
+        if not evidence_path.exists():
+            raise SystemExit(f"Evidence companion file not found: {evidence_path}")
+        stats.update(import_evidence(conn, evidence_path))
     print({"ok": True, "db": str(db_path), **stats})
     return 0
 
