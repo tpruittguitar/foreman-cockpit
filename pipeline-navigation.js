@@ -41,3 +41,53 @@
  });
  bottom.innerHTML=groups.map(function(g){return '<button data-go="'+g.route+'" data-group-btn="'+g.id+'">'+iconFor(g)+'<span>'+g.short+'</span></button>'}).join('');
 })();
+
+/* Phase 6 Control Center baseline.
+   Presentation/control-plane only: surfaces governance and jump points without publishing rules, scoring, Writer, Drive, or master changes. */
+(function(){
+ 'use strict';
+ var injected=false;
+ function css(){
+  if(document.getElementById('control-center-css'))return;
+  var style=document.createElement('style');
+  style.id='control-center-css';
+  style.textContent='\n.control-center-shell{margin:8px;border:1px solid var(--line2);background:linear-gradient(180deg,#080808,#030303);padding:12px;border-radius:6px}\n.control-center-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px}\n.control-center-head h2{margin:0;font-size:16px;letter-spacing:1.8px;text-transform:uppercase;color:#fff}\n.control-center-head p{margin:4px 0 0;color:var(--dim);max-width:880px}\n.control-center-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}\n.control-card{border:1px solid var(--line);background:#050505;padding:10px;min-height:112px;border-radius:4px}\n.control-card h3{margin:0 0 6px;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}\n.control-card b{display:block;color:#fff;font-size:16px;margin-bottom:4px}\n.control-card p{margin:0 0 8px;color:var(--faint);font-size:11.5px;line-height:1.35}\n.control-card button{min-height:30px;margin:2px 4px 2px 0;padding:3px 8px;font:10.5px var(--mono);letter-spacing:.7px}\n.control-card.status-ok{border-left:3px solid var(--ok)}.control-card.status-warn{border-left:3px solid var(--caution)}\n.control-note{margin-top:10px;color:var(--dim);font:11px/1.45 var(--mono);border-top:1px solid var(--line);padding-top:8px}\n@media(max-width:760px),(pointer:coarse) and (max-width:980px){.control-center-shell{margin:6px;padding:9px}.control-center-head{display:block}.control-center-grid{grid-template-columns:1fr}.control-card{min-height:0}}\n';
+  document.head.appendChild(style);
+ }
+ function clickRoute(route,action){
+  var sel=action?'[data-go="'+route+'"][data-action="'+action+'"]':'[data-go="'+route+'"];'
+  var btn=document.querySelector(action?'[data-go="'+route+'"][data-action="'+action+'"]':'[data-go="'+route+'"]');
+  if(btn)btn.click();
+ }
+ function card(cls,title,status,body,buttons){
+  return '<section class="control-card '+cls+'"><h3>'+title+'</h3><b>'+status+'</b><p>'+body+'</p>'+buttons.map(function(b){return '<button data-cc-go="'+b[1]+'"'+(b[2]?' data-cc-action="'+b[2]+'"':'')+'>'+b[0]+'</button>'}).join('')+'</section>';
+ }
+ function scoringState(){
+  try{var raw=localStorage.getItem('scoring');if(raw)return 'Local draft present'}catch(e){}
+  return window.PipelineScoring?'Viewer model loaded':'Unknown';
+ }
+ function render(){
+  var view=document.getElementById('view-scoring');
+  if(!view||!view.classList.contains('on'))return;
+  if(view.querySelector('.control-center-shell'))return;
+  css();
+  var shell=document.createElement('section');
+  shell.className='control-center-shell';
+  shell.innerHTML='<div class="control-center-head"><div><h2>Control Center</h2><p>One place to see and reach the governing surfaces. This is a cockpit layer only: edits still use the existing Rules, Scoring, Columns, Documents, and Writer screens. Nothing here publishes or mutates authority by itself.</p></div><span class="chip on">PRESENTATION ONLY</span></div><div class="control-center-grid">'+
+   card('status-ok','Live scoring','Loaded / guarded','Scoring edits remain local or governed by the existing scoring save/publish controls. VNext is not made live here.',[['Scoring','scoring'],['Pay / geo','scoring','pay-location']])+
+   card('status-ok','Rules authority','Reachable','Canonical rule editing remains in the Advanced Rules view. This shell does not rewrite Drive authority.',[['Rules','rules']])+
+   card('status-warn','Writer connection','Separate gate','Writer status and connection checks remain in the existing Settings/Writer surface.',[['Writer','settings']])+
+   card('status-ok','Display controls','Reachable','Columns and table display controls remain separate until full table persistence is completed.',[['Columns','columns']])+
+   card('status-ok','Documents','Reachable','Resume profile, ATS keywords, and job documents remain in the document library.',[['Documents','documents'],['ATS tools','documents','profile']])+
+   card('status-warn','Governance','Manual review','Provider schedules, lane prompts, and Drive authorities are visible through AI Operations; this page does not alter them.',[['AI Operations','automations'],['Schedules','automations','schedules']])+
+  '</div><div class="control-note">Status: '+scoringState()+'. All cards are navigation shortcuts and status summaries only. No Writer, master, scoring, rules, automation, or Drive authority mutation is performed by the Control Center shell.</div>';
+  view.insertBefore(shell,view.firstChild);
+  shell.querySelectorAll('[data-cc-go]').forEach(function(b){b.onclick=function(){clickRoute(b.getAttribute('data-cc-go'),b.getAttribute('data-cc-action'))}});
+ }
+ function boot(){
+  var mo=new MutationObserver(function(){requestAnimationFrame(render)});
+  mo.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+  render();
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+})();
