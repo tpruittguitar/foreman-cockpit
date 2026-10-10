@@ -21,8 +21,8 @@ Review model: Tim does not need to navigate GitHub. Each phase is summarized in 
 | 1B | Persistent Pipeline table layout controls | Smaller default column widths, drag column order left/right, manual width resizing, row-height setting, save/lock persistence | MARKED COMPLETE BY TIM FOR PHASE PROGRESSION; FUTURE TABLE/PANEL PERSISTENCE REMAINS TRACKED |
 | 2 | Navigation consolidation | Collapse visible navigation into Pipeline, Map, AI Operations, Control Center, Analytics | IMPLEMENTED BASELINE |
 | 3 | AI Operations dashboard | Intake/enrichment visibility, explicit backlog, Writer health, lane performance, Next Priority | BASELINE IMPLEMENTED |
-| 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | NEXT |
-| 5 | Workspace layout system | Drag, resize, lock, save, restore, presets, responsive layout separation for panels in every view | BLOCKED UNTIL PHASE 4 SUMMARY |
+| 4 | Mobile sizing/readability review | Portrait/landscape sizing, map popup shrink, bottom nav, mobile charts, selected-job readability | IMPLEMENTED BASELINE |
+| 5 | Workspace layout system | Drag, resize, lock, save, restore, presets, responsive layout separation for panels in every view | NEXT |
 | 6 | AI Control Center | External instructions, scoring, FLEX, geography, rules, Writer console, provider registry | BLOCKED UNTIL PHASE 5 SUMMARY |
 | 7 | VNext scoring backtest/cutover | Backtest, compare user-graded roles, validate, publish only by explicit approval | BLOCKED UNTIL PHASE 6 SUMMARY |
 
@@ -103,14 +103,22 @@ The dashboard uses existing Writer-owned supporting operations snapshots. It doe
 
 Known Phase 3 limitation: historical intake-vs-enrichment trend lines require durable per-run history in the Writer snapshot. Where history is absent, the dashboard reports UNKNOWN rather than inventing a trend.
 
-## Mobile review requirements for Phase 4
+## Phase 4 implementation notes
 
-- Full phone portrait sizing/readability review.
-- Full phone landscape perimeter-padding review.
-- Compact map location popup; no large text box covering the map.
-- Mobile-specific chart presentation.
-- Smaller selected-job typography while keeping tap targets usable.
-- Constrained mobile layout customization, not chaotic free-floating panels.
+Runtime file changed: `pipeline-ui-mobile.css`.
+
+Baseline mobile pass now adds:
+
+- tighter phone portrait header spacing.
+- smaller decision count cards.
+- compact map height and controls.
+- smaller map target/location popup labels.
+- smaller selected-job title/meta/chips while preserving tap targets.
+- tighter detail tabs and action buttons.
+- five-item bottom navigation sizing after the Phase 2 navigation model.
+- landscape safe-area/perimeter padding so edge controls are less likely to be unusable.
+
+This is a CSS-only presentation pass. It does not change map data, route logic, selected-job behavior, Writer, master, scoring, or automations.
 
 ## Progress log
 
@@ -121,6 +129,7 @@ Known Phase 3 limitation: historical intake-vs-enrichment trend lines require du
 - 2026-10-10: Reconfirmed global requirement that panels in every view must be movable, resizable, lockable, saved, restored, and presentation-only.
 - 2026-10-10: Implemented Phase 2 baseline in `pipeline-navigation.js`.
 - 2026-10-10: Implemented Phase 3 baseline in `pipeline-operations-ui.js`.
+- 2026-10-10: Implemented Phase 4 baseline in `pipeline-ui-mobile.css`.
 
 ## Current review surface
 
@@ -129,6 +138,7 @@ Changed files in PR #85 are expected to include:
 - `pipeline-ui-workspace.css`
 - `pipeline-navigation.js`
 - `pipeline-operations-ui.js`
+- `pipeline-ui-mobile.css`
 - `docs/PIPELINE_EXPLORER_OVERHAUL_TRACKER.md`
 
 Any Writer, scoring, automation, master-data, or net build-info change should be treated as out of scope.
