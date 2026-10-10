@@ -1,4 +1,4 @@
-# Pipeline Explorer Master Implementation Checklist
+﻿# Pipeline Explorer Master Implementation Checklist
 
 Status date: 2026-10-10
 Branch: `main`
@@ -17,7 +17,7 @@ This file is the durable checklist. Future work should update this file when an 
 
 ---
 
-## Phase 1 — Foundation deploy: PR #85
+## Phase 1 â€” Foundation deploy: PR #85
 
 Goal: put the new command-center structure into the app without changing Writer, automations, master data, or live scoring.
 
@@ -58,7 +58,7 @@ Smoke test note, 2026-10-10: production app loaded at `https://foreman-cockpit.n
 
 ---
 
-## Phase 2 — Storage foundation migration
+## Phase 2 â€” Storage foundation migration
 
 Goal: make production data loading reliable. The master was already moved from a Google Doc to a plain text file, which was the right first fix. The remaining issue is that production runtime still depends on Google Drive/App Script text-file reads for large runtime data.
 
@@ -72,8 +72,10 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 - [x] Restrict Google Docs / Drive files to export, backup, reference, migration source, or manual review artifacts once structured storage exists.
 - [x] Inventory runtime reads that depend on Google Drive text files or Apps Script file reads.
 - [x] Classify first-pass runtime reads by criticality and migration direction.
-- [ ] Choose the replacement durable structured store.
-- [ ] Design structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules.
+- [x] Choose the replacement durable structured store for the personal/local-first path: SQLite first, not enterprise cloud.
+- [x] Create local SQLite schema and tiny local JSON API prototype under `tools/local-store/`.
+- [x] Test synthetic import into SQLite and verify `/health`, `/api/counts`, `/api/jobs`, and `/api/jobs/<PRIMARY_ID>` endpoints.
+- [ ] Design final structured storage for rows, archive, evidence, automation runs, Writer transactions, scoring, and rules.
 - [ ] Build a read-only structured mirror from the current text master.
 - [ ] Validate counts, bucket totals, archive totals, and evidence resolution against the current text master.
 - [ ] Switch production UI reads to bounded JSON endpoints backed by structured storage.
@@ -89,7 +91,7 @@ Immediate hardening while migration is pending:
 
 ---
 
-## Phase 3 — Finish Pipeline table controls
+## Phase 3 â€” Finish Pipeline table controls
 
 Goal: finish the concrete table-control request so Tim can make the job queue fit his workflow and keep the settings.
 
@@ -108,7 +110,7 @@ Goal: finish the concrete table-control request so Tim can make the job queue fi
 
 ---
 
-## Phase 4 — Finish automation visibility
+## Phase 4 â€” Finish automation visibility
 
 Goal: solve the problem where an automation can do partial work and Tim cannot tell what was skipped or left unfinished.
 
@@ -131,7 +133,7 @@ Goal: solve the problem where an automation can do partial work and Tim cannot t
 
 ---
 
-## Phase 5 — Finish automation strategy enforcement
+## Phase 5 â€” Finish automation strategy enforcement
 
 Goal: make the five-lane strategy enforceable and visible, not just described in prompts.
 
@@ -157,7 +159,7 @@ Checklist:
 
 ---
 
-## Phase 6 — Finish Control Center
+## Phase 6 â€” Finish Control Center
 
 Goal: turn Control Center from a shell into a real management surface for authority and governance.
 
@@ -176,7 +178,7 @@ Goal: turn Control Center from a shell into a real management surface for author
 
 ---
 
-## Phase 7 — Finish workspace layout system
+## Phase 7 â€” Finish workspace layout system
 
 Goal: make each major view operator-adjustable while preserving app behavior.
 
@@ -194,7 +196,7 @@ Goal: make each major view operator-adjustable while preserving app behavior.
 
 ---
 
-## Phase 8 — Finish mobile review
+## Phase 8 â€” Finish mobile review
 
 Goal: verify the mobile UI on the real target device and tune it from actual use.
 
@@ -208,7 +210,7 @@ Goal: verify the mobile UI on the real target device and tune it from actual use
 
 ---
 
-## Phase 9 — VNext scoring model
+## Phase 9 â€” VNext scoring model
 
 Goal: prove a new scoring model is better before it becomes live.
 
@@ -231,7 +233,7 @@ Important current status: VNext is not live. PR #85 only adds a warning/backtest
 
 ---
 
-## Phase 10 — Writer test debt cleanup
+## Phase 10 â€” Writer test debt cleanup
 
 Goal: get the repo test baseline clean so future PRs are easier to judge.
 
@@ -276,3 +278,4 @@ Separate PRs should be used for:
 - Drive authority changes
 - master data changes
 - storage architecture / runtime data store changes
+
