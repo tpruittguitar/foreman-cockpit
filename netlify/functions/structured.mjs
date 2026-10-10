@@ -33,9 +33,29 @@ function expectedToken() {
   return env('STRUCTURED_READ_TOKEN') || env('PIPELINE_STRUCTURED_TOKEN') || '';
 }
 
-function hasReadAccess(req, url) {
+const WRITER_URL = 'https://script.google.com/macros/s/AKfycbwShspSkto70NeFWjgTuyIf-W3EDgUmKmoWevE-jZq95pm6SAulrJYHX1HmiPg8tx3i/exec';
+
+function writerKey(req, url) {
+  return req.headers.get('x-writer-key') || url.searchParams.get('writerKey') || '';
+}
+
+async function writerKeyOk(req, url) {
+  const key = writerKey(req, url);
+  if (!key) return false;
+  try {
+    const r = await fetch(WRITER_URL + '?action=ping&key=' + encodeURIComponent(key), { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return false;
+    const j = await r.json();
+    return j && j.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+async function hasReadAccess(req, url) {
   const expected = expectedToken();
-  return !!expected && token(req, url) === expected;
+  if (expected && token(req, url) === expected) return true;
+  return writerKeyOk(req, url);
 }
 
 async function readSnapshot() {
@@ -56,7 +76,7 @@ function publicHealth(snapshot) {
     mode: 'token-gated',
     dataAvailable: !!snapshot,
     dataGate: 'token_required',
-    auth: expectedToken() ? 'configured' : 'not_configured',
+    auth: expectedToken() ? 'structured_token_configured' : 'writer_key_supported',
     reason: snapshot ? 'Structured snapshot is loaded; protected endpoints require token.' : 'Structured endpoint is reachable; no structured snapshot has been loaded yet.',
     endpoints: ['/api/structured/health', '/api/structured/counts', '/api/structured/jobs', '/api/structured/jobs/<PRIMARY_ID>'],
   };
@@ -66,9 +86,9 @@ function locked(snapshot) {
   return response({
     ok: false,
     service: 'structured-runtime',
-    error: expectedToken() ? 'STRUCTURED_TOKEN_REQUIRED' : 'STRUCTURED_TOKEN_NOT_CONFIGURED',
+    error: 'STRUCTURED_AUTH_REQUIRED',
     dataAvailable: !!snapshot,
-    detail: 'Protected structured endpoints require a personal structured read token. Public health remains harmless.',
+    detail: 'Protected structured endpoints require either a personal structured read token or the existing Writer key. Public health remains harmless.',
   }, 401);
 }
 
@@ -80,13 +100,23 @@ function normalizeLimitOffset(url) {
 
 export default async function handler(req) {
   const { url, path } = route(req);
-  if (req.method !== 'GET') return response({ ok: false, error: 'Method not allowed' }, 405);
+  if (!['GET', 'POST'].includes(req.method)) return response({ ok: false, error: 'Method not allowed' }, 405);
 
   const snapshot = await readSnapshot();
 
   if (path === '/' || path === '/health') return response(publicHealth(snapshot));
 
-  if (!hasReadAccess(req, url)) return locked(snapshot);
+  if (!(await hasReadAccess(req, url))) return locked(snapshot);
+
+  if (path === '/admin/snapshot') {
+    if (req.method !== 'POST') return response({ ok: false, error: 'Use POST' }, 405);
+    const body = await req.json();
+    if (!body || body.ok !== true || !Array.isArray(body.jobs) || !body.counts) return response({ ok: false, error: 'INVALID_STRUCTURED_SNAPSHOT' }, 400);
+    const store = getStore({ name: STORE_NAME, consistency: 'strong' });
+    await store.set(SNAPSHOT_KEY, JSON.stringify(body), { metadata: { generatedAt: body.meta?.generatedAt || '', jobs: String(body.jobs.length), schema: body.meta?.schema || '' } });
+    return response({ ok: true, service: 'structured-runtime', loaded: true, jobs: body.jobs.length, counts: body.counts || {}, meta: body.meta || {} });
+  }
+
   if (!snapshot) return response({ ok: false, service: 'structured-runtime', error: 'STRUCTURED_SNAPSHOT_NOT_LOADED', dataAvailable: false }, 503);
 
   if (path === '/counts') {

@@ -75,6 +75,6 @@ A parallel Netlify endpoint exists at:
 
     /api/structured/health
 
-It is now a token-gated structured runtime route. Public health is harmless. Counts/jobs/job-detail endpoints require a personal structured read token and a loaded Netlify Blob snapshot. This preserves functionality without publishing the full pipeline population to the open web.
+It is now a token-gated structured runtime route. Public health is harmless. Counts/jobs/job-detail endpoints accept the existing Writer key and require a loaded Netlify Blob snapshot. This preserves functionality without publishing the full pipeline population to the open web.
 
 The UI must not cut over while `production_structured_data_available` is false or while `tim_explicit_cutover_approval` is false.

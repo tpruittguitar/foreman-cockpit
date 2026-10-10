@@ -204,7 +204,7 @@ Netlify endpoint:
 
     /api/structured/health
 
-Current behavior: public health/status only; `/api/structured/counts`, `/api/structured/jobs`, and `/api/structured/jobs/<PRIMARY_ID>` require `STRUCTURED_READ_TOKEN` or `PIPELINE_STRUCTURED_TOKEN` and a loaded Netlify Blob snapshot. This prevents accidental public exposure while preserving full structured-read functionality.
+Current behavior: public health/status only; `/api/structured/counts`, `/api/structured/jobs`, and `/api/structured/jobs/<PRIMARY_ID>` accept the existing Writer key or optional `STRUCTURED_READ_TOKEN`, and require a loaded Netlify Blob snapshot. This prevents accidental public exposure while preserving full structured-read functionality.
 
 ### Build and publish a protected structured snapshot
 
@@ -222,5 +222,5 @@ The protected production endpoints are:
     /api/structured/jobs?limit=250&offset=0
     /api/structured/jobs/<PRIMARY_ID>
 
-They require a personal read token in `Authorization: Bearer <token>` or `x-structured-token`. The snapshot file is ignored by Git and must not be committed.
+They accept the existing Writer key in `x-writer-key` or `writerKey`, and also support `Authorization: Bearer <token>` / `x-structured-token` if a separate structured token is ever configured. The snapshot file is ignored by Git and must not be committed.
 
