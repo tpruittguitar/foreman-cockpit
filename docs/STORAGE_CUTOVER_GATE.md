@@ -78,3 +78,7 @@ A parallel Netlify endpoint exists at:
 It is now a token-gated structured runtime route. Public health is harmless. Counts/jobs/job-detail endpoints accept the existing Writer key and require a loaded Netlify Blob snapshot. This preserves functionality without publishing the full pipeline population to the open web.
 
 The UI must not cut over while `production_structured_data_available` is false or while `tim_explicit_cutover_approval` is false.
+
+### Non-default UI adapter
+
+`pipeline.html?src=structured` is a parallel test adapter only. It is allowed before cutover because it does not change the default production data source. The default UI must not switch to structured runtime until the gate passes and Tim explicitly approves cutover.

@@ -224,3 +224,10 @@ The protected production endpoints are:
 
 They accept the existing Writer key in `x-writer-key` or `writerKey`, and also support `Authorization: Bearer <token>` / `x-structured-token` if a separate structured token is ever configured. The snapshot file is ignored by Git and must not be committed.
 
+### Browser test path for structured runtime
+
+A non-default browser adapter is available for testing the structured endpoint without changing the production load path:
+
+    https://foreman-cockpit.netlify.app/pipeline.html?src=structured
+
+It uses the existing in-app Writer key and reads `/api/structured/jobs` in bounded pages. It will fail safely until the structured snapshot has been loaded. The normal production Pipeline Explorer path is unchanged.

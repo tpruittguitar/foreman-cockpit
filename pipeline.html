@@ -721,6 +721,48 @@ function localSqliteTextFromPagedJobs_(base,seq){
     return {ok:true,id:'local-sqlite-bounded',source:'local-sqlite-bounded',fetchedAt:fetchedAt,modifiedTime:fetchedAt,rows:rows.length,text:text};
   });
 }
+
+function structuredTextFromPagedJobs_(base,seq){
+  var limit=250,all=[],total=null,fetchedAt=new Date().toISOString();
+  function page(offset){
+    if(seq!==S.loadSeq)return Promise.resolve(null);
+    readout('<b>fetching structured runtime.</b> rows '+offset+'-'+(offset+limit));
+    return fetch(base+'/jobs?limit='+limit+'&offset='+offset,{cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error((j&&j.error)||('structured jobs HTTP '+r.status));return j})}).then(function(j){
+      if(!j||j.ok!==true||!Array.isArray(j.jobs))throw new Error((j&&j.error)||'structured jobs page failed');
+      if(total==null)total=+j.total||0;all=all.concat(j.jobs);
+      return all.length<total?page(all.length):all;
+    });
+  }
+  return page(0).then(function(jobs){
+    if(jobs==null)return null;
+    var rows=jobs.map(function(job){return job.SOURCE_LINE||job.source_line||''}).filter(Boolean);
+    var counts={},i;rows.forEach(function(line){var cells=String(line).split(' | '),b=cells[4]||'UNKNOWN';counts[b]=(counts[b]||0)+1});
+    var keys=Object.keys(counts).sort(),line='COUNTS: TOTAL='+rows.length+' '+keys.map(function(k){return k+'='+counts[k]}).join(' ')+' UNACCOUNTED=0';
+    var text=[line,'STRUCTURED_RUNTIME_VIEW (generated from paged /api/structured/jobs records).','========'].concat(rows).concat(['END V2_CURRENT_POPULATION_MASTER ('+rows.length+' rows)']).join('\n')+'\n';
+    return {ok:true,id:'structured-runtime',source:'structured-runtime',fetchedAt:fetchedAt,modifiedTime:fetchedAt,rows:rows.length,text:text};
+  });
+}
+function loadStructuredRuntime_(q){
+  var seq=S.loadSeq=(S.loadSeq||0)+1,base=(q.get('structuredApi')||'/api/structured').replace(/\/+$/,'');
+  if(!S.cfg.key){S.connection.state='Structured runtime not configured';readout('Structured runtime requires the existing Writer key.');switchTab('settings');return Promise.resolve(null)}
+  readout('<b>fetching structured runtime.</b>');
+  S.connection.state='Checking structured runtime';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};renderLoadAlert_();
+  return structuredTextFromPagedJobs_(base,seq).then(function(j){
+    if(seq!==S.loadSeq)return j;
+    if(!j||j.ok!==true||typeof j.text!=='string'||!j.text)throw new Error((j&&j.error)||'structured runtime returned no master text');
+    var meta={id:j.id||'structured-runtime',fetchedAt:j.fetchedAt||new Date().toISOString(),modifiedTime:j.modifiedTime||'',bytes:j.text.length,source:j.source||'structured-runtime',structuredApi:base};
+    S.load={freshness:'LIVE',error:'',startedAt:meta.fetchedAt,text:j.text,fromCache:false,meta:meta,archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};
+    S.connection.state='Connected structured runtime';S.connection.lastRead=meta.fetchedAt;S.connection.error='';
+    apply(j.text,meta,false);renderLoadAlert_();renderReadout();
+    return S.load;
+  }).catch(function(e){
+    if(seq!==S.loadSeq)return null;
+    S.load={freshness:'NONE',error:e.message,startedAt:new Date().toISOString(),failedAt:new Date().toISOString(),text:'',meta:{source:'structured-runtime',structuredApi:base},fromCache:false,archive:{state:'NOT_LOADED'},evidence:{state:'NOT_LOADED'}};
+    S.connection.state='STRUCTURED RUNTIME FAILED';S.connection.error=e.message;renderLoadAlert_();readout('<span class="bad">STRUCTURED RUNTIME FETCH FAILED</span> '+esc(e.message));
+    return S.load;
+  });
+}
+
 function loadLocalSqlite_(q){
   var seq=S.loadSeq=(S.loadSeq||0)+1,base=(q.get('localApi')||'http://127.0.0.1:8765').replace(/\/+$/,''),bounded=q.get('bounded')!=='0';
   readout('<b>fetching local SQLite.</b>');
@@ -744,6 +786,7 @@ function loadLocalSqlite_(q){
 function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
   if(src==='local')return loadLocalSqlite_(q);
+  if(src==='structured')return loadStructuredRuntime_(q);
   readout('<b>fetching…</b>');
   if(!hasWriter()){S.connection.state='Not configured';readout('Protected master · configure your writer to connect');switchTab('settings');return}
   S.connection.state='Checking';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'PENDING'},evidence:{state:'PENDING'}};renderLoadAlert_();
