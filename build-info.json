@@ -1,7 +1,13 @@
 {
-  "commit": "phase1-overhaul-visual-foundation",
-  "commitShort": "phase1",
-  "builtAt": "2026-10-10T18:28:00Z",
-  "pr": 85,
-  "subject": "Phase 1 visual foundation override"
+  "app": "Pipeline Explorer",
+  "release": "main",
+  "commit": "local",
+  "commitShort": "local",
+  "branch": "local",
+  "context": "local",
+  "deployId": "",
+  "deployUrl": "",
+  "siteUrl": "",
+  "builtAt": "",
+  "source": "source"
 }
