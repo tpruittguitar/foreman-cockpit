@@ -94,7 +94,7 @@ Runtime read inventory: `docs/STORAGE_RUNTIME_READ_INVENTORY.md`
 
 Immediate hardening while migration is pending:
 
-Archive guard commit: `5628246` added `readArchiveSafe_()` and routes `GET action=archive` through it.
+Archive guard commit: `29e33d7` added `readArchiveSafe_()` and routes `GET action=archive` through it. Deployment helper commit: `4b92c4c` fixed UTF-8 project-content handling on Windows. Apps Script deployment succeeded on 2026-10-10 and the existing Writer web app now serves version 48. Direct passphrase-based endpoint smoke was not run from the shell because the command was blocked by safety controls.
 
 - [x] Add guarded archive read wrapper.
 - [x] Make `action=archive` return controlled JSON failure on Drive errors.
