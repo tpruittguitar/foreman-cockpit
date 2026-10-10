@@ -178,3 +178,13 @@ Windows shortcut command:
     tools\local-store\publish_drive_exports.cmd
 
 This wrapper calls the checksum-verifying publish_exports_to_drive.py; it does not implement a second publishing path.
+## Mirror parity validation
+
+Validate that SQLite still matches the current local Drive-synced source files:
+
+    python tools/local-store/validate_mirror_parity.py
+
+This checks live-row count, live-row text membership, archive-row count, archive-row text membership, evidence record count, evidence field count, and unresolved evidence chains. It does not mutate Drive, Writer, production, or the database.
+
+Validated on 2026-10-10: 741 live rows, 522 archive rows, 1,936 evidence chains, 4,683 evidence field rows, and 0 unresolved evidence chains.
+
