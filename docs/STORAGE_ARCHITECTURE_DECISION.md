@@ -95,7 +95,7 @@ Minimum migration checklist:
 - [x] build read-only mirror endpoint from the current text master, terminal archive, and evidence companion into structured records;
 - [x] validate row counts, bucket counts, archive counts, and evidence resolution against the current local files;
 - [ ] switch UI reads to structured JSON;
-- [~] keep Drive exports as generated artifacts only; SQLite-generated master/archive/evidence export snapshots exist locally, but Drive publishing is not implemented;
+- [~] keep Drive exports as generated artifacts only; SQLite-generated master/archive/evidence snapshots can now publish checksum-verified copies to `AI_Coordination/SQLite_Exports`, but canonical live Drive files are not yet generated from SQLite;
 - [ ] retire Drive text-file reads from the production UI load path.
 
 ## Hard rule
