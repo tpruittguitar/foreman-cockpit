@@ -1,5 +1,7 @@
-/* Phase 2 navigation catalogue for desktop and phone; existing route IDs stay stable.
-   Visible model: Pipeline, Map, AI Operations, Control Center, Analytics. */
+/* Four-section navigation (2026-10-11, Tim approved): Pipeline / Intake / System / Settings.
+   The rail and phone bar show only the four sections; each section's pages appear as one row of tabs at the top of the
+   content. Route IDs, presets and actions are unchanged, so every existing link, hash and saved view still resolves.
+   Group IDs match TAB_GROUP in pipeline.html (pipeline, discovery, operations, preferences). */
 (function(){
  'use strict';
  var rail=document.querySelector('#rail .rail-in'),sheet=document.querySelector('#sheet .sheet-in'),bottom=document.getElementById('bottombar');
@@ -9,37 +11,90 @@
   var key=b.dataset.groupBtn,svg=b.querySelector('svg');
   if(key&&svg)icons[key]=svg.outerHTML;
  });
- icons.control=icons.system||'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15.5" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg>';
- icons.aiops=icons.operations||'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.6l8.1 4.7v9.4L12 21.4l-8.1-4.7V7.3z"/><circle cx="12" cy="12" r="3.2"/></svg>';
+ var gear='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="9" cy="7" r="2"/><circle cx="15.5" cy="12" r="2"/><circle cx="7" cy="17" r="2"/></svg>';
+ var hex='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.6l8.1 4.7v9.4L12 21.4l-8.1-4.7V7.3z"/><circle cx="12" cy="12" r="3.2"/></svg>';
+ var inbox='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></svg>';
+ icons.settings=icons.preferences||icons.system||gear;icons.system=icons.operations||hex;icons.intake=icons.discovery||inbox;
+ // [label, route, preset, action]
  var groups=[
-  {id:'pipeline',label:'Pipeline',short:'Pipeline',route:'pipeline',icon:'pipeline',items:[['Decision queue','pipeline','NEEDS_TIM'],['Ready to pursue','pipeline','APPLY_NOW'],['Research queue','pipeline','RESEARCH_QUEUE'],['Missing evidence','pipeline','MISSING_DATA'],['Applied jobs','pipeline','APPLIED'],['Upcoming interviews','pipeline','INTERVIEWS'],['All live jobs','pipeline','ALL'],['Compare roles','pipeline',null,'compare']]},
-  {id:'map',label:'Map',short:'Map',route:'map',icon:'map',items:[['Full-screen map','map'],['Pipeline with map','pipeline']]},
-  {id:'operations',label:'AI Operations',short:'AI Ops',route:'automations',icon:'aiops',items:[['Coverage, backlog and recovery','automations'],['Schedules','automations',null,'schedules'],['System health','operations',null,'system'],['Incident history','incident-history'],['Scout results','quality'],['New intake','pipeline','SCOUT_INTAKE'],['Discovery leads','pipeline','LEADS'],['Manual intake','intake'],['Target companies','companies']]},
-  {id:'preferences',label:'Control Center',short:'Control',route:'scoring',icon:'control',items:[['FLEX policy and scoring','scoring'],['Pay and location preferences','scoring',null,'pay-location'],['Advanced governing rules','rules'],['Display and columns','columns'],['Document library','documents'],['Resume profile / ATS tools','documents',null,'profile'],['Writer connection','settings']]},
-  {id:'analytics',label:'Analytics',short:'Analytics',route:'reports',icon:'analytics',items:[['Pipeline trends and outcomes','reports']]}
+  {id:'pipeline',label:'Pipeline',route:'pipeline',icon:'pipeline',items:[['Jobs','pipeline'],['Map','map'],['Trends','reports'],['Compare','pipeline',null,'compare']]},
+  {id:'discovery',label:'Intake',route:'quality',icon:'intake',items:[['Scout results','quality'],['Scout intake','pipeline','SCOUT_INTAKE'],['Discovery leads','pipeline','LEADS'],['Manual intake','intake'],['Target companies','companies']]},
+  {id:'operations',label:'System',route:'automations',icon:'system',items:[['Dashboard','automations'],['Schedules','automations',null,'schedules'],['Health','operations',null,'system'],['Incidents','incident-history'],['Writer connection','settings']]},
+  {id:'preferences',label:'Settings',route:'scoring',icon:'settings',items:[['Scoring & FLEX','scoring'],['Pay & location','scoring',null,'pay-location'],['Rules','rules'],['Display & columns','columns'],['Documents','documents'],['Resume & ATS','documents',null,'profile']]}
  ];
  function attrs(item){return ' data-go="'+item[1]+'"'+(item[2]?' data-preset="'+item[2]+'"':'')+(item[3]?' data-action="'+item[3]+'"':'');}
  function iconFor(g){return icons[g.icon]||icons.pipeline||'';}
  var brand=rail.querySelector('.rail-brand'),foot=rail.querySelector('.rail-foot');
  rail.replaceChildren(brand);
  groups.forEach(function(g){
-  var div=document.createElement('div');
-  div.className='rail-group';
-  div.dataset.group=g.id;
-  div.innerHTML='<button data-tab="'+g.route+'" data-group-btn="'+g.id+'" aria-label="'+g.label+'">'+iconFor(g)+'<span class="rl"><span class="nav-full">'+g.label+'</span><span class="nav-short">'+g.short+'</span></span></button><div class="rail-sub">'+g.items.map(function(item){return '<button'+attrs(item)+'>'+item[0]+'</button>'}).join('')+'</div>';
+  var div=document.createElement('div');div.className='rail-group';div.dataset.group=g.id;
+  div.innerHTML='<button data-tab="'+g.route+'" data-group-btn="'+g.id+'" aria-label="'+g.label+'">'+iconFor(g)+'<span class="rl"><span class="nav-full">'+g.label+'</span><span class="nav-short">'+g.label+'</span></span></button>';
   rail.appendChild(div);
  });
  rail.appendChild(foot);
- var head=sheet.querySelector('.sheet-h');
- sheet.replaceChildren(head);
+ var head=sheet.querySelector('.sheet-h');sheet.replaceChildren(head);
  if(head&&head.querySelector('b'))head.querySelector('b').textContent='Sections';
  groups.forEach(function(g){
-  var div=document.createElement('details');
-  div.className='sheet-g';
-  div.innerHTML='<summary><h4>'+g.label+'</h4></summary>'+g.items.map(function(item){return '<button'+attrs(item)+'>'+item[0]+'</button>'}).join('');
-  sheet.appendChild(div);
+  var d=document.createElement('details');d.className='sheet-g';
+  d.innerHTML='<summary><h4>'+g.label+'</h4></summary>'+g.items.map(function(item){return '<button'+attrs(item)+'>'+item[0]+'</button>'}).join('');
+  sheet.appendChild(d);
  });
- bottom.innerHTML=groups.map(function(g){return '<button data-go="'+g.route+'" data-group-btn="'+g.id+'">'+iconFor(g)+'<span>'+g.short+'</span></button>'}).join('');
+ bottom.innerHTML=groups.map(function(g){return '<button data-go="'+g.route+'" data-group-btn="'+g.id+'">'+iconFor(g)+'<span>'+g.label+'</span></button>'}).join('');
+
+ // One tab row for the current section. Built now, before pipeline.html binds [data-go], so the existing route handler
+ // drives every tab; this module only decides which row is visible and which tab is current.
+ var strip=document.createElement('nav');strip.id='section-tabs';strip.setAttribute('aria-label','Section pages');
+ strip.innerHTML=groups.map(function(g){return '<div class="st-row" data-st-group="'+g.id+'" role="tablist" hidden>'+g.items.map(function(item,i){return '<button role="tab" data-st-key="'+g.id+':'+i+'"'+attrs(item)+'>'+item[0]+'</button>'}).join('')+'</div>'}).join('')+'<button hidden data-st-reset data-go="pipeline" data-preset="ALL" tabindex="-1" aria-hidden="true"></button>';
+ var anchor=document.getElementById('filters');(anchor&&anchor.parentNode?anchor.parentNode.insertBefore(strip,anchor):document.body.insertBefore(strip,document.body.firstChild));
+ if(!document.getElementById('section-tabs-css')){var css=document.createElement('style');css.id='section-tabs-css';css.textContent='#section-tabs{display:flex;flex:none;border-bottom:1px solid var(--line,#2a2a2a);background:var(--panel,#0d0d0d);overflow-x:auto;scrollbar-width:none}#section-tabs::-webkit-scrollbar{display:none}#section-tabs .st-row{display:flex;gap:2px;padding:0 10px}#section-tabs .st-row[hidden]{display:none}#section-tabs button{flex:none;min-height:40px;padding:0 14px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--dim,#b8b8b8);font:12px var(--mono,monospace);letter-spacing:1.1px;text-transform:uppercase;white-space:nowrap;cursor:pointer}#section-tabs button:hover{color:var(--text,#f5f5f5)}#section-tabs button[aria-selected="true"]{color:var(--text,#f5f5f5);border-bottom-color:var(--px-accent-green,#39ff88)}#section-tabs button:focus-visible{outline:2px solid var(--px-focus-ring,#f5f5f5);outline-offset:-2px}@media(max-width:760px){#section-tabs button{min-height:44px;padding:0 12px}}';document.head.appendChild(css);}
+
+ var lastKey='',lastGroup='pipeline';
+ var INTAKE_PRESETS={SCOUT_INTAKE:1,LEADS:1};
+ // App state lives inside pipeline.html's closure; read what pushHash() writes to the URL (replaceState, so no
+ // hashchange event) plus the page itself.
+ var TAB_GROUP={pipeline:'pipeline',map:'pipeline',reports:'pipeline',quality:'discovery',intake:'discovery',companies:'discovery',automations:'operations','incident-history':'operations',settings:'operations',rules:'preferences',scoring:'preferences',columns:'preferences',documents:'preferences'};
+ function state(){
+  var o={};try{o=JSON.parse(decodeURIComponent(location.hash.slice(1))||'{}')||{};}catch(e){o={};}
+  var v=document.querySelector('.view.on'),tab=(v&&v.id.replace(/^view-/,''))||o.t||'pipeline';
+  return {tab:tab,preset:o.p||'',map:!!o.m||document.body.classList.contains('map-full')};
+ }
+ function routeOf(item){return item[1]==='operations'?'automations':item[1];}
+ function groupFor(st){
+  if(st.tab==='pipeline'){if(INTAKE_PRESETS[st.preset]&&lastGroup==='discovery')return 'discovery';return 'pipeline';}
+  return TAB_GROUP[st.tab]||lastGroup;
+ }
+ function matches(item,st){
+  var r=routeOf(item);
+  if(r==='map')return st.tab==='pipeline'&&st.map;
+  if(r!==st.tab)return false;
+  if(r==='pipeline'){if(st.map)return false;if(item[3]==='compare')return false;if(item[2])return st.preset===item[2];return !INTAKE_PRESETS[st.preset]||lastGroup!=='discovery';}
+  return true;
+ }
+ function update(){
+  var st=state(),g=groupFor(st);
+  strip.querySelectorAll('.st-row').forEach(function(row){row.hidden=row.dataset.stGroup!==g;});
+  var grp=groups.filter(function(x){return x.id===g;})[0],cur='';
+  if(grp){
+   if(lastKey&&lastKey.indexOf(g+':')===0&&matches(grp.items[+lastKey.split(':')[1]],st))cur=lastKey;
+   else grp.items.some(function(item,i){if(item[3]&&item[3]!=='compare'&&item[3]!=='system')return false;if(matches(item,st)){cur=g+':'+i;return true;}return false;});
+  }
+  strip.querySelectorAll('button[data-st-key]').forEach(function(b){var on=b.dataset.stKey===cur;if(b.getAttribute('aria-selected')!==String(on)){b.setAttribute('aria-selected',String(on));if(on){var r=b.getBoundingClientRect(),sr=strip.getBoundingClientRect();if(r.left<sr.left||r.right>sr.right)strip.scrollLeft+=r.left-sr.left-(sr.width-r.width)/2;}}});
+  document.querySelectorAll('[data-group-btn]').forEach(function(b){b.classList.toggle('cur',b.getAttribute('data-group-btn')===g);});
+  document.querySelectorAll('#rail .rail-group').forEach(function(x){x.classList.toggle('cur',x.getAttribute('data-group')===g);});
+ }
+ document.addEventListener('click',function(e){
+  var t=e.target.closest&&e.target.closest('[data-st-key],[data-group-btn],#sheet [data-go]');if(!t)return;
+  if(t.dataset.stKey){lastKey=t.dataset.stKey;lastGroup=lastKey.split(':')[0];}
+  else if(t.dataset.groupBtn){lastGroup=t.dataset.groupBtn;lastKey='';
+   // Leaving Intake for Pipeline: drop the Intake-only filter so the job list is not silently narrowed.
+   if(lastGroup==='pipeline'&&INTAKE_PRESETS[state().preset]){setTimeout(function(){var all=strip.querySelector('[data-st-reset]');if(all)all.click();setTimeout(update,0);},0);}}
+  else{groups.forEach(function(g){g.items.forEach(function(item,i){if(item[1]===t.getAttribute('data-go')&&(item[2]||'')===(t.getAttribute('data-preset')||'')&&(item[3]||'')===(t.getAttribute('data-action')||'')){lastGroup=g.id;lastKey=g.id+':'+i;}});});}
+  setTimeout(update,0);
+ });
+ window.addEventListener('hashchange',function(){setTimeout(update,0);});
+ function boot(){update();setTimeout(update,300);setTimeout(update,1500);}
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+ window.PipelineSectionNav={update:update,groups:groups};
 })();
 
 /* Phase 6 Control Center baseline.
@@ -73,7 +128,7 @@
   css();
   var shell=document.createElement('section');
   shell.className='control-center-shell';
-  shell.innerHTML='<div class="control-center-head"><div><h2>Control Center</h2><p>One place to see and reach the governing surfaces. This is a cockpit layer only: edits still use the existing Rules, Scoring, Columns, Documents, and Writer screens. Nothing here publishes or mutates authority by itself.</p></div><span class="chip on">PRESENTATION ONLY</span></div><div class="control-center-grid">'+
+  shell.innerHTML='<div class="control-center-head"><div><h2>Settings</h2><p>One place to see and reach the governing surfaces. This is a cockpit layer only: edits still use the existing Rules, Scoring, Columns, Documents, and Writer screens. Nothing here publishes or mutates authority by itself.</p></div><span class="chip on">PRESENTATION ONLY</span></div><div class="control-center-grid">'+
    card('status-ok','Live scoring','Loaded / guarded','Scoring edits remain local or governed by the existing scoring save/publish controls. VNext is not made live here.',[['Scoring','scoring'],['Pay / geo','scoring','pay-location']])+
    card('status-ok','Rules authority','Reachable','Canonical rule editing remains in the Advanced Rules view. This shell does not rewrite Drive authority.',[['Rules','rules']])+
    card('status-warn','Writer connection','Separate gate','Writer status and connection checks remain in the existing Settings/Writer surface.',[['Writer','settings']])+
