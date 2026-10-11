@@ -123,6 +123,8 @@ function processWriterQueue() {
         if (parsed.ok) body = parsed.body;
         if (claim.stale) result = abandonedClaimResult_(claim.stale, body);
         else if (!parsed.ok) result = { ok: false, error: parsed.error };
+        // Read-only queue actions answer from a fresh master read and never touch the write path or the fence.
+        else if (QUEUE_READ_ACTIONS.indexOf(parsed.body.action) >= 0) result = rowReadback_(parsed.body);
         else if (WRITE_ACTIONS.indexOf(parsed.body.action) < 0) result = { ok: false, error: 'unsupported action ' + parsed.body.action + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
         else { delete parsed.body.key; result = dispatchWrite_(parsed.body); }
       } catch (e) {
@@ -361,6 +363,7 @@ function readQueueFile_(file) {
  * were still waiting at the end of the hour, and how long they waited and ran. Built only from WRITER_QUEUE_LOG.jsonl;
  * reads nothing else and writes nothing. A request appears once it has finished (that is when it is logged), so the
  * live queue count comes from writer_status, not from here. */
+var QUEUE_READ_ACTIONS = ['row_readback'];
 var QUEUE_STATS_HOUR_MS = 60 * 60 * 1000, QUEUE_STATS_MAX_HOURS = 168;
 
 /** Pure: hourly buckets from queue-log lines (JSONL strings). nowMs = the clock; hours = window length (1..168, default 24). */

@@ -4,7 +4,7 @@ if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../p
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
  * single fixed master, with read-back verification (FORGE_AMENDMENT_58 Authorized State Writer contract).
  *
- * Actions (GET):  ping | writer_status | queue_stats (hours=N) | master | state | receipts | rules | runs | canonical_rules | scoring | events | interview_notes | documents | request_result | receipt_index | verify_pending | automation | process_queue | submit (payload=<JSON write body>)
+ * Actions (GET):  ping | writer_status | queue_stats (hours=N) | row_readback (ids=a,b) | master | state | receipts | rules | runs | canonical_rules | scoring | events | interview_notes | documents | request_result | receipt_index | verify_pending | automation | process_queue | submit (payload=<JSON write body>)
  * Actions (POST): state | ruling | intake | upsert_application | interview_note | approve_resume | save_rules | save_scoring_model | undo_ruling | install_automation | batch | rotate_receipts | correct_receipts
  * Master writes return verification:'PENDING'. COMPLETE is only ever recorded by a LATER execution's fresh read (see "durable write verification").
  * Drive queue:    any AI may drop a JSON write body into AI_Coordination/WRITER_QUEUE; Automation.gs applies it about every 1 minute.
@@ -127,7 +127,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -153,6 +153,7 @@ function doGet(e) {
     if (a === 'automation') return out_(automationStatus_());
     if (a === 'writer_status') return out_(writerStatus_());
     if (a === 'queue_stats') return out_(queueStatsAction_(p.hours));
+    if (a === 'row_readback') return out_(rowReadback_({ primaryIds: String(p.ids || '').split(','), requestId: p.requestId || '' }));
     if (a === 'process_queue') return out_(processWriterQueue());
     return out_({ ok: false, error: 'unknown action ' + a });
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err), errorStack: errorStack_(err) }); }
@@ -1261,6 +1262,50 @@ function restoreArchived_(req) {
 }
 
 /* ================= master read ================= */
+/* ================= row_readback (read-only) =================
+ * Lets a lane that cannot download the 2 MB master verify specific rows. The Writer reads the live master itself and
+ * returns, for each requested PRIMARY_ID, the exact current line and its protected-state facts, plus master-level proof
+ * (sha256, byte length, modifiedTime, COUNTS line, END marker present). Reads only: no lock, no master write, no receipt.
+ * Accepted on the Drive queue ({"action":"row_readback","requestId":"…","primaryIds":[…]}) and as GET ?action=row_readback&ids=a,b. */
+var ROW_READBACK_MAX = 25;
+/** Pure: the row_readback answer for one master text. */
+function rowReadbackFromText_(text, ids, meta) {
+  var want = [], bad = [];
+  (Array.isArray(ids) ? ids : []).forEach(function (v) { var s = String(v == null ? '' : v).trim(); if (!s || s.length > 64 || /[\s|]/.test(s)) { if (s) bad.push(s); return; } if (want.indexOf(s) < 0) want.push(s); });
+  if (!want.length) return { ok: false, mode: 'REJECTED_SCHEMA', error: 'row_readback needs primaryIds (1..' + ROW_READBACK_MAX + ' PRIMARY_IDs)' + (bad.length ? '; invalid: ' + bad.join(', ') : '') };
+  if (want.length > ROW_READBACK_MAX) return { ok: false, mode: 'REJECTED_SCHEMA', error: 'row_readback accepts at most ' + ROW_READBACK_MAX + ' PRIMARY_IDs per request (got ' + want.length + ')' };
+  var lines = String(text || '').split('\n'), hits = {};
+  want.forEach(function (id) { hits[id] = []; });
+  for (var i = 0; i < lines.length; i++) {
+    if (!/^\d+ \| /.test(lines[i])) continue;
+    var c = lines[i].split(' | '), pid = c.length > 1 ? c[1].trim() : '';
+    if (hits[pid]) hits[pid].push(i);
+  }
+  var rows = want.map(function (id) {
+    var at = hits[id];
+    if (!at.length) return { primaryId: id, found: false, matches: 0 };
+    var line = lines[at[0]], c = line.split(' | '), payload = c.length > FIXED_N ? parsePayload(c.slice(FIXED_N).join(' | ')).payload : {};
+    return { primaryId: id, found: true, matches: at.length, lineNumber: at[0] + 1, line: line, lineSha256: hashHex(line),
+      bucket: c[4] || '', disposition: c[5] || '', protectedApplicant: PROTECTED_APPLICANT.indexOf(c[4]) >= 0,
+      antiResurrection: String(payload.ANTI_RESURRECTION || '').toUpperCase() === 'YES', timRuling: payload.TIM_RULING || '' };
+  });
+  return { ok: true, action: 'row_readback', readOnly: true, readAt: (meta && meta.readAt) || new Date().toISOString(),
+    master: { id: (meta && meta.id) || MASTER_ID, modifiedTime: (meta && meta.modifiedTime) || '', bytes: String(text || '').length, sha256: hashHex(String(text || '')),
+      counts: countsLineOf_(lines), endMarkerPresent: lines.some(function (l) { return /^END V2_CURRENT_POPULATION_MASTER/.test(l); }) },
+    requested: want.length, found: rows.filter(function (r) { return r.found; }).length, duplicatesInMaster: rows.filter(function (r) { return r.matches > 1; }).map(function (r) { return r.primaryId; }),
+    invalidIds: bad, rows: rows,
+    note: 'Live master read by the Writer at readAt. Facts only: the requesting lane applies its own rules (protected states, Never-Consider, anti-resurrection).' };
+}
+/** Live wrapper: reads the canonical master once and answers. */
+function rowReadback_(req) {
+  var ids = req && (req.primaryIds || req.primary_ids || req.ids);
+  if (typeof ids === 'string') ids = ids.split(',');
+  var file = DriveApp.getFileById(MASTER_ID), text = withDocRetry_('ROW_READBACK_READ', function () { return readMasterText_(MASTER_ID); });
+  var out = rowReadbackFromText_(text, ids, { id: MASTER_ID, modifiedTime: file.getLastUpdated().toISOString(), readAt: new Date().toISOString() });
+  if (req && req.requestId) out.requestId = String(req.requestId);
+  return out;
+}
+
 function readMaster_() {
   DOC_ACCESS_ = [];
   var file = DriveApp.getFileById(MASTER_ID);
@@ -2402,4 +2447,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
