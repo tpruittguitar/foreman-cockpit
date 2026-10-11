@@ -181,6 +181,17 @@ test('worker: a WRITE_FENCE result releases the claim and leaves the request que
   assert.equal(h.created.length, 0);
 });
 
+test('worker: a script-lock timeout releases the claim and leaves the request queued, never FAILED', t => {
+  const h = queueHarness({ dispatch: () => { throw new Error('Lock timeout: another process was holding the lock for too long.'); } });
+  h.addFile('LOCKED.json', { action: 'ruling', ruling: { primaryId: 'V2I-1', kind: 'ENRICH', requestId: 'R-LOCK' } }, 60000);
+  const out = A.processWriterQueue();
+  assert.equal(out.deferred.file, 'LOCKED.json');
+  assert.match(out.deferred.reason, /writer busy \(Lock timeout/);
+  assert.equal(h.queue.files[0].getName(), 'LOCKED.json', 'claim released under the original name');
+  assert.equal(h.created.length, 0, 'no RESULT written');
+  assert.equal(h.failed.files.length, 0);
+});
+
 test('worker: no new file is claimed after the claim cutoff; the deadline is set and always cleared', t => {
   const realNow = Date.now; let clock = realNow(), dispatched = 0;
   const h = queueHarness({ dispatch: () => { dispatched++; clock += A.QUEUE_CLAIM_CUTOFF_MS + 1000; return { ok: true }; } });
