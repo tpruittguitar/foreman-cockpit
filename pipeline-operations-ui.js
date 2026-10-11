@@ -36,6 +36,23 @@
       return {total:obligations.length,done:done,open:open.length,openList:open,stages:stages,oldest:oldest,intakeFound:intakeFound,intakeReviewed:intakeReviewed,intakeUnprocessed:intakeUnprocessed,writerBlocked:writerBlocked,next:next};
     }
     function metricCard(label,value,sub,cls){return '<article class="dash-card ops-kpi '+(cls||'')+'"><h4>'+cell(label)+'</h4><b>'+cell(value)+'</b><span class="tip">'+cell(sub||'')+'</span></article>';}
+    function chartCard(title,svg,caption,span){return '<article class="chart-card ops-chart"'+(span?' style="grid-column:span '+span+'"':'')+'><h3>'+cell(title)+'</h3>'+svg+'<p class="tip">'+cell(caption||'')+'</p></article>';}
+    function intakeProcessChartsHtml(store,summary,m){
+      var runs=runList(store),found=0,reviewed=0,verified=0,unprocessed=0,blocked=0,clear=0,backlog=0,unknown=0;
+      runs.forEach(function(r){try{var c=PipelineOperations.emailCoverage(r,store.obligations);found+=+c.found||0;reviewed+=+c.reviewed||0;verified+=+c.verified||0;unprocessed+=+c.unprocessed||0;if(c.state==='CLEAR')clear++;else if(c.state==='BACKLOG')backlog++;else if(c.state==='BLOCKED')blocked++;else unknown++;}catch(e){unknown++;}});
+      var open=m&&m.openList?m.openList:obligationList(store).filter(isOpen),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return {label:k,value:m.stages[k]};});
+      var states=summary&&summary.counts?Object.keys(summary.counts).filter(function(k){return summary.counts[k]>0;}).map(function(k){return {label:k.replace(/_/g,' ').toLowerCase(),value:summary.counts[k]};}):[];
+      var lane={intake:0,strategic:0,feasibility:0,writer:0,other:0};
+      open.forEach(function(o){var st=stageOf(o);if(st==='Intake / discovery')lane.intake++;else if(st==='Strategic enrichment')lane.strategic++;else if(st==='Qualification enrichment')lane.feasibility++;else if(st==='Writer / verification')lane.writer++;else lane.other++;});
+      var h='<div class="chart-intro ops-flow-intro"><h2>Intake vs Processing</h2><p>One operations view for discovery intake, processing backlog, Writer verification, and unresolved work. Unknowns stay visible; they are not assumed zero.</p></div><div class="chart-grid ops-flow-grid">';
+      h+=chartCard('Intake funnel',PipelineCharts.bars('Intake funnel',[{label:'Found messages',value:found},{label:'Reviewed bodies',value:reviewed},{label:'Verified candidates',value:verified},{label:'Unprocessed candidates',value:unprocessed}],{compact:true}),'Email/source-window coverage reported by durable operations runs.',1);
+      h+=chartCard('Processing backlog by stage',PipelineCharts.bars('Processing backlog by stage',stageRows,{compact:true}),'Open obligations grouped by current blocking stage.',1);
+      h+=chartCard('Obligation state mix',PipelineCharts.donut('Obligation state mix',states,{compact:true,unit:'obligations'}),'All tracked operation obligations, including completed and unresolved states.',1);
+      h+=chartCard('Open work by lane',PipelineCharts.columns('Open work by lane',[{label:'Intake',value:lane.intake},{label:'Strategic',value:lane.strategic},{label:'Feasibility',value:lane.feasibility},{label:'Writer',value:lane.writer},{label:'Other',value:lane.other}]),'Open work split by the five-lane operating model.',1);
+      h+=chartCard('Source-window status',PipelineCharts.donut('Source-window status',[{label:'Clear',value:clear},{label:'Backlog',value:backlog},{label:'Blocked',value:blocked},{label:'Unknown',value:unknown}],{compact:true,unit:'runs'}),'Durable source windows by coverage state; blocked and unknown remain explicit.',1);
+      h+=chartCard('Resolved vs open',PipelineCharts.columns('Resolved vs open',[{label:'Resolved',value:summary?summary.done:0},{label:'Open',value:summary?summary.open.length:0}]),'Independent-proof completion ratio for tracked obligations.',1);
+      return h+'</div>';
+    }
     function runtimeReadHealth(){
       var v=api.loadStatus?api.loadStatus():{},conn=api.connection?api.connection():{},a=v.archive||{},e=v.evidence||{},items=[];
       function label(x){return x==='OK'?'OK':x==='PENDING'?'PENDING':x==='NOT_APPLICABLE'?'N/A':x==='FAILED'?'FAILED':(x||'UNKNOWN');}
@@ -58,6 +75,7 @@
       var m=dashboardMetrics(store,summary),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return [k,m.stages[k]];});
       var h='<section class="ops-dashboard"><div class="ops-next-priority"><span class="u">Next Priority</span><b>'+cell(m.next)+'</b><small>Based on current Writer-owned supporting evidence. This does not replace canonical master state.</small></div>';
       h+='<div class="dash-grid ops-kpis">'+metricCard('Open enrichment backlog',m.open,m.total?m.done+' complete of '+m.total:'No snapshot',m.open?'warn':'')+metricCard('Completion ratio',m.total?pct(m.done,m.total)+'%':'UNKNOWN',m.total?m.done+'/'+m.total+' obligations':'Writer snapshot unavailable')+metricCard('Writer blocked',m.writerBlocked,m.writerBlocked?'Requires verification/recovery':'No tracked writer blockers',m.writerBlocked?'bad':'')+metricCard('Intake reviewed',m.intakeReviewed,m.intakeFound?m.intakeFound+' found · '+m.intakeUnprocessed+' unprocessed':'No email/source run coverage read')+metricCard('Oldest open age',m.oldest?ageText(m.oldest.iso):'NONE',m.oldest?m.oldest.o.id:'No open tracked obligation')+'</div>';
+      h+=intakeProcessChartsHtml(store,summary,m);
       if(m.total)h+=PipelineProgress.html('Tracked obligations independently resolved',m.done,m.total,'large');
       h+='<div class="panel"><h3>Enrichment backlog by stage</h3>'+(stageRows.length?table(['Stage','Open count'],stageRows):'<p class="tip">No open tracked obligations in the current snapshot.</p>')+'</div>';
       h+=runtimeHealthHtml();
