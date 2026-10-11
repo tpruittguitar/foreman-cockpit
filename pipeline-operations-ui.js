@@ -3,7 +3,7 @@
 (function(root){
   'use strict';
   function create(api){
-    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='';
+    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false};
     var tabLabels={dashboard:'Dashboard',backlog:'Work queue',email:'Intake coverage',recovery:'Verification & recovery',schedules:'Schedules',acceptance:'Diagnostics'};
     var esc=api.escape;
     function cell(value){return esc(value==null?'UNKNOWN':String(value));}
@@ -53,6 +53,8 @@
       h+=chartCard('Resolved vs open',PipelineCharts.columns('Resolved vs open',[{label:'Resolved',value:summary?summary.done:0},{label:'Open',value:summary?summary.open.length:0}]),'Independent-proof completion ratio for tracked obligations.',1);
       return h+'</div>';
     }
+    // Writer throughput (read-only queue_stats). Its failure never blocks the rest of the dashboard.
+    function throughputHtml(){if(typeof PipelineThroughput==='undefined')return '';return PipelineThroughput.html({stats:thr.stats,status:api.writerStatus?api.writerStatus():null,loading:busy,error:thr.error,unsupported:thr.unsupported});}
     function runtimeReadHealth(){
       var v=api.loadStatus?api.loadStatus():{},conn=api.connection?api.connection():{},a=v.archive||{},e=v.evidence||{},items=[];
       function label(x){return x==='OK'?'OK':x==='PENDING'?'PENDING':x==='NOT_APPLICABLE'?'N/A':x==='FAILED'?'FAILED':(x||'UNKNOWN');}
@@ -75,6 +77,7 @@
       var m=dashboardMetrics(store,summary),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return [k,m.stages[k]];});
       var h='<section class="ops-dashboard"><div class="ops-next-priority"><span class="u">Next Priority</span><b>'+cell(m.next)+'</b><small>Based on current Writer-owned supporting evidence. This does not replace canonical master state.</small></div>';
       h+='<div class="dash-grid ops-kpis">'+metricCard('Open enrichment backlog',m.open,m.total?m.done+' complete of '+m.total:'No snapshot',m.open?'warn':'')+metricCard('Completion ratio',m.total?pct(m.done,m.total)+'%':'UNKNOWN',m.total?m.done+'/'+m.total+' obligations':'Writer snapshot unavailable')+metricCard('Writer blocked',m.writerBlocked,m.writerBlocked?'Requires verification/recovery':'No tracked writer blockers',m.writerBlocked?'bad':'')+metricCard('Intake reviewed',m.intakeReviewed,m.intakeFound?m.intakeFound+' found · '+m.intakeUnprocessed+' unprocessed':'No email/source run coverage read')+metricCard('Oldest open age',m.oldest?ageText(m.oldest.iso):'NONE',m.oldest?m.oldest.o.id:'No open tracked obligation')+'</div>';
+      h+=throughputHtml();
       h+=intakeProcessChartsHtml(store,summary,m);
       if(m.total)h+=PipelineProgress.html('Tracked obligations independently resolved',m.done,m.total,'large');
       h+='<div class="panel"><h3>Enrichment backlog by stage</h3>'+(stageRows.length?table(['Stage','Open count'],stageRows):'<p class="tip">No open tracked obligations in the current snapshot.</p>')+'</div>';
@@ -85,7 +88,11 @@
     async function refresh(view){
       if(busy)return;busy=true;paint(view);
       var progress=PipelineProgress.begin('[data-ops-refresh]','Reading Writer evidence');
-      var results=await Promise.allSettled([api.get('operations'),api.get('schedules')]);
+      var results=await Promise.allSettled([api.get('operations'),api.get('schedules'),api.get('queue_stats','&hours=24')]);
+      var qs=results[2],qj=qs.status==='fulfilled'&&qs.value;
+      if(qj&&qj.ok)thr={stats:qj,error:'',unsupported:false};
+      else thr={stats:thr.stats,error:qj&&qj.error||qs.reason&&qs.reason.message||'no response',unsupported:!!(qj&&/unknown action/.test(qj.error||''))};
+      results=results.slice(0,2);
       var problems=[];
       results.forEach(function(r,i){var j=r.status==='fulfilled'&&r.value;
         if(!j||!j.ok||!(i===0?j.store&&j.store.schema===1:j.manifest&&j.manifest.schema===1))problems.push((i===0?'Operations':'Scheduler')+': '+(j&&j.error||r.reason&&r.reason.message||'Writer does not expose a supported snapshot'));
@@ -103,6 +110,7 @@
         else{
           var emptyStore={obligations:{},runs:{}};
           h+='<div class="ops-next-priority"><span class="u">Next Priority</span><b>Refresh Writer evidence</b><small>No durable operations snapshot loaded yet.</small></div>';
+          h+=throughputHtml();
           h+=intakeProcessChartsHtml(emptyStore,{counts:{},done:0,open:[],total:0},{stages:{},openList:[],open:0,done:0,total:0});
           h+=runtimeHealthHtml();
         }

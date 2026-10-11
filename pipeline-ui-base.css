@@ -219,3 +219,17 @@ body.map-full #job-map-card .map-actions{right:62px!important;bottom:calc(12px +
 header #compare-open,header #density-toggle,header #refresh{opacity:.72}
 header #compare-open:hover,header #density-toggle:hover,header #refresh:hover{opacity:1}
 header #search{transition:border-color 140ms ease,box-shadow 220ms var(--forge-ease),max-width 220ms var(--forge-ease)}
+
+/* Writer throughput section (pipeline-throughput.js): compact KPI tiles, wide hourly chart, two charts beside it. */
+.throughput-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:0 12px}
+.throughput-kpis .ops-kpi{min-height:0;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.throughput-kpis .ops-kpi h4{margin:0;font-size:11px;letter-spacing:1px;color:#b8b8b8}
+.throughput-kpis .ops-kpi b{display:block;font-size:26px;line-height:1.1;color:#f5f5f5}
+.throughput-kpis .ops-kpi .tip{display:block;font-size:12px;color:#828282;margin:0}
+.throughput-kpis .ops-kpi.warn b{color:#ff9f1c}
+.chart-grid.throughput-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.throughput-grid .throughput-card:first-child{grid-column:1/-1}
+.throughput-grid .throughput-card:first-child .throughput-svg{display:block;max-height:320px;margin:0 auto}
+.throughput-table{margin:0 12px 12px}.throughput-table summary{cursor:pointer;color:#b8b8b8;padding:6px 0}
+@media(max-width:1100px){.throughput-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.throughput-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.chart-grid.throughput-grid{grid-template-columns:1fr}}
