@@ -1,11 +1,11 @@
 /* Forge cockpit UI — shared visual layer. Presentation only: no selector here changes what a control does. */
 :root{
  --forge-bg:#030404;--forge-panel:#070909;--forge-panel2:#0a0d0d;--forge-line:#232a29;--forge-line-strong:#3a4442;
- --forge-text:#f2f4f3;--forge-dim:#a1aaa7;--forge-faint:#6f7976;--forge-green:#20f27a;--forge-cyan:#40d8ff;
+ --forge-text:#f2f4f3;--forge-dim:#a1aaa7;--forge-faint:#6f7976;--forge-green:#20f27a;--forge-cyan:#39ff88;
  --forge-amber:#ffc21c;--forge-red:#ff3547;--forge-ease:cubic-bezier(.16,1,.3,1)
 }
 html,body{background:var(--forge-bg);color:var(--forge-text)}
-body{background:radial-gradient(1100px 600px at 72% -10%,rgba(30,74,72,.10),transparent 66%),linear-gradient(180deg,#020303,#050707)}
+body{background:radial-gradient(1100px 600px at 72% -10%,rgba(18,18,18,.10),transparent 66%),linear-gradient(180deg,#020303,#050707)}
 header,#rail .rail-in,#bottombar,#drawer,.dash-card,.detail-card,.panel,#gridwrap,#job-map-card{background-color:rgba(5,7,7,.98);border-color:var(--forge-line)}
 
 /* Header pieces shared by both layouts */
@@ -44,7 +44,7 @@ button:not(:disabled):active{transform:scale(.985)}
 .queue-head .decide[data-decide=research] b{color:var(--forge-green)}
 .queue-head .decide.warn b{color:var(--forge-amber)}
 .queue-head .decide.on{box-shadow:inset 0 -2px 0 var(--forge-amber)}
-.queue-head .decide:hover{background:#0b0f0f}
+.queue-head .decide:hover{background:#0d0d0d}
 .qh-tools{display:flex;align-items:center;gap:6px}
 .qh-view{display:inline-flex;align-items:center;gap:10px;min-height:36px;padding:0 12px;border:1px solid var(--forge-line-strong);background:#050707;color:#fff;font:13.5px var(--sans);text-transform:none;letter-spacing:.2px;max-width:220px}
 .qh-view span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -167,7 +167,7 @@ button:not(:disabled):active{transform:scale(.985)}
 #grid td .bpill{border:0;padding:0;background:transparent;font:inherit;letter-spacing:0}
 #grid td .bpill.b-READY_TO_PURSUE,#grid td .bpill.b-APPLIED{color:var(--forge-green)}
 #grid td .bpill.b-TIM_DECISION_REQUIRED,#grid td .bpill.b-MANUAL_RESEARCH,#grid td .bpill.b-BLOCKED{color:var(--forge-amber)}
-#grid td .bpill.b-SCOUT_INTAKE,#grid td .bpill.b-DISCOVERY_LEAD{color:#cfe3ff}
+#grid td .bpill.b-SCOUT_INTAKE,#grid td .bpill.b-DISCOVERY_LEAD{color:#f5f5f5}
 #grid td .bpill.b-DECLINED_BY_TIM,#grid td .bpill.b-REJECTED_BY_EMPLOYER{color:#d77b82}
 #grid td .bpill.b-CLOSED_DEAD,#grid td .bpill.b-DUPLICATE,#grid td .bpill.b-INVALID_DISCOVERY{color:var(--forge-faint)}
 #grid td .score-badge{border:0;background:transparent;padding:0;min-width:0;font-family:var(--sans);font-weight:600;font-size:inherit}
@@ -176,7 +176,7 @@ button:not(:disabled):active{transform:scale(.985)}
 #grid tbody tr.focus td:first-child{box-shadow:inset 4px 0 0 var(--forge-amber),inset 0 1px 0 var(--forge-amber),inset 0 -1px 0 var(--forge-amber)}
 #grid tbody tr.focus td:last-child{box-shadow:inset -1px 0 0 var(--forge-amber),inset 0 1px 0 var(--forge-amber),inset 0 -1px 0 var(--forge-amber)}
 #grid tbody tr{transition:background-color 140ms ease,box-shadow 160ms var(--forge-ease)}
-#grid tbody tr:hover td{background:#0d1212}
+#grid tbody tr:hover td{background:#121212}
 #grid tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 #8fa29d}
 
 /* Rail: icon with its label underneath; hover (or the menu button) still opens the sub-items */
