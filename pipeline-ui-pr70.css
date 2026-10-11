@@ -8,7 +8,7 @@ body{background:#000}
 .command-track i,.work-progress-track i,.writer-countdown i{display:block;height:100%;background:#65d8c0}
 .command-progress[data-state=active] .command-track i,.work-progress-track:not([aria-valuenow]) i,.writer-countdown[data-state=active] i{width:32%;animation:command-scan 1.35s ease-in-out infinite alternate}
 .command-progress[data-state=waiting] .command-track i{width:100%;background:repeating-linear-gradient(135deg,#e0b24a88 0 6px,transparent 6px 12px)}
-.command-progress[data-state=attention] .command-track i{width:100%;background:#e0b24a}
+.command-progress[data-state=attention] .command-track i{width:100%;background:#ffd84d}
 .command-progress[data-state=received] .command-track i{width:100%}
 .work-progress{margin:10px 0;max-width:100%;min-width:0}
 .work-progress.compact{width:140px}.work-progress.medium{width:280px}.work-progress.large{width:100%}
@@ -47,7 +47,7 @@ header,#rail,#bottombar{border-color:#303030}
 .ops-table table{width:100%;border-collapse:collapse;font-size:14.835px}
 .ops-table th,.ops-table td{padding:9px 8px;text-align:left;border-bottom:1px solid #303030;vertical-align:top;overflow-wrap:anywhere}
 .ops-table th{color:#bdbdbd;font-weight:500}
-.ops-warning{color:#e0b24a}
+.ops-warning{color:#ffd84d}
 .ops-obligation{padding:12px 0;border-bottom:1px solid #333}
 .ops-console pre{white-space:pre-wrap;overflow-wrap:anywhere}
 .ops-console [data-ops-message]:empty{display:none}
@@ -209,26 +209,26 @@ header,#rail,#bottombar{border-color:#303030}
 
 /* Acquisition and editing cues, inspired by instrument consoles. */
 #drawer #d-body>*{animation:none}
-#drawer .wh-top:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;border-top:1px solid #91dcff;background:linear-gradient(105deg,#91dcff12,transparent 45%);clip-path:polygon(0 0,100% 0,100% 14%,14% 14%,0 65%)}
+#drawer .wh-top:after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;border-top:1px solid #39ff88;background:linear-gradient(105deg,#91dcff12,transparent 45%);clip-path:polygon(0 0,100% 0,100% 14%,14% 14%,0 65%)}
 #drawer.motion-lock .wh-top:after{animation:console-acquire 700ms ease-out both}
 @keyframes console-acquire{0%{opacity:0;clip-path:polygon(0 0,12% 0,12% 14%,0 14%,0 65%)}25%{opacity:1}65%{opacity:.65}100%{opacity:0;clip-path:polygon(0 0,100% 0,100% 14%,14% 14%,0 65%)}}
 #drawer .detail-card,.view:not(#view-pipeline) .panel{transition:border-color 180ms ease,box-shadow 180ms ease}
-#drawer .detail-card:focus-within,.view:not(#view-pipeline) .panel:focus-within{border-color:#91dcff80;box-shadow:inset 3px 0 #91dcff}
-#drawer input:focus-visible,#drawer select:focus-visible,#drawer textarea:focus-visible,.view:not(#view-pipeline) input:focus-visible,.view:not(#view-pipeline) select:focus-visible,.view:not(#view-pipeline) textarea:focus-visible{outline:2px solid #91dcff;outline-offset:2px}
+#drawer .detail-card:focus-within,.view:not(#view-pipeline) .panel:focus-within{border-color:#91dcff80;box-shadow:inset 3px 0 #39ff88}
+#drawer input:focus-visible,#drawer select:focus-visible,#drawer textarea:focus-visible,.view:not(#view-pipeline) input:focus-visible,.view:not(#view-pipeline) select:focus-visible,.view:not(#view-pipeline) textarea:focus-visible{outline:2px solid #39ff88;outline-offset:2px}
 #list-map-divider{transition:background 140ms ease,border-color 140ms ease}
 #list-map-divider span{transition:width 140ms ease,background 140ms ease,box-shadow 140ms ease}
-#list-map-divider:hover span,#list-map-divider:focus-visible span,body.pane-resizing #list-map-divider span{width:84px;background:#91dcff;box-shadow:0 0 10px #91dcff70}
+#list-map-divider:hover span,#list-map-divider:focus-visible span,body.pane-resizing #list-map-divider span{width:84px;background:#39ff88;box-shadow:0 0 10px #91dcff70}
 #list-map-divider.motion-invite span{animation:divider-invite 1200ms ease-in-out 2}
-@keyframes divider-invite{0%,100%{box-shadow:none}50%{background:#91dcff;box-shadow:0 0 14px #91dcff90}}
-body.pane-resizing #list-map-divider{border-color:#91dcff;background:#10202a}
+@keyframes divider-invite{0%,100%{box-shadow:none}50%{background:#39ff88;box-shadow:0 0 14px #91dcff90}}
+body.pane-resizing #list-map-divider{border-color:#39ff88;background:#181818}
 #grid tbody tr.focus td{transition:background-color 200ms ease}
 @media(hover:hover){
- #drawer .wh-actions button:not(:disabled):hover,.view:not(#view-pipeline) .panel button:not(:disabled):hover,.ops-tabs button:not(:disabled):hover{border-color:#91dcff;box-shadow:inset 0 0 14px #91dcff15,0 0 8px #91dcff18}
+ #drawer .wh-actions button:not(:disabled):hover,.view:not(#view-pipeline) .panel button:not(:disabled):hover,.ops-tabs button:not(:disabled):hover{border-color:#39ff88;box-shadow:inset 0 0 14px #91dcff15,0 0 8px #91dcff18}
  #drawer .wh-actions button:not(:disabled):active,.view:not(#view-pipeline) .panel button:not(:disabled):active{box-shadow:inset 0 0 18px #91dcff35}
  #drawer input:hover,#drawer select:hover,#drawer textarea:hover,.view:not(#view-pipeline) input:hover,.view:not(#view-pipeline) select:hover{border-color:#91dcff80}
 }
 #worksplit{position:relative}
-body[data-freshness=loading] #worksplit:after{content:"";position:absolute;left:0;top:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,#e0b24a,transparent);pointer-events:none;z-index:6;animation:console-read 1400ms ease-in-out infinite}
+body[data-freshness=loading] #worksplit:after{content:"";position:absolute;left:0;top:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,#ffd84d,transparent);pointer-events:none;z-index:6;animation:console-read 1400ms ease-in-out infinite}
 @keyframes console-read{0%,100%{opacity:.25;transform:scaleX(.25)}50%{opacity:1;transform:scaleX(1)}}
 @media(prefers-reduced-motion:reduce){
  #drawer .wh-top:after,#list-map-divider.motion-invite span{animation:none!important;opacity:0}
@@ -241,11 +241,11 @@ body[data-freshness=loading] #worksplit:after{content:"";position:absolute;left:
 #rail:not(.open):not(:hover) .nav-full{display:none}
 #rail:not(.open):not(:hover) .nav-short{display:inline;font-size:12.5px}
 #rail .rail-sub button{white-space:normal;overflow-wrap:anywhere}
-#drawer .decision-essentials{order:2;flex:none;margin:0 16px 10px;padding:8px 10px;border:1px solid #454545;border-left:3px solid #91dcff;background:#0b1115;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
+#drawer .decision-essentials{order:2;flex:none;margin:0 16px 10px;padding:8px 10px;border:1px solid #454545;border-left:3px solid #39ff88;background:#121212;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
 #drawer .decision-status{display:flex;gap:4px 16px;flex-wrap:wrap}
 #drawer .decision-status b{color:#aaa;font-weight:500;margin-right:5px}
-#drawer .decision-blocker{margin:5px 0;color:#e0b24a}
-#drawer .next-job-step{margin-top:6px;text-transform:none;text-align:left;font-size:14px;white-space:normal;border-color:#91dcff70;background:#0d1b23;color:#dff4ff;max-width:100%}
+#drawer .decision-blocker{margin:5px 0;color:#ffd84d}
+#drawer .next-job-step{margin-top:6px;text-transform:none;text-align:left;font-size:14px;white-space:normal;border-color:#91dcff70;background:#181818;color:#dff4ff;max-width:100%}
 #drawer .wh-actions{display:flex;flex-direction:column;gap:8px}
 #drawer .wh-action-group{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px;min-width:0;margin:0;padding:0;border:0}
 #drawer .wh-action-group legend{margin-bottom:6px;padding:0;color:#aaa;font-size:12.5px;letter-spacing:.5px}
@@ -263,5 +263,5 @@ body[data-freshness=loading] #worksplit:after{content:"";position:absolute;left:
 /* The phone menu shows all six sections before expanding their functions. */
 #sheet .sheet-g summary{cursor:pointer;min-height:44px;padding:12px 0;line-height:1.25;color:#eee}
 #sheet .sheet-g summary h4{display:inline;font-size:16px;color:inherit;letter-spacing:.3px}
-#sheet .sheet-g[open] summary{color:#91dcff}
+#sheet .sheet-g[open] summary{color:#39ff88}
 #sheet .sheet-g button{padding-left:18px;font-size:15px;white-space:normal;overflow-wrap:anywhere}
