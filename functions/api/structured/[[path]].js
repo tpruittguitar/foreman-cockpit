@@ -157,6 +157,20 @@ export async function onRequest(context) {
     return built;
   }
 
+  if (path === '/admin/snapshot') {
+    if (req.method !== 'POST') return response({ ok: false, error: 'Use POST' }, 405);
+    try {
+      const snapshot = await req.json();
+      if (!snapshot || !Array.isArray(snapshot.jobs)) return response({ ok: false, error: 'INVALID_SNAPSHOT', detail: 'Snapshot must include jobs array.' }, 400);
+      if (!snapshot.meta) snapshot.meta = {};
+      snapshot.meta.storedAt = new Date().toISOString();
+      const stored = await saveSnapshot(context.env, snapshot);
+      return response({ ok: true, service: 'structured-runtime', imported: true, stored, jobs: snapshot.jobs.length, counts: snapshot.counts || {}, meta: snapshot.meta });
+    } catch (e) {
+      return response({ ok: false, service: 'structured-runtime', error: 'SNAPSHOT_UPLOAD_FAILED', detail: String(e && e.message || e) }, 502);
+    }
+  }
+
   if (path === '/admin/import-from-writer') {
     if (req.method !== 'POST') return response({ ok: false, error: 'Use POST' }, 405);
     try {
