@@ -4,7 +4,7 @@ if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../p
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
  * single fixed master, with read-back verification (FORGE_AMENDMENT_58 Authorized State Writer contract).
  *
- * Actions (GET):  ping | writer_status | master | state | receipts | rules | runs | canonical_rules | scoring | events | interview_notes | documents | request_result | receipt_index | verify_pending | automation | process_queue | submit (payload=<JSON write body>)
+ * Actions (GET):  ping | writer_status | queue_stats (hours=N) | master | state | receipts | rules | runs | canonical_rules | scoring | events | interview_notes | documents | request_result | receipt_index | verify_pending | automation | process_queue | submit (payload=<JSON write body>)
  * Actions (POST): state | ruling | intake | upsert_application | interview_note | approve_resume | save_rules | save_scoring_model | undo_ruling | install_automation | batch | rotate_receipts | correct_receipts
  * Master writes return verification:'PENDING'. COMPLETE is only ever recorded by a LATER execution's fresh read (see "durable write verification").
  * Drive queue:    any AI may drop a JSON write body into AI_Coordination/WRITER_QUEUE; Automation.gs applies it about every 1 minute.
@@ -127,7 +127,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -152,6 +152,7 @@ function doGet(e) {
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
     if (a === 'automation') return out_(automationStatus_());
     if (a === 'writer_status') return out_(writerStatus_());
+    if (a === 'queue_stats') return out_(queueStatsAction_(p.hours));
     if (a === 'process_queue') return out_(processWriterQueue());
     return out_({ ok: false, error: 'unknown action ' + a });
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err), errorStack: errorStack_(err) }); }

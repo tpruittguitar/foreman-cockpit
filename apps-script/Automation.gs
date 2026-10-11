@@ -356,6 +356,57 @@ function readQueueFile_(file) {
   if (file.getMimeType() === MimeType.GOOGLE_DOCS) return DocumentApp.openById(file.getId()).getBody().getText();
   return file.getBlob().getDataAsString('UTF-8');
 }
+/* ================= QUEUE STATS (read-only) =================
+ * Hourly throughput for the Explorer's System page: how many requests arrived and finished each hour, how many
+ * were still waiting at the end of the hour, and how long they waited and ran. Built only from WRITER_QUEUE_LOG.jsonl;
+ * reads nothing else and writes nothing. A request appears once it has finished (that is when it is logged), so the
+ * live queue count comes from writer_status, not from here. */
+var QUEUE_STATS_HOUR_MS = 60 * 60 * 1000, QUEUE_STATS_MAX_HOURS = 168;
+
+/** Pure: hourly buckets from queue-log lines (JSONL strings). nowMs = the clock; hours = window length (1..168, default 24). */
+function queueStats_(lines, nowMs, hours) {
+  var h = Math.floor(Number(hours));
+  if (!isFinite(h) || h < 1) h = 24;
+  if (h > QUEUE_STATS_MAX_HOURS) h = QUEUE_STATS_MAX_HOURS;
+  var end = Math.floor(nowMs / QUEUE_STATS_HOUR_MS) * QUEUE_STATS_HOUR_MS + QUEUE_STATS_HOUR_MS, start = end - h * QUEUE_STATS_HOUR_MS;
+  var buckets = [], i;
+  for (i = 0; i < h; i++) buckets.push({ start: new Date(start + i * QUEUE_STATS_HOUR_MS).toISOString(), arrived: 0, finished: 0, failed: 0, held: 0, backlogAtEnd: 0, waitMsAvg: 0, waitMsMax: 0, runMsAvg: 0, _w: 0, _r: 0, _n: 0 });
+  var runs = [], skipped = 0;
+  (lines || []).forEach(function (l) {
+    var e; try { e = JSON.parse(l); } catch (x) { skipped++; return; }
+    var f = Date.parse(e && e.finishedAt); if (!e || isNaN(f)) { skipped++; return; }
+    var run = Math.max(0, Number(e.totalMs) || 0), wait = Math.max(0, Number(e.queueWaitMs) || 0), st = Date.parse(e.startedAt);
+    // Arrival = when the request file was created: claim time minus its queue wait. Older entries without
+    // startedAt fall back to finish minus run time minus wait.
+    var a = !isNaN(st) ? st - wait : f - run - wait;
+    var status = e.terminalStatus || (e.ok ? 'SUCCESS' : 'FAILED');
+    runs.push({ a: a, f: f, wait: wait, run: run, status: status });
+  });
+  runs.forEach(function (r) {
+    var ai = Math.floor((r.a - start) / QUEUE_STATS_HOUR_MS), fi = Math.floor((r.f - start) / QUEUE_STATS_HOUR_MS);
+    if (ai >= 0 && ai < h) buckets[ai].arrived++;
+    if (fi >= 0 && fi < h) {
+      var b = buckets[fi]; b.finished++; b._n++; b._w += r.wait; b._r += r.run; if (r.wait > b.waitMsMax) b.waitMsMax = r.wait;
+      if (r.status === 'FAILED') b.failed++; else if (/HOLD/.test(r.status)) b.held++;
+    }
+  });
+  buckets.forEach(function (b, k) {
+    var t = start + (k + 1) * QUEUE_STATS_HOUR_MS;
+    b.backlogAtEnd = runs.filter(function (r) { return r.a <= t && r.f > t; }).length;
+    if (b._n) { b.waitMsAvg = Math.round(b._w / b._n); b.runMsAvg = Math.round(b._r / b._n); }
+    delete b._w; delete b._r; delete b._n;
+  });
+  var tot = buckets.reduce(function (s, b) { s.arrived += b.arrived; s.finished += b.finished; s.failed += b.failed; s.held += b.held; if (b.finished > s.peakFinishedPerHour) s.peakFinishedPerHour = b.finished; if (b.waitMsMax > s.waitMsMax) s.waitMsMax = b.waitMsMax; return s; }, { arrived: 0, finished: 0, failed: 0, held: 0, peakFinishedPerHour: 0, waitMsMax: 0 });
+  return { ok: true, now: new Date(nowMs).toISOString(), hours: h, bucketMs: QUEUE_STATS_HOUR_MS, from: new Date(start).toISOString(), to: new Date(end).toISOString(), buckets: buckets, totals: tot, skippedLines: skipped,
+    basis: 'WRITER_QUEUE_LOG.jsonl; a request is counted once it finishes; backlogAtEnd counts logged requests that had arrived and not yet finished' };
+}
+
+/** GET action=queue_stats&hours=N. Read-only: reads the queue log under no lock and changes nothing. */
+function queueStatsAction_(hours) {
+  var lf = findOrCreate_(QUEUE_LOG_NAME, 'text', ''), lines = String(lf.getBlob().getDataAsString() || '').split('\n').filter(Boolean);
+  return queueStats_(lines, Date.now(), hours);
+}
+
 /** Read + append + write under the script lock so two runs finishing together cannot overwrite each other's line.
  *  Called after dispatchWrite_ has released its lock, so this never nests inside another script-lock hold. */
 function appendQueueLog_(entry) {
@@ -380,4 +431,4 @@ function parseQueueContent_(text) {
   return { ok: true, body: body };
 }
 
-if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_, appendQueueLog_: appendQueueLog_, processWriterQueue: processWriterQueue, writerWarnings_: writerWarnings_, writerStatus_: writerStatus_, terminalStatus_: terminalStatus_, requestIdsOf_: requestIdsOf_, partialHoldRecovered_: partialHoldRecovered_, QUEUE_CLAIM_CUTOFF_MS: QUEUE_CLAIM_CUTOFF_MS, QUEUE_BUDGET_MS: QUEUE_BUDGET_MS };
+if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_, appendQueueLog_: appendQueueLog_, processWriterQueue: processWriterQueue, writerWarnings_: writerWarnings_, writerStatus_: writerStatus_, terminalStatus_: terminalStatus_, requestIdsOf_: requestIdsOf_, partialHoldRecovered_: partialHoldRecovered_, queueStats_: queueStats_, QUEUE_CLAIM_CUTOFF_MS: QUEUE_CLAIM_CUTOFF_MS, QUEUE_BUDGET_MS: QUEUE_BUDGET_MS };
