@@ -57,10 +57,10 @@ function publicHealth(snapshot) {
     ok: true,
     service: 'structured-runtime',
     platform: 'cloudflare-pages',
-    mode: 'writer-key',
+    mode: 'snapshot-read',
     dataAvailable: !!snapshot,
-    dataGate: 'writer_key_required',
-    auth: 'writer_key',
+    dataGate: snapshot ? 'public_snapshot_read' : 'writer_key_required_for_live_fallback',
+    auth: snapshot ? 'none_for_snapshot_reads' : 'writer_key_for_live_fallback',
     reason: snapshot ? 'Structured snapshot is loaded.' : 'Structured endpoint is reachable; no structured snapshot has been loaded yet.',
     snapshot: snapshot ? {
       jobs: Array.isArray(snapshot.jobs) ? snapshot.jobs.length : 0,
@@ -79,7 +79,7 @@ function locked(snapshot) {
     service: 'structured-runtime',
     error: 'WRITER_KEY_REQUIRED',
     dataAvailable: !!snapshot,
-    detail: 'Structured endpoints use the existing Writer key.',
+    detail: snapshot ? 'Snapshot reads are public read-only. Live Writer fallback still requires authorization.' : 'No structured snapshot is loaded; live Writer fallback requires authorization.',
   }, 401);
 }
 
@@ -146,16 +146,18 @@ export async function onRequest(context) {
 
   if (path === '/' || path === '/health') return response(publicHealth(snapshot));
 
-  if (!(await writerKeyOk(req, url))) return locked(snapshot);
-
   async function currentSnapshot() {
     if (snapshot) return snapshot;
+    if (!(await writerKeyOk(req, url))) throw Object.assign(new Error('WRITER_KEY_REQUIRED'), { locked: true });
     const master = await readWriterMaster(req, url);
     const built = parseMasterText(master.text);
     built.meta.writerFetchedAt = master.fetchedAt || master.modifiedTime || '';
     built.meta.writerId = master.id || '';
     return built;
   }
+
+  const readOnlyPath = path === '/counts' || path === '/jobs' || /^\/jobs\/[^/]+$/.test(path);
+  if (!readOnlyPath && !(await writerKeyOk(req, url))) return locked(snapshot);
 
   if (path === '/admin/snapshot') {
     if (req.method !== 'POST') return response({ ok: false, error: 'Use POST' }, 405);
@@ -186,12 +188,14 @@ export async function onRequest(context) {
   }
 
   if (path === '/counts') {
-    const current = await currentSnapshot();
+    let current;
+    try { current = await currentSnapshot(); } catch (e) { if (e && e.locked) return locked(snapshot); throw e; }
     return response({ ok: true, service: 'structured-runtime', counts: current.counts || {}, meta: current.meta || {}, source: snapshot ? 'snapshot' : 'writer-live' });
   }
 
   if (path === '/jobs') {
-    const current = await currentSnapshot();
+    let current;
+    try { current = await currentSnapshot(); } catch (e) { if (e && e.locked) return locked(snapshot); throw e; }
     const { limit, offset } = normalizeLimitOffset(url);
     const jobs = Array.isArray(current.jobs) ? current.jobs : [];
     return response({ ok: true, service: 'structured-runtime', limit, offset, total: jobs.length, jobs: jobs.slice(offset, offset + limit), meta: current.meta || {}, source: snapshot ? 'snapshot' : 'writer-live' });
@@ -199,7 +203,8 @@ export async function onRequest(context) {
 
   const jobMatch = path.match(/^\/jobs\/([^/]+)$/);
   if (jobMatch) {
-    const current = await currentSnapshot();
+    let current;
+    try { current = await currentSnapshot(); } catch (e) { if (e && e.locked) return locked(snapshot); throw e; }
     const id = decodeURIComponent(jobMatch[1]);
     const jobs = Array.isArray(current.jobs) ? current.jobs : [];
     const job = jobs.find(j => String(j.PRIMARY_ID || j.id || '') === id);
