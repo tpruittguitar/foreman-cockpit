@@ -1270,7 +1270,7 @@ function readMaster_() {
 /* ================= ruling (one existing row, exact PRIMARY_ID) ================= */
 function applyRulingToMaster_(ruling) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(20000);
+  lock.waitLock(30000);
   try {
     DOC_ACCESS_ = [];
     var modBefore = masterModified_();
@@ -1852,6 +1852,9 @@ function canonUrl(u) {
   var host = m[1].toLowerCase().replace(/^www\./, ''), path = (m[2] || '/').replace(/\/+$/, '').toLowerCase();
   var lj = u.match(/linkedin\.com\/jobs\/view\/(?:[^\/?#]*-)?(\d{6,})/i); if (lj) return 'linkedin.com/jobs/view/' + lj[1];
   var ij = u.match(/indeed\.com\/.*[?&]jk=([a-z0-9]+)/i); if (ij) return 'indeed.com/jk/' + ij[1];
+  // Indeed sponsored/alert click redirects (pagead/clk, rc/clk) without jk= carry only a per-click ad token: host+path names
+  // every sponsored job, so the URL is no identity and dedupe falls back to employer/title/location.
+  if (/(^|\.)indeed\.[a-z.]+$/.test(host) && /\/(pagead|rc)\/clk(\/dl)?$/.test(path)) return '';
   // Glassdoor and Greenhouse-embedded career pages carry the job id in the query; host+path alone names every job on that page
   var gd = u.match(/glassdoor\.[a-z.]+\/[^#]*[?&](?:jobListingId|jl)=(\d+)/i); if (gd) return 'glassdoor.com/job/' + gd[1];
   if (/(^|\.)glassdoor\./.test(host) && /joblisting\.htm$/.test(path)) return '';

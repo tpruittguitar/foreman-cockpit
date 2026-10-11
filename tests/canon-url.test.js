@@ -59,4 +59,26 @@ ok(plan.results[2].outcome === 'IDENTITY_CONFLICT' && plan.results[2].candidateI
   ok(m.kind!=='none'&&m.rows.some(r=>r.id==='V2X-INDEX000001'),'a rediscovery through the company source URL matches the existing row');
 }
 
+// Indeed sponsored click redirects: no jk= means no job identity (2026-10-10 collision on V2I-67CE5AAAAF49)
+const pa1 = 'https://www.indeed.com/pagead/clk/dl?mo=r&ad=-6NYlbfkN0Aaa111&xkcb=SoBb&camk=abc&p=1&jsa=1234';
+const pa2 = 'https://www.indeed.com/pagead/clk/dl?mo=r&ad=-6NYlbfkN0Bbb222&xkcb=SoCc&camk=def&p=2&jsa=5678';
+ok(C(pa1) === '' && C(pa2) === '', 'Indeed pagead/clk/dl without jk is not an identity');
+ok(C('https://www.indeed.com/pagead/clk?mo=r&ad=xyz') === '', 'Indeed pagead/clk without jk is not an identity');
+ok(C('https://www.indeed.com/rc/clk/dl?ad=xyz&from=ja') === '', 'Indeed rc/clk without jk is not an identity');
+ok(C('https://www.indeed.com/rc/clk?jk=857f3a877e8f483d&from=ja') === 'indeed.com/jk/857f3a877e8f483d', 'Indeed rc/clk with jk keeps the jk identity');
+ok(C('https://www.indeed.com/pagead/clk?jk=b0673553d52bd5c1&ad=xyz') === 'indeed.com/jk/b0673553d52bd5c1', 'Indeed pagead with jk keeps the jk identity');
+{
+  const pl = G.generate(570, 12).split('\n');
+  const ai = pl.findIndex(l => /^\d+ \| /.test(l) && / \| READY_TO_PURSUE \| /.test(l));
+  const c = pl[ai].split(' | ');
+  pl[ai] = pl[ai] + '; SOURCE_URL=' + pa1;
+  const p2 = W.planIntake(pl, [
+    { COMPANY: 'Align Production Systems', TITLE: 'Director Engineering Quality Processes', LOCATION: 'Decatur, IL', SOURCE_URL: pa2, SOURCE_PROVIDER: 'Indeed', IDENTITY_CONFIDENCE: 'HIGH' },
+    { COMPANY: c[2], TITLE: c[3], LOCATION: c[8], SOURCE_URL: pa2.replace('Bbb222', 'Ccc333'), SOURCE_PROVIDER: 'Indeed', IDENTITY_CONFIDENCE: 'HIGH' }
+  ], rules, { run: { SCOUT_RUN_ID: 'RUN-PA-1', GROSS_FOUND: 2 }, now: '2026-10-11T19:00:00.000Z', nowET: '2026-10-11 15:00 ET' });
+  ok(p2.ok, 'pagead plan ok');
+  ok(p2.results[0].result === 'SCOUT_INTAKE_WRITTEN', 'a new sponsored Indeed job is admitted, not held against the pagead-sourced row (' + p2.results[0].result + '/' + p2.results[0].outcome + ')');
+  ok(p2.results[1].result !== 'SCOUT_INTAKE_WRITTEN', 'the same employer+title+location via another pagead link still dedupes (' + p2.results[1].result + '/' + p2.results[1].outcome + ')');
+}
+
 console.log(fails ? ('\n' + fails + ' FAILED') : '\nALL PASS'); process.exit(fails ? 1 : 0);

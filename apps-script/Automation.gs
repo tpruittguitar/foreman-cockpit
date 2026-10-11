@@ -125,7 +125,13 @@ function processWriterQueue() {
         else if (!parsed.ok) result = { ok: false, error: parsed.error };
         else if (WRITE_ACTIONS.indexOf(parsed.body.action) < 0) result = { ok: false, error: 'unsupported action ' + parsed.body.action + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
         else { delete parsed.body.key; result = dispatchWrite_(parsed.body); }
-      } catch (e) { result = claim.stale ? abandonedClaimResult_(claim.stale, body) : { ok: false, error: String(e && e.message || e), errorStack: errorStack_(e), docAccess: docAccessSummary_() }; }
+      } catch (e) {
+        var emsg = String(e && e.message || e);
+        // waitLock throws before the writer touches the master: another execution held the script lock. Nothing ran, so the
+        // request is released for the next tick (WRITE_FENCE path below), never finalized as FAILED.
+        if (!claim.stale && /^Lock timeout/i.test(emsg)) result = { ok: false, mode: 'WRITE_FENCE', retryAfterMs: 60000, lockTimeout: true, error: 'writer busy (' + emsg + '); request left queued for the next tick' };
+        else result = claim.stale ? abandonedClaimResult_(claim.stale, body) : { ok: false, error: emsg, errorStack: errorStack_(e), docAccess: docAccessSummary_() };
+      }
       if (result && result.mode === 'WRITE_FENCE') {
         // Not a failure and nothing ran: an earlier write is unverified, this execution already wrote the master, or the
         // writer is frozen. Release the claim; if the rename fails the file goes stale and is finalized as HOLD_ABANDONED.
