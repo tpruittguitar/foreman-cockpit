@@ -99,7 +99,13 @@
       if(error)h+='<p class="ops-warning">'+cell(error)+(store?' · Last successful snapshot retained; its freshness is unverified.':'')+'</p>';
       h+='<div class="row ops-tabs" role="tablist">'+['dashboard','backlog','email','recovery','schedules','acceptance'].map(function(t){return '<button role="tab" aria-selected="'+(tab===t)+'" data-ops-tab="'+t+'">'+tabLabels[t]+'</button>';}).join('')+'</div><div role="tabpanel">';
       if(tab==='dashboard'){
-        h+=store?dashboardHtml(store,summary,observed):'<div class="ops-next-priority"><span class="u">Next Priority</span><b>Refresh Writer evidence</b><small>No durable operations snapshot loaded yet.</small></div>'+runtimeHealthHtml();
+        if(store)h+=dashboardHtml(store,summary,observed);
+        else{
+          var emptyStore={obligations:{},runs:{}};
+          h+='<div class="ops-next-priority"><span class="u">Next Priority</span><b>Refresh Writer evidence</b><small>No durable operations snapshot loaded yet.</small></div>';
+          h+=intakeProcessChartsHtml(emptyStore,{counts:{},done:0,open:[],total:0},{stages:{},openList:[],open:0,done:0,total:0});
+          h+=runtimeHealthHtml();
+        }
       }else if(tab==='backlog'){
         h+='<h3>Research and verification obligations</h3><p class="tip">'+(summary?'Tracked '+summary.total+' · verified dispositions '+summary.done+' · unresolved '+summary.open.length:'UNKNOWN · tracked population has not been read')+'. This is supporting evidence, not a second job master.</p>';
         if(summary&&summary.total)h+=PipelineProgress.html('Tracked obligations independently resolved',summary.done,summary.total,'large');
