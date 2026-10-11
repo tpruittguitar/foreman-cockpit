@@ -35,7 +35,8 @@
       else if(summary&&summary.total)next='No open tracked obligations in current snapshot';
       return {total:obligations.length,done:done,open:open.length,openList:open,stages:stages,oldest:oldest,intakeFound:intakeFound,intakeReviewed:intakeReviewed,intakeUnprocessed:intakeUnprocessed,writerBlocked:writerBlocked,next:next};
     }
-    function metricCard(label,value,sub,cls){return '<article class="dash-card ops-kpi '+(cls||'')+'"><h4>'+cell(label)+'</h4><b>'+cell(value)+'</b><span class="tip">'+cell(sub||'')+'</span></article>';}
+    // graphic: trusted HTML from PipelineMiniViz only, drawn beside (never instead of) the value.
+    function metricCard(label,value,sub,cls,graphic){return '<article class="dash-card ops-kpi '+(cls||'')+'"><h4>'+cell(label)+'</h4><b>'+cell(value)+'</b>'+(graphic||'')+'<span class="tip">'+cell(sub||'')+'</span></article>';}
     function chartCard(title,svg,caption,span){return '<article class="chart-card ops-chart"'+(span?' style="grid-column:span '+span+'"':'')+'><h3>'+cell(title)+'</h3>'+svg+'<p class="tip">'+cell(caption||'')+'</p></article>';}
     function intakeProcessChartsHtml(store,summary,m){
       var runs=runList(store),found=0,reviewed=0,verified=0,unprocessed=0,blocked=0,clear=0,backlog=0,unknown=0;
@@ -76,7 +77,7 @@
     function dashboardHtml(store,summary,observed){
       var m=dashboardMetrics(store,summary),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return [k,m.stages[k]];});
       var h='<section class="ops-dashboard"><div class="ops-next-priority"><span class="u">Next Priority</span><b>'+cell(m.next)+'</b><small>Based on current Writer-owned supporting evidence. This does not replace canonical master state.</small></div>';
-      h+='<div class="dash-grid ops-kpis">'+metricCard('Open enrichment backlog',m.open,m.total?m.done+' complete of '+m.total:'No snapshot',m.open?'warn':'')+metricCard('Completion ratio',m.total?pct(m.done,m.total)+'%':'UNKNOWN',m.total?m.done+'/'+m.total+' obligations':'Writer snapshot unavailable')+metricCard('Writer blocked',m.writerBlocked,m.writerBlocked?'Requires verification/recovery':'No tracked writer blockers',m.writerBlocked?'bad':'')+metricCard('Intake reviewed',m.intakeReviewed,m.intakeFound?m.intakeFound+' found · '+m.intakeUnprocessed+' unprocessed':'No email/source run coverage read')+metricCard('Oldest open age',m.oldest?ageText(m.oldest.iso):'NONE',m.oldest?m.oldest.o.id:'No open tracked obligation')+'</div>';
+      h+='<div class="dash-grid ops-kpis">'+metricCard('Open enrichment backlog',m.open,m.total?m.done+' complete of '+m.total:'No snapshot',m.open?'warn':'')+metricCard('Completion ratio',m.total?pct(m.done,m.total)+'%':'UNKNOWN',m.total?m.done+'/'+m.total+' obligations':'Writer snapshot unavailable','',m.total&&typeof PipelineMiniViz!=='undefined'?PipelineMiniViz.progress(m.done,m.total,{title:m.done+' of '+m.total+' obligations resolved'}):'')+metricCard('Writer blocked',m.writerBlocked,m.writerBlocked?'Requires verification/recovery':'No tracked writer blockers',m.writerBlocked?'bad':'')+metricCard('Intake reviewed',m.intakeReviewed,m.intakeFound?m.intakeFound+' found · '+m.intakeUnprocessed+' unprocessed':'No email/source run coverage read')+metricCard('Oldest open age',m.oldest?ageText(m.oldest.iso):'NONE',m.oldest?m.oldest.o.id:'No open tracked obligation')+'</div>';
       h+=throughputHtml();
       h+=intakeProcessChartsHtml(store,summary,m);
       if(m.total)h+=PipelineProgress.html('Tracked obligations independently resolved',m.done,m.total,'large');
