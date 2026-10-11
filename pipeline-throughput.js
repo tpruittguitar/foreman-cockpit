@@ -78,7 +78,9 @@
     return lineChart('Longest queue wait per hour, minutes', m.hours, 'waitMax', max, 'm', { threshold: m.actMin, thresholdLabel: m.actMin + ' min = act', tip: function(h){ return 'longest wait ' + h.waitMax + ' min, average ' + h.waitAvg + ' min, average run ' + h.runAvgS + ' s'; }, nowValue: m.oldestPendingMin, nowLabel: m.oldestPendingMin == null ? '' : 'oldest now ' + m.oldestPendingMin + 'm' });
   }
 
-  function kpi(label, value, sub, cls){ return '<article class="dash-card ops-kpi ' + (cls || '') + '"><h4>' + esc(label) + '</h4><b>' + esc(value) + '</b><span class="tip">' + esc(sub || '') + '</span></article>'; }
+  function kpi(label, value, sub, cls, graphic){ return '<article class="dash-card ops-kpi ' + (cls || '') + '"><h4>' + esc(label) + '</h4><b>' + esc(value) + '</b>' + (graphic || '') + '<span class="tip">' + esc(sub || '') + '</span></article>'; }
+  // 24-hour sparkline beside a KPI value (needs pipeline-miniviz.js; absent in Node tests, so the value alone shows).
+  function trend(m, key, title){ var V = root.PipelineMiniViz; if (!V) return ''; return '<span class="kpi-viz">' + V.spark(m.hours.map(function(h){ return h[key]; }), { w: 120, h: 22, area: true, title: title }) + '</span>'; }
   function card(title, body, caption){ return '<article class="chart-card ops-chart throughput-card"><h3>' + esc(title) + '</h3>' + body + '<p class="tip">' + esc(caption || '') + '</p></article>'; }
 
   /** HTML for the throughput section. state: {stats, status, loading, error, unsupported}. */
@@ -92,11 +94,11 @@
     if (!m.ok) return head + '<p class="ops-warning">Throughput unavailable: ' + esc(m.error) + '</p>';
     var t = m.totals, overWait = t.waitMax >= m.actMin || (m.oldestPendingMin != null && m.oldestPendingMin >= m.actMin);
     var h = head + '<div class="dash-grid ops-kpis throughput-kpis">'
-      + kpi('Waiting now', m.pending == null ? 'UNKNOWN' : m.pending, m.oldestPendingMin == null ? 'live queue' : 'oldest ' + m.oldestPendingMin + ' min', m.oldestPendingMin != null && m.oldestPendingMin >= m.actMin ? 'warn' : '')
-      + kpi('Finished · 24 h', t.finished, t.arrived + ' arrived')
-      + kpi('Peak per hour', t.peak, 'demonstrated drain rate')
-      + kpi('Longest wait · 24 h', t.waitMax + ' min', overWait ? 'at or over ' + m.actMin + ' min: act' : 'under ' + m.actMin + ' min', overWait ? 'warn' : '')
-      + kpi('Failed · 24 h', t.failed, t.failed ? 'see WRITER_QUEUE/failed' : 'none', t.failed ? 'warn' : '')
+      + kpi('Waiting now', m.pending == null ? 'UNKNOWN' : m.pending, m.oldestPendingMin == null ? 'live queue' : 'oldest ' + m.oldestPendingMin + ' min', m.oldestPendingMin != null && m.oldestPendingMin >= m.actMin ? 'warn' : '', trend(m, 'backlog', 'Still waiting at end of each hour, last 24 h'))
+      + kpi('Finished · 24 h', t.finished, t.arrived + ' arrived', '', trend(m, 'finished', 'Finished per hour, last 24 h'))
+      + kpi('Peak per hour', t.peak, 'demonstrated drain rate', '', trend(m, 'arrived', 'Arrived per hour, last 24 h'))
+      + kpi('Longest wait · 24 h', t.waitMax + ' min', overWait ? 'at or over ' + m.actMin + ' min: act' : 'under ' + m.actMin + ' min', overWait ? 'warn' : '', trend(m, 'waitMax', 'Longest wait per hour (minutes), last 24 h'))
+      + kpi('Failed · 24 h', t.failed, t.failed ? 'see WRITER_QUEUE/failed' : 'none', t.failed ? 'warn' : '', trend(m, 'failed', 'Failures per hour, last 24 h'))
       + '</div><div class="chart-grid ops-flow-grid throughput-grid">'
       + card('Arrived vs finished per hour', flowChart(m), 'Outlined bar = arrived, solid bar = finished, triangle = a failure that hour. Where arrived exceeds finished, a backlog builds.')
       + card('Still waiting at end of hour', backlogChart(m), 'Requests that had arrived but not finished when the hour ended. Ring = live queue now.')

@@ -209,6 +209,7 @@ Known Phase 7 limitation: actual VNext backtest calculations still require a map
 - 2026-10-10: Reconfirmed global requirement that panels in every view must be movable, resizable, lockable, saved, restored, and presentation-only.
 - 2026-10-10: Implemented Phase 2 baseline in `pipeline-navigation.js`.
 - 2026-10-11: Phase 2 revised (Tim approved): rail and phone bar reduced to four sections, Pipeline / Intake / System / Settings, with each section's pages as one tab row at the top of the content (`#section-tabs`). Pipeline holds Jobs, Map, Trends, Compare (queue filters stay in the view's queue selector); Intake holds Scout results, Scout intake, Discovery leads, Manual intake, Target companies; System holds Dashboard, Schedules, Health, Incidents, Writer connection; Settings holds Scoring & FLEX, Pay & location, Rules, Display & columns, Documents, Resume & ATS. Route IDs, presets and hashes are unchanged.
+- 2026-10-11: Numbers paired with graphics (Tim approved): `pipeline-miniviz.js` adds a 14-day arrivals sparkline and share-of-live bar to each Pipeline decision tile, 24-hour sparklines to the System throughput tiles, and a progress bar to the AI Ops completion ratio. The exact number always stays; each graphic carries its own text title; no gauges.
 - 2026-10-10: Implemented Phase 3 baseline in `pipeline-operations-ui.js`.
 - 2026-10-10: Implemented Phase 4 baseline in `pipeline-ui-mobile.css`.
 - 2026-10-10: Implemented Phase 5 workspace layout foundation in `pipeline-pane-split.js`.
