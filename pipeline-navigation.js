@@ -17,7 +17,7 @@
  icons.settings=icons.preferences||icons.system||gear;icons.system=icons.operations||hex;icons.intake=icons.discovery||inbox;
  // [label, route, preset, action]
  var groups=[
-  {id:'pipeline',label:'Pipeline',route:'pipeline',icon:'pipeline',items:[['Jobs','pipeline'],['Map','map'],['Trends','reports'],['Compare','pipeline',null,'compare']]},
+  {id:'pipeline',label:'Pipeline',route:'pipeline',icon:'pipeline',items:[['Jobs','pipeline'],['Review queue','pipeline','NEEDS_TIM'],['Decline candidates','pipeline','DECLINE_CANDIDATES'],['My rulings','pipeline','RULED'],['Map','map'],['Trends','reports'],['Compare','pipeline',null,'compare']]},
   {id:'discovery',label:'Intake',route:'quality',icon:'intake',items:[['Scout results','quality'],['Scout intake','pipeline','SCOUT_INTAKE'],['Discovery leads','pipeline','LEADS'],['Manual intake','intake'],['Target companies','companies']]},
   {id:'operations',label:'System',route:'automations',icon:'system',items:[['Dashboard','automations'],['Schedules','automations',null,'schedules'],['Health','operations',null,'system'],['Incidents','incident-history'],['Writer connection','settings']]},
   {id:'preferences',label:'Settings',route:'scoring',icon:'settings',items:[['Scoring & FLEX','scoring'],['Pay & location','scoring',null,'pay-location'],['Rules','rules'],['Display & columns','columns'],['Documents','documents'],['Resume & ATS','documents',null,'profile']]}
@@ -50,6 +50,8 @@
 
  var lastKey='',lastGroup='pipeline';
  var INTAKE_PRESETS={SCOUT_INTAKE:1,LEADS:1};
+ // REV-002 (Tim 2026-10-11 "can't find things waiting on my ruling"): decision presets get their own Pipeline tabs.
+ var DECISION_PRESETS={NEEDS_TIM:1,DECLINE_CANDIDATES:1,RULED:1};
  // App state lives inside pipeline.html's closure; read what pushHash() writes to the URL (replaceState, so no
  // hashchange event) plus the page itself.
  var TAB_GROUP={pipeline:'pipeline',map:'pipeline',reports:'pipeline',quality:'discovery',intake:'discovery',companies:'discovery',automations:'operations','incident-history':'operations',settings:'operations',rules:'preferences',scoring:'preferences',columns:'preferences',documents:'preferences'};
@@ -67,7 +69,7 @@
   var r=routeOf(item);
   if(r==='map')return st.tab==='pipeline'&&st.map;
   if(r!==st.tab)return false;
-  if(r==='pipeline'){if(st.map)return false;if(item[3]==='compare')return false;if(item[2])return st.preset===item[2];return !INTAKE_PRESETS[st.preset]||lastGroup!=='discovery';}
+  if(r==='pipeline'){if(st.map)return false;if(item[3]==='compare')return false;if(item[2])return st.preset===item[2];return !DECISION_PRESETS[st.preset]&&(!INTAKE_PRESETS[st.preset]||lastGroup!=='discovery');}
   return true;
  }
  function update(){
