@@ -2,6 +2,27 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-12-C — REV-006 preferred-only degree is SOFT_FLEX
+
+Trigger: Tim, 2026-10-12 16:56 ET, answering two questions raised by the batch B scan of the live master (1) a degree named only in preferred wording → SOFT_FLEX; (2) a stated degree with no experience alternative and no word "required" → NO_FLEX (confirms batch B behavior).
+
+### Changed
+
+1. **Preferred-only degree → SOFT_FLEX** (`pipeline-policy.js` = `apps-script/PipelinePolicy.gs`). Batch B left such rows UNKNOWN (11 rows that were HIGH/SOFT would have fallen back to NEEDS_EVIDENCE). A degree stated outside the preferred clause stays hard (`Bachelor's … Preferred: MBA` → NO_FLEX). A recorded STRICT hold is not released by preferred-only wording.
+
+### Not changed
+
+- Rulings (a), (b), (c), Tim locks, modifiers and scoring weights. No master row changes on deploy; rows reclassify on their next write carrying DEGREE_TEXT.
+
+### Verification
+
+- `npm test`: 395 pass, 0 fail. `tim-lock-v4` expectation for bare "Degree preferred" changed UNKNOWN → SOFT_FLEX per this ruling. New cases in `tests/flex-rulings-20261012.test.js`.
+- Scan of the 1,295-row master against old and new code: 309 rows change class in total (batches B + C), none to UNKNOWN. List sent to Tim as CSV.
+
+### Deploy note
+
+Writer-only change in effect (Explorer shares `pipeline-policy.js`). Deploy with `apps-script/deploy.sh`.
+
 ## Batch 2026-10-12-B — FLEX rulings, refresh waits for queue, decision tabs, GitHub policy switch
 
 Items REV-001, REV-002, REV-004 and REV-005 from `control/PIPELINE_EXPLORER_REVISION_LOG.txt` in `tpruittguitar/forge-coordination`. REV-003 (gofer drains the held queue) is an operations task with no code and is not in this release.
