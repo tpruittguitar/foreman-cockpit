@@ -1781,6 +1781,13 @@ function mutateRow(line, ruling, flexPolicy) {
     set('TIM_RULING', 'INVALID_DISCOVERY'); set('INVALID_REASON', note || 'Not a distinct usable job record (Tim ' + d + ')'); tags.push('TIM_INVALID_' + d);
     changes.push('BUCKET', 'DISPOSITION', 'INVALID_REASON');
   } else return { ok: false, error: 'unknown ruling kind ' + kind + ' ' + val };
+  var timFlex = timFlexChoice_(ruling);
+  if (timFlex !== null) {
+    // Tim's own FLEX choice is locked so later text re-derivation and unrelated writes cannot reset it (Tim 2026-10-12). UNKNOWN releases the lock.
+    if (timFlex) { set('TIM_FLEX_CLASS', timFlex); set('TIM_FLEX_SET_AT', ts); }
+    else { ['TIM_FLEX_CLASS', 'TIM_FLEX_SET_AT'].forEach(function (k) { if (P[k] !== undefined) { delete P[k]; O.splice(O.indexOf(k), 1); } }); }
+    changes.push('TIM_FLEX_CLASS');
+  }
   var fr = applyFields_(ruling.fields, P, O, set, flexPolicy);
   if (!fr.ok) return fr;
   if(kind==='APPLY_NOW'&&val==='YES'&&PipelinePolicy.flex(P,flexPolicy).blocked){if(String(ruling.actor||'').toUpperCase()!=='TIM')return {ok:false,error:'STRICT requires explicit Tim override'};set('TIM_FLEX_OVERRIDE','YES');}
@@ -1815,7 +1822,7 @@ function deriveWriterScores_(fixed, P, set, policy) {
   return {ok:true};
 }
 /** Payload keys a write may never set directly (writer-owned) and intake keys whose prior value is kept as INTAKE_<KEY> when changed. */
-var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT', 'IDENTITY_SOURCE', 'IDENTITY_UPDATED_AT'];
+var FIELD_DENY = ['STATE_SOURCE', 'STATE_UPDATED_AT', 'PRIMARY_ID', 'BUCKET', 'DISPOSITION', 'ENRICH_SOURCE', 'ENRICH_UPDATED_AT', 'IDENTITY_SOURCE', 'IDENTITY_UPDATED_AT', 'TIM_FLEX_CLASS', 'TIM_FLEX_SET_AT'];
 /** Keys an ENRICH may never set: bucket/disposition reasons, application/rejection state, and anything Tim-ruled (TIM_*). Those change only through ruling kinds or upsert_application. */
 var ENRICH_DENY = ['DECLINE_REASON_CODE', 'DECLINE_REASON_CODE_PRIOR', 'DECLINE_REASON_TEXT', 'REOPEN_TRIGGER', 'DUP_OF', 'INVALID_REASON', 'RESEARCH_REQUEST', 'POSTING_STATE',
   'APP_DATE', 'APP_STATUS_EVIDENCE', 'APPLICATION_STATUS', 'APPLICATION_RECEIPT_GMAIL_ID', 'REJECTION_DATE', 'REJECTION_EVIDENCE', 'STATE_SEMANTICS', 'ANTI_RESURRECTION', 'UPSERT_KEY'];
@@ -1828,6 +1835,17 @@ function scoreOutputError_(found) { return 'SCORE_OUTPUT_FIELD: ' + found.join('
 function isEnrichDenied_(k) { k = String(k).trim().toUpperCase(); return /^TIM_/.test(k) || ENRICH_DENY.indexOf(k) >= 0; }
 var INTAKE_PRESERVE = ['INTAKE_KEY', 'SCOUT_RUN_ID', 'DISCOVERED_AT_ET', 'DISCOVERY_SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'REQ_ID', 'IDENTITY_CONFIDENCE', 'INITIAL_UNKNOWN_FIELDS', 'DATE_ADDED', 'NOTIFICATION_SOURCE'];
 /** Merge {KEY: value} into a parsed payload. Empty values are ignored (nothing is deleted); changed intake keys keep their old value under INTAKE_<KEY>. */
+/** Tim's FLEX class from an actor-TIM ruling: a class string to lock, '' to release (UNKNOWN), or null when this ruling carries no Tim FLEX choice. */
+function timFlexChoice_(ruling) {
+  if (String(ruling && ruling.actor || '').toUpperCase() !== 'TIM' || !ruling.fields || typeof ruling.fields !== 'object') return null;
+  var raw = null;
+  Object.keys(ruling.fields).forEach(function (k) { var u = String(k).trim().toUpperCase(); if (['FLEX', 'FLEX_CLASS', 'FLEX_HINT'].indexOf(u) >= 0 && ruling.fields[k] != null && String(ruling.fields[k]).trim() !== '') raw = String(ruling.fields[k]); });
+  if (raw === null) return null;
+  var v = raw.trim().toUpperCase().replace(/[ -]+/g, '_');
+  v = { YES: 'HIGH_FLEX', HIGH: 'HIGH_FLEX', SOFT: 'SOFT_FLEX', NO: 'NO_FLEX', STRICT_NO: 'STRICT' }[v] || v;
+  if (v === 'UNKNOWN') return '';
+  return /^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(v) ? v : null;
+}
 function applyFields_(fields, P, O, set, flexPolicy) {
   var changed = [];
   if (!fields) return { ok: true, changed: changed };
@@ -2440,6 +2458,21 @@ function readScoringModel_() {
     return {ok:true,exists:true,id:file.getId(),fileName:file.getName(),url:file.getUrl(),modifiedTime:file.getLastUpdated().toISOString(),model:model,weightTotal:check.weightTotal};
   } catch (e) { return {ok:false,error:String(e && e.message || e)}; }
 }
+/** Last-write-wins let a stale draft (another device or tab) overwrite newer published settings. A publish must name the revision it was edited from. */
+function scoringPublishConflict_(currentRevision, input) {
+  var cur = +currentRevision || 0, base = input && input.baseRevision;
+  if (cur === 0) return null;
+  if (base === undefined || base === null || base === '' || !isFinite(+base)) return {ok:false,mode:'REVISION_CONFLICT',currentRevision:cur,error:'Publish rejected: this draft does not say which revision it was edited from. Reload the Explorer (revision '+cur+' is live) and publish again.'};
+  if (+base !== cur) return {ok:false,mode:'REVISION_CONFLICT',currentRevision:cur,baseRevision:+base,error:'Publish rejected: this draft was edited from revision '+(+base)+' but revision '+cur+' is now live. Load the published model, re-apply your change, and publish again.'};
+  return null;
+}
+/** Exact duplicate geo points (same name and coordinates) double that point's pull in interpolation; keep the first. */
+function dedupeControlPoints_(model) {
+  var g = model && model.geo; if (!g || !Array.isArray(g.controlPoints)) return 0;
+  var seen = {}, kept = [], n = 0;
+  g.controlPoints.forEach(function (p) { var key = String(p && p.name || '').trim().toLowerCase() + '|' + (+(p && p.lat)).toFixed(4) + '|' + (+(p && p.lon)).toFixed(4); if (seen[key]) { n++; return; } seen[key] = 1; kept.push(p); });
+  g.controlPoints = kept; return n;
+}
 function saveScoringModel_(input) {
   var candidate = input || {}, check = validateScoringModel_(candidate);
   if (!check.ok) return {ok:false,error:check.error,weightTotal:check.weightTotal};
@@ -2447,7 +2480,9 @@ function saveScoringModel_(input) {
   try {
     var oldFile = scoringModelFile_(), old = null, revision = 0;
     if (oldFile) { try { old = JSON.parse(oldFile.getBlob().getDataAsString() || '{}'); revision = +(old.publishedRevision || 0) || 0; } catch (e) {} }
+    var conflict = scoringPublishConflict_(revision, candidate); if (conflict) return conflict;
     var now = new Date().toISOString(), model = JSON.parse(JSON.stringify(candidate));
+    delete model.baseRevision; dedupeControlPoints_(model);
     model.modelId = SCORING_MODEL_ID;
     model.modelVersion = String(model.modelVersion || '2026-10-04.1');
     model.publishedRevision = revision + 1;
@@ -2530,4 +2565,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
