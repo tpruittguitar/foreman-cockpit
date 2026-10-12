@@ -51,7 +51,7 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   status.queue.pending=2;await page.locator('#score-stored-review').click();await page.waitForSelector('#score-refresh .score-review');
   let text=await page.locator('#score-refresh').innerText();
   assert.match(text,/What will be written · 60 rows/i);assert.match(text,/3 batches of at most 25/);assert.match(text,/FLEX_MODIFIER (15|6|-10) → (30|20|-15|-30)/);assert.match(text,/never changes a row's FLEX class, bucket, state, notes or evidence/i);
-  assert.match(text,/✗ Queue idle/);assert.equal(await page.locator('#score-refresh-apply').isDisabled(),true);assert.equal(calls.length,0,'a blocked review writes nothing');
+  assert.match(text,/⏳ Queue idle/);assert.match(text,/Ready when the queue clears \(\d+ waiting, \d+ unverified\)/);assert.equal(await page.locator('#score-refresh-apply').isDisabled(),true);assert.equal(calls.length,0,'a blocked review writes nothing');
   await page.locator('#score-refresh-cancel').click();assert.equal(await page.locator('#score-refresh').isHidden(),true);
 
   // 3. With the queue idle, Apply runs batch by batch. Batch 2 fails: it stops, sends nothing further, and the master is re-read.

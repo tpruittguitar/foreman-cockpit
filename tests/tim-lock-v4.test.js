@@ -12,8 +12,9 @@ test('all Tim equivalency triggers override stale classes and never emit +20',()
     }
   }
 });
+// Tim ruling 2026-10-12 (b): one degree or another degree is a hard degree requirement (was SOFT_FLEX).
 test('requirement-only classification distinguishes alternate paths, related field, negation and unknown',()=>{
-  const cases=[['10 years leading production operations','HIGH_FLEX',15],['Degree: not stated','HIGH_FLEX',15],['Bachelor degree or 12 years of production experience','SOFT_FLEX',6],["Bachelor degree or Master's degree",'SOFT_FLEX',6],['Bachelor degree in engineering or related field required, plus 10 years experience','NO_FLEX',-10],['Bachelor degree required; equivalent experience not accepted','NO_FLEX',-10],['Bachelor degree required; single path only; no substitutions','STRICT',-30],['','UNKNOWN',0],['Requirements unavailable','UNKNOWN',0],['Degree preferred','UNKNOWN',0]];
+  const cases=[['10 years leading production operations','HIGH_FLEX',15],['Degree: not stated','HIGH_FLEX',15],['Bachelor degree or 12 years of production experience','SOFT_FLEX',6],["Bachelor degree or Master's degree",'NO_FLEX',-10],['Bachelor degree in engineering or related field required, plus 10 years experience','NO_FLEX',-10],['Bachelor degree required; equivalent experience not accepted','NO_FLEX',-10],['Bachelor degree required; single path only; no substitutions','STRICT',-30],['','UNKNOWN',0],['Requirements unavailable','UNKNOWN',0],['Degree preferred','UNKNOWN',0]];
   for(const [text,cls,mod]of cases){const f=P.flex({DEGREE_TEXT:text,FLEX_CLASS:'HIGH_FLEX'},v4);assert.equal(f.class,cls,text);assert.equal(f.modifier,mod,text);}
 });
 test('STRICT blocks APPLY_NOW including new evidence in the same request; only Tim override releases it',()=>{

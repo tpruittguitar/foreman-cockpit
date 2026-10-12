@@ -1566,7 +1566,7 @@ function applyIntakeToMaster_(req) {
     var executedAt = new Date().toISOString();
     var receipt = {
       RECEIPT: 'INTAKE_RECEIPT', REQUEST_ID: WriterTransactions.requestIds(req)[0] || '', SCOUT_RUN_ID: (req.run && req.run.SCOUT_RUN_ID) || '', EXECUTED_BY: 'Pipeline Explorer Apps Script (runs as Tim)',
-      RECORDS_RECEIVED: (req.records || []).length, COUNTERS: counters, RULES_STATUS: rules.status, RULES_DOC_ID: CANONICAL_RULES_DOC_ID,
+      RECORDS_RECEIVED: (req.records || []).length, COUNTERS: counters, RULES_STATUS: rules.status, RULES_DOC_ID: rules.id || CANONICAL_RULES_DOC_ID,
       DISCOVERY_LEAD_AMBIGUOUS: plan.summary.AMBIGUOUS_LEAD, NEVER_CONSIDER_REVIEW_NEEDED: plan.summary.NEVER_CONSIDER_REVIEW_NEEDED,
       NEW_PRIMARY_IDS: plan.newLines.map(function (l) { return l.split(' | ')[1]; }),
       COUNTS_UPDATED: 'YES', END_UPDATED: newEnd ? 'YES' : 'NO_END_LINE', READBACK_VERIFIED: 'PENDING',
@@ -2363,7 +2363,7 @@ function approveResume_(sel) {
 function readFlexPolicy_() {
   var defaults = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy({}) : {};
   try {
-    var text = DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
+    var text = canonicalRulesText_().text;
     var sec = String(text || '').match(/(?:^|\n)SECTION=DEGREE_FLEX\s*\n([\s\S]*?)(?=\nSECTION=|$)/);
     if (!sec) {
       defaults._SOURCE = 'CANONICAL_DEFAULTS';
@@ -2407,17 +2407,97 @@ function automationEnvelopeError_(req,live){
   return '';
 }
 
+/* ================= REV-005 policy source switch =================
+ * Drive stays the default. GitHub (tpruittguitar/forge-policy) is used only when Script Property POLICY_SOURCE=GITHUB.
+ * Optional properties: GITHUB_POLICY_TOKEN (fine-grained PAT, Contents read/write on forge-policy; required for saves and
+ * recommended for reads), GITHUB_POLICY_REPO, GITHUB_POLICY_BRANCH, GITHUB_POLICY_RULES_PATH, GITHUB_POLICY_SCORING_PATH.
+ * In GITHUB mode a failed read takes the same degraded path a failed Drive read takes today; it never silently falls back to Drive. */
+var POLICY_GITHUB_DEFAULTS = { repo: 'tpruittguitar/forge-policy', branch: 'main', rulesPath: 'rules/TIM_PIPELINE_RULES_CANONICAL.txt', scoringPath: 'scoring/PIPELINE_SCORING_MODEL.json' };
+var POLICY_CACHE_ = {};
+function policyConfig_() {
+  var p = {};
+  try { p = (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties().getProperties()) || {}; } catch (e) { p = {}; }
+  var d = POLICY_GITHUB_DEFAULTS;
+  return { source: String(p.POLICY_SOURCE || 'DRIVE').trim().toUpperCase() === 'GITHUB' ? 'GITHUB' : 'DRIVE',
+    repo: String(p.GITHUB_POLICY_REPO || d.repo).trim(), branch: String(p.GITHUB_POLICY_BRANCH || d.branch).trim(),
+    rulesPath: String(p.GITHUB_POLICY_RULES_PATH || d.rulesPath).trim(), scoringPath: String(p.GITHUB_POLICY_SCORING_PATH || d.scoringPath).trim(),
+    token: String(p.GITHUB_POLICY_TOKEN || '').trim() };
+}
+function githubPolicyUrl_(cfg, path, raw) {
+  var enc = String(path).split('/').map(encodeURIComponent).join('/');
+  return raw ? 'https://raw.githubusercontent.com/' + cfg.repo + '/' + encodeURIComponent(cfg.branch) + '/' + enc
+             : 'https://api.github.com/repos/' + cfg.repo + '/contents/' + enc;
+}
+function githubHeaders_(cfg) { var h = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }; if (cfg.token) h.Authorization = 'Bearer ' + cfg.token; return h; }
+function decodeBase64Utf8_(b64) { return Utilities.newBlob(Utilities.base64Decode(String(b64 || '').replace(/\s+/g, ''))).getDataAsString('UTF-8'); }
+/** Read one policy file from GitHub. With a token: contents API (fresh, returns the blob sha needed to save). Without: raw CDN (read-only, may lag a save by minutes). */
+function githubPolicyRead_(cfg, path, fresh) {
+  var key = cfg.repo + '@' + cfg.branch + ':' + path;
+  if (!fresh && POLICY_CACHE_[key]) return POLICY_CACHE_[key];
+  var out;
+  if (cfg.token) {
+    var r = UrlFetchApp.fetch(githubPolicyUrl_(cfg, path, false) + '?ref=' + encodeURIComponent(cfg.branch), { method: 'get', headers: githubHeaders_(cfg), muteHttpExceptions: true });
+    var code = r.getResponseCode();
+    if (code === 404) out = { ok: true, exists: false, path: path, sha: '' };
+    else if (code !== 200) out = { ok: false, error: 'GitHub read ' + path + ' failed: HTTP ' + code };
+    else { var j = JSON.parse(r.getContentText() || '{}'); out = { ok: true, exists: true, path: path, sha: String(j.sha || ''), text: decodeBase64Utf8_(j.content), url: String(j.html_url || '') }; }
+  } else {
+    var rr = UrlFetchApp.fetch(githubPolicyUrl_(cfg, path, true), { method: 'get', muteHttpExceptions: true });
+    var rc = rr.getResponseCode();
+    if (rc === 404) out = { ok: true, exists: false, path: path, sha: '' };
+    else if (rc !== 200) out = { ok: false, error: 'GitHub raw read ' + path + ' failed: HTTP ' + rc };
+    else out = { ok: true, exists: true, path: path, sha: '', text: rr.getContentText('UTF-8'), url: '' };
+  }
+  out.source = 'GITHUB'; out.id = cfg.repo + '/' + path;
+  if (out.ok) POLICY_CACHE_[key] = out;
+  return out;
+}
+/** Write one policy file through the contents API. baseSha must be the blob sha the edit started from (empty only for a new file). Commit message starts with TIM so the unreviewed-push alarm stays quiet. */
+function githubPolicyWrite_(cfg, path, text, baseSha, message) {
+  if (!cfg.token) return { ok: false, mode: 'GITHUB_TOKEN_MISSING', error: 'Set Script Property GITHUB_POLICY_TOKEN before saving policy to GitHub' };
+  var body = { message: message, content: Utilities.base64Encode(String(text), Utilities.Charset.UTF_8), branch: cfg.branch };
+  if (baseSha) body.sha = baseSha;
+  var r = UrlFetchApp.fetch(githubPolicyUrl_(cfg, path, false), { method: 'put', contentType: 'application/json', headers: githubHeaders_(cfg), payload: JSON.stringify(body), muteHttpExceptions: true });
+  var code = r.getResponseCode();
+  delete POLICY_CACHE_[cfg.repo + '@' + cfg.branch + ':' + path];
+  if (code === 409 || code === 422) return { ok: false, mode: 'REVISION_CONFLICT', error: 'GitHub policy file changed since it was read (HTTP ' + code + '); reload before saving' };
+  if (code !== 200 && code !== 201) return { ok: false, error: 'GitHub write ' + path + ' failed: HTTP ' + code };
+  var j = JSON.parse(r.getContentText() || '{}');
+  return { ok: true, sha: String(j.content && j.content.sha || ''), commit: String(j.commit && j.commit.sha || '') };
+}
+function policyCommitMessage_(what, requestId) { return 'TIM ' + (requestId ? String(requestId).replace(/[\r\n]+/g, ' ').slice(0, 80) + ' ' : '') + what + ' (saved from Pipeline Explorer via Writer)'; }
+/** Run from the Apps Script editor after deploy: grants the external-request scope and reports which policy source is live (token never echoed). */
+function checkPolicySource() {
+  var cfg = policyConfig_(), out = { source: cfg.source, repo: cfg.repo, branch: cfg.branch, rulesPath: cfg.rulesPath, scoringPath: cfg.scoringPath, tokenSet: !!cfg.token };
+  try { var g = githubPolicyRead_(cfg, cfg.rulesPath, true); out.githubRules = g.ok ? (g.exists ? 'READABLE' : 'NOT_FOUND') : g.error; } catch (e) { out.githubRules = String(e && e.message || e); }
+  var r = readCanonicalRules_(); out.activeRules = r.ok ? { source: r.source, id: r.id, chars: r.text.length } : r.error;
+  Logger.log(JSON.stringify(out, null, 2)); return out;
+}
+/** Canonical rules text from the configured source. Drive: the Google Doc, read exactly as before. */
+function canonicalRulesText_() {
+  var cfg = policyConfig_();
+  if (cfg.source === 'GITHUB') {
+    var g = githubPolicyRead_(cfg, cfg.rulesPath, false);
+    if (!g.ok) throw new Error(g.error);
+    if (!g.exists) throw new Error('GitHub rules file not found: ' + g.id);
+    return { text: g.text, id: g.id, title: cfg.rulesPath.split('/').pop(), modifiedTime: '', sha: g.sha, source: 'GITHUB' };
+  }
+  var text = DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText(), mt = '', title = '';
+  try { var f = DriveApp.getFileById(CANONICAL_RULES_DOC_ID); mt = f.getLastUpdated().toISOString(); title = f.getName(); } catch (e) {}
+  return { text: text, id: CANONICAL_RULES_DOC_ID, title: title, modifiedTime: mt, sha: '', source: 'DRIVE' };
+}
 function readCanonicalRules_() {
   try {
-    var file=DriveApp.getFileById(CANONICAL_RULES_DOC_ID), text=DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
-    return {ok:true,id:CANONICAL_RULES_DOC_ID,title:file.getName(),modifiedTime:file.getLastUpdated().toISOString(),text:text};
-  } catch(e){ return {ok:false,error:String(e&&e.message||e)}; }
+    var c=canonicalRulesText_();
+    return {ok:true,id:c.id,title:c.title,modifiedTime:c.modifiedTime,text:c.text,source:c.source,sha:c.sha};
+  } catch(e){ return {ok:false,error:String(e&&e.message||e),source:policyConfig_().source}; }
 }
 function saveCanonicalRules_(r) {
   var text=String(r.text||'').trim(); if(!text) return {ok:false,error:'rules text required'};
   if(text.indexOf('TIM_PIPELINE_RULES_CANONICAL')<0) return {ok:false,error:'missing TIM_PIPELINE_RULES_CANONICAL header'};
   var lock=LockService.getScriptLock();lock.waitLock(30000);
   try{
+  var pcfg=policyConfig_(); if(pcfg.source==='GITHUB') return saveCanonicalRulesGithub_(r,text,pcfg);
   var doc=DocumentApp.openById(CANONICAL_RULES_DOC_ID), body=doc.getBody(), before=body.getText(), ts=r.ts||new Date().toISOString();
   if(r.baseText!==undefined&&String(r.baseText)!==before)return {ok:false,mode:'REVISION_CONFLICT',error:'Canonical rules changed; reload before saving'};
   body.clear(); body.setText(text); doc.saveAndClose();
@@ -2427,6 +2507,20 @@ function saveCanonicalRules_(r) {
   appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text','\n'),hist); appendEvent_(hist);
   return {ok:ok,id:CANONICAL_RULES_DOC_ID,modifiedTime:DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(),history:hist};
   }finally{lock.releaseLock();}
+}
+/** GitHub branch of saveCanonicalRules_ (caller holds the script lock). Same conflict check, history and event as the Drive path. */
+function saveCanonicalRulesGithub_(r,text,cfg){
+  var ts=r.ts||new Date().toISOString(), cur=githubPolicyRead_(cfg,cfg.rulesPath,true);
+  if(!cur.ok)return {ok:false,error:cur.error};
+  var before=cur.exists?cur.text:'';
+  if(r.baseText!==undefined&&String(r.baseText)!==before)return {ok:false,mode:'REVISION_CONFLICT',error:'Canonical rules changed; reload before saving'};
+  var w=githubPolicyWrite_(cfg,cfg.rulesPath,text,cur.sha,policyCommitMessage_('rules saved',r.requestId));
+  if(!w.ok)return w;
+  var back=githubPolicyRead_(cfg,cfg.rulesPath,true), ok=back.ok&&back.text===text;
+  function h(v){return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,v)).slice(0,16);}
+  var hist={type:'RULESET_SAVED',actor:'TIM',ts:ts,requestId:String(r.requestId||''),verified:ok,priorHash:h(before),newHash:h(back.ok?back.text:''),note:String(r.note||''),source:'GITHUB',path:cfg.repo+'/'+cfg.rulesPath,commit:w.commit};
+  appendJsonLine_(findOrCreate_(RULESET_HISTORY_NAME,'text','\n'),hist); appendEvent_(hist);
+  return {ok:ok,id:cfg.repo+'/'+cfg.rulesPath,source:'GITHUB',sha:w.sha,commit:w.commit,modifiedTime:ts,history:hist};
 }
 /* ================= shared weighted scoring model ================= */
 function validateScoringModel_(m) {
@@ -2451,6 +2545,15 @@ function scoringModelFile_() {
 }
 function readScoringModel_() {
   try {
+    var pcfg = policyConfig_();
+    if (pcfg.source === 'GITHUB') {
+      var g = githubPolicyRead_(pcfg, pcfg.scoringPath, false);
+      if (!g.ok) return {ok:false,error:g.error,source:'GITHUB'};
+      if (!g.exists) return {ok:true,exists:false,modelId:SCORING_MODEL_ID,source:'GITHUB'};
+      var gm = JSON.parse(g.text || '{}'), gc = validateScoringModel_(gm);
+      if (!gc.ok) return {ok:false,exists:true,error:'published scoring model is invalid: '+gc.error,id:g.id,fileName:pcfg.scoringPath.split('/').pop(),source:'GITHUB'};
+      return {ok:true,exists:true,id:g.id,fileName:pcfg.scoringPath.split('/').pop(),url:g.url,modifiedTime:String(gm.updatedAt||gm.publishedAt||''),model:gm,weightTotal:gc.weightTotal,source:'GITHUB',sha:g.sha};
+    }
     var file = scoringModelFile_();
     if (!file) return {ok:true,exists:false,modelId:SCORING_MODEL_ID};
     var raw = file.getBlob().getDataAsString() || '{}', model = JSON.parse(raw), check = validateScoringModel_(model);
@@ -2478,8 +2581,16 @@ function saveScoringModel_(input) {
   if (!check.ok) return {ok:false,error:check.error,weightTotal:check.weightTotal};
   var lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
-    var oldFile = scoringModelFile_(), old = null, revision = 0;
-    if (oldFile) { try { old = JSON.parse(oldFile.getBlob().getDataAsString() || '{}'); revision = +(old.publishedRevision || 0) || 0; } catch (e) {} }
+    var pcfg = policyConfig_(), gh = null;
+    var oldFile = null, old = null, revision = 0;
+    if (pcfg.source === 'GITHUB') {
+      gh = githubPolicyRead_(pcfg, pcfg.scoringPath, true);
+      if (!gh.ok) return {ok:false,error:gh.error,source:'GITHUB'};
+      if (gh.exists) { try { old = JSON.parse(gh.text || '{}'); revision = +(old.publishedRevision || 0) || 0; } catch (e) {} }
+    } else {
+      oldFile = scoringModelFile_();
+      if (oldFile) { try { old = JSON.parse(oldFile.getBlob().getDataAsString() || '{}'); revision = +(old.publishedRevision || 0) || 0; } catch (e) {} }
+    }
     var conflict = scoringPublishConflict_(revision, candidate); if (conflict) return conflict;
     var now = new Date().toISOString(), model = JSON.parse(JSON.stringify(candidate));
     delete model.baseRevision; dedupeControlPoints_(model);
@@ -2490,6 +2601,16 @@ function saveScoringModel_(input) {
     model.publishedBy = String(model.publishedBy || 'TIM').toUpperCase();
     model.updatedAt = now;
     model.weightTotal = check.weightTotal;
+    if (gh) {
+      var w = githubPolicyWrite_(pcfg, pcfg.scoringPath, JSON.stringify(model, null, 2) + '\n', gh.sha, policyCommitMessage_('scoring model revision ' + model.publishedRevision + ' published', candidate.requestId));
+      if (!w.ok) return w;
+      var back = githubPolicyRead_(pcfg, pcfg.scoringPath, true), greadback = null;
+      try { greadback = back.ok && back.exists ? JSON.parse(back.text || '{}') : null; } catch (e) { greadback = null; }
+      var gverified = !!greadback && validateScoringModel_(greadback).ok && JSON.stringify(greadback) === JSON.stringify(model);
+      var ghist = {type:'SCORING_MODEL_PUBLISHED',modelId:SCORING_MODEL_ID,modelVersion:model.modelVersion,publishedRevision:model.publishedRevision,actor:model.publishedBy,ts:now,requestId:String(candidate.requestId || ''),verified:gverified,weightTotal:check.weightTotal,source:'GITHUB',path:pcfg.repo+'/'+pcfg.scoringPath,commit:w.commit};
+      appendJsonLine_(findOrCreate_(SCORING_MODEL_HISTORY_NAME, 'text', '\n'), Object.assign({}, ghist, { previousModel: old })); appendEvent_(ghist);
+      return {ok:gverified,id:pcfg.repo+'/'+pcfg.scoringPath,fileName:pcfg.scoringPath.split('/').pop(),source:'GITHUB',sha:w.sha,commit:w.commit,model:model,history:ghist};
+    }
     var file = oldFile || folder_().createFile(SCORING_MODEL_NAME, '{}', MimeType.PLAIN_TEXT);
     file.setContent(JSON.stringify(model, null, 2));
     var readback = JSON.parse(file.getBlob().getDataAsString() || '{}'), rb = validateScoringModel_(readback);
@@ -2538,9 +2659,9 @@ function writeState_(state) { var f = findOrCreate_(STATE_FILE_NAME, 'text', '{}
  */
 function readRules_() {
   try {
-    var text = DocumentApp.openById(CANONICAL_RULES_DOC_ID).getBody().getText();
-    var R = parseCanonicalNeverConsiderRules(text); R.id = CANONICAL_RULES_DOC_ID; R.raw = text;
-    try { R.modifiedTime = DriveApp.getFileById(CANONICAL_RULES_DOC_ID).getLastUpdated().toISOString(); } catch (e2) { R.modifiedTime = ''; }
+    var c = canonicalRulesText_(), text = c.text;
+    var R = parseCanonicalNeverConsiderRules(text); R.id = c.id; R.raw = text; R.policySource = c.source;
+    R.modifiedTime = c.modifiedTime;
     return R;
   } catch (e) { return { source: 'TIM_PIPELINE_RULES_CANONICAL', id: CANONICAL_RULES_DOC_ID, status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: String(e && e.message || e) }; }
 }
@@ -2565,4 +2686,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

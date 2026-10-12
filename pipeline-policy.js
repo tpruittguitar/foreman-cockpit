@@ -34,16 +34,17 @@ var PipelinePolicy = (function () {
   function flexV4(p,policy){
     var text=String(p.DEGREE_TEXT||p.DEGREE_REQ||p.DEGREE||'').trim(),cls='UNKNOWN';
     var unavailable=!text||/^(UNKNOWN|UNVERIFIED|FETCH_BLOCKED|NOT_RESEARCHED|TBD)$/i.test(text)||/requirements? (?:unavailable|not (?:reviewed|verified|retrieved))|fetch blocked/i.test(text)||/^UNKNOWN\b|\b(?:alert|email|notification)\s+(?:excerpt|summary|snippet)\b|\bnot\s+extracted\b|\bfeasibility\s+(?:lane\s+)?to\s+capture\b|\bto\s+be\s+(?:captured|confirmed|researched)\b/i.test(text); // Placeholders written before anyone read the requirements are unresearched, never 'degree not stated'.
-    var degree=/\b(degree|bachelor\w*|master\w*|doctorate|ph\.?d)\b/i.test(text);
-    var equiv=/\bequivalent\s+(?:(?:work|professional|practical|relevant)\s+)?experience\b|\bequivalent\s+combination\s+of\s+education\s+and\s+experience\b|\bexperience\s+in\s+lieu\s+of\b/i.test(text);
+    var degree=/\b(degree|bachelor\w*|master\w*|doctorate|ph\.?d)\b/i.test(text)||/(?:^|[^A-Za-z])(?:B\.?S\.?(?:c|EE|ME|CE|E)?|B\.?A\.?|B\.?Eng|M\.?S\.?(?:c|EE|ME|E)?|M\.?B\.?A\.?|M\.?Eng)(?![A-Za-z])(?!\s*(?:Office|Excel|Word|Project|Teams|Visio|Access|PowerPoint)\b)/.test(text); // Abbreviations count (Tim 2026-10-12: 'B.S. EE' is a degree).
+    var equiv=/\bequivalent\s+(?:(?!(?:field|discipline|major|degree|area|program|programme|qualification)\b)[\w'-]+\s+){0,5}?(?:experience|education\s+(?:and|&|\/|or)\s+experience)\b|\bexperience\s+in\s+lieu\s+of\b/i.test(text); // Tim 2026-10-12 (a): 'or equivalent form of combined education and experience' is experience equivalency. 'equivalent technical field' is not.
     var negated=/\b(?:no|not|without)\s+(?:\w+\s+){0,3}equivalent\s+(?:work\s+)?experience\b|equivalent\s+(?:work\s+)?experience\s+(?:is\s+)?not\s+(?:accepted|allowed|considered)/i.test(text);
     var required=/\brequired\b|\bmust have\b|\bminimum\b/i.test(text);
-    var alternate=/\balternatively\b|\bor\s+(?:(?:an?|at least|minimum of)\s+)?(?:\d+\+?\s*years?\b|(?:extensive|relevant|additional|professional)\s+experience\b|(?:certification|diploma|bachelor\w*|master\w*|associate\w*|doctorate)\b)/i.test(text);
+    var preferredOnly=/\bpreferred\b|\ba plus\b|\bnice[- ]to[- ]have\b|\bdesired\b|\bdesirable\b|\bideally\b/i.test(text);
+    var alternate=/\balternatively\b|\bor\s+(?:(?:an?|at least|minimum of)\s+)?(?:\d+\+?\s*years?\b|(?:extensive|relevant|additional|professional)\s+experience\b|(?:certification|diploma)\b)/i.test(text); // Tim 2026-10-12 (b): another degree (Bachelor's or Master's, BS/MS/PhD tiers) is not an alternative to a degree.
     if(!unavailable){
       if(equiv&&!negated)cls=policy.EQUIVALENCY_CLASS;
-      else if(/^(?:degree\s*:\s*)?(?:not[_ ]stated|not mentioned|no degree mentioned)$/i.test(text)||!degree||/\bno\s+(?:\w+\s+)?degree\s+(?:is\s+)?required\b|\bdegree\s+(?:is\s+)?not\s+required\b/i.test(text))cls=policy.NOT_STATED_CLASS;
+      else if(/^(?:degree\s*:\s*)?(?:not[_ ]stated|not mentioned|no degree mentioned)$/i.test(text)||!degree||/\bno\s+(?:\w+\s+)?degree\s+(?:is\s+)?(?:required|necessary)\b|\bdegree\s+(?:is\s+)?not\s+(?:required|necessary)\b/i.test(text))cls=policy.NOT_STATED_CLASS;
       else if(alternate&&!negated)cls='SOFT_FLEX';
-      else if(required)cls=/\b(?:single|only)\s+(?:degree\s+)?path\b|\bno\s+(?:alternatives|substitutions)\b/i.test(text)||/^YES$/i.test(p.DEGREE_SINGLE_PATH_CONFIRMED||'')?policy.SINGLE_PATH_CLASS:policy.HARD_DEGREE_CLASS;
+      else if(required||!preferredOnly)cls=/\b(?:single|only)\s+(?:degree\s+)?path\b|\bno\s+(?:alternatives|substitutions)\b/i.test(text)||/^YES$/i.test(p.DEGREE_SINGLE_PATH_CONFIRMED||'')?policy.SINGLE_PATH_CLASS:policy.HARD_DEGREE_CLASS; // Tim 2026-10-12 (b): a stated degree with no experience alternative is a hard requirement even without the word 'required'. A degree that is only preferred stays UNKNOWN.
     }
     var override=/^YES$/i.test(p.TIM_FLEX_OVERRIDE||''),mods={HIGH_FLEX:policy.HIGH_FLEX_MODIFIER,SOFT_FLEX:policy.SOFT_FLEX_MODIFIER,NO_FLEX:policy.NO_FLEX_MODIFIER,STRICT:policy.STRICT_MODIFIER,UNKNOWN:0};
     var priorStrict=/^(STRICT|STRICT_NO)$/i.test(p.FLEX_CLASS||p.FLEX||p.FLEX_HINT||'');
