@@ -98,3 +98,16 @@ test('dispatch routes events[] to the batch path and a single event to the old p
   const src = require('fs').readFileSync(__dirname + '/../apps-script/Code.gs', 'utf8');
   assert.ok(src.includes("if (a === 'upsert_application') { if (Array.isArray(req.events)) return applyUpsertBatchToMaster_(req); return applyUpsertToMaster_(req.event || req); }"));
 });
+
+test('mailbox links are evidence only: a Gmail link never makes two jobs the same, or one job two', () => {
+  assert.equal(W.canonUrl('https://mail.google.com/mail/u/0/#all/18f0abc'), '');
+  assert.equal(W.canonUrl('https://outlook.office.com/mail/inbox/id/AAQk'), '');
+  // Several unrelated rows already carrying Gmail links must not block or split a new job's history.
+  const seeded = lines.slice();
+  const end = seeded.findIndex(l => /^END V2_CURRENT_POPULATION_MASTER/.test(l));
+  const other = W.planUpsertBatch_(seeded, [], [newJob(301, 'APPLIED'), newJob(302, 'APPLIED'), newJob(303, 'APPLIED')], { now }).work;
+  const p = W.planUpsertBatch_(other, [], [newJob(304, 'APPLIED'), newJob(304, 'REJECTED_BY_EMPLOYER', { EVIDENCE: 'Gmail msg304b "update"' })], { now });
+  assert.deepEqual([p.counts.created, p.counts.updated], [1, 1]);
+  assert.equal(rowsOf(p.work, p.results[0].primaryId).length, 1);
+  assert.ok(end >= -1);
+});

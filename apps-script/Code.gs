@@ -1982,6 +1982,8 @@ function canonUrl(u) {
   // Indeed sponsored/alert click redirects (pagead/clk, rc/clk) without jk= carry only a per-click ad token: host+path names
   // every sponsored job, so the URL is no identity and dedupe falls back to employer/title/location.
   if (/(^|\.)indeed\.[a-z.]+$/.test(host) && /\/(pagead|rc)\/clk(\/dl)?$/.test(path)) return '';
+  // Gmail / Outlook message links (the message ID lives after '#') name a mailbox, not a job: evidence only, never identity.
+  if (/^(mail\.google\.com|outlook\.(live|office|office365)\.com)$/.test(host)) return '';
   // Glassdoor and Greenhouse-embedded career pages carry the job id in the query; host+path alone names every job on that page
   var gd = u.match(/glassdoor\.[a-z.]+\/[^#]*[?&](?:jobListingId|jl)=(\d+)/i); if (gd) return 'glassdoor.com/job/' + gd[1];
   if (/(^|\.)glassdoor\./.test(host) && /joblisting\.htm$/.test(path)) return '';
