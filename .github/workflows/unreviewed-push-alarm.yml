@@ -1,0 +1,36 @@
+# Opens an issue (GitHub emails Tim) when a push to main contains a commit that is not labeled
+# CLAUDE / TIM, or a GitHub web merge. Detection only: it never blocks or reverts anything.
+name: unreviewed-push-alarm
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check commit labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMITS: ${{ toJSON(github.event.commits) }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          commits = json.loads(os.environ["COMMITS"] or "[]")
+          ok = re.compile(r"^(CLAUDE|TIM)\b|^Merge pull request #\d+|^[^\n]*\(#\d+\)\s*(\n|$)")
+          bad = [c for c in commits if not ok.match(c["message"])]
+          if not bad:
+              print("All commits labeled."); raise SystemExit
+          lines = []
+          for c in bad:
+              files = sorted(set(c.get("added", []) + c.get("modified", []) + c.get("removed", [])))
+              lines.append(f"- `{c['id'][:7]}` {c['message'].splitlines()[0]}\n  files: {', '.join(files) or '(none listed)'}")
+          body = ("Commits pushed to main without a CLAUDE or TIM label (backup work from Grok or ChatGPT belongs on a "
+                  "backup/<provider>-<time> branch with a pull request):\n\n" + "\n".join(lines))
+          subprocess.run(["gh", "issue", "create", "-R", os.environ["REPO"],
+                          "--title", f"Unreviewed push to main ({len(bad)} commit{'s' if len(bad) != 1 else ''})",
+                          "--body", body], check=True)
+          PY
