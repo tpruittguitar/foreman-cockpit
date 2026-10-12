@@ -22,28 +22,33 @@ var PipelinePolicy = (function () {
     if(isV4(c)){
       out.FLEX_POLICY_VERSION=V4;
       out.HIGH_FLEX_MODIFIER=c.HIGH_FLEX_MODIFIER===undefined?15:out.HIGH_FLEX_MODIFIER;out.SOFT_FLEX_MODIFIER=c.SOFT_FLEX_MODIFIER===undefined?6:out.SOFT_FLEX_MODIFIER;out.NO_FLEX_MODIFIER=c.NO_FLEX_MODIFIER===undefined?-10:out.NO_FLEX_MODIFIER;out.STRICT_MODIFIER=c.STRICT_MODIFIER===undefined?-30:out.STRICT_MODIFIER;
-      out.NOT_STATED_CLASS='HIGH_FLEX';out.EQUIVALENCY_CLASS='HIGH_FLEX';out.HARD_DEGREE_CLASS='NO_FLEX';out.SINGLE_PATH_CLASS='STRICT';out.FRESH_DEGREE_OVERRIDES_STALE_CLASS='YES';
+      // V4 supplies defaults only. A class or switch Tim saved in SECTION=DEGREE_FLEX wins (Tim 2026-10-12: settings must stick).
+      var v4cls={NOT_STATED_CLASS:'HIGH_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'NO_FLEX',SINGLE_PATH_CLASS:'STRICT',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'};
+      Object.keys(v4cls).forEach(function(k){if(c[k]===undefined||c[k]===null||c[k]==='')out[k]=v4cls[k]});
     }
     return out;
   }
+  // TIM_FLEX_CLASS is written only by the Writer for an actor-TIM FLEX choice. It outranks every inferred class.
+  function timFlexClass(p){var v=String(p&&p.TIM_FLEX_CLASS||'').toUpperCase().replace(/[ -]+/g,'_');v={YES:'HIGH_FLEX',HIGH:'HIGH_FLEX',SOFT:'SOFT_FLEX',NO:'NO_FLEX',STRICT_NO:'STRICT'}[v]||v;return /^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(v)?v:''}
   // DEGREE_TEXT contains the requirement block, not an analyst's interpretation.
   function flexV4(p,policy){
     var text=String(p.DEGREE_TEXT||p.DEGREE_REQ||p.DEGREE||'').trim(),cls='UNKNOWN';
-    var unavailable=!text||/^(UNKNOWN|UNVERIFIED|FETCH_BLOCKED|NOT_RESEARCHED|TBD)$/i.test(text)||/requirements? (?:unavailable|not (?:reviewed|verified|retrieved))|fetch blocked/i.test(text);
+    var unavailable=!text||/^(UNKNOWN|UNVERIFIED|FETCH_BLOCKED|NOT_RESEARCHED|TBD)$/i.test(text)||/requirements? (?:unavailable|not (?:reviewed|verified|retrieved))|fetch blocked/i.test(text)||/^UNKNOWN\b|\b(?:alert|email|notification)\s+(?:excerpt|summary|snippet)\b|\bnot\s+extracted\b|\bfeasibility\s+(?:lane\s+)?to\s+capture\b|\bto\s+be\s+(?:captured|confirmed|researched)\b/i.test(text); // Placeholders written before anyone read the requirements are unresearched, never 'degree not stated'.
     var degree=/\b(degree|bachelor\w*|master\w*|doctorate|ph\.?d)\b/i.test(text);
     var equiv=/\bequivalent\s+(?:(?:work|professional|practical|relevant)\s+)?experience\b|\bequivalent\s+combination\s+of\s+education\s+and\s+experience\b|\bexperience\s+in\s+lieu\s+of\b/i.test(text);
     var negated=/\b(?:no|not|without)\s+(?:\w+\s+){0,3}equivalent\s+(?:work\s+)?experience\b|equivalent\s+(?:work\s+)?experience\s+(?:is\s+)?not\s+(?:accepted|allowed|considered)/i.test(text);
     var required=/\brequired\b|\bmust have\b|\bminimum\b/i.test(text);
     var alternate=/\balternatively\b|\bor\s+(?:(?:an?|at least|minimum of)\s+)?(?:\d+\+?\s*years?\b|(?:extensive|relevant|additional|professional)\s+experience\b|(?:certification|diploma|bachelor\w*|master\w*|associate\w*|doctorate)\b)/i.test(text);
     if(!unavailable){
-      if(equiv&&!negated)cls='HIGH_FLEX';
-      else if(/^(?:degree\s*:\s*)?(?:not[_ ]stated|not mentioned|no degree mentioned)$/i.test(text)||!degree)cls='HIGH_FLEX';
+      if(equiv&&!negated)cls=policy.EQUIVALENCY_CLASS;
+      else if(/^(?:degree\s*:\s*)?(?:not[_ ]stated|not mentioned|no degree mentioned)$/i.test(text)||!degree||/\bno\s+(?:\w+\s+)?degree\s+(?:is\s+)?required\b|\bdegree\s+(?:is\s+)?not\s+required\b/i.test(text))cls=policy.NOT_STATED_CLASS;
       else if(alternate&&!negated)cls='SOFT_FLEX';
-      else if(required)cls=/\b(?:single|only)\s+(?:degree\s+)?path\b|\bno\s+(?:alternatives|substitutions)\b/i.test(text)||/^YES$/i.test(p.DEGREE_SINGLE_PATH_CONFIRMED||'')?'STRICT':'NO_FLEX';
+      else if(required)cls=/\b(?:single|only)\s+(?:degree\s+)?path\b|\bno\s+(?:alternatives|substitutions)\b/i.test(text)||/^YES$/i.test(p.DEGREE_SINGLE_PATH_CONFIRMED||'')?policy.SINGLE_PATH_CLASS:policy.HARD_DEGREE_CLASS;
     }
     var override=/^YES$/i.test(p.TIM_FLEX_OVERRIDE||''),mods={HIGH_FLEX:policy.HIGH_FLEX_MODIFIER,SOFT_FLEX:policy.SOFT_FLEX_MODIFIER,NO_FLEX:policy.NO_FLEX_MODIFIER,STRICT:policy.STRICT_MODIFIER,UNKNOWN:0};
     var priorStrict=/^(STRICT|STRICT_NO)$/i.test(p.FLEX_CLASS||p.FLEX||p.FLEX_HINT||'');
     if(cls==='UNKNOWN'&&priorStrict)cls='STRICT'; // Preserve the recorded hold until conclusive replacement evidence arrives.
+    var timCls=timFlexClass(p);if(timCls)cls=timCls; // A class Tim set on the row is locked against text re-derivation.
     return {class:cls,modifier:mods[cls],known:cls!=='UNKNOWN',blocked:cls==='STRICT'&&!override,override:override,policy:policy};
   }
   // Evidence fields must describe the seat's actual accountabilities. A title alone never proves ownership.
@@ -73,6 +78,7 @@ var PipelinePolicy = (function () {
         else if(/required|must have|minimum/i.test(degree))cls=policy.HARD_DEGREE_CLASS;
       }
     }
+    var timCls=timFlexClass(p);if(timCls)cls=timCls;
     var override=/^YES$/i.test(p.TIM_FLEX_OVERRIDE||''),mods={HIGH_FLEX:policy.HIGH_FLEX_MODIFIER,SOFT_FLEX:policy.SOFT_FLEX_MODIFIER,NO_FLEX:policy.NO_FLEX_MODIFIER,STRICT:policy.STRICT_MODIFIER,UNKNOWN:0};
     return {class:cls,modifier:mods[cls],known:cls!=='UNKNOWN',blocked:cls==='STRICT'&&!override,override:override,policy:policy};
   }

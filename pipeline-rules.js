@@ -21,19 +21,22 @@
   var FLEX_CLASSES=['HIGH_FLEX','SOFT_FLEX','NO_FLEX','STRICT','UNKNOWN'];
   function signed(n){n=Number(n);return (n>0?'+':'')+String(n)}
   function flexPolicyProse(p){
-    if(p.FLEX_POLICY_VERSION==='RULES_V4_20261007')return [
+    if(p.FLEX_POLICY_VERSION==='RULES_V4_20261007'){var mod=function(c){return {HIGH_FLEX:p.HIGH_FLEX_MODIFIER,SOFT_FLEX:p.SOFT_FLEX_MODIFIER,NO_FLEX:p.NO_FLEX_MODIFIER,STRICT:p.STRICT_MODIFIER}[c]};return [
       'FLEX_POLICY_PROSE_BEGIN',
-      '- RULES_V4_20261007, Tim lock 2026-10-07 22:06 ET, supersedes RULES_V3. Class from the requirement text only; never invent equivalency.',
-      '- HIGH_FLEX +15: no degree mentioned in the reviewed block, or an equivalent-experience path in that block.',
-      '- SOFT_FLEX +6: degree listed with an alternate path that is not equivalent-experience language.',
-      '- NO_FLEX -10: degree required without equivalency. Related field alone is not equivalency. Still pursue if adjusted fit is high and pay/title rules clear.',
-      '- STRICT: degree required, no equivalency, single path only. Do not apply or mark APPLY NOW unless Tim explicitly overrides. The stored zero modifier is a transport sentinel, not eligibility.',
-      '- HIGH_FLEX triggers: or equivalent experience; equivalent experience accepted; or equivalent combination of education and experience; preferred, or equivalent experience. Never SOFT_FLEX or +20 for this wording.',
+      '- RULES_V4_20261007, Tim lock 2026-10-07 22:06 ET, supersedes RULES_V3. Class from the requirement text only; never invent equivalency. Values below are generated from the keys above; the keys govern.',
+      '- A FLEX class Tim sets on a row is locked (TIM_FLEX_CLASS) and outranks text-derived classes until Tim changes it or sets UNKNOWN.',
+      '- Degree not stated => '+p.NOT_STATED_CLASS+'. Equivalent experience => '+p.EQUIVALENCY_CLASS+'. Hard degree requirement without equivalency => '+p.HARD_DEGREE_CLASS+'. Confirmed single required degree path => '+p.SINGLE_PATH_CLASS+'.',
+      '- FLEX modifiers: HIGH_FLEX '+signed(p.HIGH_FLEX_MODIFIER)+', SOFT_FLEX '+signed(p.SOFT_FLEX_MODIFIER)+', NO_FLEX '+signed(p.NO_FLEX_MODIFIER)+', STRICT '+signed(p.STRICT_MODIFIER)+'.',
+      '- SOFT_FLEX: degree listed with an alternate path that is not equivalent-experience language.',
+      '- NO_FLEX: degree required without equivalency. Related field alone is not equivalency. Still pursue if adjusted fit is high and pay/title rules clear.',
+      '- STRICT: degree required, no equivalency, single path only. Do not apply or mark APPLY NOW unless Tim explicitly overrides.',
+      '- Equivalency triggers: or equivalent experience; equivalent experience accepted; or equivalent combination of education and experience; preferred, or equivalent experience. These map to '+p.EQUIVALENCY_CLASS+'.',
       '- Scope/fit, then FLEX modifier, then pay floor and title rule. Adjusted fit = clamp(raw scope fit + FLEX modifier, 0, 100). Report class, modifier, adjusted score. Do not apply the modifier twice.',
-      '- Blank/unresearched requirements remain UNKNOWN. Intake degree/FLEX inputs: DEGREE_TEXT, FLEX_CLASS, FLEX_BASIS only. Writer owns calculated outputs.',
-      '- Tesla req 285047: Degree preferred, or equivalent experience => HIGH_FLEX +15.',
+      '- Blank/unresearched requirements remain UNKNOWN. Placeholder text written before the requirements were read (alert or email excerpts, not extracted, to be captured) is unresearched. Intake degree/FLEX inputs: DEGREE_TEXT, FLEX_CLASS, FLEX_BASIS only. Writer owns calculated outputs.',
+      '- Fresh degree evidence overrides stale FLEX = '+p.FRESH_DEGREE_OVERRIDES_STALE_CLASS+'.',
+      '- Tesla req 285047: Degree preferred, or equivalent experience => '+p.EQUIVALENCY_CLASS+' '+signed(mod(p.EQUIVALENCY_CLASS)||0)+'.',
       'FLEX_POLICY_PROSE_END'
-    ].join('\n');
+    ].join('\n')}
     return [
       'FLEX_POLICY_PROSE_BEGIN',
       '- Degree not stated => '+p.NOT_STATED_CLASS+'.',
@@ -51,11 +54,11 @@
     ].join('\n');
   }
   function flexPolicy(text){
-    var out={};Object.keys(FLEX_DEFAULTS).forEach(function(k){out[k]=FLEX_DEFAULTS[k]});
+    var out={},seen={};Object.keys(FLEX_DEFAULTS).forEach(function(k){out[k]=FLEX_DEFAULTS[k]});
     var sec=String(text||'').match(/(?:^|\n)SECTION=DEGREE_FLEX\s*\n([\s\S]*?)(?=\nSECTION=|$)/);
     if(!sec)return out;
     sec[1].split(/\r?\n/).forEach(function(line){
-      var m=line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);if(!m||out[m[1]]===undefined)return;
+      var m=line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);if(!m||out[m[1]]===undefined)return;seen[m[1]]=1;
       if(/_MODIFIER$/.test(m[1])){var n=Number(m[2]);if(isFinite(n)&&n>=-100&&n<=100)out[m[1]]=n}
       else if(m[1]==='FRESH_DEGREE_OVERRIDES_STALE_CLASS'){var b=String(m[2]||'').toUpperCase();if(/^(YES|NO)$/.test(b))out[m[1]]=b}
       else {var v=String(m[2]||'').toUpperCase();if(FLEX_CLASSES.indexOf(v)>=0)out[m[1]]=v}
@@ -63,7 +66,9 @@
     if(/^FLEX_POLICY_VERSION=RULES_V4_20261007\s*$/m.test(sec[1]) || /^POLICY_VERSION=RULES_V4_20261007\s*$/m.test(String(text))){
       out.FLEX_POLICY_VERSION='RULES_V4_20261007';
       if(!/^HIGH_FLEX_MODIFIER=/m.test(sec[1]))out.HIGH_FLEX_MODIFIER=15;if(!/^SOFT_FLEX_MODIFIER=/m.test(sec[1]))out.SOFT_FLEX_MODIFIER=6;if(!/^NO_FLEX_MODIFIER=/m.test(sec[1]))out.NO_FLEX_MODIFIER=-10;if(!/^STRICT_MODIFIER=/m.test(sec[1]))out.STRICT_MODIFIER=-30;
-      out.NOT_STATED_CLASS='HIGH_FLEX';out.EQUIVALENCY_CLASS='HIGH_FLEX';out.HARD_DEGREE_CLASS='NO_FLEX';out.SINGLE_PATH_CLASS='STRICT';out.FRESH_DEGREE_OVERRIDES_STALE_CLASS='YES';
+      // V4 supplies defaults only; a class or switch saved in the section wins (Tim 2026-10-12: settings must stick).
+      var v4cls={NOT_STATED_CLASS:'HIGH_FLEX',EQUIVALENCY_CLASS:'HIGH_FLEX',HARD_DEGREE_CLASS:'NO_FLEX',SINGLE_PATH_CLASS:'STRICT',FRESH_DEGREE_OVERRIDES_STALE_CLASS:'YES'};
+      Object.keys(v4cls).forEach(function(k){if(!seen[k])out[k]=v4cls[k]});
     }
     return out;
   }
