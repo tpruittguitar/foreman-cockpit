@@ -181,7 +181,7 @@ function dispatchWrite_(req) {
   if (a === 'intake') return applyIntakeToMaster_(req);
   if (a === 'ruling') { var shapeErr = requestShapeError_(req); if (shapeErr) return { ok: false, mode: 'REJECTED_SCHEMA', error: shapeErr }; return applyRulingToMaster_(req.ruling); }
   if (a === 'data_discovery') return applyDataDiscoveryRequest_(req);
-  if (a === 'upsert_application') return applyUpsertToMaster_(req.event || req);
+  if (a === 'upsert_application') { if (Array.isArray(req.events)) return applyUpsertBatchToMaster_(req); return applyUpsertToMaster_(req.event || req); }
   if (a === 'interview_note') return saveInterviewNote_(req.note || req);
   if (a === 'approve_resume') return approveResume_(req.selection || req);
   if (a === 'save_rules') return saveCanonicalRules_(req.rules || req);
@@ -1404,6 +1404,87 @@ function fail_(msg, ruling) {
 }
 
 /* ================= email-confirmed application/rejection upsert ================= */
+/* ================= upsert_application batch (Tim's standing rule, 2026-10-11) =================
+ * "Every job Tim applied to or was rejected from is part of the record." Up to UPSERT_BATCH_MAX application/rejection
+ * events go into ONE master commit, so a backlog (e.g. a 353-item archive handoff) does not take one queue slot per
+ * record. Each event keeps the single-event rules of planUpsertApplication: update the matched row, insert a protected
+ * APPLIED / REJECTED_BY_EMPLOYER row (ANTI_RESURRECTION=YES) when there is no match, hold on ambiguous identity.
+ * A held or invalid event holds only itself; the others still commit. Events are planned in order against the
+ * working copy, so an application and its later rejection in the same batch land on one row. */
+var UPSERT_BATCH_MAX = 25;
+/** Pure: plan a batch against `lines` (live master) with `archived` terminal rows visible for dedupe. */
+function planUpsertBatch_(lines, archived, events, ctx) {
+  if (!Array.isArray(events) || !events.length) return { ok: false, mode: 'REJECTED_SCHEMA', error: 'upsert_application batch needs events[] (1..' + UPSERT_BATCH_MAX + ')' };
+  if (events.length > UPSERT_BATCH_MAX) return { ok: false, mode: 'REJECTED_SCHEMA', error: 'upsert_application batch accepts at most ' + UPSERT_BATCH_MAX + ' events (got ' + events.length + ')' };
+  var work = lines.slice(), results = [], touched = {};
+  events.forEach(function (raw, i) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) { results.push({ index: i, ok: false, mode: 'INVALID', error: 'event must be a JSON object' }); return; }
+    var plan = planUpsertApplication(work.concat(archived || []), raw, ctx);
+    if (plan.ok && plan.mode === 'UPDATE' && plan.index >= work.length) plan = { ok: false, mode: 'HOLD', error: 'ARCHIVED_MATCH: the email matches archived terminal row ' + plan.primaryId + '; POST restore_archived first, then resend with TARGET_PRIMARY_ID', upsertKey: plan.upsertKey };
+    var r = { index: i, ok: !!plan.ok, mode: plan.mode, primaryId: plan.primaryId || '', matchedBy: plan.matchedBy || '', upsertKey: plan.upsertKey || '', requestId: (raw.requestId || plan.upsertKey || '') };
+    if (!plan.ok) { r.error = plan.error; r.possibleMatches = plan.possibleMatches || []; results.push(r); return; }
+    if (plan.mode === 'UPDATE') { work[plan.index] = plan.after; touched[plan.primaryId] = true; }
+    else if (plan.mode === 'CREATE') {
+      var endIdx = -1; for (var e = work.length - 1; e >= 0; e--) if (/^END V2_CURRENT_POPULATION_MASTER/.test(work[e])) { endIdx = e; break; }
+      work.splice(endIdx >= 0 ? endIdx : work.length, 0, plan.newLine); touched[plan.primaryId] = true;
+    }
+    results.push(r);
+  });
+  var written = results.filter(function (r) { return r.ok && (r.mode === 'UPDATE' || r.mode === 'CREATE'); });
+  return { ok: true, work: work, results: results, touched: Object.keys(touched),
+    counts: { events: events.length, created: results.filter(function (r) { return r.ok && r.mode === 'CREATE'; }).length, updated: results.filter(function (r) { return r.ok && r.mode === 'UPDATE'; }).length,
+      alreadyRecorded: results.filter(function (r) { return r.mode === 'ALREADY_APPLIED'; }).length, held: results.filter(function (r) { return !r.ok; }).length, written: written.length } };
+}
+/** Live wrapper: one lock, one fence check, one master save, one verification record for every touched row. */
+function applyUpsertBatchToMaster_(req) {
+  var events = (req.events || []).map(function (ev) { return ev && typeof ev === 'object' ? JSON.parse(JSON.stringify(ev)) : ev; });
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    DOC_ACCESS_ = [];
+    var modBefore = masterModified_();
+    var M = openMaster_(), snapshot = M.lines.slice();
+    var fence = writeFence_(snapshot);
+    if (fence) { fence.docAccess = docAccessSummary_(); return fence; }
+    var now = new Date().toISOString(), flexPolicy = readFlexPolicy_();
+    var plan = planUpsertBatch_(snapshot, archiveRowsLive_(), events, { now: now, flexPolicy: flexPolicy });
+    if (!plan.ok) return plan;
+    var heldReceipts = plan.results.filter(function (r) { return !r.ok; }).map(function (r) {
+      var ev = events[r.index] || {};
+      return { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: r.requestId, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: ev.COMPANY || '', TITLE: ev.TITLE || '', STATE: ev.STATE || ev.state || '', MODE: r.mode, TARGET_FILE_ID: MASTER_ID, EXECUTED_AT: now, COMPLETION_STATUS: r.mode === 'HOLD' ? 'HOLD' : 'FAILED', REASON: r.error, POSSIBLE_MATCHES: r.possibleMatches || [], BATCH_INDEX: r.index };
+    });
+    heldReceipts.forEach(function (rc) { try { appendReceipt_(rc); } catch (e) {} });
+    var out = { ok: true, mode: 'UPSERT_BATCH', results: plan.results, processed: plan.counts.events, counts: plan.counts };
+    if (!plan.counts.written) { out.verification = 'NOT_APPLICABLE'; return out; }
+    if (masterModified_() !== modBefore) return { ok: false, mode: 'RETRY', error: 'master changed during request; retry', results: [] };
+    var routing = evidenceRouting_(), all = plan.work.slice();
+    for (var i = 0; i < all.length; i++) {
+      if (!/^\d+ \| /.test(all[i])) continue;
+      var pid = all[i].split(' | ')[1].trim();
+      if (plan.touched.indexOf(pid) < 0) continue;
+      var before = ''; for (var j = 0; j < snapshot.length; j++) if (/^\d+ \| /.test(snapshot[j]) && snapshot[j].split(' | ')[1].trim() === pid) { before = snapshot[j]; break; }
+      all[i] = externalizeEvidence_(routing, before, all[i], 'UPSERT_BATCH:' + pid, now);
+    }
+    flushEvidence_(routing);
+    MASTER_WRITTEN_IN_EXECUTION_ = true;
+    var newCounts = recomputeCountsLine(all), newEnd = recomputeEndLine(all);
+    masterTrailerEdits_(all, newCounts, newEnd).forEach(function (x) { if (all[x.index] !== x.text) all[x.index] = x.text; });
+    saveMasterLines_(all, snapshot);
+    var receipts = plan.results.filter(function (r) { return r.ok && (r.mode === 'UPDATE' || r.mode === 'CREATE'); }).map(function (r) {
+      var ev = events[r.index] || {};
+      return { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: r.requestId, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: ev.COMPANY || '', TITLE: ev.TITLE || '', STATE: ev.STATE || ev.state || '', MODE: r.mode, PRIMARY_ID: r.primaryId, MATCHED_BY: r.matchedBy, UPSERT_KEY: r.upsertKey, TARGET_FILE_ID: MASTER_ID, MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: now, READBACK_VERIFIED: 'PENDING', COUNTS_AFTER: newCounts, COMPLETION_STATUS: 'PENDING_VERIFICATION', BATCH_INDEX: r.index };
+    });
+    var items = plan.touched.map(function (pid) {
+      var b = '', a = ''; snapshot.forEach(function (l) { if (!b && /^\d+ \| /.test(l) && l.split(' | ')[1].trim() === pid) b = l; });
+      all.forEach(function (l) { if (!a && /^\d+ \| /.test(l) && l.split(' | ')[1].trim() === pid) a = l; });
+      return b ? { pid: pid, op: 'REPLACE', before: b, after: a } : { pid: pid, op: 'INSERT', after: a };
+    });
+    var writeId = stageVerification_('UPSERT', items, receipts, newCounts, now);
+    out.verification = 'PENDING'; out.writeId = writeId; out.countsLine = newCounts; out.endLine = newEnd; out.docAccess = docAccessSummary_();
+    return out;
+  } finally { lock.releaseLock(); }
+}
+
 function applyUpsertToMaster_(ev) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -1901,6 +1982,8 @@ function canonUrl(u) {
   // Indeed sponsored/alert click redirects (pagead/clk, rc/clk) without jk= carry only a per-click ad token: host+path names
   // every sponsored job, so the URL is no identity and dedupe falls back to employer/title/location.
   if (/(^|\.)indeed\.[a-z.]+$/.test(host) && /\/(pagead|rc)\/clk(\/dl)?$/.test(path)) return '';
+  // Gmail / Outlook message links (the message ID lives after '#') name a mailbox, not a job: evidence only, never identity.
+  if (/^(mail\.google\.com|outlook\.(live|office|office365)\.com)$/.test(host)) return '';
   // Glassdoor and Greenhouse-embedded career pages carry the job id in the query; host+path alone names every job on that page
   var gd = u.match(/glassdoor\.[a-z.]+\/[^#]*[?&](?:jobListingId|jl)=(\d+)/i); if (gd) return 'glassdoor.com/job/' + gd[1];
   if (/(^|\.)glassdoor\./.test(host) && /joblisting\.htm$/.test(path)) return '';
@@ -2447,4 +2530,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; }, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

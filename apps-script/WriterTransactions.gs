@@ -13,6 +13,7 @@ var WriterTransactions = (function () {
   function requestIds(request) {
     if (!request) return [];
     if (request.action === 'batch') return (request.requests || []).reduce(function (a, r) { return a.concat(requestIds(r)); }, []);
+    if (Array.isArray(request.events)) return request.events.reduce(function (a, e) { return a.concat(requestIds(e)); }, []);
     var body = request.ruling || request.event || request.undo || request;
     var id = [body.requestId, body.request_id, request.requestId, request.request_id, request.run && request.run.SCOUT_RUN_ID]
       .filter(function (v) { return typeof v === 'string' && v.trim(); }).map(function (v) { return v.trim(); })[0] || '';
