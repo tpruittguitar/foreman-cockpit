@@ -38,13 +38,14 @@ var PipelinePolicy = (function () {
     var equiv=/\bequivalent\s+(?:(?!(?:field|discipline|major|degree|area|program|programme|qualification)\b)[\w'-]+\s+){0,5}?(?:experience|education\s+(?:and|&|\/|or)\s+experience)\b|\bexperience\s+in\s+lieu\s+of\b/i.test(text); // Tim 2026-10-12 (a): 'or equivalent form of combined education and experience' is experience equivalency. 'equivalent technical field' is not.
     var negated=/\b(?:no|not|without)\s+(?:\w+\s+){0,3}equivalent\s+(?:work\s+)?experience\b|equivalent\s+(?:work\s+)?experience\s+(?:is\s+)?not\s+(?:accepted|allowed|considered)/i.test(text);
     var required=/\brequired\b|\bmust have\b|\bminimum\b/i.test(text);
-    var preferredOnly=/\bpreferred\b|\ba plus\b|\bnice[- ]to[- ]have\b|\bdesired\b|\bdesirable\b|\bideally\b/i.test(text);
+    var prefRe=/\bpreferred\b|\ba plus\b|\bnice[- ]to[- ]have\b|\bdesired\b|\bdesirable\b|\bideally\b/i,degRe=/\b(degree|bachelor\w*|master\w*|doctorate|ph\.?d)\b/i;var preferredOnly=prefRe.test(text)&&!text.split(/(?<=[.;])\s+|\n/).some(function(cl){return !prefRe.test(cl)&&degRe.test(cl)}); // Tim 2026-10-12 (REV-006): a degree named only in preferred wording is SOFT_FLEX. A degree stated outside the preferred clause stays a hard requirement.
     var alternate=/\balternatively\b|\bor\s+(?:(?:an?|at least|minimum of)\s+)?(?:\d+\+?\s*years?\b|(?:extensive|relevant|additional|professional)\s+experience\b|(?:certification|diploma)\b)/i.test(text); // Tim 2026-10-12 (b): another degree (Bachelor's or Master's, BS/MS/PhD tiers) is not an alternative to a degree.
     if(!unavailable){
       if(equiv&&!negated)cls=policy.EQUIVALENCY_CLASS;
       else if(/^(?:degree\s*:\s*)?(?:not[_ ]stated|not mentioned|no degree mentioned)$/i.test(text)||!degree||/\bno\s+(?:\w+\s+)?degree\s+(?:is\s+)?(?:required|necessary)\b|\bdegree\s+(?:is\s+)?not\s+(?:required|necessary)\b/i.test(text))cls=policy.NOT_STATED_CLASS;
       else if(alternate&&!negated)cls='SOFT_FLEX';
-      else if(required||!preferredOnly)cls=/\b(?:single|only)\s+(?:degree\s+)?path\b|\bno\s+(?:alternatives|substitutions)\b/i.test(text)||/^YES$/i.test(p.DEGREE_SINGLE_PATH_CONFIRMED||'')?policy.SINGLE_PATH_CLASS:policy.HARD_DEGREE_CLASS; // Tim 2026-10-12 (b): a stated degree with no experience alternative is a hard requirement even without the word 'required'. A degree that is only preferred stays UNKNOWN.
+      else if(required||!preferredOnly)cls=/\b(?:single|only)\s+(?:degree\s+)?path\b|\bno\s+(?:alternatives|substitutions)\b/i.test(text)||/^YES$/i.test(p.DEGREE_SINGLE_PATH_CONFIRMED||'')?policy.SINGLE_PATH_CLASS:policy.HARD_DEGREE_CLASS; // Tim 2026-10-12 (b): a stated degree with no experience alternative is a hard requirement even without the word 'required'. A degree named only in preferred wording is SOFT_FLEX (REV-006).
+      else if(!/^(STRICT|STRICT_NO)$/i.test(p.FLEX_CLASS||p.FLEX||p.FLEX_HINT||''))cls='SOFT_FLEX'; // a recorded STRICT hold is not released by preferred-only wording
     }
     var override=/^YES$/i.test(p.TIM_FLEX_OVERRIDE||''),mods={HIGH_FLEX:policy.HIGH_FLEX_MODIFIER,SOFT_FLEX:policy.SOFT_FLEX_MODIFIER,NO_FLEX:policy.NO_FLEX_MODIFIER,STRICT:policy.STRICT_MODIFIER,UNKNOWN:0};
     var priorStrict=/^(STRICT|STRICT_NO)$/i.test(p.FLEX_CLASS||p.FLEX||p.FLEX_HINT||'');

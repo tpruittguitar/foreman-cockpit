@@ -21,11 +21,24 @@ test('(c) B.S. in a field or an equivalent technical field -> NO_FLEX (Shield AI
   assert.equal(cls('B.S. in Electrical Engineering or an equivalent technical field and 10+ years of experience'),'NO_FLEX','equivalent field plus years is not equivalent experience');
 });
 test('unchanged edges: preferred-only, no degree, no degree required, MS Office',()=>{
-  assert.equal(cls("Bachelor's degree preferred"),'UNKNOWN');
+  assert.equal(cls("Bachelor's degree preferred"),'SOFT_FLEX'); // REV-006
   assert.equal(cls('10+ years manufacturing leadership'),'HIGH_FLEX');
   assert.equal(cls('No degree required'),'HIGH_FLEX');
   assert.equal(cls('Proficient in MS Office; 10 years experience'),'HIGH_FLEX','MS Office is not a degree');
 });
 test('Writer copy of the policy module is identical to the Explorer copy',()=>{
   assert.equal(fs.readFileSync(__dirname+'/../apps-script/PipelinePolicy.gs','utf8'),fs.readFileSync(__dirname+'/../pipeline-policy.js','utf8'));
+});
+
+test('REV-006 (Tim 2026-10-12): a degree named only in preferred wording is SOFT_FLEX',()=>{
+  for(const t of ["Preferred only: Bachelor's or Master's in technical field","Bachelors or Masters in ME/EE/IE desired","Bachelor's degree in Engineering, Business Administration, or related field preferred, MBA or Master's strongly preferred","Preferred bachelor or master's in technical field","Bachelor's degree preferred"])assert.equal(cls(t),'SOFT_FLEX',t);
+  // A degree stated outside the preferred clause stays hard.
+  assert.equal(cls("Bachelor's degree in supply chain, engineering, or related technical field. Preferred: MBA or Master's degree in supply chain."),'NO_FLEX');
+  assert.equal(cls("Bachelor's degree in Engineering, Business Administration, or a related field"),'NO_FLEX');
+  assert.equal(cls("Bachelor's degree preferred, or equivalent education and experience"),'HIGH_FLEX');
+});
+
+test('REV-006: preferred-only wording does not release a recorded STRICT hold',()=>{
+  const f=P.flex({DEGREE_TEXT:"Bachelor's degree preferred",FLEX_CLASS:'STRICT'},pol);
+  assert.equal(f.class,'STRICT');
 });
