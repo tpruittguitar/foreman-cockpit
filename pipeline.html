@@ -399,6 +399,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-scheduler.js"></script>
 <script src="pipeline-miniviz.js"></script>
 <script src="pipeline-throughput.js"></script>
+<script src="pipeline-ai-usage.js"></script>
 <script src="pipeline-operations-ui.js"></script>
 <script src="pipeline-parser.js"></script>
 <script src="pipeline-loader.js"></script>
@@ -603,6 +604,7 @@ function renderWriterStatus_(){
     if(w.migration)html+=writerRow_('migration',esc((w.migration.mode||'')+' '+(w.migration.status||'')));}
   if(hh.recurring.length)html+=writerRow_('recurrence',esc(hh.recurring.length+' recurring fault group(s) · experimental: 3 episodes / 1 hour; healthy clearance 15 minutes'));
   html+=writerRow_('unfinished work',PipelineIncidents.workQueue(S.incidents).length+' operation(s) awaiting verified outcome');
+  html+='<h3 style="margin-top:10px">AI usage</h3>'+(S.aiUsageError?'<div class="dim">'+esc(S.aiUsageError)+'</div>':PipelineAiUsage.html(PipelineAiUsage.project(S.aiUsage||[],Date.now())));
   html+=incidentsHtml_(hv,hh);
   html+='<h3 style="margin-top:10px">Information · last 24 h</h3>'+noticeListHtml_(info,dis);
   html+='<div class="build-status">'+(w&&w.checkedAt?'Checked '+esc(new Date(w.checkedAt).toLocaleTimeString())+'. Refreshes every minute while this page is visible.':'')+'</div><div class="writer-countdown" data-writer-countdown><span></span><div class="writer-countdown-track" role="progressbar"><i></i></div></div>';
@@ -624,6 +626,7 @@ function loadWriterStatus_(manual){
   if(!hasWriter()){clearTimeout(writerRefreshTimer_);writerNextRefreshAt_=0;PipelineProgress.clock({enabled:false,busy:false,deadline:0});S.writerStatus=null;renderWriterStatus_();return Promise.resolve(null)}
   if(S.writerBusy)return writerRefreshPromise_||Promise.resolve(S.writerStatus);
   clearTimeout(writerRefreshTimer_);S.writerBusy=true;PipelineProgress.clock({enabled:true,busy:true,deadline:0});
+  if(!S.aiUsageAt||Date.now()-S.aiUsageAt>600000){S.aiUsageAt=Date.now();PipelineAiUsage.load().then(function(r){S.aiUsage=r;S.aiUsageError='';renderWriterStatus_()}).catch(function(e){S.aiUsageError='AI usage readings unavailable: '+e.message;renderWriterStatus_()})}
   writerRefreshPromise_=gsGet('writer_status').then(function(j){if(j&&j.ok)S.writerStatus=j;else if(j&&/unknown action/.test(j.error||''))S.writerStatus={unsupported:true};else S.writerStatus={fetchError:(j&&j.error)||'no response'};S.writerStatus.checkedAt=Date.now()}).catch(function(e){S.writerStatus={fetchError:e.message,checkedAt:Date.now()}}).then(function(){S.writerBusy=false;renderWriterStatus_();renderBuildIdentity_();scheduleWriterRefresh_();var rfv=rf_();if(rfv.view==='review'&&!rfv.busy)paintRefresh_();return S.writerStatus});
   return manual?PipelineProgress.track(writerRefreshPromise_,{control:$('writer-refresh'),label:'Reading Writer status'}):writerRefreshPromise_;
 }
