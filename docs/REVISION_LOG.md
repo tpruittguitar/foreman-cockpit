@@ -2,6 +2,20 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-F — AI usage panel and PC keep-alive
+
+Trigger: Tim, 2026-10-13 15:49-15:54 ET: a bar chart in the app with the estimated shutdown day, updated automatically, plus a PC script that keeps the machine and Chrome available for it ("B now").
+
+### Changed
+1. **`pipeline-ai-usage.js` (new) + System panel section "AI usage".** One bar per provider meter (Claude weekly/session, ChatGPT weekly/5-hour, Grok weekly/bot) with the exact percent, reset time and projected run-out. Projection: measured rate between the newest reading and one at least 2 h older in the same reset window; with one reading, the average since the window started. Text status beside every bar (OUT, RUNS OUT BEFORE RESET, LASTS TO RESET, NEED 2 READINGS, NO READING, RESET PASSED), colour only as a second channel (UI doctrine v1.1 Accessibility Floor). Reads `usage/AI_USAGE_READINGS.jsonl` from the public forge-coordination repo (raw GitHub, CORS open), at most every 10 minutes while the System panel refreshes.
+2. **`tools/forge-pc-keepalive.ps1` + `tools/install-forge-pc-keepalive.ps1` (new).** Hidden logon task on Tim's PC: keeps it awake on AC power only (SetThreadExecutionState; power settings untouched), restarts the Claude desktop app if closed on AC, opens Chrome minimized only around the usage-reader times. `-Uninstall` removes it.
+
+### Not changed
+Writer, master, scoring, lanes.
+
+### Verification
+`npm test`: 427 pass, 0 fail (4 new in `tests/ai-usage.test.js`). Browser render not run here (no Playwright); check the System panel after deploy.
+
 ## Batch 2026-10-13-E — Writer ATS liveness checker
 
 Trigger: Tim, 2026-10-13 14:47 ET, "Implement everything else" (items 1, 2, 4 and 5 of the verification integration plan; item 3, JobSpy, deferred). Evidence: Claude's 9-row test against the live master the same afternoon; first-party ATS APIs were conclusive on 5 of 6 rows.
