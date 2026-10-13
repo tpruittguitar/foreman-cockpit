@@ -10,6 +10,12 @@ ok(C('https://www.indeed.com/viewjob?jk=abc123def456&from=alert') === 'indeed.co
 ok(C('https://job-boards.greenhouse.io/novaforge/jobs/7777777001?utm_source=x') === 'job-boards.greenhouse.io/novaforge/jobs/7777777001', 'path-identified ATS keeps host+path, drops tracking query');
 ok(C('not a url') === '', 'non-URL is no identity');
 
+// ZipRecruiter redirect links carry only a per-result match_token: no identity (2026-10-13 ZipRecruiter pass, 11 of 12 rejected)
+const zr1 = 'https://www.ziprecruiter.com/job-redirect?match_token=Cp8BChZyUnZxQW9nZFQzd2FBdWJma180a3hBEiQwMWEx&tsid=100000501';
+const zr2 = 'https://www.ziprecruiter.com/job-redirect?match_token=Cp8BChZoUGdSaklaVjZNeDdjX2xlLTU5U2tBEiQwMWEx&tsid=100000501';
+ok(C(zr1) === '' && C(zr2) === '', 'ZipRecruiter job-redirect is no identity');
+ok(C('https://www.ziprecruiter.com/c/Acme/Job/Director-of-Manufacturing/-in-Austin,TX?jid=abc') !== '', 'a ZipRecruiter company job page still has an identity');
+
 // Glassdoor: the job id lives in the query
 const gd1 = 'https://www.glassdoor.com/partner/jobListing.htm?pos=101&ao=1136043&s=58&guid=0000019a&src=GD_JOB_AD&t=SR&vt=w&cs=1_2e&cb=1759&jobListingId=1010282598032&jrtk=5-yul1';
 const gd2 = 'https://www.glassdoor.com/partner/jobListing.htm?pos=102&ao=1136043&s=58&guid=0000019b&src=GD_JOB_AD&t=SR&vt=w&cs=1_9f&cb=1759&jobListingId=1009877001234&jrtk=5-yul1';

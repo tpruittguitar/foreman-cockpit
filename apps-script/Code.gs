@@ -2006,6 +2006,10 @@ function canonUrl(u) {
   // Indeed sponsored/alert click redirects (pagead/clk, rc/clk) without jk= carry only a per-click ad token: host+path names
   // every sponsored job, so the URL is no identity and dedupe falls back to employer/title/location.
   if (/(^|\.)indeed\.[a-z.]+$/.test(host) && /\/(pagead|rc)\/clk(\/dl)?$/.test(path)) return '';
+  // ZipRecruiter (and SonicJobs-style) redirect links: host+path is the same for every job and the match_token is per search
+  // result, so the URL is no identity; dedupe falls back to employer/title/location (2026-10-13: 11 of 12 ZipRecruiter
+  // intake records were rejected as SOURCE_URL_IDENTITY_CONFLICT against the first one).
+  if (/(^|\.)ziprecruiter\.com$/.test(host) && /^\/(job-redirect|jobs\/redirect|clk)(\/|$)/.test(path)) return '';
   // Gmail / Outlook message links (the message ID lives after '#') name a mailbox, not a job: evidence only, never identity.
   if (/^(mail\.google\.com|outlook\.(live|office|office365)\.com)$/.test(host)) return '';
   // Glassdoor and Greenhouse-embedded career pages carry the job id in the query; host+path alone names every job on that page
