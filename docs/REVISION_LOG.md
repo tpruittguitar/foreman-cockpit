@@ -2,6 +2,19 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-I — ZipRecruiter redirect links are not identity
+
+Trigger: ChatGPT's first weekly ZipRecruiter pass (FORGE-ZIPR-CHATGPT-20261013-1740ET-B01, 12 records): 1 written, 11 `WRITE_FAILED` with `IDENTITY_CONFLICT: SOURCE_URL_IDENTITY_CONFLICT`. Every ZipRecruiter link is `ziprecruiter.com/job-redirect?match_token=...`; `canonUrl` dropped the query, so all ZipRecruiter roles shared one identity with the first row written (Red Frog Solutions, V2I-2D41E91681F5).
+
+### Changed
+`canonUrl` (Code.gs) returns no identity for ZipRecruiter redirect paths (`/job-redirect`, `/jobs/redirect`, `/clk`), the same treatment as Indeed sponsored-click links. Dedupe falls back to employer + title + location. ZipRecruiter company job pages keep their identity.
+
+### Not changed
+Other URL identities, intake rules, the 11 failed records (resubmitted separately after deploy).
+
+### Verification
+`npm test`: 435 pass, 0 fail (2 new checks in `tests/canon-url.test.js`).
+
 ## Batch 2026-10-13-H — TinyFish posting date in bold layout
 
 Trigger: dry run after deploying batch G (Writer v62, 2026-10-13 18:00 ET): TinyFish sometimes returns Workday fields as `**posted on**:   Posted N Days Ago`; the posting-date pattern now reads both layouts. Liveness, pay and degree were unaffected. Verification: `npm test` 435 pass (1 new).
