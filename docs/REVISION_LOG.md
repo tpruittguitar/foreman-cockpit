@@ -2,6 +2,28 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-A — lane worklists built by the Writer
+
+Trigger: Tim, 2026-10-13 00:29 ET ("Implement 1-5"): Grok at 80% of weekly usage; Grok runs spent most of their budget reading and parsing the 3 MB master, and FORGE-ENRICH-STRATEGIC-GROK-20261013-0224ET hard-blocked because the master truncates in Grok's reader. Control: forge-coordination CONTROL 2026-10-13.2, GROK EFFICIENCY AMENDMENT.
+
+### Changed
+
+1. **New `apps-script/PipelineWorklists.gs`.** Pure builder (`build`, `render`) plus `refreshWorklists_`. Writes three small plain-text files in AI_Coordination, overwritten in place (IDs never change): `WORKLIST_FORGE_ENRICH_STRATEGIC.txt` 1nGzvaRZufMkXD0dIAqcrMeAWZEUzoPu8, `WORKLIST_FORGE_ENRICH_FEASIBILITY.txt` 1B0IxEim2QUxvZ8swiZKwbSMB-1dkY9O1, `WORKLIST_FORGE_POSTING_VALIDATION.txt` 1KyBWb2RTVMoDEkdYGCHuXMAAqCShdQl0. Each lists up to 40 rows (about 10 KB) with eligibility rule, counts and master stamp.
+2. **Queue tick hook** (`Automation.gs`). `processWriterQueue` calls `refreshWorklists_(false)` after the claim loop, at most every 30 minutes, only when the tick was quick and not busy. Errors are caught and reported in the tick summary; the queue path is unaffected.
+3. **GET `action=refresh_worklists`** (`Code.gs`) forces a rebuild; added to the `ping` action list.
+
+### Not changed
+
+- No master writes. Eligibility rules are read-only selectors; protected buckets, ANTI_RESURRECTION and DO_NOT_REWORK rows never appear. Writer actions, scoring, FLEX policy unchanged.
+
+### Verification
+
+- `npm test`: 399 pass, 0 fail (4 new in `tests/worklists.test.js`: payload parsing of space-joined keys, lane selection and exclusions, attempt cooldown ordering, render size cap on the scrubbed fixture).
+
+### Deploy note
+
+Writer deploy with `apps-script/deploy.sh`. After deploy, call `action=refresh_worklists` once (or wait for the next quick queue tick) and check that the three files show `GENERATED_AT_UTC`.
+
 ## Batch 2026-10-12-C — REV-006 preferred-only degree is SOFT_FLEX
 
 Trigger: Tim, 2026-10-12 16:56 ET, answering two questions raised by the batch B scan of the live master (1) a degree named only in preferred wording → SOFT_FLEX; (2) a stated degree with no experience alternative and no word "required" → NO_FLEX (confirms batch B behavior).
