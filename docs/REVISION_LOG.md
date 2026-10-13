@@ -2,6 +2,33 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-E — Writer ATS liveness checker
+
+Trigger: Tim, 2026-10-13 14:47 ET, "Implement everything else" (items 1, 2, 4 and 5 of the verification integration plan; item 3, JobSpy, deferred). Evidence: Claude's 9-row test against the live master the same afternoon; first-party ATS APIs were conclusive on 5 of 6 rows.
+
+### Changed
+1. **New `apps-script/PipelineAts.gs`.** Detects a row's ATS from its stored URLs (Workday, Greenhouse, Lever, Ashby, Oracle HCM with a CX_n site, SmartRecruiters, BambooHR), builds the public API URL from the stored URL only (no invented hosts or slugs), reads the answer and turns it into ENRICH fields. `runAtsCheck_` fetches with `UrlFetchApp.fetchAll` (10 at a time, one Ashby board call per board) and queues ONE batch file `ATSCHK_<stamp>.json` of up to 25 ENRICH rulings (actor `WRITER_ATS`). Every write goes through the normal queue, receipts and three-proof verification.
+2. **Queue tick** (`Automation.gs`): runs the checker at most every 30 minutes on a quick, non-busy tick, and never while an earlier ATSCHK file is still queued.
+3. **GET `action=ats_check`** (`Code.gs`): run now; `&dry=1` returns the plan and queue body without writing.
+4. **Posting-validation worklist** (`PipelineWorklists.gs`): rows with a checker-supported URL are left to the checker unless `ATS_CHECK_RESULT` is not LIVE/CLOSED. The AI lane gets only the residue.
+
+### Safety rules in code
+- CLOSED only on positive evidence: per-posting 404/410 from Workday, Greenhouse or Lever (`CLOSED_EMPLOYER_404`); Workday `posted=false`/`canApply=false` or Oracle end date in the past (`CLOSED_EMPLOYER_ATS`). Any error, block, unreadable body, title mismatch, board absence or untested-provider miss writes only `ATS_*` fields and leaves `LIVENESS` alone.
+- Title check: the ATS title must share at least half the row title's significant words, else `TITLE_MISMATCH` and no stamp.
+- Pay: one structured annual USD range, or exactly one plausible range in the text; malformed (Entegris `$330,00.00`) and tiered ranges are skipped. `DEGREE_TEXT` is written only when the row has no posting-based degree evidence; otherwise the line goes to `ATS_DEGREE_TEXT` only.
+- Never writes BUCKET, DISPOSITION, POSTING_STATE, application or TIM_* fields. Protected and anti-resurrection rows are never selected.
+
+### Not changed
+- No master row changes on deploy. The first checker batch runs on the first quick tick after deploy.
+- Lane ownership, scoring, FLEX rules, intake and identity matching.
+
+### Verification
+- `npm test`: 423 pass, 0 fail (412 before + 11 in `tests/ats-checker.test.js`, built from the real API bodies seen on 2026-10-13: Entegris and Blue Origin Workday, Vulcan Greenhouse, Palantir Lever, Ramp Ashby, KIK Oracle, fly.io BambooHR).
+- Not run: live fetch from Apps Script (the build workspace cannot reach ATS hosts). After deploy, run `action=ats_check&dry=1` and check the plan before the first real batch lands.
+
+### Deploy note
+Writer only. `UrlFetchApp` is already authorised (REV-005). New file `PipelineAts.gs` is pushed by `deploy.sh` with the other `*.gs` files.
+
 ## Batch 2026-10-13-D — Writer clears held queue files by itself
 
 Trigger: Tim, 2026-10-13 12:44 ET, on the QUEUE_HOLD warning for `HOLD__FORGE_GOFER_CLAUDE_20261012_TIM_03_hitachi_R0109990_applied.json`: "I don't want to do an exception action. I'd like trivial non problems to be processed programmatically."
