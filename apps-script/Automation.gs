@@ -146,7 +146,14 @@ function processWriterQueue() {
   } finally {
     setWriteDeadline_(0);
   }
-  return { ok: true, processed: done.length, remaining: listPending_(f.queue).length, busy: busy, deferred: deferred, verification: verification, results: done };
+  // Lane worklists (PipelineWorklists.gs): rebuilt at most every 30 minutes, only on a quick tick, never blocking the queue.
+  var worklists;
+  if (!busy && typeof refreshWorklists_ === 'function' && Date.now() - started <= QUEUE_CLAIM_CUTOFF_MS) {
+    try { worklists = refreshWorklists_(false); } catch (we) { worklists = { ok: false, error: String(we && we.message || we) }; }
+  }
+  var summary = { ok: true, processed: done.length, remaining: listPending_(f.queue).length, busy: busy, deferred: deferred, verification: verification, results: done };
+  if (worklists && !worklists.skipped) summary.worklists = worklists;
+  return summary;
 }
 
 /** Pure: the terminal state a RESULT reports. */
