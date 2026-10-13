@@ -4,16 +4,18 @@
    Authority: forge-coordination CONTROL, GROK EFFICIENCY AMENDMENT (2026-10-13). */
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.PipelineWorklists = factory(); })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
+  var Evidence = typeof module === 'object' && module.exports ? require('./PipelineEvidence.gs') : PipelineEvidence;
   var ROW_RE = /^(\d+) \| /;
   var KV_RE = /^([A-Z][A-Z0-9_]*)=([\s\S]*)$/;
   var EMBEDDED_KEY_RE = /\s+(?=[A-Z][A-Z0-9_]{2,}=)/;
   var FIXED = ['INV', 'PRIMARY_ID', 'COMPANY', 'TITLE', 'BUCKET', 'DISPOSITION', 'TAGS', 'REQ', 'LOCATION'];
   var ACTIVE = ['SCOUT_INTAKE', 'DISCOVERY_LEAD', 'TIM_DECISION_REQUIRED', 'BLOCKED', 'MANUAL_RESEARCH', 'READY_TO_PURSUE'];
-  var STRATEGIC_DONE_KEYS = ['ANALYSIS_ASOF', 'ANALYSIS_ACTOR', 'SCOPE_SUMMARY', 'FIT_BASIS', 'GROK_FIT_BASIS', 'STRATEGIC_ASOF'];
+  var STRATEGIC_MARK_KEYS = ['ANALYSIS_BY', 'ANALYSIS_ASOF', 'ANALYSIS_ACTOR', 'STRATEGIC_ASOF'];
+  var DEGREE_FROM_ALERT_RE = /\b(alert|email|snippet)\b|^(unknown|not available|n\/a)/i;
   var LIMIT = 40, ATTEMPT_COOLDOWN_DAYS = 3, LIVENESS_RECHECK_DAYS = 7, DAY = 86400000;
   var LANES = {
-    FORGE_ENRICH_STRATEGIC: 'Active-bucket rows with no strategic analysis (no ANALYSIS_ASOF/ANALYSIS_ACTOR/SCOPE_SUMMARY/FIT_BASIS/GROK_FIT_BASIS/STRATEGIC_ASOF). Newest first. Rows with STRATEGIC_ATTEMPT_ASOF in the last 3 days go last.',
-    FORGE_ENRICH_FEASIBILITY: 'Active-bucket rows missing SALARY_BASE_EST, DEGREE_REQ/DEGREE_TEXT or FLEX (UNKNOWN counts as missing). Strategically analyzed rows first, then newest. Rows with FEASIBILITY_ATTEMPT_ASOF in the last 3 days go last.',
+    FORGE_ENRICH_STRATEGIC: 'Active-bucket rows with no fit score the Explorer can read (SCOPE_FIT_RAW, GROK_SCOPE_FIT_RAW and the other FIT_KEYS) and no ANALYSIS_BY/ANALYSIS_ASOF/STRATEGIC_ASOF. Newest first. Rows with STRATEGIC_ATTEMPT_ASOF in the last 3 days go last.',
+    FORGE_ENRICH_FEASIBILITY: 'Active-bucket rows with no salary the Explorer can read (posted, estimate, midpoint or low/high) or no posting-based degree evidence (DEGREE_REQ absent and DEGREE_TEXT absent or taken from an alert). Strategically analyzed rows first, then newest. Rows with FEASIBILITY_ATTEMPT_ASOF in the last 3 days go last.',
     FORGE_POSTING_VALIDATION: 'SCOUT_INTAKE rows whose LIVENESS is missing or UNVERIFIED, or UNCONFIRMED with LIVENESS_ASOF older than 7 days. Newest first. Rows with LIVENESS_ATTEMPT_ASOF in the last 3 days go last.'
   };
 
@@ -51,12 +53,12 @@
   function recency(r) { return date(val(r, 'DISCOVERED_AT_ET')) || date(val(r, 'DATE_ADDED')) || date(val(r, 'STATE_UPDATED_AT')); }
   function recent(r, k, days, now) { var d = date(val(r, k)); return !!d && now - d < days * DAY; }
   function workable(r) { return ACTIVE.indexOf(r.BUCKET) >= 0 && !/^YES/i.test(val(r, 'ANTI_RESURRECTION')) && !val(r, 'DO_NOT_REWORK'); }
-  function analyzed(r) { return STRATEGIC_DONE_KEYS.some(function (k) { return known(r, k); }); }
+  function analyzed(r) { return Evidence.fit(r.p).value != null || STRATEGIC_MARK_KEYS.some(function (k) { return known(r, k); }); }
+  function degreeKnown(r) { if (known(r, 'DEGREE_REQ')) return true; var t = val(r, 'DEGREE_TEXT'); return !!t && !DEGREE_FROM_ALERT_RE.test(t); }
   function needs(r) {
     var n = [];
-    if (!known(r, 'SALARY_BASE_EST')) n.push('SALARY');
-    if (!known(r, 'DEGREE_REQ') && !known(r, 'DEGREE_TEXT')) n.push('DEGREE');
-    if (!known(r, 'FLEX')) n.push('FLEX');
+    if (Evidence.salary(r.p).mid == null) n.push('SALARY');
+    if (!degreeKnown(r)) n.push('DEGREE');
     return n;
   }
   function byRecency(a, b) { return recency(b) - recency(a) || b.INV_NUM - a.INV_NUM; }
