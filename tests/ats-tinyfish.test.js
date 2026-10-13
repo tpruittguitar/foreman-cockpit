@@ -68,3 +68,9 @@ test('request body never carries the key', () => {
   assert.deepEqual(Object.keys(b).sort(), ['format', 'links', 'per_url_timeout_ms', 'purpose', 'ttl', 'urls']);
   assert.equal(b.links, true); assert.equal(b.ttl, 0);
 });
+
+test('bold field layout (**posted on**:) is read the same way', () => {
+  const bold = '## Director- Manufacturing Quality Assurance\n\nApply\n\n**locations**:   Huntsville, AL\n\n**posted on**:   Posted 28 Days Ago\n\n**job requisition id**:   R67034\n\n* Minimum of a B.A degree required.';
+  const r = A.tfJob({ text: bold }, null, 'https://blueorigin.wd5.myworkdayjobs.com/BlueOrigin/job/Director--Manufacturing-Quality-Assurance_R67034', row('Director, Manufacturing Quality Assurance'), { now: NOW });
+  assert.equal(r.result, 'LIVE'); assert.equal(r.postedAt, '2026-09-15');
+});
