@@ -26,6 +26,8 @@ if (typeof module === 'object' && module.exports) { var WriterTransactions = req
  */
 var QUEUE_FOLDER_NAME = 'WRITER_QUEUE';
 var QUEUE_LOG_NAME = 'WRITER_QUEUE_LOG.jsonl';
+var HOLD_RECONCILE_LOG_NAME = 'WRITER_HOLD_RECONCILE_LOG.jsonl';
+var HOLD_RECONCILE_MAX = 10;     // held files retried per tick
 var QUEUE_TRIGGER_FN = 'processWriterQueue';
 var QUEUE_STALE_MS = 8 * 60 * 1000; // safely above normal Apps Script execution; recovers abandoned claims much faster than the old 30-minute window
 var QUEUE_BUDGET_MS = 4.5 * 60 * 1000;      // no serial-batch sub-request starts after this much of the execution has elapsed
@@ -146,6 +148,11 @@ function processWriterQueue() {
   } finally {
     setWriteDeadline_(0);
   }
+  // Held files whose RESULT already exists are moved where finalizeClaim_ meant to put them. Nothing is re-run.
+  var holds;
+  if (!busy && Date.now() - started <= QUEUE_CLAIM_CUTOFF_MS) {
+    try { holds = reconcileHolds_(f); } catch (he) { holds = { ok: false, error: String(he && he.message || he) }; }
+  }
   // Lane worklists (PipelineWorklists.gs): rebuilt at most every 30 minutes, only on a quick tick, never blocking the queue.
   var worklists;
   if (!busy && typeof refreshWorklists_ === 'function' && Date.now() - started <= QUEUE_CLAIM_CUTOFF_MS) {
@@ -153,6 +160,7 @@ function processWriterQueue() {
   }
   var summary = { ok: true, processed: done.length, remaining: listPending_(f.queue).length, busy: busy, deferred: deferred, verification: verification, results: done };
   if (worklists && !worklists.skipped) summary.worklists = worklists;
+  if (holds && (holds.error || holds.checked)) summary.holds = holds;
   return summary;
 }
 
@@ -224,6 +232,39 @@ function finalizeClaim_(f, file, original, entry, result) {
   try { appendQueueLog_(entry); } catch (e) { entry.logError = String(e && e.message || e); }
   try { entry.repair = repairFailedIntake_(f, file, original, result); } catch (e) { entry.repairError = String(e && e.message || e); }
   return entry;
+}
+
+/** HOLD__<name> means finalizeClaim_ wrote the RESULT but could not move the request out of the queue (a transient
+ *  Drive error). The request already ran; only its file is in the wrong place. If the RESULT exists, move the request
+ *  next to it (processed for SUCCESS, failed otherwise: the folder finalizeClaim_ chose) under its original name.
+ *  A HOLD with no RESULT is a real anomaly and stays held, so the QUEUE_HOLD warning keeps showing it.
+ *  Nothing is re-run and the master is not touched. Each move is logged to HOLD_RECONCILE_LOG_NAME. */
+function reconcileHolds_(f) {
+  var out = { ok: true, checked: 0, moved: [], kept: [] }, it = f.queue.getFiles();
+  while (it.hasNext() && out.checked < HOLD_RECONCILE_MAX) {
+    var file = it.next(), held = file.getName();
+    if (!/^HOLD__/.test(held)) continue;
+    out.checked++;
+    var original = held.replace(/^(HOLD__)+/, ''), resultName = 'RESULT__' + original.replace(/\.[A-Za-z]+$/, '') + '.json';
+    var dest = null, destName = '';
+    if (f.processed.getFilesByName(resultName).hasNext()) { dest = f.processed; destName = 'processed'; }
+    else if (f.failed.getFilesByName(resultName).hasNext()) { dest = f.failed; destName = 'failed'; }
+    if (!dest) { out.kept.push({ file: original, reason: 'no RESULT file in processed or failed' }); continue; }
+    try {
+      file.setName(original); file.moveTo(dest);
+      var rec = { file: original, fileId: file.getId(), movedTo: destName, result: resultName, at: new Date().toISOString() };
+      out.moved.push(rec);
+      try { appendHoldReconcileLog_(rec); } catch (le) { rec.logError = String(le && le.message || le); }
+    } catch (e) {
+      try { file.setName(held); } catch (e2) {}
+      out.kept.push({ file: original, reason: 'move failed again: ' + String(e && e.message || e) });
+    }
+  }
+  return out;
+}
+function appendHoldReconcileLog_(rec) {
+  var lf = findOrCreate_(HOLD_RECONCILE_LOG_NAME, 'text', ''), cur = lf.getBlob().getDataAsString();
+  lf.setContent((cur ? cur.replace(/\n*$/, '\n') : '') + JSON.stringify(rec) + '\n');
 }
 
 /** A failed intake is not discarded. The original stays in failed. One repair copy is queued.
@@ -441,4 +482,4 @@ function parseQueueContent_(text) {
   return { ok: true, body: body };
 }
 
-if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_, appendQueueLog_: appendQueueLog_, processWriterQueue: processWriterQueue, writerWarnings_: writerWarnings_, writerStatus_: writerStatus_, terminalStatus_: terminalStatus_, requestIdsOf_: requestIdsOf_, partialHoldRecovered_: partialHoldRecovered_, queueStats_: queueStats_, QUEUE_CLAIM_CUTOFF_MS: QUEUE_CLAIM_CUTOFF_MS, QUEUE_BUDGET_MS: QUEUE_BUDGET_MS };
+if (typeof module !== 'undefined') module.exports = { parseQueueContent_: parseQueueContent_, claimNextQueueFile_: claimNextQueueFile_, listPending_: listPending_, appendQueueLog_: appendQueueLog_, processWriterQueue: processWriterQueue, writerWarnings_: writerWarnings_, writerStatus_: writerStatus_, terminalStatus_: terminalStatus_, reconcileHolds_: reconcileHolds_, requestIdsOf_: requestIdsOf_, partialHoldRecovered_: partialHoldRecovered_, queueStats_: queueStats_, QUEUE_CLAIM_CUTOFF_MS: QUEUE_CLAIM_CUTOFF_MS, QUEUE_BUDGET_MS: QUEUE_BUDGET_MS };

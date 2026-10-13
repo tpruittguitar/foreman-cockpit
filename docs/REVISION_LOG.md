@@ -2,6 +2,25 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-D — Writer clears held queue files by itself
+
+Trigger: Tim, 2026-10-13 12:44 ET, on the QUEUE_HOLD warning for `HOLD__FORGE_GOFER_CLAUDE_20261012_TIM_03_hitachi_R0109990_applied.json`: "I don't want to do an exception action. I'd like trivial non problems to be processed programmatically."
+
+Facts: the request ran 2026-10-12 01:40 UTC, SUCCESS, CREATE `V2E-89E2C036440E` (Hitachi Energy, R0109990, APPLIED). Its RESULT is in `processed`. Only the move of the request file out of the queue failed, so `finalizeClaim_` renamed it HOLD__. Row readback 2026-10-13 13:56 UTC found the row APPLIED and protected.
+
+### Changed (`apps-script/Automation.gs`)
+- New `reconcileHolds_`, run on each quick, non-busy queue tick (up to 10 held files). A HOLD__ file whose RESULT__ exists in `processed` or `failed` is renamed back and moved into that folder, which is where `finalizeClaim_` meant to put it. Each move is appended to `WRITER_HOLD_RECONCILE_LOG.jsonl`; the tick summary carries `holds`.
+- A HOLD__ with no RESULT, or whose move fails again, stays held under its HOLD__ name, so the QUEUE_HOLD warning keeps reporting real anomalies.
+
+### Not changed
+Nothing is re-run. No master read or write. Queue log, incident rules and warnings unchanged. Claim, finalize and repair paths unchanged.
+
+### Verification
+`npm test` 412 pass, 0 fail. New `tests/hold-reconcile.test.js` (5): SUCCESS result moves to processed; failed result to failed; no RESULT stays held; second move failure restores HOLD__; pending and RESULT files untouched.
+
+### Deploy note
+Writer change. Deploy with `apps-script/deploy.sh`. The current Hitachi hold clears on the first quick tick after deploy.
+
 ## Batch 2026-10-13-C — System dashboard counted finished obligations as open backlog
 
 Trigger: Tim, 2026-10-13 12:35 ET, phone screenshot of System > Dashboard: "Processing backlog by stage" showed Writer / verification 514 and Qualification 33 (sum 547) while the state mix showed 452 verified complete, 51 existing verified, 2 excluded verified, 42 needs resolution, and the Writer header read idle with queue 0.
