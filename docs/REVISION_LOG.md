@@ -2,6 +2,23 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-C — System dashboard counted finished obligations as open backlog
+
+Trigger: Tim, 2026-10-13 12:35 ET, phone screenshot of System > Dashboard: "Processing backlog by stage" showed Writer / verification 514 and Qualification 33 (sum 547) while the state mix showed 452 verified complete, 51 existing verified, 2 excluded verified, 42 needs resolution, and the Writer header read idle with queue 0.
+
+### Root cause
+`pipeline-operations-ui.js` had its own `isDone` regex anchored to `VERIFIED|COMPLETE|DONE|RESOLVED|WRITE_VERIFIED|VERIFIED_MASTER`. No real obligation state matches it (the real final states are `VERIFIED_COMPLETE`, `EXCLUDED_VERIFIED`, `EXISTING_VERIFIED`, `CANCELED_VERIFIED`), so every obligation counted as open. This inflated "Processing backlog by stage", "Open work by lane", the Writer-blocked count and the dashboard's next-action text. "Obligation state mix" and "Resolved vs open" use `PipelineOperations.summary` and were already correct.
+
+### Changed (`pipeline-operations-ui.js`)
+- `isDone` now calls `PipelineOperations.complete` (final state plus independent proof), the same test `summary()` uses. Fallback when that module is absent: the four final state names.
+- `create()` exposes `metrics` (the existing `dashboardMetrics`) for tests.
+
+### Not changed
+Obligation data, Writer, scoring, master, the stage classifier, chart rendering. The company filter chip still does not scope System dashboard charts (they are global; separate item, not addressed here).
+
+### Verification
+`npm test` 407 pass, 0 fail. New `tests/ops-dashboard-done.test.js` (2 tests) fails against the old logic (open 11 vs expected 3) and passes with the fix. Expected live effect: the Writer bar drops from 514 to the count of obligations still in non-final states (or final without proof); this equals summary's open count.
+
 ## Batch 2026-10-13-B — intake dedupe: ATS job id and state names
 
 Trigger: Claude 07:15 ET check. Grok web intake FORGE-WEB-GROK-20261013-0315ET inserted three Anduril VP Production rows (V2I-7506B47A8EAD, V2I-1F7FCDC7D808, V2I-121F69D9A93E) that already exist in the archive as DECLINED_BY_TIM (V2S-ANDURIL-VPPROD-MS-5199174007, V2S-ANDURIL-VPPROD-FRON-5218932007, V2L-ANDURIL-VPCONNECTEDWARFARE-5173257007). Intake carried Anduril's internal req (12461, 13466, 11414); the archived rows carry GH-<Greenhouse job id>; locations read "Costa Mesa, California, United States" against "Costa Mesa, CA". No match path fired.

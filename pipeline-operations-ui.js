@@ -11,7 +11,10 @@
     function pct(done,total){return total?Math.round(done/total*100):0;}
     function ageText(iso){var t=Date.parse(iso||'');if(!Number.isFinite(t))return 'UNKNOWN';var m=Math.max(0,Math.round((Date.now()-t)/60000));if(m<90)return m+' min';if(m<2880)return (m/60).toFixed(1)+' h';return Math.round(m/1440)+' d';}
     function obligationList(store){return store&&store.obligations?Object.keys(store.obligations).map(function(id){var o=store.obligations[id]||{};o.id=id;return o;}):[];}
-    function isDone(o){return /^(VERIFIED|COMPLETE|DONE|RESOLVED|WRITE_VERIFIED|VERIFIED_MASTER)$/i.test(String(o.state||o.outcome||''));}
+    // Done = the canonical PipelineOperations.complete (final state + independent proof), the same test summary() uses,
+    // so backlog, lane and resolved-vs-open charts agree with the state mix. The old local regex matched no real state.
+    var FINAL_STATES=['VERIFIED_COMPLETE','EXCLUDED_VERIFIED','EXISTING_VERIFIED','CANCELED_VERIFIED'];
+    function isDone(o){if(typeof PipelineOperations!=='undefined'&&PipelineOperations.complete)return PipelineOperations.complete(o);return FINAL_STATES.indexOf(String(o.state||''))>=0;}
     function isOpen(o){return !isDone(o);}
     function stageOf(o){var s=[o.id,o.state,o.owner,o.source&&JSON.stringify(o.source),o.outcome,o.nextAction,o.error].join(' ').toUpperCase();
       if(/WRITER|WRITE|RECEIPT|RESULT|VERIFY|VERIFICATION|UNVERIFIED/.test(s))return 'Writer / verification';
@@ -149,7 +152,7 @@
       var preview=view.querySelector('[data-ops-preview]'),stage=view.querySelector('[data-ops-stage]'),draft=null;
       if(preview){var input=view.querySelector('[data-ops-task]');input.oninput=function(){draft=null;stage.disabled=true;};preview.onclick=function(){var result=view.querySelector('[data-ops-preview-result]');try{draft=JSON.parse(input.value);var proposed=PipelineScheduler.edit(schedules.manifest,draft,schedules.manifest.revision,new Date().toISOString());result.textContent=JSON.stringify({desiredOccurrences:PipelineScheduler.upcoming(draft,Date.now(),5),warnings:PipelineScheduler.warnings(proposed,Date.now()),providerStatus:'PENDING_MANUAL',applied:false},null,2);stage.disabled=false;}catch(e){draft=null;stage.disabled=true;result.textContent=e.message;}};stage.onclick=function(){if(draft)write({action:'save_schedule_proposal',task:draft,baseRevision:schedules.manifest.revision});};}
     }
-    return {render:function(view){paint(view);if(!loadedAt&&!busy)refresh(view);},refresh:refresh};
+    return {render:function(view){paint(view);if(!loadedAt&&!busy)refresh(view);},refresh:refresh,metrics:dashboardMetrics};
   }
   root.PipelineOperationsUI={create:create};
 })(window);
