@@ -2,8 +2,10 @@
 $dir = Join-Path $env:LOCALAPPDATA 'Forge'; New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $dst = Join-Path $dir 'forge-pc-keepalive.ps1'
 Copy-Item -Force (Join-Path $PSScriptRoot 'forge-pc-keepalive.ps1') $dst
-$arg = '--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $dst + '"'
-$action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument $arg
+# A tiny VBScript launcher starts PowerShell with no window at all (conhost --headless did not start it on this PC).
+$vbs = Join-Path $dir 'forge-pc-keepalive.vbs'
+Set-Content -Path $vbs -Encoding ASCII -Value ('CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""' + $dst + '""", 0, False')
+$action = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument ('"' + $vbs + '"')
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
 Register-ScheduledTask -TaskName 'Forge PC Keep-Alive' -Action $action -Trigger $trigger -Settings $settings -Description 'Forge: keep PC awake on AC, keep Claude app running, open Chrome for usage readings' -Force | Out-Null
