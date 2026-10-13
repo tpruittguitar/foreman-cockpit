@@ -1989,7 +1989,11 @@ function normEmployer(s) {
   return s;
 }
 function normTitle(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\b(the|of|and|a|an|sr|senior|jr)\b/g, ' ').replace(/\s+/g, ' ').trim(); }
-function normLocation(s) { s = String(s || '').toLowerCase(); if (!s || /not_stated|not stated|unknown|^-$/.test(s)) return ''; return s.replace(/\b(metropolitan area|metro area|area|united states|usa|us)\b/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+var US_STATE_ABBR_ = {alabama:'al',alaska:'ak',arizona:'az',arkansas:'ar',california:'ca',colorado:'co',connecticut:'ct',delaware:'de',florida:'fl',georgia:'ga',hawaii:'hi',idaho:'id',illinois:'il',indiana:'in',iowa:'ia',kansas:'ks',kentucky:'ky',louisiana:'la',maine:'me',maryland:'md',massachusetts:'ma',michigan:'mi',minnesota:'mn',mississippi:'ms',missouri:'mo',montana:'mt',nebraska:'ne',nevada:'nv','new hampshire':'nh','new jersey':'nj','new mexico':'nm','new york':'ny','north carolina':'nc','north dakota':'nd',ohio:'oh',oklahoma:'ok',oregon:'or',pennsylvania:'pa','rhode island':'ri','south carolina':'sc','south dakota':'sd',tennessee:'tn',texas:'tx',utah:'ut',vermont:'vt',virginia:'va',washington:'wa','west virginia':'wv',wisconsin:'wi',wyoming:'wy'};
+// Full state names become postal codes so "Costa Mesa, California, United States" and "Costa Mesa, CA" compare equal (2026-10-13).
+function normLocation(s) { s = String(s || '').toLowerCase(); if (!s || /not_stated|not stated|unknown|^-$/.test(s)) return ''; s = s.replace(/\b(metropolitan area|metro area|area|united states|usa|us)\b/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); return s.replace(/\b(new hampshire|new jersey|new mexico|new york|north carolina|north dakota|rhode island|south carolina|south dakota|west virginia|[a-z]+)$/, function (m) { return US_STATE_ABBR_[m] || m; }); }
+/** ATS job numbers carried in a posting URL (Greenhouse job id, gh_jid, Workday R-number). They are the same identity as a GH-/R- requisition token on an older row (2026-10-13 Anduril duplicates). */
+function atsJobIds(text) { var out = []; String(text || '').replace(/https?:\/\/[^\s"<>|;]+/gi, function (u) { var m; if ((m = u.match(/greenhouse\.io\/[^\/?#]+\/jobs\/(\d{6,})/i)) || (m = u.match(/[?&]gh_jid=(\d{6,})/i)) || (m = u.match(/myworkdayjobs\.com\/[^?#]*_R-?(\d{4,})/i))) { if (out.indexOf(m[1]) < 0) out.push(m[1]); } }); return out; }
 function reqTokens(s) { var out = []; String(s || '').replace(/[A-Za-z]*[-_ ]?\d{5,}[A-Za-z0-9-]*/g, function (m) { out.push(m.replace(/[^A-Za-z0-9]/g, '').toUpperCase()); }); return out; }
 function reqCore(s) { var t = reqTokens(s); return t.length ? t[0].replace(/^(LI|GH|WD|JR|R|REQ)/, '') : ''; }
 function canonUrl(u) {
@@ -2029,7 +2033,8 @@ function indexExisting(lines) {
     var pp = parsePayload(c.slice(FIXED_N).join(' | '));
     // Every URL field the Writer reads or writes on a row takes part in dedupe; SOURCE is the legacy reader (22 live rows).
     var urls = urlsIn(c[7]).concat(urlsIn(pp.payload.SOURCE || ''), urlsIn(pp.payload.SOURCE_URL || ''), urlsIn(pp.payload.INITIATING_URL || ''), urlsIn(pp.payload.COMPANY_SOURCE_URL || ''), urlsIn(pp.payload.INTAKE_SOURCE_URL || ''));
-    rows.push({ inv: parseInt(c[0], 10), id: c[1].trim(), company: c[2], title: c[3], bucket: c[4], location: c[8], reqTokens: reqTokens(c[7]), reqCores: reqTokens(c[7]).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), urls: urls, ne: normEmployer(c[2]), nt: normTitle(c[3]), nl: normLocation(c[8]), intakeKey: pp.payload.INTAKE_KEY || '' });
+    var atsText = [c[7], pp.payload.SOURCE, pp.payload.SOURCE_URL, pp.payload.INITIATING_URL, pp.payload.COMPANY_SOURCE_URL, pp.payload.INTAKE_SOURCE_URL].join(' ');
+    rows.push({ inv: parseInt(c[0], 10), id: c[1].trim(), company: c[2], title: c[3], bucket: c[4], location: c[8], reqTokens: reqTokens(c[7]), reqCores: reqTokens(c[7]).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), atsIds: atsJobIds(atsText), urls: urls, ne: normEmployer(c[2]), nt: normTitle(c[3]), nl: normLocation(c[8]), intakeKey: pp.payload.INTAKE_KEY || '' });
   }
   return rows;
 }
@@ -2047,8 +2052,13 @@ function matchExisting(rec, idx) {
     return verdict(byKey.length === 1 ? 'exact' : 'ambiguous', byKey, 'INTAKE_KEY');
   }
   if (rc && rc.length >= 5) {
-    var byReqEmp = idx.filter(function (r) { return compatible(r) && r.reqCores.indexOf(rc) >= 0; });
+    var byReqEmp = idx.filter(function (r) { return compatible(r) && (r.reqCores.indexOf(rc) >= 0 || (r.atsIds || []).indexOf(rc) >= 0); });
     if (byReqEmp.length) return verdict(byReqEmp.length === 1 ? 'exact' : 'ambiguous', byReqEmp, 'REQ_ID');
+  }
+  var recAts = atsJobIds([rec.SOURCE_URL, rec.INITIATING_URL, rec.COMPANY_SOURCE_URL].join(' ')).filter(function (x) { return x !== rc; });
+  if (recAts.length) {
+    var byAts = idx.filter(function (r) { return compatible(r) && recAts.some(function (j) { return r.reqCores.indexOf(j) >= 0 || (r.atsIds || []).indexOf(j) >= 0; }); });
+    if (byAts.length) return verdict(byAts.length === 1 ? 'exact' : 'ambiguous', byAts, 'ATS_JOB_ID');
   }
   if (cu && !/^(linkedin\.com\/jobs\/search|indeed\.com\/jobs)/.test(cu) && cu.length > 12) {
     var byUrl = idx.filter(function (r) { return r.urls.indexOf(cu) >= 0; });
@@ -2242,7 +2252,7 @@ function planIntake(lines, records, rulesObj, ctx) {
     if(PipelinePolicy.isV4(ctx.flexPolicy)){var scored=deriveWriterScores_(['','',rec.COMPANY,rec.TITLE,bucket,'','','',rec.LOCATION||''],P,set,ctx.flexPolicy);if(!scored.ok){res.result='WRITE_FAILED';res.detail=scored.error;summary.WRITE_FAILED++;results.push(res);delete batchKeys[rec.INTAKE_KEY];continue;}}
     var disposition = bucket === 'SCOUT_INTAKE' ? 'INTAKE/AWAITING_ANALYSIS' : 'INTAKE/IDENTITY_UNRESOLVED';
     var line = [String(inv), pid, rec.COMPANY, rec.TITLE, bucket, disposition, tags.join('; '), rec.REQ_ID || 'UNCAPTURED', rec.LOCATION || 'NOT_STATED'].join(' | ') + ' | ' + buildPayload('SCOUT_INTAKE_PENDING (Claude analysis, then Forge verification)', P, O);
-    newLines.push(line); idx.push({ inv: inv, id: pid, company: rec.COMPANY, title: rec.TITLE, bucket: bucket, location: rec.LOCATION, reqTokens: reqTokens(rec.REQ_ID), reqCores: reqTokens(rec.REQ_ID).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), urls: urlsIn(rec.SOURCE_URL).concat(urlsIn(rec.COMPANY_SOURCE_URL || ''), urlsIn(rec.INITIATING_URL || '')), ne: normEmployer(rec.COMPANY), nt: normTitle(rec.TITLE), nl: normLocation(rec.LOCATION), intakeKey: rec.INTAKE_KEY });
+    newLines.push(line); idx.push({ inv: inv, id: pid, company: rec.COMPANY, title: rec.TITLE, bucket: bucket, location: rec.LOCATION, reqTokens: reqTokens(rec.REQ_ID), reqCores: reqTokens(rec.REQ_ID).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), atsIds: atsJobIds([rec.SOURCE_URL, rec.INITIATING_URL, rec.COMPANY_SOURCE_URL].join(' ')), urls: urlsIn(rec.SOURCE_URL).concat(urlsIn(rec.COMPANY_SOURCE_URL || ''), urlsIn(rec.INITIATING_URL || '')), ne: normEmployer(rec.COMPANY), nt: normTitle(rec.TITLE), nl: normLocation(rec.LOCATION), intakeKey: rec.INTAKE_KEY });
     res.outcome = 'INSERTED'; res.result = bucket === 'SCOUT_INTAKE' ? 'SCOUT_INTAKE_WRITTEN' : 'DISCOVERY_LEAD_WRITTEN'; res.PRIMARY_ID = pid; res.INV = inv; res.BUCKET = bucket; summary[res.result]++; summary.ENTERED_MASTER++; results.push(res);
   }
   // Insert block: rows grouped by bucket, each group under its own heading, so a SCOUT_INTAKE row never sits under

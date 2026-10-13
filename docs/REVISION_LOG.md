@@ -2,6 +2,21 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-B — intake dedupe: ATS job id and state names
+
+Trigger: Claude 07:15 ET check. Grok web intake FORGE-WEB-GROK-20261013-0315ET inserted three Anduril VP Production rows (V2I-7506B47A8EAD, V2I-1F7FCDC7D808, V2I-121F69D9A93E) that already exist in the archive as DECLINED_BY_TIM (V2S-ANDURIL-VPPROD-MS-5199174007, V2S-ANDURIL-VPPROD-FRON-5218932007, V2L-ANDURIL-VPCONNECTEDWARFARE-5173257007). Intake carried Anduril's internal req (12461, 13466, 11414); the archived rows carry GH-<Greenhouse job id>; locations read "Costa Mesa, California, United States" against "Costa Mesa, CA". No match path fired.
+
+### Changed (`apps-script/Code.gs`)
+1. `atsJobIds`: Greenhouse job id (`greenhouse.io/<board>/jobs/<id>`, `gh_jid`) and Workday R-number from URLs. Indexed per row from the REQ cell and every URL field.
+2. `matchExisting`: REQ_ID also matches a row's ATS ids; new `ATS_JOB_ID` path matches the intake URL's job id against a row's requisition or ATS ids. Same-employer only.
+3. `normLocation`: full US state names map to postal codes.
+
+### Not changed
+Match order, conflict and ambiguity handling, employer compatibility, protected states.
+
+### Verification
+`npm test` 405 pass (5 new in `tests/ats-job-id-dedupe.test.js`, built from the live Anduril and Blue Origin rows, including a cross-employer negative case).
+
 ## Batch 2026-10-13-A2 — worklist selectors match live master keys (fix to A)
 
 Trigger: first live build of batch A (Writer v57, 2026-10-13 00:54 ET) listed 862 of 1,408 rows as needing strategic analysis. A scan of the live master showed strategic fit stored as SCOPE_FIT_RAW / FIT_CONF / FIT_ASOF / ANALYSIS_BY, salary as SALARY_BASE_LOW/HIGH/MIDPOINT and PAY_POSTED, and DEGREE_TEXT="not stated in alert" on most intake rows.
