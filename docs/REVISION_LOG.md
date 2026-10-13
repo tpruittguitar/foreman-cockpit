@@ -2,6 +2,10 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-H — TinyFish posting date in bold layout
+
+Trigger: dry run after deploying batch G (Writer v62, 2026-10-13 18:00 ET): TinyFish sometimes returns Workday fields as `**posted on**:   Posted N Days Ago`; the posting-date pattern now reads both layouts. Liveness, pay and degree were unaffected. Verification: `npm test` 435 pass (1 new).
+
 ## Batch 2026-10-13-G — Writer reads Workday through TinyFish
 
 Trigger: Tim, 2026-10-13 17:46 ET, "Yes" to the Writer calling TinyFish's free Fetch API. Evidence: Workday answers 403 to requests from Google's servers (73 of 929 active rows, first ATS batch 2026-10-13); Claude's TinyFish test the same evening rendered Workday job and search pages in full (Blue Origin R67034, Entegris REQ-13635 with pay $220,000-$280,000).

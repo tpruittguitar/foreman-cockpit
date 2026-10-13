@@ -274,7 +274,7 @@
     }
     if (!title || !/job requisition id/i.test(text)) { out.result = 'UNREADABLE'; return out; }
     out.title = title.trim();
-    var pm = text.match(/posted on\s*\n?\s*:?\s*Posted (Today|Yesterday|(\d+)(\+)? Days? Ago)/i);
+    var pm = text.match(/posted on\**\s*\n?\s*:?\s*Posted (Today|Yesterday|(\d+)(\+)? Days? Ago)/i);   // plain and bold (**posted on**:) layouts
     if (pm) {
       if (pm[3]) out.postedNote = 'Posted ' + pm[2] + '+ days before ' + new Date(now).toISOString().slice(0, 10);
       else { var n = /today/i.test(pm[1]) ? 0 : /yesterday/i.test(pm[1]) ? 1 : +pm[2]; out.postedAt = new Date(now - n * DAY).toISOString().slice(0, 10); }
