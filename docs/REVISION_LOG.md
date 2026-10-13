@@ -2,6 +2,18 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-A2 — worklist selectors match live master keys (fix to A)
+
+Trigger: first live build of batch A (Writer v57, 2026-10-13 00:54 ET) listed 862 of 1,408 rows as needing strategic analysis. A scan of the live master showed strategic fit stored as SCOPE_FIT_RAW / FIT_CONF / FIT_ASOF / ANALYSIS_BY, salary as SALARY_BASE_LOW/HIGH/MIDPOINT and PAY_POSTED, and DEGREE_TEXT="not stated in alert" on most intake rows.
+
+### Changed
+- Strategic: a row is done when `PipelineEvidence.fit` reads a fit value (the Explorer's own FIT_KEYS) or ANALYSIS_BY/ANALYSIS_ASOF/STRATEGIC_ASOF is set. Live count 862 -> 18.
+- Feasibility: SALARY missing when `PipelineEvidence.salary` finds no midpoint; DEGREE missing when DEGREE_REQ is absent and DEGREE_TEXT is absent or alert-derived. FLEX dropped from NEED (the Writer derives FLEX_CLASS from DEGREE_TEXT). Live count 821 -> 452.
+- Posting validation unchanged (337).
+
+### Verification
+- `npm test` 400 pass. Counts above from the live master read at 00:54 ET on Tim's machine.
+
 ## Batch 2026-10-13-A — lane worklists built by the Writer
 
 Trigger: Tim, 2026-10-13 00:29 ET ("Implement 1-5"): Grok at 80% of weekly usage; Grok runs spent most of their budget reading and parsing the 3 MB master, and FORGE-ENRICH-STRATEGIC-GROK-20261013-0224ET hard-blocked because the master truncates in Grok's reader. Control: forge-coordination CONTROL 2026-10-13.2, GROK EFFICIENCY AMENDMENT.
