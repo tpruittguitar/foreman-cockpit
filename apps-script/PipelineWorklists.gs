@@ -5,6 +5,7 @@
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.PipelineWorklists = factory(); })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   var Evidence = typeof module === 'object' && module.exports ? require('./PipelineEvidence.gs') : PipelineEvidence;
+  function ats() { return typeof module === 'object' && module.exports ? require('./PipelineAts.gs') : PipelineAts; }
   var ROW_RE = /^(\d+) \| /;
   var KV_RE = /^([A-Z][A-Z0-9_]*)=([\s\S]*)$/;
   var EMBEDDED_KEY_RE = /\s+(?=[A-Z][A-Z0-9_]{2,}=)/;
@@ -16,7 +17,7 @@
   var LANES = {
     FORGE_ENRICH_STRATEGIC: 'Active-bucket rows with no fit score the Explorer can read (SCOPE_FIT_RAW, GROK_SCOPE_FIT_RAW and the other FIT_KEYS) and no ANALYSIS_BY/ANALYSIS_ASOF/STRATEGIC_ASOF. Newest first. Rows with STRATEGIC_ATTEMPT_ASOF in the last 3 days go last.',
     FORGE_ENRICH_FEASIBILITY: 'Active-bucket rows with no salary the Explorer can read (posted, estimate, midpoint or low/high) or no posting-based degree evidence (DEGREE_REQ absent and DEGREE_TEXT absent or taken from an alert). Strategically analyzed rows first, then newest. Rows with FEASIBILITY_ATTEMPT_ASOF in the last 3 days go last.',
-    FORGE_POSTING_VALIDATION: 'SCOUT_INTAKE rows whose LIVENESS is missing or UNVERIFIED, or UNCONFIRMED with LIVENESS_ASOF older than 7 days. Newest first. Rows with LIVENESS_ATTEMPT_ASOF in the last 3 days go last.'
+    FORGE_POSTING_VALIDATION: 'SCOUT_INTAKE rows whose LIVENESS is missing or UNVERIFIED, or UNCONFIRMED with LIVENESS_ASOF older than 7 days. Rows with a Workday, Greenhouse, Lever, Ashby, Oracle HCM (CX site), SmartRecruiters or BambooHR URL are left to the Writer ATS checker unless its ATS_CHECK_RESULT is not LIVE/CLOSED (blocked, error, title mismatch, not on public board). Newest first. Rows with LIVENESS_ATTEMPT_ASOF in the last 3 days go last.'
   };
 
   function parsePayload(text) {
@@ -77,6 +78,7 @@
     var feasibility = ordered(active.filter(function (r) { return needs(r).length; }), 'FEASIBILITY_ATTEMPT_ASOF', now, analyzed);
     var postval = ordered(active.filter(function (r) {
       if (r.BUCKET !== 'SCOUT_INTAKE') return false;
+      if (ats().ownedByChecker(r.p)) return false;
       var l = val(r, 'LIVENESS');
       if (!l || /^UNVERIFIED/i.test(l)) return true;
       return /^UNCONFIRMED/i.test(l) && !recent(r, 'LIVENESS_ASOF', LIVENESS_RECHECK_DAYS, now);

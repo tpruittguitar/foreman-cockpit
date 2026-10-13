@@ -127,7 +127,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -156,6 +156,7 @@ function doGet(e) {
     if (a === 'row_readback') return out_(rowReadback_({ primaryIds: String(p.ids || '').split(','), requestId: p.requestId || '' }));
     if (a === 'process_queue') return out_(processWriterQueue());
     if (a === 'refresh_worklists') return out_(refreshWorklists_(true));
+    if (a === 'ats_check') return out_(runAtsCheck_(true, p.dry === '1'));
     return out_({ ok: false, error: 'unknown action ' + a });
   } catch (err) { return out_({ ok: false, error: String(err && err.message || err), errorStack: errorStack_(err) }); }
 }

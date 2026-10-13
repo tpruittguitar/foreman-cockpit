@@ -158,8 +158,14 @@ function processWriterQueue() {
   if (!busy && typeof refreshWorklists_ === 'function' && Date.now() - started <= QUEUE_CLAIM_CUTOFF_MS) {
     try { worklists = refreshWorklists_(false); } catch (we) { worklists = { ok: false, error: String(we && we.message || we) }; }
   }
+  // ATS liveness checker (PipelineAts.gs): at most every 30 minutes, only on a quick tick; it queues one ENRICH batch and never writes the master itself.
+  var atsCheck;
+  if (!busy && typeof runAtsCheck_ === 'function' && Date.now() - started <= QUEUE_CLAIM_CUTOFF_MS) {
+    try { atsCheck = runAtsCheck_(false, false); } catch (ae) { atsCheck = { ok: false, error: String(ae && ae.message || ae) }; }
+  }
   var summary = { ok: true, processed: done.length, remaining: listPending_(f.queue).length, busy: busy, deferred: deferred, verification: verification, results: done };
   if (worklists && !worklists.skipped) summary.worklists = worklists;
+  if (atsCheck && !atsCheck.skipped) summary.atsCheck = atsCheck;
   if (holds && (holds.error || holds.checked)) summary.holds = holds;
   return summary;
 }
