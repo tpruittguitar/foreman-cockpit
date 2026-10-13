@@ -7,13 +7,16 @@
    row stays on the AI posting-validation worklist.
    Proven providers (executed 2026-10-13): Workday CXS, Greenhouse boards-api, Lever postings, Ashby posting-api,
    Oracle HCM REST. Positive-only providers (endpoint documented, a miss never closes): SmartRecruiters, BambooHR.
-   Authority: Tim 2026-10-13 "Implement everything else" (verification integration plan items 1, 2, 4, 5). */
+   Authority: Tim 2026-10-13 "Implement everything else" (verification integration plan items 1, 2, 4, 5).
+   TinyFish fallback (Tim 2026-10-13 17:46 ET "Yes" to the Writer option; control TINYFISH VERIFICATION AMENDMENT): Workday answers
+   403 to Google's servers, so Workday rows are read through TinyFish's free Fetch API (rendered page, TinyFish servers) when the
+   script property TINYFISH_API_KEY is set. A stored URL without the requisition token is resolved through the site's own search. */
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.PipelineAts = factory(); })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
   var DAY = 86400000;
   var ACTIVE = ['SCOUT_INTAKE', 'DISCOVERY_LEAD', 'TIM_DECISION_REQUIRED', 'BLOCKED', 'MANUAL_RESEARCH', 'READY_TO_PURSUE'];
   var PRIORITY = { READY_TO_PURSUE: 0, MANUAL_RESEARCH: 1, TIM_DECISION_REQUIRED: 1, BLOCKED: 2, SCOUT_INTAKE: 3, DISCOVERY_LEAD: 4 };
-  var URL_KEYS = ['COMPANY_SOURCE_URL', 'SOURCE_URL', 'LIVENESS_EVIDENCE_URL', 'EMPLOYER_REQ_ID_EVIDENCE_URL', 'CLAUDE_CANDIDATE_EMPLOYER_URL', 'CLAUDE_CANDIDATE_EVIDENCE_URL', 'CANDIDATE_COMPANY_SOURCE_URL', 'GROK_VERIFIED_URL', 'INITIATING_URL', 'SOURCE', 'DEGREE_EVIDENCE_URL', 'SALARY_EVIDENCE_URL'];
+  var URL_KEYS = ['ATS_POSTING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_URL', 'LIVENESS_EVIDENCE_URL', 'EMPLOYER_REQ_ID_EVIDENCE_URL', 'CLAUDE_CANDIDATE_EMPLOYER_URL', 'CLAUDE_CANDIDATE_EVIDENCE_URL', 'CANDIDATE_COMPANY_SOURCE_URL', 'GROK_VERIFIED_URL', 'INITIATING_URL', 'SOURCE', 'DEGREE_EVIDENCE_URL', 'SALARY_EVIDENCE_URL'];
   var DECISIVE = ['WORKDAY', 'GREENHOUSE', 'LEVER', 'ASHBY', 'ORACLE_HCM'];   // a 404/closed answer from these may set a CLOSED liveness
   var RECHECK_LIVE_DAYS = 3, RECHECK_OTHER_DAYS = 1, BATCH_LIMIT = 25;
   var TITLE_STOP = { of: 1, and: 1, the: 1, a: 1, an: 1, sr: 1, senior: 1, jr: 1, i: 1, ii: 1, iii: 1, to: 1, for: 1, in: 1, at: 1 };
@@ -220,6 +223,74 @@
     return f;
   }
 
+
+  /* ---------- TinyFish fallback for Workday (pure) ---------- */
+  var TF_NOT_FOUND_RE = /page you are looking for doesn.t exist/i;
+  /** { host, site, path, url } of the public Workday job URL behind a WORKDAY target, or null. */
+  function wdParts(target) {
+    var m = String(target && target.api || '').match(/^https:\/\/([^\/]+)\/wday\/cxs\/[^\/]+\/([^\/]+)\/job\/([^?#]+)$/);
+    return m ? { host: m[1], site: m[2], path: m[3], url: 'https://' + m[1] + '/' + m[2] + '/job/' + m[3] } : null;
+  }
+  /** True when the last path segment ends in a Workday requisition token (_R12345, _R12345-1, _REQ-12345, _JR12345). */
+  function hasReqToken(u) { return /_(?:R|REQ-?|JR)\d{3,}(?:-\d+)?$/i.test(lastSeg(String(u || '').split(/[?#]/)[0])); }
+  var SEARCH_SKIP = { director: 1, vice: 1, president: 1, vp: 1, head: 1, manager: 1, senior: 1, sr: 1, associate: 1, executive: 1, lead: 1 };
+  /** The site's own search URL for a row title (up to three distinctive words). */
+  function wdSearchUrl(parts, title) {
+    var words = String(title || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length > 2 && TITLE_STOP[w] !== 1 && SEARCH_SKIP[w] !== 1; });
+    if (!words.length) words = String(title || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length > 2; });
+    return 'https://' + parts.host + '/' + parts.site + '?q=' + enc(words.slice(0, 3).join(' '));
+  }
+  function slugTitle(u) { return lastSeg(String(u).split(/[?#]/)[0]).replace(/_(?:R|REQ-?|JR)\d{3,}(?:-\d+)?$/i, '').replace(/-+/g, ' '); }
+  function slugPlace(u) { var s = String(u).split(/[?#]/)[0].split('/job/')[1] || ''; var seg = s.split('/'); return seg.length > 1 ? seg[0].replace(/-+/g, ' ') : ''; }
+  /** Pick the one job link from a Workday search page that matches the row title (and location when several do). '' = none, 'AMBIGUOUS' = several. */
+  function tfPick(links, parts, row) {
+    var seen = {}, c = (links || []).map(function (u) { return String(u).split(/[?#]/)[0]; }).filter(function (u) {
+      if (seen[u] || u.indexOf('https://' + parts.host + '/') !== 0 || !/\/job\//.test(u) || !hasReqToken(u)) return false; seen[u] = 1; return true;
+    }).filter(function (u) { return titleOk(row && row.TITLE, slugTitle(u)); });
+    if (c.length > 1 && row && row.LOCATION) {
+      var city = String(row.LOCATION).toLowerCase().split(/[,(]/)[0].replace(/[^a-z ]+/g, ' ').trim();
+      var byPlace = city ? c.filter(function (u) { return slugPlace(u).toLowerCase().indexOf(city) >= 0; }) : [];
+      if (byPlace.length) c = byPlace;
+    }
+    if (c.length > 1) {   // same title at several sites with no location to tell them apart: never guess
+      var exact = c.filter(function (u) { return slugTitle(u).toLowerCase().replace(/\s+/g, ' ').trim() === String(row && row.TITLE || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); });
+      if (exact.length === 1) c = exact;
+    }
+    return c.length === 1 ? c[0] : (c.length ? 'AMBIGUOUS' : '');
+  }
+  /** One TinyFish result (or error) for a Workday job page -> the same shape interpret() returns. */
+  function tfJob(res, err, url, row, opts) {
+    opts = opts || {};
+    var now = opts.now ? Date.parse(opts.now) : Date.now(), out = { provider: 'WORKDAY', via: 'TINYFISH' };
+    if (err) {
+      if (err.error === 'page_not_found' && hasReqToken(url)) { out.result = 'CLOSED'; out.liveness = 'CLOSED_EMPLOYER_404'; return out; }
+      out.result = 'TF_' + String(err.error || 'ERROR').toUpperCase() + (err.status ? '_' + err.status : ''); return out;
+    }
+    var text = String(res && res.text || '');
+    var title = (text.match(/^##\s+(.+)$/m) || [])[1] || '';
+    if (TF_NOT_FOUND_RE.test(text) && !/job requisition id/i.test(text)) {
+      if (hasReqToken(url)) { out.result = 'CLOSED'; out.liveness = 'CLOSED_EMPLOYER_404'; return out; }
+      out.result = 'NOT_FOUND_NO_REQ_TOKEN'; return out;
+    }
+    if (!title || !/job requisition id/i.test(text)) { out.result = 'UNREADABLE'; return out; }
+    out.title = title.trim();
+    var pm = text.match(/posted on\s*\n?\s*:?\s*Posted (Today|Yesterday|(\d+)(\+)? Days? Ago)/i);
+    if (pm) {
+      if (pm[3]) out.postedNote = 'Posted ' + pm[2] + '+ days before ' + new Date(now).toISOString().slice(0, 10);
+      else { var n = /today/i.test(pm[1]) ? 0 : /yesterday/i.test(pm[1]) ? 1 : +pm[2]; out.postedAt = new Date(now - n * DAY).toISOString().slice(0, 10); }
+    }
+    if (!titleOk(row && row.TITLE, out.title)) { out.result = 'TITLE_MISMATCH'; return out; }
+    out.result = 'LIVE'; out.liveness = 'LIVE_EMPLOYER_ATS';
+    var body = text.split(/\n#{2,4}\s*Similar Jobs/i)[0];
+    out.pay = payFromText(body); out.payFromText = !!out.pay; out.degree = degreeFromText(body);
+    return out;
+  }
+  /** Fetch API request body for up to 10 URLs. */
+  function tfBody(urls, opts) {
+    var b = { urls: urls, format: 'markdown', links: !!(opts && opts.links), ttl: 0, per_url_timeout_ms: 35000, purpose: 'Check whether these employer job postings are open and read title, posting date, pay and degree wording.' };
+    return b;
+  }
+
   /** One queue body for the checked rows (all ENRICH, actor WRITER_ATS). */
   function batchBody(items, stamp) {
     return {
@@ -230,7 +301,7 @@
     };
   }
 
-  return { detect: detect, detectUrl: detectUrl, select: select, ownedByChecker: ownedByChecker, interpret: interpret, fieldsFor: fieldsFor, batchBody: batchBody, payFromText: payFromText, degreeFromText: degreeFromText, titleOk: titleOk, BATCH_LIMIT: BATCH_LIMIT, DECISIVE: DECISIVE };
+  return { wdParts: wdParts, hasReqToken: hasReqToken, wdSearchUrl: wdSearchUrl, tfPick: tfPick, tfJob: tfJob, tfBody: tfBody, detect: detect, detectUrl: detectUrl, select: select, ownedByChecker: ownedByChecker, interpret: interpret, fieldsFor: fieldsFor, batchBody: batchBody, payFromText: payFromText, degreeFromText: degreeFromText, titleOk: titleOk, BATCH_LIMIT: BATCH_LIMIT, DECISIVE: DECISIVE };
 });
 
 /* ================= Apps Script glue ================= */
@@ -259,9 +330,74 @@ function runAtsCheck_(force, dryRun) {
     var r = PipelineAts.interpret(x.target, resp.code, resp.body, x.row, { now: now });
     return { row: x.row, target: x.target, result: r, fields: PipelineAts.fieldsFor(x.row, x.target, r, { now: now }) };
   });
-  var summary = items.map(function (x) { return { primaryId: x.row.PRIMARY_ID, company: x.row.COMPANY, provider: x.target.provider, result: x.result.result, pay: x.fields.PAY_POSTED || '', degree: x.fields.DEGREE_TEXT ? 'SET' : (x.fields.ATS_DEGREE_TEXT ? 'EVIDENCE_ONLY' : '') }; });
-  if (dryRun) return { ok: true, dryRun: true, checked: items.length, at: now, items: summary, body: PipelineAts.batchBody(items, now.replace(/[-:TZ.]/g, '').slice(0, 14)) };
+  var tf = atsTinyFishWorkday_(items, now);
+  items = items.filter(function (x) { return !x.deferred; });
+  if (!items.length) return { ok: true, checked: 0, at: now, tinyfish: tf };
+  var summary = items.map(function (x) { return { primaryId: x.row.PRIMARY_ID, company: x.row.COMPANY, provider: x.target.provider + (x.result.via ? '/' + x.result.via : ''), result: x.result.result, pay: x.fields.PAY_POSTED || '', degree: x.fields.DEGREE_TEXT ? 'SET' : (x.fields.ATS_DEGREE_TEXT ? 'EVIDENCE_ONLY' : '') }; });
+  if (dryRun) return { ok: true, dryRun: true, checked: items.length, at: now, tinyfish: tf, items: summary, body: PipelineAts.batchBody(items, now.replace(/[-:TZ.]/g, '').slice(0, 14)) };
   var stamp = now.replace(/[-:TZ.]/g, '').slice(0, 14), name = ATS_CHECK_FILE_PREFIX_ + stamp + '.json';
   f.queue.createFile(name, JSON.stringify(PipelineAts.batchBody(items, stamp)), MimeType.PLAIN_TEXT);
-  return { ok: true, checked: items.length, queuedFile: name, at: now, items: summary };
+  return { ok: true, checked: items.length, queuedFile: name, at: now, tinyfish: tf, items: summary };
+}
+
+var TF_FETCH_URL_ = 'https://api.fetch.tinyfish.ai';
+var TF_ROWS_PER_RUN_ = 6, TF_URLS_PER_DAY_ = 300;   // 3 sequential TinyFish rounds of ~35 s fit after the 90 s claim cutoff, under the 6 min limit; 300 of the 1,000 free URLs a day
+
+/** POST several TinyFish Fetch requests in parallel (up to 3 URLs each). Returns { byUrl: {url: {res|err}}, used, httpErrors }. The key is never logged or returned. */
+function atsTinyFishFetch_(key, urls, links) {
+  var reqs = [], out = { byUrl: {}, used: 0, httpErrors: [] };
+  for (var i = 0; i < urls.length; i += 3) reqs.push({ url: TF_FETCH_URL_, method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'X-API-Key': key }, payload: JSON.stringify(PipelineAts.tfBody(urls.slice(i, i + 3), { links: links })) });
+  if (!reqs.length) return out;
+  var got; try { got = UrlFetchApp.fetchAll(reqs); } catch (e) { out.httpErrors.push('FETCH_EXCEPTION'); return out; }
+  got.forEach(function (resp) {
+    var code = resp.getResponseCode(); if (code !== 200) { out.httpErrors.push(code); return; }
+    var j; try { j = JSON.parse(resp.getContentText()); } catch (e) { out.httpErrors.push('BAD_JSON'); return; }
+    (j.results || []).forEach(function (r) { out.byUrl[r.url] = { res: r }; out.used++; });
+    (j.errors || []).forEach(function (e) { out.byUrl[e.url] = { err: e }; });
+  });
+  return out;
+}
+
+/** Workday rows whose CXS call failed (403 from Google) are re-read through TinyFish. Rows over the per-run or daily cap are
+    deferred (not written, so they stay due). Without TINYFISH_API_KEY nothing changes. Mutates items in place. */
+function atsTinyFishWorkday_(items, now) {
+  var props = PropertiesService.getScriptProperties(), key = props.getProperty('TINYFISH_API_KEY');
+  var todo = items.filter(function (x) { return x.target.provider === 'WORKDAY' && !/^(LIVE|CLOSED)$/.test(x.result.result) && PipelineAts.wdParts(x.target); });
+  if (!key || !todo.length) return { enabled: !!key, rows: 0 };
+  var day = now.slice(0, 10), used = props.getProperty('TF_FETCH_DAY') === day ? +(props.getProperty('TF_FETCH_COUNT') || 0) : 0;
+  var room = Math.max(0, Math.min(TF_ROWS_PER_RUN_, Math.floor((TF_URLS_PER_DAY_ - used) / 2)));
+  todo.slice(room).forEach(function (x) { x.deferred = true; });
+  todo = todo.slice(0, room);
+  var stat = { enabled: true, rows: todo.length, deferred: items.filter(function (x) { return x.deferred; }).length, fetched: 0, httpErrors: [] };
+  if (!todo.length) return stat;
+  // Round 1: job pages for URLs that carry the requisition token, the site search for those that do not.
+  todo.forEach(function (x) { var p = PipelineAts.wdParts(x.target); x.tf = { parts: p, job: PipelineAts.hasReqToken(p.url) ? p.url : '', search: PipelineAts.hasReqToken(p.url) ? '' : PipelineAts.wdSearchUrl(p, x.row.TITLE) }; });
+  var r1 = atsTinyFishFetch_(key, todo.filter(function (x) { return x.tf.job; }).map(function (x) { return x.tf.job; }), false);
+  var s1 = atsTinyFishFetch_(key, todo.filter(function (x) { return x.tf.search; }).map(function (x) { return x.tf.search; }), true);
+  stat.fetched += r1.used + s1.used; stat.httpErrors = stat.httpErrors.concat(r1.httpErrors, s1.httpErrors);
+  // Round 2: the job page picked from each search.
+  todo.forEach(function (x) {
+    if (!x.tf.search) return;
+    var hit = s1.byUrl[x.tf.search];
+    if (!hit || hit.err) { x.tf.outcome = hit && hit.err ? 'TF_SEARCH_' + String(hit.err.error || 'ERROR').toUpperCase() : 'TF_SEARCH_NO_ANSWER'; return; }
+    var pick = PipelineAts.tfPick(hit.res.links, x.tf.parts, x.row);
+    if (pick === 'AMBIGUOUS') x.tf.outcome = 'AMBIGUOUS_SEARCH'; else if (!pick) x.tf.outcome = 'NOT_IN_PUBLIC_BOARD'; else x.tf.job = pick;
+  });
+  var r2 = atsTinyFishFetch_(key, todo.filter(function (x) { return x.tf.search && x.tf.job; }).map(function (x) { return x.tf.job; }), false);
+  stat.fetched += r2.used; stat.httpErrors = stat.httpErrors.concat(r2.httpErrors);
+  todo.forEach(function (x) {
+    var r;
+    if (x.tf.outcome) r = { provider: 'WORKDAY', via: 'TINYFISH', result: x.tf.outcome };
+    else { var hit = r1.byUrl[x.tf.job] || r2.byUrl[x.tf.job]; r = hit ? PipelineAts.tfJob(hit.res, hit.err, x.tf.job, x.row, { now: now }) : { provider: 'WORKDAY', via: 'TINYFISH', result: 'TF_NO_ANSWER' }; }
+    if (/^TF_NO_ANSWER$|^TF_SEARCH_NO_ANSWER$/.test(r.result) && stat.httpErrors.length) { x.deferred = true; return; }   // TinyFish itself failed: retry next run
+    var t = { provider: 'WORKDAY', api: x.tf.job || x.target.api, url: x.tf.job || x.target.url };
+    var f = PipelineAts.fieldsFor(x.row, t, r, { now: now });
+    f.ATS_CHECK_VIA = 'TINYFISH'; f.ATS_CXS_RESULT = x.result.result;
+    if (f.LIVENESS_METHOD) f.LIVENESS_METHOD = 'TINYFISH_FETCH:WORKDAY';
+    if (r.postedNote) f.ATS_POSTED_NOTE = r.postedNote;
+    x.result = r; x.fields = f;
+  });
+  props.setProperty('TF_FETCH_DAY', day); props.setProperty('TF_FETCH_COUNT', String(used + stat.fetched));
+  stat.usedToday = used + stat.fetched;
+  return stat;
 }

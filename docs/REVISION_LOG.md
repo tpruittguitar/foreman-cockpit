@@ -2,6 +2,26 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-13-G — Writer reads Workday through TinyFish
+
+Trigger: Tim, 2026-10-13 17:46 ET, "Yes" to the Writer calling TinyFish's free Fetch API. Evidence: Workday answers 403 to requests from Google's servers (73 of 929 active rows, first ATS batch 2026-10-13); Claude's TinyFish test the same evening rendered Workday job and search pages in full (Blue Origin R67034, Entegris REQ-13635 with pay $220,000-$280,000).
+
+### Changed
+1. **`apps-script/PipelineAts.gs` TinyFish fallback.** When a Workday row's CXS call fails and the script property `TINYFISH_API_KEY` is set, the Writer reads the public job page through `POST https://api.fetch.tinyfish.ai` (rendered on TinyFish's servers). A stored URL without the requisition token (`_R12345`, `_REQ-12345`, `_JR12345`) is resolved through the site's own search page (`?q=` with up to three title words): one unique title match (location breaks ties) is fetched; several matches with no way to tell them apart are never guessed (`AMBIGUOUS_SEARCH`).
+2. **Fields.** Same ENRICH fields as the checker, plus `ATS_CHECK_VIA=TINYFISH`, `ATS_CXS_RESULT` (the original Workday answer), `LIVENESS_METHOD=TINYFISH_FETCH:WORKDAY`, `ATS_POSTED_NOTE` for "Posted 30+ Days Ago" (no invented date). `ATS_POSTING_URL` holds the full job link and is now read first, so later checks go straight to it.
+3. **Limits.** 6 Workday rows per run (three sequential TinyFish rounds of up to 35 s each fit after the 90 s claim cutoff, under the 6-minute limit), 300 URLs per UTC day (TinyFish's free allowance is 1,000; beyond it the wallet is charged). Rows over a limit are deferred unwritten, so they stay due. A TinyFish outage defers the rows instead of recording a failure.
+
+### Safety rules in code
+- CLOSED only when a URL carrying the requisition token shows Workday's "page you are looking for doesn't exist" page or a 404. The same page on a token-less URL, absence from search, a block or an unreadable page never closes a row.
+- Title check as before; "Similar Jobs" text is excluded from pay and degree reading.
+- The API key lives only in script properties; it is never logged, returned or written to a file.
+
+### Not changed
+Other providers, the queue, scoring, Writer authority. Without `TINYFISH_API_KEY` the checker behaves exactly as batch E.
+
+### Verification
+`npm test`: 434 pass, 0 fail (7 new in `tests/ats-tinyfish.test.js`, built on page text captured from TinyFish on 2026-10-13). The Apps Script glue (UrlFetchApp to TinyFish) is not unit-tested; first live check is `GET action=ats_check&dry=1` after deploy with the key set.
+
 ## Batch 2026-10-13-F — AI usage panel and PC keep-alive
 
 Trigger: Tim, 2026-10-13 15:49-15:54 ET: a bar chart in the app with the estimated shutdown day, updated automatically, plus a PC script that keeps the machine and Chrome available for it ("B now").
