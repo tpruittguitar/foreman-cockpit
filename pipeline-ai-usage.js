@@ -7,6 +7,7 @@
 (function (root) {
   'use strict';
   var URL = 'https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/usage/AI_USAGE_READINGS.jsonl';
+  var API_URL = 'https://api.github.com/repos/tpruittguitar/forge-coordination/contents/usage/AI_USAGE_READINGS.jsonl?ref=main';
   var H = 3600000, MIN_GAP = 2 * H;
   var ORDER = ['CLAUDE', 'CHATGPT', 'GROK'];
   var NAMES = { CLAUDE: 'Claude', CHATGPT: 'ChatGPT', GROK: 'Grok' };
@@ -75,8 +76,15 @@
     return '<div class="aiu">' + projections.map(rowHtml).join('') + '</div>';
   }
   function load(fetchFn) {
-    return (fetchFn || fetch)(URL + '?cb=' + Math.floor(Date.now() / 300000), { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('usage readings HTTP ' + r.status); return r.text(); }).then(parse);
+    // raw.githubusercontent.com caches for 5 minutes and ignores query strings, so a fresh push stays invisible.
+    // The GitHub contents API serves the current file (60 s cache; 60 unauthenticated calls/hour per IP, the panel
+    // uses at most 30). Raw is the fallback when the API refuses (rate limit) or is unreachable.
+    var f = fetchFn || fetch;
+    return f(API_URL, { cache: 'no-store', headers: { Accept: 'application/vnd.github.raw' } })
+      .then(function (r) { if (!r.ok) throw new Error('usage readings API HTTP ' + r.status); return r.text(); })
+      .catch(function () { return f(URL, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('usage readings HTTP ' + r.status); return r.text(); }); })
+      .then(parse);
   }
-  var api = { parse: parse, project: project, html: html, load: load, URL: URL };
+  var api = { parse: parse, project: project, html: html, load: load, URL: URL, API_URL: API_URL };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PipelineAiUsage = api;
 })(typeof window !== 'undefined' ? window : globalThis);

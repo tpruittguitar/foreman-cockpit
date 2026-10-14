@@ -2,6 +2,20 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-14-A — AI usage panel shows new readings promptly
+
+Trigger: Tim, 2026-10-14 00:10 ET ("change it now... its important to know so i can balance work load"). The System panel kept showing the 21:17 ET reading after the 00:04 ET reading was pushed.
+
+### Changed
+1. `pipeline-ai-usage.js` `load`: reads the GitHub contents API (`application/vnd.github.raw`, 60 s cache) first, falls back to raw.githubusercontent.com on refusal or network error. Raw caches 5 minutes and ignores query strings (verified: `?cb=<ms>` returned `x-cache: HIT`, `source-age: 234`), so the old cache-buster never worked.
+2. `pipeline.html`: opening the System panel or pressing Refresh now always re-reads the readings file; otherwise the hold is 2 minutes (was 10). The AI usage section now prints when the file was checked and the time of the newest reading.
+
+### Verification
+`npm test` 436 pass (new: API-first and raw-fallback load test). Inline page scripts parse. API endpoint returns the current file with `Access-Control-Allow-Origin: *`.
+
+### Limits
+Unauthenticated GitHub API allows 60 calls per hour per IP; the panel uses at most 30. Above that it falls back to raw (up to 5 minutes stale).
+
 ## Batch 2026-10-13-I — ZipRecruiter redirect links are not identity
 
 Trigger: ChatGPT's first weekly ZipRecruiter pass (FORGE-ZIPR-CHATGPT-20261013-1740ET-B01, 12 records): 1 written, 11 `WRITE_FAILED` with `IDENTITY_CONFLICT: SOURCE_URL_IDENTITY_CONFLICT`. Every ZipRecruiter link is `ziprecruiter.com/job-redirect?match_token=...`; `canonUrl` dropped the query, so all ZipRecruiter roles shared one identity with the first row written (Red Frog Solutions, V2I-2D41E91681F5).

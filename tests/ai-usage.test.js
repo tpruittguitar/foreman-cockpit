@@ -39,3 +39,16 @@ test('rendering keeps the exact number and a text status beside every bar', () =
   assert.match(h, />47%</); assert.match(h, /LASTS TO RESET|RUNS OUT BEFORE RESET/); assert.match(h, /aria-label=/);
   assert.match(U.html([]), /No usage readings yet/);
 });
+
+test('load reads the GitHub contents API first and falls back to raw on refusal', async () => {
+  const U = require('../pipeline-ai-usage.js');
+  const line = '{"at":"2026-10-14T04:04:05Z","provider":"CLAUDE","meter":"weekly","label":"weekly (all models)","usedPct":75,"resetsAt":"2026-10-18T16:00:00Z","windowHours":168,"status":"OK","source":"x"}\n';
+  const calls = [];
+  const ok = (url, o) => { calls.push([url, o && o.headers && o.headers.Accept]); return Promise.resolve({ ok: true, text: () => Promise.resolve(line) }); };
+  const r1 = await U.load(ok);
+  assert.equal(calls[0][0], U.API_URL); assert.equal(calls[0][1], 'application/vnd.github.raw'); assert.equal(r1.length, 1);
+  const calls2 = [];
+  const limited = (url) => { calls2.push(url); return Promise.resolve(url === U.API_URL ? { ok: false, status: 403 } : { ok: true, text: () => Promise.resolve(line) }); };
+  const r2 = await U.load(limited);
+  assert.deepEqual(calls2, [U.API_URL, U.URL]); assert.equal(r2.length, 1);
+});
