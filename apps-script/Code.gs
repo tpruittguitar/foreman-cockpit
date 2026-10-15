@@ -1809,7 +1809,7 @@ function mutateRow(line, ruling, flexPolicy) {
 function deriveWriterScores_(fixed, P, set, policy) {
   if(!policy._SCORING_MODEL)return {ok:false,error:'SCORING_MODEL_UNAVAILABLE: '+(policy._SCORING_ERROR||'read the published model before scoring')};
   var input={};Object.keys(P).forEach(function(k){if(SCORE_OUTPUT_KEYS.indexOf(k)<0&&['FLEX_MODIFIER','ADJUSTED_FIT','PURSUIT_STATUS'].indexOf(k)<0)input[k]=P[k];});
-  var config=Object.assign({},policy._SCORING_MODEL,{flexPolicy:policy});
+  var config=Object.assign({},policy._SCORING_MODEL,{flexPolicy:policy,targetCompanies:policy._TARGET_COMPANIES||[]});
   var score=PipelineScoring.scoreRow({COMPANY:fixed[2],TITLE:fixed[3],LOCATION:fixed[8],payload:input},config);
   function value(k,v){set(k,v==null?'UNKNOWN':String(v));}
   value('OVERALL',score.overall);value('OVERALL_RATING',score.overall);
@@ -2394,6 +2394,7 @@ function readFlexPolicy_() {
     });
     if (raw.POLICY_VERSION === PipelinePolicy.V4) raw.FLEX_POLICY_VERSION = PipelinePolicy.V4;
     var policy = PipelinePolicy.normalizeFlexPolicy ? PipelinePolicy.normalizeFlexPolicy(raw) : raw;
+    policy._TARGET_COMPANIES = PipelineScoring.targetCompaniesFromRules(text);
     if(PipelinePolicy.isV4(policy)){var scoring=readScoringModel_();if(scoring.ok&&scoring.exists)policy._SCORING_MODEL=scoring.model;else policy._SCORING_ERROR=scoring.error||'Published scoring model missing';}
     policy._SOURCE = structured ? 'CANONICAL_STRUCTURED' : 'CANONICAL_DEFAULTS';
     policy._WARNING = structured ? '' : 'No structured FLEX policy keys found; production defaults used';
