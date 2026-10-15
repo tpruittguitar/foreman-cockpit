@@ -11,7 +11,7 @@ Diagnosis: scores were recalculating. FPC led on every input (stored fit 92, com
 ### Changed
 1. `pipeline-scoring.js` (and byte-identical `apps-script/PipelineScoring.gs`): model version `2026-10-14.1`; default weights experience 40, flex 30, comp 15, geo 10, culture 5, title/ats/ownership 0.
 2. Compensation: two-segment line, 0 at floor, 50 at target, 100 at ceiling. The salary target setting was previously ignored.
-3. Culture: explicit `CULTURE_SCORE` first; otherwise the Target Companies tier from the canonical rules (P1 100, P2 90, P3 75, WATCH 60; unlisted or PAUSED 40; hidden-client recruiter rows UNKNOWN). The viewer (`scoringCfg_`) and the Writer (`readFlexPolicy`, `deriveWriterScores_`) both read the list with `PipelineScoring.targetCompaniesFromRules`. The list is stripped from the published model.
+3. Culture: explicit `CULTURE_SCORE` first; otherwise the Target Companies tier from the canonical rules (P1 100, P2 90, P3 75, WATCH 60; unlisted or PAUSED 40; hidden-client recruiter rows UNKNOWN). The viewer (`scoringCfg_`) and the Writer (`readFlexPolicy_`, `deriveWriterScores_`) both read the list with `PipelineScoring.targetCompaniesFromRules`. The list is stripped from the published model.
 4. `pipeline.html`: new `OPEN` preset "Open roles" (nonterminal, not APPLIED) is the default; a saved "All live" view moves to it once (`px.openDefaultV1`). "All live", "Applied" and the terminal history views are unchanged.
 5. Target Companies policy line and screen tip now say priority also sets the culture score.
 6. `SCORING_MODEL.md`: weights, fit anchors for `SCOPE_FIT_RAW`, culture rule, comp curve, ceiling-only salary rule.
