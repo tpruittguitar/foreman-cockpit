@@ -337,6 +337,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 #st-job{width:100%}.st-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px}@media(max-width:760px){.st-grid{grid-template-columns:1fr}}
 .st-pair{display:flex;gap:8px;align-items:center}.st-pair input[type=range]{flex:1}.st-pair input[type=number]{width:64px}
 .st-big{display:flex;align-items:baseline;gap:12px}.st-big b{font-size:40px}.st-parts{width:100%;font-size:12px}.st-parts td{padding:2px 6px;vertical-align:top}
+.decision-applied{margin:6px 0;padding:6px 8px;border-left:3px solid #22c55e;background:rgba(34,197,94,.08);font-size:12px}
 .upd-bar{display:flex;align-items:center;gap:10px;margin:8px 0 4px;font-size:12px}.upd-bar[hidden]{display:none}
 .upd-track{flex:0 0 180px;height:8px;border-radius:4px;background:#262626;overflow:hidden}.upd-track>i{display:block;height:100%;width:0;background:#38bdf8;transition:width .35s ease}
 .upd-bar[data-state=done] .upd-track>i{background:#22c55e}.upd-bar[data-state=failed] .upd-track>i{background:#ef4444}
@@ -880,6 +881,8 @@ function decorate(r){
   var d=PipelineParser.parseDate(r.payload.DATE_ADDED),loaded=PipelineParser.parseDate(r.payload.MASTER_LOADED_AT);r.dateAdded=d;r.dateAddedStr=d?d.toISOString().slice(0,10):(r.payload.DATE_ADDED||'');r.masterLoadedAt=loaded;r.masterLoadedAtStr=loaded?loaded.toISOString():(r.payload.MASTER_LOADED_AT||'');
   var cm=PipelineEvidence.salary(r.payload);r.compMid=cm.mid;r.compSource=cm.source;r.compLegacy=cm.legacy;
   r.mismatch=!!(r.section&&r.BUCKET&&r.section!==r.BUCKET);
+  /* POSTING_TITLE: the title as posted, recorded when the canonical TITLE column is protected (applied rows). Display only; writes use PRIMARY_ID. */
+  if(r.payload.POSTING_TITLE&&String(r.payload.POSTING_TITLE).trim()&&r.payload.POSTING_TITLE!==r.TITLE){r.TITLE_CANONICAL=r.TITLE;r.TITLE=String(r.payload.POSTING_TITLE).trim()}
   return r;
 }
 function isNew(r){if(S.seen[r.id])return false;if(r.dateAdded){var age=(Date.now()-r.dateAdded.getTime())/864e5;if(age<=S.newDays)return true}return !S.seen[r.id]}
@@ -1216,8 +1219,10 @@ function blockerExplanation_(r){
   if(/^(YES|TRUE|1)$/i.test(raw))return why?'Flagged as blocked: '+why:'Flagged as blocked; reason not recorded. Review evidence before treating this as a real eligibility blocker.';
   return 'Recorded blocker: '+raw+(why&&raw!==why?' - '+why:'');
 }
+/* Application evidence already on the row (Tim 2026-10-15: "the system should have already checked my email"). */
+function applicationEvidence_(r){var p=(r&&r.payload)||{},applied=['APPLIED','REJECTED_BY_EMPLOYER'].indexOf(r&&r.BUCKET)>=0||/^APPLIED/i.test(p.TIM_RULING||'');if(!applied&&!p.APP_DATE&&!p.APP_STATUS_EVIDENCE)return null;return {date:p.APP_DATE||'',evidence:String(p.APP_STATUS_EVIDENCE||'').slice(0,220),state:r.BUCKET}}
 function decisionEssentials_(r){var rs=rulingState(r),p=r.payload||{},step=nextJobStep_(r),blocker=[blockerExplanation_(r),p.ANTI_RESURRECTION?'Anti-resurrection protection: '+p.ANTI_RESURRECTION:'',p.ARCHIVE_STATE?'Archived; history only':''].filter(Boolean).join(' · ');
-  return '<section class="decision-essentials" aria-label="Decision essentials"><div class="decision-status"><span><b>Current state</b> '+esc(bucketLabel(r.BUCKET))+' · '+esc(r.DISPOSITION||'No disposition recorded')+'</span><span><b>Decision verification</b> '+esc(rs?rs.s:'No local decision awaiting verification')+'</span></div>'+(rs&&['SUBMITTING','READBACK_PENDING','READBACK_UNCONFIRMED','RESULT_UNKNOWN'].includes(rs.ru.writeStatus)?PipelineProgress.html('Canonical decision check · '+rs.s,null,null,'medium',rs.ru.writeStatus==='SUBMITTING'?'active':'waiting'):'')+(blocker?'<p class="decision-blocker"><b>Blocker</b> '+esc(blocker)+'</p>':'')+'<button class="next-job-step" type="button" data-next-job-step>'+esc(step.label)+' <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 13L13 3M4 3h9v9"/></svg></button></section>';
+  return '<section class="decision-essentials" aria-label="Decision essentials"><div class="decision-status"><span><b>Current state</b> '+esc(bucketLabel(r.BUCKET))+' · '+esc(r.DISPOSITION||'No disposition recorded')+'</span><span><b>Decision verification</b> '+esc(rs?rs.s:'No local decision awaiting verification')+'</span></div>'+(rs&&['SUBMITTING','READBACK_PENDING','READBACK_UNCONFIRMED','RESULT_UNKNOWN'].includes(rs.ru.writeStatus)?PipelineProgress.html('Canonical decision check · '+rs.s,null,null,'medium',rs.ru.writeStatus==='SUBMITTING'?'active':'waiting'):'')+(blocker?'<p class="decision-blocker"><b>Blocker</b> '+esc(blocker)+'</p>':'')+(function(a){return a?'<p class="decision-applied"><b>You applied'+(a.date?' '+esc(a.date):'')+'</b> '+esc(a.evidence||'Recorded as '+a.state)+'</p>':''})(applicationEvidence_(r))+'<button class="next-job-step" type="button" data-next-job-step>'+esc(step.label)+' <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 13L13 3M4 3h9v9"/></svg></button></section>';
 }
 function bindNextStep_(r){var button=document.querySelector('[data-next-job-step]');if(!button)return;button.onclick=function(){var step=nextJobStep_(r);S.detailTab=step.tab;renderDetail(r);var target=$(step.field);if(target){target.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});if(!target.matches('input,select,textarea,button,a,[tabindex]'))target.setAttribute('tabindex','-1');target.focus({preventScroll:true});}};}
 function renderWorkspaceHead_(r){var dh=document.querySelector('#drawer .dh');if(!dh)return;var p=r.payload||{},sc=scoreFor_(r),fa=sc.assessment,ls=PipelinePolicy.links(r),pay=PipelineTrust.salaryRange(p),rows=filteredRows(),i=rows.findIndex(function(x){return x.id===r.id});
@@ -1315,6 +1320,7 @@ function saveTimDecision(r){
   if(!state&&!note){$('edit-status').textContent='Choose a state or write a note.';return}
   var kind='NOTE',value='',code=reason;
   if(state==='READY_TO_PURSUE'){kind='APPLY_NOW';value='YES'}else if(state==='DECLINED_BY_TIM'){kind='DECLINE'}else if(state){kind=state}
+  var appEv=applicationEvidence_(r);if(appEv&&['DECLINE','CLOSED_DEAD','INVALID_DISCOVERY','DUPLICATE','MANUAL_RESEARCH','APPLY_NOW'].indexOf(kind)>=0&&(r.BUCKET==='APPLIED'||r.BUCKET==='REJECTED_BY_EMPLOYER')){$('edit-status').textContent='Not saved · you already applied'+(appEv.date?' on '+appEv.date:'')+(appEv.evidence?' ('+appEv.evidence+')':'')+'. An applied job keeps its record; use Rejected by employer or a note instead.';return}
   if(kind==='REJECTED_BY_EMPLOYER'&&!$('edit-evidence').value.trim()&&!note){$('edit-status').textContent='Add rejection evidence or a note identifying the employer notice.';return}
   if(kind==='DUPLICATE'&&!dup){$('edit-status').textContent='Duplicate target required.';return}
   var ts=new Date().toISOString(),ru={writeStatus:'LOCAL_DRAFT',kind:kind,value:value,code:code,dupOf:dup,note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,actor:'TIM',requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};

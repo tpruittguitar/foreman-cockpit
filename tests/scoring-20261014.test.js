@@ -124,3 +124,13 @@ test('readback confirms by state; notes compare the way the Writer stores them',
   assert.equal(T.matches(row('APPLIED',{TIM_NOTE:'Hello Tim, Thanks, team / ops [Tim 2026-10-14]'}),{kind:'NOTE',note:'Hello Tim; Thanks; team | ops'}),true);
   assert.equal(T.matches(row('APPLIED',{TIM_NOTE:'Line one Line two [Tim 2026-10-14]'}),{kind:'NOTE',note:'Line one\n\nLine two'}),true);
 });
+
+test('decision panel shows application evidence and blocks declining an applied job',()=>{
+  assert.match(html,/function applicationEvidence_\(r\)/);
+  assert.match(html,/class="decision-applied"><b>You applied/);
+  assert.match(html,/Not saved · you already applied/);
+});
+
+test('a recorded POSTING_TITLE is shown in place of the protected canonical title',()=>{
+  assert.match(html,/if\(r\.payload\.POSTING_TITLE&&String\(r\.payload\.POSTING_TITLE\)\.trim\(\)&&r\.payload\.POSTING_TITLE!==r\.TITLE\)\{r\.TITLE_CANONICAL=r\.TITLE;r\.TITLE=String\(r\.payload\.POSTING_TITLE\)\.trim\(\)\}/);
+});
