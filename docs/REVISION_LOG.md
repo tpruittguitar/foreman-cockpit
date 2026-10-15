@@ -2,6 +2,26 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-15-C — scoring page says the model is shared
+
+Trigger: Grok's Pipeline Explorer proposal v1.4 read the scoring page as "local to this browser" and built "100% = 70 local + 30 shared FLEX" on it. Tim, 2026-10-15 03:35 ET: "yes correct it".
+
+### Changed
+
+1. **Scoring page copy** (`pipeline.html`). Heading "Scoring model · derived viewer assessment" and the text "ranks the current rows on this browser" were written before PRs #113/#114. Since then every Update button publishes a numbered revision of the shared model. Heading is now "Scoring model · shared by every viewer and agent"; the text says each Update publishes a revision, every viewer and agent scores from it, and edits apply only on Update.
+2. **Weights total is visibly honest** (`pipeline.html`). The FLEX weight input moves into the FLEX card, which left seven visible fields summing to 70 under "Total weight: 100 / 100". A read-only "flex (set in FLEX card)" row now stays in the weights grid and mirrors the FLEX value, so the visible rows add to the total. Weights heading reads "shared · total must equal 100 (FLEX included)".
+3. **Fit & Score heading** "derived viewer model" → "shared scoring model".
+4. **Settings shell** (`pipeline-navigation.js`). Chip "PRESENTATION ONLY" → "SHORTCUTS"; the Live scoring card says weight, salary, geo and FLEX updates publish revisions of the shared model.
+
+### Not changed
+
+- No scoring logic, published model, Writer code, rules or master rows. Copy and one read-only display row only.
+
+### Verification
+
+- `npm test`: 455 pass, 0 fail (452 + 3 in `tests/scoring-scope-copy.test.js`).
+- Rendered locally in Chromium with a stubbed Writer: heading, FLEX mirror row (30), total 100, chip SHORTCUTS; no page errors.
+
 ## Batch 2026-10-15-B — Applied jobs show their evidence; Trane posting title
 
 Trigger: Tim, 2026-10-15 03:15 ET ("the system should have already checked my email to settle those two"). Futura and Trane already carried APP_DATE and APP_STATUS_EVIDENCE (Gmail message IDs) in the master; the stale copy and the decision panel kept that out of view, so Tim declined two jobs he had applied to.
