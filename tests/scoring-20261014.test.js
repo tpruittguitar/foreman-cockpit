@@ -100,3 +100,27 @@ test('scoring config is memoized; rules text is not re-parsed per row',()=>{
   assert.match(html,/if\(m\.cfg&&scoreCache\.fp!==''&&m\.scoring===S\.scoring&&m\.text===text&&m\.rev===rev\)return m\.cfg;/);
   assert.match(html,/function scoreFor_\(r\)\{if\(!r\)return null;var cfg=scoringCfg_\(\),fp=scoringCfgMemo_\.fp;/);
 });
+
+test('writes retry on Writer lock timeout and the default view re-reads a fresh copy after writes',()=>{
+  assert.match(html,/var WRITER_BUSY_RE_=\/lock timeout\|writer busy\|another process was holding the lock\/i/);
+  assert.match(html,/function gsPostRetryBusy_\(body,onRetry\)/);
+  assert.match(html,/gsPostRetryBusy_\(\{action:'ruling',ruling:ru\}/);
+  assert.match(html,/gsPostRetryBusy_\(\{action:'batch',requests:chunk\}\)/);
+  assert.match(html,/function reloadAfterWrite_\(\)\{if\(S\.structuredBase&&S\.cfg\.key\)return importStructuredFromWriter_\(S\.structuredBase\)/);
+  assert.match(html,/if\(j\.ok\)\{setText_\('edit-status','Saved · refreshing the master to confirm…'\);reloadAfterWrite_\(\)\}/);
+  assert.match(html,/S\.structuredBase=base;\s*if\(S\.cfg\.key&&!S\.structuredSyncing&&Date\.now\(\)-\(S\.structuredSyncedAt\|\|0\)>60000\)/);
+  assert.doesNotMatch(html,/gsPost\(\{action:'ruling',ruling:ru\}\)\.then\(function\(j\)\{ru\.receipt/);
+});
+
+test('readback confirms by state; notes compare the way the Writer stores them',()=>{
+  const T=require('../pipeline-trust');
+  const row=(bucket,p)=>({BUCKET:bucket,payload:p||{}});
+  assert.equal(T.matches(row('CLOSED_DEAD',{}),{kind:'CLOSED_DEAD',code:'NO_LONGER_AVAILABLE',note:'gone'}),true);
+  assert.equal(T.matches(row('DECLINED_BY_TIM',{DECLINE_REASON_CODE:'FLEX_STRICT_NO'}),{kind:'DECLINE',code:'FLEX_STRICT_NO'}),true);
+  assert.equal(T.matches(row('DECLINED_BY_TIM',{DECLINE_REASON_CODE:'PAY_BELOW_FLOOR'}),{kind:'DECLINE',code:'FLEX_STRICT_NO'}),false);
+  assert.equal(T.matches(row('APPLIED',{}),{kind:'DECLINE',code:'FLEX_STRICT_NO'}),false);
+  assert.equal(T.matches(row('APPLIED',{TIM_NOTE:'Hello Tim, Thanks, team / ops [Tim 2026-10-14]'}),{kind:'NOTE',note:'Hello Tim;\n\nThanks; team | ops'}),true);
+  assert.equal(T.matches(row('APPLIED',{TIM_NOTE:'Something else [Tim 2026-10-14]'}),{kind:'NOTE',note:'Hello Tim'}),false);
+  assert.equal(T.matches(row('APPLIED',{TIM_NOTE:'Hello Tim, Thanks, team / ops [Tim 2026-10-14]'}),{kind:'NOTE',note:'Hello Tim; Thanks; team | ops'}),true);
+  assert.equal(T.matches(row('APPLIED',{TIM_NOTE:'Line one Line two [Tim 2026-10-14]'}),{kind:'NOTE',note:'Line one\n\nLine two'}),true);
+});

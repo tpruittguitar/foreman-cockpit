@@ -746,8 +746,16 @@ function localSqliteTextFromPagedJobs_(base,seq){
   });
 }
 
+/* Writes refused for a Writer lock timeout never touched the master (waitLock throws first), so they are retried
+ * automatically: Tim 2026-10-13 wants trivial non-problems handled by the pipeline, not by manual resubmits. */
+var WRITER_BUSY_RE_=/lock timeout|writer busy|another process was holding the lock/i,WRITER_BUSY_DELAYS_=[8000,15000,30000,45000];
+function gsPostRetryBusy_(body,onRetry){var attempt=0;function go(){return gsPost(body).then(function(j){if(j&&!j.ok&&WRITER_BUSY_RE_.test(String(j.error||''))&&attempt<WRITER_BUSY_DELAYS_.length){var wait=WRITER_BUSY_DELAYS_[attempt++];if(onRetry)onRetry(attempt,WRITER_BUSY_DELAYS_.length,wait);return new Promise(function(res){setTimeout(res,wait)}).then(go)}return j})}return go()}
+function setText_(id,text){var e=$(id);if(e)e.textContent=text}
+/* The default view reads a stored copy of the master. After a write, rebuild that copy from the Writer before reading,
+ * so the readback sees the write. Until 2026-10-15 the copy was rebuilt only by a manual button (stale since Oct 11). */
+function reloadAfterWrite_(){if(S.structuredBase&&S.cfg.key)return importStructuredFromWriter_(S.structuredBase).then(function(){S.structuredSyncedAt=Date.now();return load()},function(){return load()});return load()}
 function importStructuredFromWriter_(base){
-  readout('<b>seeding structured runtime.</b> importing current Writer master');
+  if(!S.rows||!S.rows.length)readout('<b>seeding structured runtime.</b> importing current Writer master');
   return fetch(base+'/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(r){return r.json().then(function(j){if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('structured import HTTP '+r.status));return j})});
 }
 
@@ -795,6 +803,8 @@ function loadStructuredRuntime_(q){
     S.load={freshness:'LIVE',error:'',startedAt:meta.fetchedAt,text:j.text,fromCache:false,meta:meta,archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};
     S.connection.state='Connected structured runtime';S.connection.lastRead=meta.fetchedAt;S.connection.error='';
     apply(j.text,meta,false);renderLoadAlert_();renderReadout();
+    S.structuredBase=base;
+    if(S.cfg.key&&!S.structuredSyncing&&Date.now()-(S.structuredSyncedAt||0)>60000){S.structuredSyncing=true;importStructuredFromWriter_(base).then(function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now();if(seq===S.loadSeq)load()},function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now()})}
     return S.load;
   }).catch(function(e){
     if(seq!==S.loadSeq)return null;
@@ -1298,7 +1308,7 @@ function bindDetail_(r){
   if($('save-decision'))$('save-decision').onclick=function(){saveTimDecision(r)};
   if($('enrich-save'))$('enrich-save').onclick=function(){saveEnrichment_(r)};
   if($('enrich-request'))$('enrich-request').onclick=function(){requestResearch_(r)};
-  if($('undo-decision'))$('undo-decision').onclick=function(){if(!hasWriter()){alert('Writer required for undo.');return} $('edit-status').textContent='Undoing…';gsPost({action:'undo_ruling',undo:{primaryId:r.PRIMARY_ID}}).then(function(j){if(j.ok)load();else $('edit-status').textContent=j.error||'Undo failed'})};
+  if($('undo-decision'))$('undo-decision').onclick=function(){if(!hasWriter()){alert('Writer required for undo.');return} $('edit-status').textContent='Undoing…';gsPost({action:'undo_ruling',undo:{primaryId:r.PRIMARY_ID}}).then(function(j){if(j.ok)reloadAfterWrite_();else setText_('edit-status',j.error||'Undo failed')})};
 }
 function saveTimDecision(r){
   var state=$('edit-state').value,reason=$('edit-reason').value,note=$('edit-note').value.trim(),dup=$('edit-dup').value.trim();
@@ -1311,7 +1321,7 @@ function saveTimDecision(r){
   if(kind==='REJECTED_BY_EMPLOYER'){ru.evidence=$('edit-evidence').value.trim()||note;ru.eventDate=$('edit-event-date').value}
   S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
   if(!hasWriter()){$('edit-status').textContent='Local draft only · master unchanged. Connect writer and save to submit.';render();return}
-  ru.writeStatus='SUBMITTING';render();$('edit-status').textContent='Submitting; master not yet verified…';gsPost({action:'ruling',ruling:ru}).then(function(j){ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');ru.writeStatus=j.ok?'READBACK_PENDING':'WRITE_FAILED';S.rulings[r.id]=ru;LS.set('rulings',S.rulings);if(j.ok)load();else {LS.set('writeError',ru.error);$('edit-status').textContent=ru.error;render()}}).catch(function(e){ru.error=e.message;LS.set('writeError',e.message);ru.writeStatus='RESULT_UNKNOWN';LS.set('rulings',S.rulings);$('edit-status').textContent='Result unknown · '+e.message;render()});
+  ru.writeStatus='SUBMITTING';render();setText_('edit-status','Submitting; master not yet verified…');gsPostRetryBusy_({action:'ruling',ruling:ru},function(n,of,wait){setText_('edit-status','Writer busy with another job · retrying automatically ('+n+' of '+of+') in '+Math.round(wait/1000)+' s…')}).then(function(j){ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');ru.writeStatus=j.ok?'READBACK_PENDING':'WRITE_FAILED';S.rulings[r.id]=ru;LS.set('rulings',S.rulings);if(j.ok){setText_('edit-status','Saved · refreshing the master to confirm…');reloadAfterWrite_()}else {LS.set('writeError',ru.error);setText_('edit-status',ru.error);render()}}).catch(function(e){ru.error=e.message;LS.set('writeError',e.message);ru.writeStatus='RESULT_UNKNOWN';LS.set('rulings',S.rulings);setText_('edit-status','Result unknown · '+e.message);render()});
 
 }
 function renderApplication_(r){
@@ -1369,10 +1379,10 @@ function bulkAction(kind){
     var stamp=Date.now(),requests=rows.map(function(r,i){return {action:'ruling',ruling:{primaryId:r.PRIMARY_ID,kind:kind,code:code,note:note,actor:'TIM',requestId:'PX-BULK-'+stamp+'-'+String(i+1)+'-'+r.id.slice(-6)}}});
     var chunks=[];for(var i=0;i<requests.length;i+=50)chunks.push(requests.slice(i,i+50));
     var results=[],chain=Promise.resolve();
-    chunks.forEach(function(chunk){chain=chain.then(function(){return gsPost({action:'batch',requests:chunk}).then(function(j){results.push(j);if(!j||!j.ok){
+    chunks.forEach(function(chunk){chain=chain.then(function(){return gsPostRetryBusy_({action:'batch',requests:chunk}).then(function(j){results.push(j);if(!j||!j.ok){
       var failed=((j&&j.results)||[]).filter(function(x){return x&&!x.ok}).map(function(x){var pid=((chunk[x.index]||{}).ruling||{}).primaryId,rr=rows.filter(function(r){return r.PRIMARY_ID===pid})[0];return '• '+(rr?rr.COMPANY+' — '+rr.TITLE:pid)+': '+(x.error||'failed')});
       var e=new Error(((j&&j.error)||'Writer batch '+results.length+' of '+chunks.length+' reported failures')+(failed.length?'\n'+failed.join('\n'):'')+'\nRows that verified were committed; later batches were not sent. Reloading.');e.partial=true;throw e}return j})})});
-    return chain.then(function(){S.checked={};readout('<span class="good">Bulk '+esc(kind)+' submitted: '+rows.length+' rows in '+chunks.length+' Writer batch'+(chunks.length===1?'':'es')+'</span>');load();return results},function(e){if(e&&e.partial)load();throw e});
+    return chain.then(function(){S.checked={};readout('<span class="good">Bulk '+esc(kind)+' submitted: '+rows.length+' rows in '+chunks.length+' Writer batch'+(chunks.length===1?'':'es')+'</span>');reloadAfterWrite_();return results},function(e){if(e&&e.partial)reloadAfterWrite_();throw e});
   }).catch(function(e){alert('Bulk action failed: '+e.message)});
 }
 /* User widths are session-only. On a fresh canonical load/refresh, reset to
