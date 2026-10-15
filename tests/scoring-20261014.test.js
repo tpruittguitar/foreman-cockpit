@@ -51,3 +51,9 @@ test('Open roles is the default view and hides Applied; All live keeps it',()=>{
   assert.match(html,/ALL:\{label:'All live'/);
   assert.match(html,/if\(!LS\.get\('openDefaultV1',false\)\)\{if\(S\.preset==='ALL'\)S\.preset='OPEN';LS\.set\('openDefaultV1',true\)\}/);
 });
+
+test('structured runtime loads the published model and canonical rules',()=>{
+  assert.match(html,/function loadScoringGovernance_\(\)\{\s*if\(!hasWriter\(\)\)return;\s*loadCanonicalScoring_\(\)/);
+  assert.match(html,/readout\('<b>fetching structured runtime\.<\/b>'\);loadScoringGovernance_\(\);/);
+  assert.match(html,/if\(hasWriter\(\)\)\{syncStateDown\(\);loadScoringGovernance_\(\);/);
+});
