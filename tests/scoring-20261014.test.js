@@ -94,3 +94,9 @@ test('tester button is wired only after the shared-model row creates it',()=>{
   assert.ok(body.indexOf("insertAdjacentHTML('afterbegin'")<body.indexOf("$('score-tester-open')"),'button created before wiring');
   assert.doesNotMatch(body,/\$\('score-tester-open'\)\.onclick/);
 });
+
+test('scoring config is memoized; rules text is not re-parsed per row',()=>{
+  assert.match(html,/function buildScoringCfg_\(\)/);
+  assert.match(html,/if\(m\.cfg&&scoreCache\.fp!==''&&m\.scoring===S\.scoring&&m\.text===text&&m\.rev===rev\)return m\.cfg;/);
+  assert.match(html,/function scoreFor_\(r\)\{if\(!r\)return null;var cfg=scoringCfg_\(\),fp=scoringCfgMemo_\.fp;/);
+});

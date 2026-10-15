@@ -2,6 +2,19 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-14-D — Job selection lag after batch C
+
+Trigger: Tim, 2026-10-14 22:12 ET ("a lot of lag now when i select a different job").
+
+### Cause
+Batch C made the default view load the canonical rules. `scoringCfg_()` parses the full rules text (FLEX policy and Target Companies) and `scoreFor_` rebuilt the config and its fingerprint on every call, which is every row and score column on every render. Measured on production: 32.4 s per job click.
+
+### Changed
+`pipeline.html`: the config and fingerprint are built once and reused until the scoring model object, the rules text or the published revision changes, or any code path resets the score cache.
+
+### Verification
+`npm test` 448 pass (new regression check). Preview with live data: 0.6–0.8 s per job click (3 clicks), down from 32.4 s.
+
 ## Batch 2026-10-14-C — Default view loads the published scoring model and canonical rules
 
 Trigger: publishing revision 21 on 2026-10-14 21:35 ET. On the default data source (structured runtime) the Scoring screen showed "No published model yet" while the Writer held revision 20.
