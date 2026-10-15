@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'..','pipeline.html'),'utf8');
 test('initial and fresh master read sort overall SCORE descending',()=>{
- assert.match(source,/preset:'ALL',sort:\{col:'OVERALL_RATING',dir:'desc'\}/);
+ assert.match(source,/preset:'OPEN',sort:\{col:'OVERALL_RATING',dir:'desc'\}/);
  assert.match(source,/function resetOpeningTableLayout_\(\)\{\s*S.sort=\{col:'OVERALL_RATING',dir:'desc'\}/);
  assert.match(source,/buildColumnModel\(\);resetOpeningTableLayout_\(\);renderPresets\(\)/);
 });
