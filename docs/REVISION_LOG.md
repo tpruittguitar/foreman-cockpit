@@ -2,6 +2,21 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-15-B — Applied jobs show their evidence; Trane posting title
+
+Trigger: Tim, 2026-10-15 03:15 ET ("the system should have already checked my email to settle those two"). Futura and Trane already carried APP_DATE and APP_STATUS_EVIDENCE (Gmail message IDs) in the master; the stale copy and the decision panel kept that out of view, so Tim declined two jobs he had applied to.
+
+### Changed
+1. `pipeline.html`: the decision panel shows "You applied <date>" with the evidence text whenever a row is APPLIED/REJECTED_BY_EMPLOYER or carries APP_DATE/APP_STATUS_EVIDENCE.
+2. `pipeline.html`: saving DECLINE, CLOSED_DEAD, INVALID_DISCOVERY, DUPLICATE, MANUAL_RESEARCH or pursue on an APPLIED or REJECTED_BY_EMPLOYER row stops before the Writer with that evidence (the Writer refuses these anyway as protected states).
+3. `pipeline.html`: a recorded `POSTING_TITLE` is shown in place of the canonical TITLE (display only; writes use PRIMARY_ID).
+
+### Data action
+Trane V2I-644955A351E3 (Tim approved 03:16 ET): ENRICH `POSTING_TITLE=VP, Enterprise Quality` with its source. The Writer refuses IDENTITY corrections on APPLIED rows; relaxing that guard was declined, so the canonical TITLE column still reads "Global Enterprise Quality Leader".
+
+### Verification
+`npm test` 452 pass. Master readback shows POSTING_TITLE on the Trane row; stored copy rebuilt (1,628 rows).
+
 ## Batch 2026-10-15-A — Decisions land and show as confirmed
 
 Trigger: Tim, 2026-10-15 02:50 ET ("too many decisions are not getting recorded... master not confirming and write failed").
