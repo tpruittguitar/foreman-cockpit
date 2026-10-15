@@ -2,6 +2,29 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-14-B — Scoring model 2026-10-14.1 and Open roles default view
+
+Trigger: Tim, 2026-10-14 20:13–20:49 ET. FPC of Brighton held the top score for days despite weight changes; Tim asked for the suggested scoring changes as the new default, Applied/closed jobs hidden by default, and the Target Companies list fed into the culture score.
+
+Diagnosis: scores were recalculating. FPC led on every input (stored fit 92, comp 97 from a midpoint built on an estimated low end under a "up to $350k" ceiling, HIGH_FLEX, title 90), so no reweighting could move it. FPC is APPLIED.
+
+### Changed
+1. `pipeline-scoring.js` (and byte-identical `apps-script/PipelineScoring.gs`): model version `2026-10-14.1`; default weights experience 40, flex 30, comp 15, geo 10, culture 5, title/ats/ownership 0.
+2. Compensation: two-segment line, 0 at floor, 50 at target, 100 at ceiling. The salary target setting was previously ignored.
+3. Culture: explicit `CULTURE_SCORE` first; otherwise the Target Companies tier from the canonical rules (P1 100, P2 90, P3 75, WATCH 60; unlisted or PAUSED 40; hidden-client recruiter rows UNKNOWN). The viewer (`scoringCfg_`) and the Writer (`readFlexPolicy`, `deriveWriterScores_`) both read the list with `PipelineScoring.targetCompaniesFromRules`. The list is stripped from the published model.
+4. `pipeline.html`: new `OPEN` preset "Open roles" (nonterminal, not APPLIED) is the default; a saved "All live" view moves to it once (`px.openDefaultV1`). "All live", "Applied" and the terminal history views are unchanged.
+5. Target Companies policy line and screen tip now say priority also sets the culture score.
+6. `SCORING_MODEL.md`: weights, fit anchors for `SCOPE_FIT_RAW`, culture rule, comp curve, ceiling-only salary rule.
+
+### Not changed
+Master rows, FLEX policy, gates, Writer intake rules. FPC's stored fit and salary evidence are unchanged (separate correction).
+
+### Verification
+`npm test` 442 pass (new `tests/scoring-20261014.test.js`; two tests updated for the new defaults). Inline scripts parse. Branch code run against the live 578 open roles: spread ±11.2 → ±11.7, top 76; 74 open roles match a target company.
+
+### Limits
+The Writer's Apps Script copy needs a Writer deploy before Writer-stamped `OVERALL_RATING` values use the new curve and culture rule; the Explorer calculates live and does not depend on it. Removing title weight lets Manager-level titles rank beside Director/VP titles when the other inputs match.
+
 ## Batch 2026-10-14-A — AI usage panel shows new readings promptly
 
 Trigger: Tim, 2026-10-14 00:10 ET ("change it now... its important to know so i can balance work load"). The System panel kept showing the 21:17 ET reading after the 00:04 ET reading was pushed.
