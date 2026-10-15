@@ -130,8 +130,8 @@
   css();
   var shell=document.createElement('section');
   shell.className='control-center-shell';
-  shell.innerHTML='<div class="control-center-head"><div><h2>Settings</h2><p>One place to see and reach the governing surfaces. This is a cockpit layer only: edits still use the existing Rules, Scoring, Columns, Documents, and Writer screens. Nothing here publishes or mutates authority by itself.</p></div><span class="chip on">PRESENTATION ONLY</span></div><div class="control-center-grid">'+
-   card('status-ok','Live scoring','Loaded / guarded','Scoring edits remain local or governed by the existing scoring save/publish controls. VNext is not made live here.',[['Scoring','scoring'],['Pay / geo','scoring','pay-location']])+
+  shell.innerHTML='<div class="control-center-head"><div><h2>Settings</h2><p>One place to see and reach the governing surfaces. This is a cockpit layer only: edits still use the existing Rules, Scoring, Columns, Documents, and Writer screens. Nothing here publishes or mutates authority by itself.</p></div><span class="chip on">SHORTCUTS</span></div><div class="control-center-grid">'+
+   card('status-ok','Live scoring','Loaded / guarded','Weights, salary, geo and FLEX updates publish numbered revisions of the shared scoring model for every viewer and agent. VNext is not made live here.',[['Scoring','scoring'],['Pay / geo','scoring','pay-location']])+
    card('status-ok','Rules authority','Reachable','Canonical rule editing remains in the Advanced Rules view. This shell does not rewrite Drive authority.',[['Rules','rules']])+
    card('status-warn','Writer connection','Separate gate','Writer status and connection checks remain in the existing Settings/Writer surface.',[['Writer','settings']])+
    card('status-ok','Display controls','Reachable','Columns and table display controls remain separate until full table persistence is completed.',[['Columns','columns']])+
