@@ -2,6 +2,27 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-14-C — Default view loads the published scoring model and canonical rules
+
+Trigger: publishing revision 21 on 2026-10-14 21:35 ET. On the default data source (structured runtime) the Scoring screen showed "No published model yet" while the Writer held revision 20.
+
+### Cause
+`load()` returns early into `loadStructuredRuntime_` for the default source, and the published-model and canonical-rules reads lived only on the Writer path. On the default view every device scored with its own local draft or the code defaults, published changes never reached it, and FLEX policy and Target Companies were absent from scoring.
+
+### Changed
+`pipeline.html`: new `loadScoringGovernance_()` reads the published scoring model and the canonical rules, re-renders when they arrive, and runs on both data sources. The Writer path calls it in place of its inline reads.
+
+### Not changed
+Writer, master, scoring math, local-draft precedence (a device with an unpublished local draft keeps it until Load published or Publish).
+
+### Also in this batch (Tim, 2026-10-14 21:52–21:56 ET)
+- **FLEX modifiers reverting:** a modifier outside -100..100 (Tim entered HIGH_FLEX 200) was silently replaced with the code default on read. Both parsers (`pipeline-rules.js`, `pipeline-policy.js` + byte-identical `PipelinePolicy.gs`) now clamp to ±100, and the FLEX panel refuses an out-of-range value with a plain message. Readback now checks every policy key against what was entered.
+- **One Update button per scoring section:** "Update weights & salary", "Update geo scores", "Update FLEX weight", "Update FLEX policy". Each saves to the shared Writer model (or canonical rules), reads it back, compares it to what was entered, and shows a stepped progress bar ending green "Updated and confirmed · revision N · time" or red "Not updated · reason". The device-only save buttons are gone; map edits still persist on the device until Update (settings-stick rule, 2026-10-12). A revision conflict retries once against the live revision.
+- **Model tester:** "Test on one job…" opens a popup: pick a job, move every weight, the salary floor/target/ceiling and geo power, and see the job's rating, band, component table and rank among open roles change live against the published model. "Save as ruling model & update list" publishes through the same update path and re-ranks the list.
+
+### Verification
+`npm test` 446 pass (new regression checks). Inline scripts parse. Revision 21 (weights 40/30/15/10/culture 5, version 2026-10-14.1) was published through the Writer path and read back from the Writer.
+
 ## Batch 2026-10-14-B — Scoring model 2026-10-14.1 and Open roles default view
 
 Trigger: Tim, 2026-10-14 20:13–20:49 ET. FPC of Brighton held the top score for days despite weight changes; Tim asked for the suggested scoring changes as the new default, Applied/closed jobs hidden by default, and the Target Companies list fed into the culture score.

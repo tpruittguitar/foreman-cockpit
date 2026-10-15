@@ -111,7 +111,9 @@ For cover letters, use the same model version and explicitly connect the letter'
 
 ## Changing the model: review, publish, restore
 
-Weights, salary anchors, location points and keywords change only through the Scoring screen, in three steps:
+Each section of the Scoring screen has one Update button (weights & salary, geo scores, FLEX weight, FLEX policy). Update saves the whole model to the Writer, reads it back, and confirms with a progress bar; the new revision applies to every viewer and agent at once. "Test on one job…" previews any setting on a single job before saving the whole model with one button. The review-and-publish flow below remains for restoring an earlier revision.
+
+Weights, salary anchors, location points and keywords change only through the Scoring screen. The earlier three-step flow:
 
 1. **Edit** a local draft. Nothing is shared and the ratings you see do not change.
 2. **Review & publish** shows what you changed in plain words and the effect on the ranked jobs: how many move up and down, the average rating change, band changes, the top 10 before and after, and the largest rank moves. Nothing is saved until you press Publish. Publish is disabled when no setting differs from the published model.

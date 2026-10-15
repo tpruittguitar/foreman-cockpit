@@ -51,3 +51,46 @@ test('Open roles is the default view and hides Applied; All live keeps it',()=>{
   assert.match(html,/ALL:\{label:'All live'/);
   assert.match(html,/if\(!LS\.get\('openDefaultV1',false\)\)\{if\(S\.preset==='ALL'\)S\.preset='OPEN';LS\.set\('openDefaultV1',true\)\}/);
 });
+
+test('structured runtime loads the published model and canonical rules',()=>{
+  assert.match(html,/function loadScoringGovernance_\(\)\{\s*if\(!hasWriter\(\)\)return;\s*loadCanonicalScoring_\(\)/);
+  assert.match(html,/readout\('<b>fetching structured runtime\.<\/b>'\);loadScoringGovernance_\(\);/);
+  assert.match(html,/if\(hasWriter\(\)\)\{syncStateDown\(\);loadScoringGovernance_\(\);/);
+});
+
+test('each scoring section has one Update button with a confirming progress bar',()=>{
+  for(const id of ['score-update-weights','score-update-map','fp-weight-update','rules-flex-save'])assert.match(html,new RegExp('id=\\\\?"'+id+'\\\\?"'));
+  for(const id of ['score-update-weights-bar','score-update-map-bar','fp-weight-bar','rules-flex-bar'])assert.match(html,new RegExp('id=\\\\?"'+id+'\\\\?" class=\\\\?"upd-bar\\\\?" hidden'));
+  assert.match(html,/function updateBar_\(host\)/);
+  assert.match(html,/function updateScoringSection_\(sectionLabel,barHost,draftOverride\)/);
+  assert.match(html,/bar\.step\(75,'Reading back to confirm…'\)/);
+  assert.match(html,/scoringSameAsDraft_\(rb\.model,dedupePointsForCompare_\(draft\)\)/);
+  assert.match(html,/LS\.set\('scoringLocalEdited',false\)/);
+  assert.doesNotMatch(html,/Save weight on this device/);
+  assert.match(html,/save\.dataset\.scoreEnhanced='1';save\.hidden=true;/);
+});
+
+test('FLEX modifiers outside -100..100 are refused in the panel and clamped by both parsers',()=>{
+  const R=require('../pipeline-rules'),P=require('../pipeline-policy');
+  assert.equal(R.flexPolicy('SECTION=DEGREE_FLEX\nHIGH_FLEX_MODIFIER=200\nNO_FLEX_MODIFIER=-160\n').HIGH_FLEX_MODIFIER,100);
+  assert.equal(R.flexPolicy('SECTION=DEGREE_FLEX\nHIGH_FLEX_MODIFIER=200\nNO_FLEX_MODIFIER=-160\n').NO_FLEX_MODIFIER,-100);
+  assert.equal(P.normalizeFlexPolicy({HIGH_FLEX_MODIFIER:'200'}).HIGH_FLEX_MODIFIER,100);
+  assert.equal(fs.readFileSync(path.join(__dirname,'..','apps-script','PipelinePolicy.gs'),'utf8'),fs.readFileSync(path.join(__dirname,'..','pipeline-policy.js'),'utf8'));
+  assert.match(html,/each modifier must be a number from -100 to 100/);
+  assert.match(html,/reads back as '\+got\[k\]\+', expected '\+policy\[k\]/);
+});
+
+test('one-job model tester previews live and saves the whole model through the same update path',()=>{
+  assert.match(html,/id="score-tester-open" class="neon">Test on one job…/);
+  assert.match(html,/function openScoreTester_\(\)/);
+  assert.match(html,/updateScoringSection_\('the whole model',\$\('st-bar'\),live\)/);
+  assert.match(html,/function updateScoringSection_\(sectionLabel,barHost,draftOverride\)/);
+  assert.match(html,/Rank among '\+rows\.length\+' open roles/);
+});
+
+test('tester button is wired only after the shared-model row creates it',()=>{
+  const fn=html.slice(html.indexOf('function enhanceScoringControls_(){'));
+  const body=fn.slice(0,fn.indexOf('\n}\n'));
+  assert.ok(body.indexOf("insertAdjacentHTML('afterbegin'")<body.indexOf("$('score-tester-open')"),'button created before wiring');
+  assert.doesNotMatch(body,/\$\('score-tester-open'\)\.onclick/);
+});
