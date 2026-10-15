@@ -10,7 +10,7 @@ Trigger: Tim, 2026-10-15 02:50 ET ("too many decisions are not getting recorded.
 - The default view reads a stored copy of the master (Cloudflare KV). It was rebuilt only by the manual "seed structured runtime" button and was last built 2026-10-11 00:57 UTC: 749 rows against 1,623 in the Writer master. Readback compared decisions against that stale copy.
 - 14 decisions had landed in the Writer master. The readback rule also failed them on side details: it required a decline reason code on CLOSED_DEAD (the Writer stores that code only for declines), compared notes byte-for-byte though the Writer flattens line breaks, '; ' and ' | ', and failed a state change when another lane later rewrote TIM_NOTE.
 - 6 never landed: 5 Writer lock timeouts (the Writer waits 30 s for its script lock, which AI lanes hold) and 1 status-display exception after the drawer closed.
-- Reynolds (decline) had landed and was later moved back to MANUAL_RESEARCH by another process. Futura and Trane (declines) sit in APPLIED, a protected state the Writer will not decline.
+- Reynolds: Tim declined it on 2026-10-11 and set it to MANUAL_RESEARCH from the Explorer on 2026-10-13 (receipt PX-20261013165501-53D18C, probably another device); this device still held the older decline. Futura (APPLIED by Tim 2026-10-11, declined 2026-10-15) and Trane (declined 2026-10-11, APPLIED in the master with no Explorer receipt) sit in APPLIED, a protected state the Writer will not decline.
 
 ### Changed
 1. `pipeline.html`: `gsPostRetryBusy_` retries ruling and bulk writes refused for a lock timeout (8/15/30/45 s); the Writer refuses before touching the master, so a retry cannot double-apply.
@@ -19,7 +19,7 @@ Trigger: Tim, 2026-10-15 02:50 ET ("too many decisions are not getting recorded.
 4. Status messages no longer throw when the drawer has closed.
 
 ### Data actions (Tim's own recorded decisions)
-Stored copy rebuilt from the Writer master (1,623 rows). Resubmitted: Reynolds decline, QinetiQ decline, GKN Aerospace applied, Branch Technology closed, Goodwin decline.
+Stored copy rebuilt from the Writer master (1,623 rows). Each failed decision was checked against the receipts for a later Tim decision before resubmitting. Resubmitted: QinetiQ decline, GKN Aerospace applied, Branch Technology closed, Goodwin decline. Reynolds was resubmitted in error before that check and restored to MANUAL_RESEARCH with `undo_ruling`; the device's stale entry is marked SUPERSEDED. Result: 18 of 22 decisions confirmed; Futura, Trane (APPLIED conflicts) and Siemens (already CLOSED_DEAD) await Tim.
 
 ### Verification
 `npm test` 450 pass. New rule run against Tim's 22 decisions and the fresh copy: 14 confirmed; the rest are the items above.
