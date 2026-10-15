@@ -59,7 +59,7 @@
     if(!sec)return out;
     sec[1].split(/\r?\n/).forEach(function(line){
       var m=line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);if(!m||out[m[1]]===undefined)return;seen[m[1]]=1;
-      if(/_MODIFIER$/.test(m[1])){var n=Number(m[2]);if(isFinite(n)&&n>=-100&&n<=100)out[m[1]]=n}
+      if(/_MODIFIER$/.test(m[1])){var n=Number(m[2]);if(isFinite(n))out[m[1]]=Math.max(-100,Math.min(100,n))}
       else if(m[1]==='FRESH_DEGREE_OVERRIDES_STALE_CLASS'){var b=String(m[2]||'').toUpperCase();if(/^(YES|NO)$/.test(b))out[m[1]]=b}
       else {var v=String(m[2]||'').toUpperCase();if(FLEX_CLASSES.indexOf(v)>=0)out[m[1]]=v}
     });

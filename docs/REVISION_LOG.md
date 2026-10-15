@@ -15,8 +15,13 @@ Trigger: publishing revision 21 on 2026-10-14 21:35 ET. On the default data sour
 ### Not changed
 Writer, master, scoring math, local-draft precedence (a device with an unpublished local draft keeps it until Load published or Publish).
 
+### Also in this batch (Tim, 2026-10-14 21:52–21:56 ET)
+- **FLEX modifiers reverting:** a modifier outside -100..100 (Tim entered HIGH_FLEX 200) was silently replaced with the code default on read. Both parsers (`pipeline-rules.js`, `pipeline-policy.js` + byte-identical `PipelinePolicy.gs`) now clamp to ±100, and the FLEX panel refuses an out-of-range value with a plain message. Readback now checks every policy key against what was entered.
+- **One Update button per scoring section:** "Update weights & salary", "Update geo scores", "Update FLEX weight", "Update FLEX policy". Each saves to the shared Writer model (or canonical rules), reads it back, compares it to what was entered, and shows a stepped progress bar ending green "Updated and confirmed · revision N · time" or red "Not updated · reason". The device-only save buttons are gone; map edits still persist on the device until Update (settings-stick rule, 2026-10-12). A revision conflict retries once against the live revision.
+- **Model tester:** "Test on one job…" opens a popup: pick a job, move every weight, the salary floor/target/ceiling and geo power, and see the job's rating, band, component table and rank among open roles change live against the published model. "Save as ruling model & update list" publishes through the same update path and re-ranks the list.
+
 ### Verification
-`npm test` 443 pass (new regression check). Inline scripts parse. Revision 21 (weights 40/30/15/10/culture 5, version 2026-10-14.1) was published through the Writer path and read back from the Writer.
+`npm test` 446 pass (new regression checks). Inline scripts parse. Revision 21 (weights 40/30/15/10/culture 5, version 2026-10-14.1) was published through the Writer path and read back from the Writer.
 
 ## Batch 2026-10-14-B — Scoring model 2026-10-14.1 and Open roles default view
 

@@ -16,7 +16,7 @@ var PipelinePolicy = (function () {
   function normalizeFlexPolicy(c){
     c=c||{};var out={},classes={HIGH_FLEX:1,SOFT_FLEX:1,NO_FLEX:1,STRICT:1,UNKNOWN:1};
     Object.keys(FLEX_POLICY_DEFAULTS).forEach(function(k){out[k]=c[k]!==undefined?c[k]:FLEX_POLICY_DEFAULTS[k]});
-    ['HIGH_FLEX_MODIFIER','SOFT_FLEX_MODIFIER','NO_FLEX_MODIFIER','STRICT_MODIFIER'].forEach(function(k){var n=Number(out[k]);out[k]=isFinite(n)&&n>=-100&&n<=100?n:FLEX_POLICY_DEFAULTS[k]});
+    ['HIGH_FLEX_MODIFIER','SOFT_FLEX_MODIFIER','NO_FLEX_MODIFIER','STRICT_MODIFIER'].forEach(function(k){var n=Number(out[k]);out[k]=isFinite(n)?Math.max(-100,Math.min(100,n)):FLEX_POLICY_DEFAULTS[k]});
     ['NOT_STATED_CLASS','EQUIVALENCY_CLASS','HARD_DEGREE_CLASS','SINGLE_PATH_CLASS'].forEach(function(k){var v=String(out[k]||'').toUpperCase();out[k]=classes[v]?v:FLEX_POLICY_DEFAULTS[k]});
     var fresh=String(out.FRESH_DEGREE_OVERRIDES_STALE_CLASS||'').toUpperCase();out.FRESH_DEGREE_OVERRIDES_STALE_CLASS=/^(YES|NO)$/.test(fresh)?fresh:FLEX_POLICY_DEFAULTS.FRESH_DEGREE_OVERRIDES_STALE_CLASS;
     if(isV4(c)){
