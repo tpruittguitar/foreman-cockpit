@@ -886,8 +886,15 @@ function rulingState(r){
   return {s:label[status]||status.replace(/_/g,' '),ru:ru};
 }
 
-function scoringCfg_(){var cfg=S.scoring||PipelineScoring.defaults();var text=S.canonicalRules&&S.canonicalRules.text;if(text&&typeof PipelineRules!=='undefined'&&PipelineRules.flexPolicy)cfg=Object.assign({},cfg,{flexPolicy:PipelineRules.flexPolicy(text),publishedRevision:(S.scoringCanonicalMeta&&(S.scoringCanonicalMeta.publishedRevision||S.scoringCanonicalMeta.revision))||cfg.publishedRevision||0});/* Target Companies live in the canonical rules, never in the published model; they feed the culture component. */if(text)cfg=Object.assign({},cfg,{targetCompanies:PipelineScoring.targetCompaniesFromRules(text)});return cfg}
-function scoreFor_(r){if(!r)return null;var cfg=scoringCfg_(),fp=PipelineScoring.fingerprint(cfg);if(scoreCache.fp!==fp)scoreCache={fp:fp,rows:{}};if(scoreCache.rows[r.id])return scoreCache.rows[r.id];return scoreCache.rows[r.id]=PipelineScoring.scoreRow(r,cfg)}
+function buildScoringCfg_(){var cfg=S.scoring||PipelineScoring.defaults();var text=S.canonicalRules&&S.canonicalRules.text;if(text&&typeof PipelineRules!=='undefined'&&PipelineRules.flexPolicy)cfg=Object.assign({},cfg,{flexPolicy:PipelineRules.flexPolicy(text),publishedRevision:(S.scoringCanonicalMeta&&(S.scoringCanonicalMeta.publishedRevision||S.scoringCanonicalMeta.revision))||cfg.publishedRevision||0});/* Target Companies live in the canonical rules, never in the published model; they feed the culture component. */if(text)cfg=Object.assign({},cfg,{targetCompanies:PipelineScoring.targetCompaniesFromRules(text)});return cfg}
+/* Memoized: the config parses the full canonical rules text, and scoreFor_ runs for every row and column on every
+ * render, so rebuilding it per call froze the page once the default view began loading the rules (2026-10-14). */
+var scoringCfgMemo_={scoring:null,text:null,rev:null,cfg:null,fp:''};
+function scoringCfg_(){var text=S.canonicalRules&&S.canonicalRules.text||null,rev=S.scoringCanonicalMeta&&(S.scoringCanonicalMeta.publishedRevision||S.scoringCanonicalMeta.revision)||0,m=scoringCfgMemo_;
+  if(m.cfg&&scoreCache.fp!==''&&m.scoring===S.scoring&&m.text===text&&m.rev===rev)return m.cfg;
+  var cfg=buildScoringCfg_();scoringCfgMemo_={scoring:S.scoring,text:text,rev:rev,cfg:cfg,fp:PipelineScoring.fingerprint(cfg)};return cfg}
+function scoringFp_(){scoringCfg_();return scoringCfgMemo_.fp}
+function scoreFor_(r){if(!r)return null;var cfg=scoringCfg_(),fp=scoringCfgMemo_.fp;if(scoreCache.fp!==fp)scoreCache={fp:fp,rows:{}};if(scoreCache.rows[r.id])return scoreCache.rows[r.id];return scoreCache.rows[r.id]=PipelineScoring.scoreRow(r,cfg)}
 function scoreCell_(v){return v==null?'—':String(Math.round(v))}
 
 function val(r,c){
