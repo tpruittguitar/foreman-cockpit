@@ -87,3 +87,10 @@ test('one-job model tester previews live and saves the whole model through the s
   assert.match(html,/function updateScoringSection_\(sectionLabel,barHost,draftOverride\)/);
   assert.match(html,/Rank among '\+rows\.length\+' open roles/);
 });
+
+test('tester button is wired only after the shared-model row creates it',()=>{
+  const fn=html.slice(html.indexOf('function enhanceScoringControls_(){'));
+  const body=fn.slice(0,fn.indexOf('\n}\n'));
+  assert.ok(body.indexOf("insertAdjacentHTML('afterbegin'")<body.indexOf("$('score-tester-open')"),'button created before wiring');
+  assert.doesNotMatch(body,/\$\('score-tester-open'\)\.onclick/);
+});
