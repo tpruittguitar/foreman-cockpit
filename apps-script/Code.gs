@@ -2425,7 +2425,8 @@ function automationEnvelopeError_(req,live){
 }
 
 /* ================= REV-005 policy source switch =================
- * Drive stays the default. GitHub (tpruittguitar/forge-policy) is used only when Script Property POLICY_SOURCE=GITHUB.
+ * GitHub (tpruittguitar/forge-policy) is the default from 2026-10-17 (Stage 3 cutover, Tim 2026-10-17). Script Property
+ * POLICY_SOURCE=DRIVE switches back to the superseded Drive Doc and file (rollback only).
  * Optional properties: GITHUB_POLICY_TOKEN (fine-grained PAT, Contents read/write on forge-policy; required for saves and
  * recommended for reads), GITHUB_POLICY_REPO, GITHUB_POLICY_BRANCH, GITHUB_POLICY_RULES_PATH, GITHUB_POLICY_SCORING_PATH.
  * In GITHUB mode a failed read takes the same degraded path a failed Drive read takes today; it never silently falls back to Drive. */
@@ -2435,7 +2436,7 @@ function policyConfig_() {
   var p = {};
   try { p = (typeof PropertiesService !== 'undefined' && PropertiesService.getScriptProperties().getProperties()) || {}; } catch (e) { p = {}; }
   var d = POLICY_GITHUB_DEFAULTS;
-  return { source: String(p.POLICY_SOURCE || 'DRIVE').trim().toUpperCase() === 'GITHUB' ? 'GITHUB' : 'DRIVE',
+  return { source: String(p.POLICY_SOURCE || 'GITHUB').trim().toUpperCase() === 'DRIVE' ? 'DRIVE' : 'GITHUB',
     repo: String(p.GITHUB_POLICY_REPO || d.repo).trim(), branch: String(p.GITHUB_POLICY_BRANCH || d.branch).trim(),
     rulesPath: String(p.GITHUB_POLICY_RULES_PATH || d.rulesPath).trim(), scoringPath: String(p.GITHUB_POLICY_SCORING_PATH || d.scoringPath).trim(),
     token: String(p.GITHUB_POLICY_TOKEN || '').trim() };

@@ -3,6 +3,8 @@
   'use strict';
   var VERSION='PIPELINE_AUTOMATION_ALIGNMENT_V1';
   var IDS={master:'1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8',rules:'1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE',common:'1EEWkG_jSYH0DzufrGDsD_IQb-FIhGIUlrtKlsNz2P9Y'};
+  /* Stage 3 (2026-10-17): the Writer reads canonical Rules from GitHub forge-policy by default; both identities are the same authority. */
+  var RULES_IDS=[IDS.rules,'tpruittguitar/forge-policy/rules/TIM_PIPELINE_RULES_CANONICAL.txt'];
   var TASKS=[
     {key:'forge-email',provider:'ChatGPT',owner:'FORGE',lane:'email',nativeId:'6a602fad02548191abe90ae34f165ef5',intent:'Review the declared Gmail window completely in bounded batches; admit every plausible new job and preserve every unfinished candidate.',actions:['intake','upsert_application']},
     {key:'forge-temporary-coverage',provider:'ChatGPT',owner:'FORGE',lane:'temporary-coverage',nativeId:'6a77ccaae8b08191b8ff748ef0426db7',intent:'Perform only the explicitly assigned temporary Scout, enrichment and recovery coverage; do not duplicate another lane or create a cross-AI relay.',actions:['intake','ruling']},
@@ -48,7 +50,7 @@
     });
     if(a.common&&a.common.active!==true)issue('PAUSED_CONFLICT','ACTIVE common operational standard',a.common.active,'common');
     if(a.common&&a.common.id!==IDS.common)issue('PAUSED_CONFLICT',IDS.common,a.common.id,'common');
-    if(a.rules&&(a.rules.id!==IDS.rules||a.rules.active!==true))issue('PAUSED_CONFLICT','ACTIVE canonical Rules '+IDS.rules,a.rules.id+' / active='+a.rules.active,'rules');
+    if(a.rules&&(RULES_IDS.indexOf(a.rules.id)<0||a.rules.active!==true))issue('PAUSED_CONFLICT','ACTIVE canonical Rules '+IDS.rules,a.rules.id+' / active='+a.rules.active,'rules');
     if(a.writer&&a.writer.masterId!==IDS.master)issue('PAUSED_CONFLICT',IDS.master,a.writer.masterId,'writer');
     if(!scopeCheck(t,scope))issue('BLOCKED_SCOPE','Approved explicit sources, window policy and assignment evidence',scope,'scope');
     if(scope&&scope.expiresAt&&Date.parse(scope.expiresAt)<=now)issue('PAUSED_CONFLICT','Unexpired assigned coverage',scope.expiresAt,'scope');

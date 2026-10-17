@@ -36,3 +36,12 @@ Nobody needs to paste code into the editor any more. `apps-script/deploy.sh` set
 Email notifications and partial posting details can enter intake with unresolved evidence; successful persistence does not establish research completeness or pursuit eligibility. Supply a stable `requestId` (or `request_id`). For older intake clients, `run.SCOUT_RUN_ID` is the fallback identity. Writer uses the same identity for its durable intent, receipts, and queue recovery, while retaining the source run ID separately.
 
 For an already independently verified legacy intake whose final receipt lacks REQUEST_ID, submit `action=reconcile_intake_receipt` with the original `requestId` (the SCOUT_RUN_ID) and `writeId`. This repairs the index only: it requires an intact independent COMPLETE receipt for the live master, reconciled run accounting, unique current rows, valid master trailers, and no unresolved transactions or conflicting index entry. It records the historical proof and current row presence without claiming current row hashes match the original write or promoting job evidence. It never replays intake. Check `receipt_index` and `writer_status` after repair.
+
+## Policy source (from 2026-10-17)
+
+Canonical Rules and the scoring model live in `tpruittguitar/forge-policy` (`rules/TIM_PIPELINE_RULES_CANONICAL.txt`, `scoring/PIPELINE_SCORING_MODEL.json`). The Writer reads them there by default. Script Properties (Project Settings → Script Properties):
+
+- `GITHUB_POLICY_TOKEN`: fine-grained GitHub token, repository `tpruittguitar/forge-policy` only, permission Contents: Read and write. Needed for saves from the Explorer (Rules, Target Companies, scoring model). Reads work without it.
+- `POLICY_SOURCE`: leave unset (GitHub). Set `DRIVE` only to roll back to the superseded Drive Doc and file.
+
+Run `checkPolicySource` from the editor after any change: it reports the live source, whether the token is set, and whether the GitHub rules file is readable.

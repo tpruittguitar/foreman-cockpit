@@ -1,5 +1,5 @@
 'use strict';
-// REV-005: policy source switch. Drive is the default; GitHub only when POLICY_SOURCE=GITHUB.
+// REV-005: policy source switch. GitHub forge-policy is the default from 2026-10-17; POLICY_SOURCE=DRIVE is the rollback.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -45,8 +45,8 @@ function github(t, props, repoFiles) {
   return { w, files, calls };
 }
 
-test('default (no properties) reads rules from the Drive Doc and makes no network call', t => {
-  const { w, calls } = github(t, {}, {});
+test('POLICY_SOURCE=DRIVE (rollback) reads rules from the Drive Doc and makes no network call', t => {
+  const { w, calls } = github(t, { POLICY_SOURCE: 'drive' }, {});
   const r = w.run(() => W.readCanonicalRules_());
   assert.equal(r.ok, true); assert.equal(r.source, 'DRIVE'); assert.equal(r.id, RULES); assert.equal(r.text, RULES_TEXT);
   assert.equal(w.run(() => W.readRules_()).policySource, 'DRIVE');
@@ -115,4 +115,14 @@ test('concurrent GitHub change between read and write is a conflict, not an over
   const s = w.run(() => W.saveCanonicalRules_({ text: RULES_TEXT + 'A=1\n' }));
   assert.equal(s.ok, false); assert.equal(s.mode, 'REVISION_CONFLICT');
   assert.equal(files.get(path).text, 'OTHER');
+});
+
+test('default (no properties) reads rules from GitHub forge-policy and never opens the Drive Doc', t => {
+  const { w, calls } = github(t, {}, { 'rules/TIM_PIPELINE_RULES_CANONICAL.txt': RULES_TEXT });
+  const r = w.run(() => W.readCanonicalRules_());
+  assert.equal(r.ok, true); assert.equal(r.source, 'GITHUB'); assert.equal(r.id, 'tpruittguitar/forge-policy/rules/TIM_PIPELINE_RULES_CANONICAL.txt');
+  assert.equal(r.text, RULES_TEXT);
+  assert.match(calls[0].url, /^https:\/\/raw\.githubusercontent\.com\/tpruittguitar\/forge-policy\/main\//);
+  assert.equal(w.opens[RULES] || 0, 0);
+  assert.equal(W.policyConfig_().source, 'GITHUB');
 });

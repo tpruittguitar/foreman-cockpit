@@ -36,6 +36,8 @@ function world(t, opts = {}) {
       opens[id] = (opens[id] || 0) + 1; const f = files.get(id); if (!f || (id === RULES && opts.rulesText === null)) throw new Error('No synthetic Doc: ' + id);
       return { getBody: () => ({ getText: () => f.content, appendParagraph: text => { f.content += '\n' + text; } }), saveAndClose() {} };
     } },
+    // The synthetic world holds policy in its Drive Doc; production defaults to GitHub forge-policy since 2026-10-17.
+    PropertiesService: { getScriptProperties: () => ({ getProperties: () => Object.assign({ POLICY_SOURCE: 'DRIVE' }, opts.scriptProperties || {}), getProperty: k => Object.assign({ POLICY_SOURCE: 'DRIVE' }, opts.scriptProperties || {})[k] || null }) },
     MimeType: { PLAIN_TEXT: 'text/plain' },
     Date: class extends Date { constructor(...args) { super(...(args.length ? args : [clock])); } static now() { return clock; } }
   };

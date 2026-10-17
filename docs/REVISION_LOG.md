@@ -2,6 +2,37 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-17-A — policy lives on GitHub (Stage 3 cutover)
+
+Trigger: Tim, 2026-10-17 18:11 ET: "Move it all over to GitHub. Add and correct the code and lists. And update the app and ai coordination accordingly."
+
+### Changed
+
+1. **Policy source default is GitHub** (`apps-script/Code.gs`, `policyConfig_`). With no Script Property the Writer now reads and saves canonical Rules (`rules/TIM_PIPELINE_RULES_CANONICAL.txt`, including Never-Consider, FLEX and the Target Companies registry) and the scoring model (`scoring/PIPELINE_SCORING_MODEL.json`) in `tpruittguitar/forge-policy`. `POLICY_SOURCE=DRIVE` is the rollback to the superseded Drive Doc and file. Saves still need `GITHUB_POLICY_TOKEN`; reads without it use raw.githubusercontent.com (public repo).
+2. **Automation alignment accepts the GitHub Rules identity** (`pipeline-alignment.js`, `apps-script/PipelineAlignment.gs`, byte-identical). Preflight compared the Rules id with the Drive Doc ID only, so a GitHub read would have reported PAUSED_CONFLICT. It now accepts the Drive ID or `tpruittguitar/forge-policy/rules/TIM_PIPELINE_RULES_CANONICAL.txt`. The native prompt text is unchanged, so enrolled prompts do not drift.
+3. **Target Companies screen names where the list is stored** (`pipeline-target-companies.js`): "Stored in canonical Rules on GitHub (…)" or "on Drive (superseded source)".
+4. **Tests**: `tests/policy-source-github.test.js` (GitHub default; Drive rollback), `tests/alignment.test.js` (GitHub Rules identity passes, any other identity conflicts), `tests/helpers/writer-world.js` (synthetic world pins `POLICY_SOURCE=DRIVE` because it models policy in a Drive Doc).
+
+### Data moved (forge-policy, not this repo)
+
+- forge-policy `fa98995`: rules, scoring model and Writer access directive copied from Drive (MANIFEST.txt has Drive IDs and sha256).
+- forge-policy `35ffebb`: Target Companies adds AEVEX (P1) and Path Robotics (P1); 42 → 44 companies.
+
+### Not changed
+
+- Master, WRITER_QUEUE, freeze, receipt index and every other Writer data file stay on Drive (Stage 4 is a separate plan).
+- Scoring logic, FLEX logic, Never-Consider logic, intake, state rules.
+
+### Verification
+
+- `npm test`: 457 pass, 0 fail.
+- The Writer's Never-Consider parser on the GitHub rules file: status ACTIVE, 4 rules, 4 active (same as the Drive export). The Explorer's Target Companies parser: 44 companies, save round-trip unchanged.
+
+### Deploy
+
+- Explorer: Cloudflare Pages deploys from `main`.
+- Writer: `apps-script/deploy.sh` (clasp login as Tim). Until the Writer is redeployed, setting Script Property `POLICY_SOURCE=GITHUB` on the live Writer (v62+) gives the same policy source; item 2 needs the redeploy.
+
 ## Batch 2026-10-15-C — scoring page says the model is shared
 
 Trigger: Grok's Pipeline Explorer proposal v1.4 read the scoring page as "local to this browser" and built "100% = 70 local + 30 shared FLEX" on it. Tim, 2026-10-15 03:35 ET: "yes correct it".
