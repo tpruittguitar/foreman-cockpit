@@ -1,0 +1,11 @@
+{
+  "page": "tests/visual/sample/index.html?src=writer",
+  "tokens": "tests/visual/sample/sample-tokens.css",
+  "ready": "body[data-ready=true]",
+  "goldenDir": "tests/visual/sample/baselines",
+  "elements": [
+    {"name":"page", "selector":"body", "styles":{"background-color":"--sample-bg", "color":"--sample-text", "font-family":"--sample-font", "font-size":"--sample-size", "font-weight":"--sample-weight", "letter-spacing":"--sample-spacing"}},
+    {"name":"panel", "selector":"#panel", "styles":{"background-color":"--sample-panel", "border":"--sample-border", "border-radius":"--sample-radius"}}
+  ],
+  "motion": [{"name":"sample fade", "selector":"#motion", "duration":"--sample-duration", "easing":"--sample-easing"}]
+}

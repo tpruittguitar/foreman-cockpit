@@ -1,0 +1,14 @@
+:root {
+  --sample-bg: #111111;
+  --sample-text: #eeeeee;
+  --sample-panel: #222222;
+  --sample-outline: #888888;
+  --sample-font: sans-serif;
+  --sample-size: 16px;
+  --sample-weight: 400;
+  --sample-spacing: 0px;
+  --sample-radius: 8px;
+  --sample-border: 1px solid var(--sample-outline);
+  --sample-duration: 240ms;
+  --sample-easing: cubic-bezier(0.2, 0, 0, 1);
+}

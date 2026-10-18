@@ -1,0 +1,6 @@
+{
+  "viewports": [
+    {"name":"desktop", "width":2560, "height":1440, "deviceScaleFactor":1, "boxes":{"panel":{"selector":"#panel", "x":24, "y":24, "width":2512, "height":160}, "motion":{"selector":"#motion", "x":41, "y":93, "width":24, "height":24}}},
+    {"name":"phone", "width":402, "height":874, "deviceScaleFactor":3, "isMobile":true, "hasTouch":true, "boxes":{"panel":{"selector":"#panel", "x":24, "y":24, "width":354, "height":160}, "motion":{"selector":"#motion", "x":41, "y":93, "width":24, "height":24}}}
+  ]
+}
