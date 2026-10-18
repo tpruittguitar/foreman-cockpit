@@ -145,6 +145,7 @@ function doGet(e) {
     if (a === 'discovery_requests') return out_(readDiscoveryRequests_(p.primaryId || '', +(p.limit || 100)));
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'receipt_index') return out_(receiptIndexSummary_(p.requestId || ''));
+    if (a === 'restore_receipt_index') return out_(restoreReceiptIndex_({ revisionId: p.revisionId || '', dryRun: p.dryRun === '1' }));
     if (a === 'verify_pending') return out_(verifyNow_());
     if (a === 'automation_alignment') return out_(automationAlignmentRead_());
     if (a === 'canonical_rules') return out_(readCanonicalRules_());

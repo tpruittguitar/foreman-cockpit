@@ -2,6 +2,21 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-17-B — restore the empty receipt index from its own version history
+
+Trigger: `PIPELINE_RECEIPT_INDEX.json` was saved as 0 bytes at 2026-10-16 01:02:44Z; every Writer write has failed closed since (`receipt index unreadable`). The Drive web UI greys out Download on every old version, and the connector cannot fetch revisions.
+
+### Changed
+1. `apps-script/RecoveryTools.gs` (new): `restoreReceiptIndex_` lists the index's Drive revisions with the script's own token, takes the newest earlier version that parses as a valid index (or a named `revisionId`), writes a backup copy `PIPELINE_RECEIPT_INDEX_RESTORE_SOURCE_<time>.json` beside it, writes the live index, reads it back and compares. It refuses when the live index already parses. `dryRun=1` reports without writing. Logs a `RECEIPT_INDEX_RESTORED` event.
+2. `apps-script/Code.gs`: GET action `restore_receipt_index` (key-protected).
+3. `tests/recovery-tools.test.js`: index validation and version ordering.
+
+### Not changed
+Master, queue, receipts and every write path.
+
+### Verification
+`npm test`: 459 pass, 0 fail.
+
 ## Batch 2026-10-17-A — policy lives on GitHub (Stage 3 cutover)
 
 Trigger: Tim, 2026-10-17 18:11 ET: "Move it all over to GitHub. Add and correct the code and lists. And update the app and ai coordination accordingly."
