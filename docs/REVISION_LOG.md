@@ -2,6 +2,27 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-17-E — receipt index to GitHub (REV-010, cutover pending)
+
+Trigger: Tim approved moving the receipt index to GitHub on 2026-10-17; he created the public `forge-writer-state` repo after merging PR #117. The Drive index had previously been saved empty, blocking Writer writes until recovery.
+
+### Changed
+
+1. `ReceiptIndexStore.gs` adds fresh raw Contents API reads (including files above 1 MB), exact UTF-8 Git blob SHA calculation, conditional PUTs and validation. HTTP 409/422 is `REVISION_CONFLICT`; failures neither retry a write nor fall back to Drive. A checkpoint cannot erase existing request IDs. The durable-intent-before-master order is unchanged.
+2. Older COMPLETE entries lose only bulky row `items`; the newest 100 retain details. Every request identity, state, timestamp, write ID, snapshot hash and correction remains, as do pending transactions and their evidence. This preserves replay protection after receipt-log rotation.
+3. `migrate_receipt_index` defaults to dry run. Actual cutover requires a readable maintenance freeze, Writer lock, zero pending transactions, matching fresh Drive hash and expected GitHub file SHA. It re-reads Drive, seeds GitHub, verifies the exact result, then switches the Script Property. Deployment by itself keeps Drive active. HTTP Drive recovery is disabled once GitHub is active. `receipt_index` reports source, location and GitHub blob SHA.
+4. The dedicated Script Property `GITHUB_WRITER_STATE_TOKEN` needs Contents read/write on `forge-writer-state`. The runbook documents deployment, guarded cutover, readback, unfreeze and failure recovery. No token or deployment credential is committed.
+
+### Review seed (separate state repo)
+
+`forge-writer-state` commit `1518b90` preserves the complete 4,243,526-byte Drive snapshot (updated 2026-10-18 02:57:50 UTC; 5,232 requests, zero pending). Commit `92f5069` compacts it to 943,131 bytes with the same identities and states. This is an inactive review seed: actual cutover must use a new locked Drive read.
+
+### Verification and deployment
+
+`npm test`: 479 pass, 0 fail, including 13 backend/transaction/migration tests. All `.gs` files pass `node --check`; `git diff --check` passes. A real GitHub raw API read of the original 4.24 MB seed returned all 5,232 requests, and its computed blob SHA exactly matched GitHub metadata.
+
+Tim merges; Tim or Claude deploys and sets the dedicated token before following `docs/RECEIPT_INDEX_GITHUB_CUTOVER.md`. Production has not been frozen or switched during implementation. Master, queue and receipt-log storage remain on Drive. Control/ENTRY still name the live Drive index and must be updated only after verified cutover.
+
 ## Batch 2026-10-17-D — FLEX refresh waits for Writer verification before recounting
 
 Trigger: Claude's 2026-10-17 23:00 ET handoff reports a false no-progress stop with 54 outstanding rows while Writer verification was still pending; the rows finished minutes later.

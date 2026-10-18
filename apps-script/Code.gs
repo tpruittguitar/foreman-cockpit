@@ -1,4 +1,4 @@
-if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');}
+if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');var ReceiptIndexStore=require('./ReceiptIndexStore.gs');}
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -127,7 +127,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','migrate_receipt_index','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -145,6 +145,8 @@ function doGet(e) {
     if (a === 'discovery_requests') return out_(readDiscoveryRequests_(p.primaryId || '', +(p.limit || 100)));
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
     if (a === 'receipt_index') return out_(receiptIndexSummary_(p.requestId || ''));
+    if (a === 'migrate_receipt_index') return out_(migrateReceiptIndex_({ dryRun: p.dryRun !== '0', expectedSourceHash: p.expectedSourceHash || '', expectedGithubSha: p.expectedGithubSha || '' }));
+    if (a === 'restore_receipt_index' && ReceiptIndexStore.config().source === 'GITHUB') return out_({ ok: false, error: 'Receipt index is on GitHub; Drive restore is disabled' });
     if (a === 'restore_receipt_index') return out_(restoreReceiptIndex_({ revisionId: p.revisionId || '', dryRun: p.dryRun === '1' }));
     if (a === 'verify_pending') return out_(verifyNow_());
     if (a === 'automation_alignment') return out_(automationAlignmentRead_());
@@ -159,7 +161,7 @@ function doGet(e) {
     if (a === 'refresh_worklists') return out_(refreshWorklists_(true));
     if (a === 'ats_check') return out_(runAtsCheck_(true, p.dry === '1'));
     return out_({ ok: false, error: 'unknown action ' + a });
-  } catch (err) { return out_({ ok: false, error: String(err && err.message || err), errorStack: errorStack_(err) }); }
+  } catch (err) { return out_({ ok: false, mode: err && err.mode, error: String(err && err.message || err), errorStack: errorStack_(err) }); }
 }
 function doPost(e) {
   var req = {};
@@ -168,7 +170,7 @@ function doPost(e) {
   try {
     if (req.action === 'state') { writeState_(req.state || {}); return out_({ ok: true }); }
     return out_(dispatchWrite_(req));
-  } catch (err) { return out_({ ok: false, error: String(err && err.message || err), errorStack: errorStack_(err), docAccess: docAccessSummary_() }); }
+  } catch (err) { return out_({ ok: false, mode: err && err.mode, error: String(err && err.message || err), errorStack: errorStack_(err), docAccess: docAccessSummary_() }); }
 }
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
@@ -250,7 +252,7 @@ function serialBatch_(list) {
     }
     var r;
     try { r = dispatchWrite_(list[i]) || { ok: false, error: 'no result' }; }
-    catch (e) { r = { ok: false, error: String(e && e.message || e), errorStack: errorStack_(e) }; }
+    catch (e) { r = { ok: false, mode: e && e.mode, error: String(e && e.message || e), errorStack: errorStack_(e) }; }
     if (r.mode === 'WRITE_FENCE') {
       if (!out.length) return r;
       stoppedBy = 'WRITE_FENCE'; stopReason = r.error || 'write fence'; break;
@@ -639,18 +641,51 @@ function textHash_(s) {
 function emptyIndex_() { return { version: 1, updatedAt: '', rotations: [], requests: {}, pending: [] }; }
 /** Reads the index. Missing file -> null (legacy mode, before the first rotation). Unreadable -> throws (fail closed). */
 function readIndex_() {
+  var cfg = ReceiptIndexStore.config();
+  if (cfg.source === 'GITHUB') return ReceiptIndexStore.read(cfg);
+  return readDriveIndex_();
+}
+function readDriveIndex_() {
   var it = folder_().getFilesByName(RECEIPT_INDEX_NAME);
   if (!it.hasNext()) return null;
-  var raw = it.next().getBlob().getDataAsString(), d;
-  try { d = JSON.parse(raw); } catch (e) { throw new Error('receipt index unreadable (fail closed): ' + e.message); }
-  if (!d || typeof d !== 'object' || !d.requests || !Array.isArray(d.pending)) throw new Error('receipt index malformed (fail closed)');
-  if (!Array.isArray(d.rotations)) d.rotations = [];
-  return d;
+  return ReceiptIndexStore.parse(it.next().getBlob().getDataAsString());
 }
 function writeIndex_(d) {
+  ReceiptIndexStore.validate(d);
+  var cfg = ReceiptIndexStore.config();
+  if (cfg.source === 'GITHUB') { ReceiptIndexStore.write(cfg, d); return; }
   d.updatedAt = new Date().toISOString();
   var f = findOrCreate_(RECEIPT_INDEX_NAME, 'text', '{}');
   f.setContent(JSON.stringify(d));
+}
+/** Cut over only under the Writer lock and an explicit maintenance freeze. Re-read Drive NOW,
+ * not the earlier review seed; refuse unresolved transactions. Drive is untouched as rollback evidence.
+ * The source property changes only after an exact independent GitHub index readback. */
+function migrateReceiptIndex_(p) {
+  p = p || {};
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    var cfg = ReceiptIndexStore.config();
+    if (cfg.source === 'GITHUB') return { ok: true, mode: 'ALREADY_MIGRATED', source: cfg.source };
+    var d = readDriveIndex_();
+    if (!d) throw new Error('receipt index missing (fail closed)');
+    if (d.pending.length) return { ok: false, mode: 'WRITE_FENCE', error: 'Resolve pending Drive transactions before migration' };
+    var report = { ok: true, source: cfg.source, destination: cfg.repo + '/' + cfg.path, requests: Object.keys(d.requests).length,
+      sourceHash: textHash_(JSON.stringify(d)), compactChars: JSON.stringify(ReceiptIndexStore.compact(d)).length };
+    if (p.dryRun) { report.mode = 'DRY_RUN'; return report; }
+    var freeze = readFreeze_();
+    if (!freeze || freeze.frozen !== true || !freeze.at || !freeze.by) return { ok: false, mode: 'WRITE_FENCE', error: 'Freeze Writer with a readable maintenance record before receipt-index migration' };
+    if (!p.expectedSourceHash || p.expectedSourceHash !== report.sourceHash)
+      return { ok: false, mode: 'REVISION_CONFLICT', error: 'Drive index changed or expectedSourceHash missing; repeat dry run while frozen' };
+    ReceiptIndexStore.seed(cfg, d, String(p.expectedGithubSha || ''));
+    var back = ReceiptIndexStore.read(cfg);
+    if (JSON.stringify(back) !== JSON.stringify(ReceiptIndexStore.compact(d))) throw new Error('RECEIPT_INDEX_MIGRATION_READBACK_FAILED');
+    // This is the last step: a failure before it leaves the active authority on Drive.
+    PropertiesService.getScriptProperties().setProperty('RECEIPT_INDEX_SOURCE', 'GITHUB');
+    if (ReceiptIndexStore.config().source !== 'GITHUB') throw new Error('RECEIPT_INDEX_SOURCE_SWITCH_UNCONFIRMED');
+    report.mode = 'MIGRATED'; report.source = 'GITHUB'; report.sha = back.__receiptIndexRevision.sha;
+    return report;
+  } finally { lock.releaseLock(); }
 }
 /** Request IDs that must not be re-applied: proven COMPLETE (receipt log or index) or still awaiting verification. */
 function replayState_() {
@@ -820,10 +855,11 @@ function verifyNow_() {
   try { DOC_ACCESS_ = []; var v = verifyPendingWrites_(); v.docAccess = docAccessSummary_(); return v; } finally { lock.releaseLock(); }
 }
 function receiptIndexSummary_(rid) {
+  var storage = ReceiptIndexStore.config();
   var idx = readIndex_();
   if (!idx) return { ok: true, exists: false };
   var by = {}; Object.keys(idx.requests).forEach(function (k) { var st = idx.requests[k].s; by[st] = (by[st] || 0) + 1; });
-  var out = { ok: true, exists: true, updatedAt: idx.updatedAt, rotations: idx.rotations, statusCounts: by, pending: idx.pending.map(function (p) { return { writeId: p.writeId, kind: p.kind, writtenAt: p.writtenAt, requestIds: p.requestIds, rows: p.items.length }; }) };
+  var out = { ok: true, exists: true, source: storage.source, location: storage.source === 'GITHUB' ? storage.repo + '/' + storage.path : RECEIPT_INDEX_NAME, sha: idx.__receiptIndexRevision ? idx.__receiptIndexRevision.sha : '', updatedAt: idx.updatedAt, rotations: idx.rotations, statusCounts: by, pending: idx.pending.map(function (p) { return { writeId: p.writeId, kind: p.kind, writtenAt: p.writtenAt, requestIds: p.requestIds, rows: p.items.length }; }) };
   if (rid) out.request = idx.requests[rid] || null;
   return out;
 }
@@ -2705,4 +2741,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
