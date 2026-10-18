@@ -41,6 +41,8 @@
   function liveItems(ctx) {
     var out = [], now = ctx.now || Date.now(), w = ctx.writer;
     function add(it) { it.live = true; out.push(it); }
+    var ss = ctx.stateSync;
+    if (ss && ss.ok === false) add({ id: 'live:state-sync', section: 'FAILED', level: 'ACTION', title: 'Seen marks and incident acknowledgements are not saving to the Writer', detail: String(ss.error || '') + '. This browser keeps them and resends on the next change; other devices will not see them until a save succeeds.', action: 'If it says STATE_UNREADABLE, ask Claude to restore PIPELINE_EXPLORER_STATE.json from its .prev copy.', go: { action: 'system' }, at: ss.at });
     if (w && w.fetchError) add({ id: 'live:writer-unreachable', section: 'FAILED', level: 'BLOCKING', title: 'Writer is not answering', detail: String(w.fetchError), action: 'Open System → Health. If it repeats for 2+ checks, the Writer web app or its key needs attention.', go: { action: 'system' }, at: w.checkedAt });
     if (w && !w.fetchError && !w.unsupported) {
       if (w.freeze && (w.freeze.frozen === true || w.freeze.active === true)) add({ id: 'live:writer-frozen', section: 'FAILED', level: 'BLOCKING', title: 'Writer is frozen — no lane can write', detail: String(w.freeze.reason || w.freeze.by || ''), action: 'Unfreeze only after the cause is fixed (System → Health).', go: { action: 'system' }, at: w.freeze.at || w.checkedAt });
