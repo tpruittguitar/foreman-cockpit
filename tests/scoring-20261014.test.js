@@ -49,7 +49,8 @@ test('Writer scoring copy is byte-identical and receives the target list',()=>{
 test('Open roles is the default view and hides Applied; All live keeps it',()=>{
   assert.match(html,/OPEN:\{label:'Open roles',[^\n]*fn:function\(r\)\{return !terminalJob_\(r\)&&r\.BUCKET!=='APPLIED'\}\}/);
   assert.match(html,/ALL:\{label:'All live'/);
-  assert.match(html,/if\(!LS\.get\('openDefaultV1',false\)\)\{if\(S\.preset==='ALL'\)S\.preset='OPEN';LS\.set\('openDefaultV1',true\)\}/);
+  // Tim 2026-10-18: every start opens on Open roles, even when the URL carries All live or a history/applied view.
+  assert.match(html,/if\(S\.tab==='pipeline'&&\/\^\(ALL\|APPLIED\|DECLINED\|TERMINAL\|TERMINAL_HISTORY\|DEAD_POSTINGS\)\$\/\.test\(S\.preset\)\)S\.preset='OPEN';/);
 });
 
 test('structured runtime loads the published model and canonical rules',()=>{
