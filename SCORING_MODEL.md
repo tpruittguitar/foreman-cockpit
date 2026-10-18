@@ -66,6 +66,7 @@ When the employer is hidden behind a recruiter, rate only what the posting text 
 2. Otherwise the employer is matched (name or alias) against `SECTION=TARGET_COMPANIES` in the canonical rules: P1 100, P2 90, P3 75, WATCH 60.
 3. A named employer that is not on the list, or is PAUSED, scores 40.
 4. A recruiter posting with a hidden, confidential or stealth client is `UNKNOWN`, because the real employer may be on the list.
+5. An agency posting (`EMPLOYER_PRIMARY_BUSINESS=RECRUITING_AGENCY`, or `SCOUT_NOTES` containing `AGENCY_POSTING` / `CLIENT=UNKNOWN`) is matched on `CLIENT_EMPLOYER` when the client is named; with no client named, culture is `UNKNOWN` (coverage drops 5 points). This never holds or delays the row (Tim 2026-10-18).
 
 Target Companies stay in the canonical rules. They are never copied into the published scoring model.
 
