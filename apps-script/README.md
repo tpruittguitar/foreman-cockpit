@@ -15,6 +15,10 @@ This script runs in **your** Google account. It reads the canonical master and, 
 
 That is all. With the script configured, the page reads the master through it (the Doc no longer needs to be shared by link), your rulings go straight into the master, and your seen-state syncs across devices.
 
+## Receipt-index GitHub migration (REV-010)
+
+The GitHub receipt-index backend requires a separate `GITHUB_WRITER_STATE_TOKEN` Script Property with Contents read/write permission on `tpruittguitar/forge-writer-state`. Deployment alone leaves the index on Drive. Follow [the cutover runbook](../docs/RECEIPT_INDEX_GITHUB_CUTOVER.md) to freeze, seed from the current locked Drive snapshot, verify and activate GitHub. Do not manually switch the source property or treat the repo's initial review seed as live state.
+
 **To change the script later:** edit `Code.gs` in the Apps Script editor, then **Deploy → Manage deployments → edit (pencil) → Version: New version → Deploy**. The URL stays the same.
 
 **Also in this script (scout-intake PR):** `action=intake` for Scout discoveries (see `docs/SCOUT_INTAKE_CONTRACT.md`), `action=rules` (reads the canonical Doc `TIM_NEVER_CONSIDER_RULES` in AI_Coordination by fixed ID, read-only) and `action=runs` (`SCOUT_RUN_METRICS.jsonl` beside the master). After updating the script, redeploy: **Deploy → Manage deployments → pencil → Version: New version → Deploy**. The URL stays the same. The first run after redeploy will ask you to approve Docs access again.
