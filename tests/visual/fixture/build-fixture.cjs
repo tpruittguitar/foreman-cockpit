@@ -97,6 +97,7 @@ rows.forEach(r => {
   if (r.hold) { r.band = 'HOLD'; return; }
   r.band = r.score >= cuts.top ? 'TOP' : r.score >= cuts.upper ? 'UPPER' : r.score >= cuts.low ? 'MID' : 'LOW';
   r.rank = Math.round(rankOf(r.score) * 100) / 100;
+  r.rankNo = 1 + pop.filter(v => v > r.score).length;   // V-19 (Grok Bot): 1 + eligible scores strictly higher; ties share the better rank
 });
 rows.sort((a, b) => (b.score - a.score) || a.id.localeCompare(b.id));
 rows.forEach((r, i) => { r.position = i + 1; });
@@ -127,7 +128,7 @@ const out = {
   // counters for the whole population (counter-registry outputs; the 50-row queue is a subset of 578 jobs)
   counters: { jobs: 578, reviewQueue: rows.length, needsDecision: count('NEEDS_DECISION'), declineCandidates: count('DECLINE_CANDIDATE'), myRulings: 0,
     appliedAllTime: 84, research: 49, interviews14d: 0, writerWaiting: rows.filter(r => r.writeState === 'WAITING').length,
-    writerFailed: rows.filter(r => r.writeState === 'FAILED').length, staleEvidence: 185, compare: 0, laneQueue: 2, laneQueueOldestMin: 4 },
+    writerFailed: rows.filter(r => r.writeState === 'FAILED').length, staleEvidence: 185, compare: 0, laneQueue: 2, laneQueueOldestMin: 4, lanes: 10, lanesQuiet: 0, needsYou: 3 },
   sinceLastReview: { newRows: 12, evidenceUpdates: 4, writeFailed: 1, queued: 2, provisional: 185 },
   selectedId: selected.id,
   rows,

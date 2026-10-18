@@ -2,6 +2,7 @@
 
 - **Visual owner:** Grok Bot (Tim, 2026-10-18). Two limits apply to everyone: L-1 accessibility floor, L-2 real numbers.
 - `../../tokens.css` is the only place colour, size, duration and easing values live.
+- `../../pe-icons.js` draws the glyphs Inter / IBM Plex Mono lack, as inline SVG (Grok Bot R-7).
 - `fixture/` holds one dataset for every frame. Scores come from `pipeline-scoring.js` with the published model rev 24 (`model-rev24.json`, same SHA-256 as live).
 - `golden-src/` holds static frame pages built from tokens + fixture. `render-golden.cjs` renders them to `golden/*.png` at 1:1.
 - `reference/` holds Grok Bot's PDF pages rendered 1:1 for side-by-side review. It is a reference only; builds are tested against `golden/`.

@@ -3,10 +3,16 @@
   var fx = G.fx, esc = G.esc, BAND = G.BAND, s = G.sel(), C = fx.counters;
   function $(id) { return document.getElementById(id); }
 
-  // Header: Writer pill reflects the fixture (1 waiting, 1 failed) — N-06: the PDF pill said IDLE while 1/1 was pending.
-  $('writer-pill').innerHTML = '<span class="dot" style="background:var(--pe-amber)"></span>WRITER · ' + C.writerWaiting + ' WAITING · ' + C.writerFailed + ' FAILED · REFRESH 0:42';
-  // N-02: lane queue named as its own counter.
-  $('hdr-meta').innerHTML = '<b>LANE QUEUE ' + C.laneQueue + '</b><b>LAST SYNC ' + fx.asOf + '</b><b>COMPARE · ' + C.compare + '/3</b>';
+  // Header pills (Grok Bot M-05/M-06, P06): fixed order Writer · Seen sync · My decisions · Lane queue · Lanes. Fail beats waiting.
+  var dec = C.writerFailed ? '<span class="pill fail"><span class="r">⊗</span> <b>' + C.writerFailed + '</b> decision failed · Retry</span>'
+    : C.writerWaiting ? '<span class="pill warn"><span class="a">◷</span> My decisions · <b>' + C.writerWaiting + '</b> waiting for lock · <b>8 s</b></span>'
+    : '<span class="pill">My decisions · <b>0</b> waiting</span>';
+  var lq = C.laneQueueOldestMin > 10 ? '<span class="pill warn"><span class="a">▸</span> Lane queue · <b>' + C.laneQueue + '</b> · oldest <b>' + C.laneQueueOldestMin + ' min</b></span>'
+    : '<span class="pill">Lane queue · <b>' + C.laneQueue + '</b> · oldest <b>' + C.laneQueueOldestMin + ' min</b></span>';
+  $('pills').innerHTML = '<span class="pill"><span class="wdot"></span> Writer <b>idle</b></span>' +
+    '<span class="pill"><span class="g">✓</span> Seen sync · <b>' + fx.asOf + '</b></span>' + dec + lq +
+    '<span class="pill"><span class="g">✓</span> Lanes · <b>' + C.lanes + '</b> reporting</span>';
+  $('bell').innerHTML = PEIcons.svg('bell') + ' Needs you <span class="badge">' + C.needsYou + '</span>';
 
   $('subtabs').innerHTML = [['JOBS', C.jobs], ['REVIEW QUEUE', C.reviewQueue, 1], ['DECLINE CANDIDATES', C.declineCandidates], ['MY RULINGS', C.myRulings], ['MAP'], ['TRENDS'], ['COMPARE', C.compare + '/3']]
     .map(function (t) { return '<span class="tab' + (t[2] ? ' on' : '') + '">' + t[0] + (t[1] != null ? '<b>' + t[1] + '</b>' : '') + '</span>'; }).join('') +
@@ -28,23 +34,24 @@
   var L = fx.sinceLastReview;
   $('strip').innerHTML = '<span class="strip-label">SINCE YOUR LAST REVIEW · ' + fx.lastReview + '</span>' +
     '<span class="u">Δ ' + L.newRows + ' new</span><span class="sep">·</span><span class="u">Δ ' + L.evidenceUpdates + ' evidence updates (e.g. FLEX HIGH→NO)</span><span class="sep">·</span>' +
-    '<span class="bad u"><span class="gx-big">⊗</span> ' + C.writerFailed + ' write failed</span><span class="sep">·</span><span class="warn">◷ ' + C.writerWaiting + ' waiting for lock</span><span class="sep">·</span>' +
-    '<span class="muted"><span class="gx-sm">◌</span> ' + L.provisional + ' provisional</span>' +
+    '<span class="bad u">⊗ ' + C.writerFailed + ' write failed</span><span class="sep">·</span><span class="warn">◷ ' + C.writerWaiting + ' waiting for lock</span><span class="sep">·</span>' +
+    '<span class="muted">◌ ' + L.provisional + ' provisional</span>' +
     '<span class="right">MAP SHOWS: SELECTED JOB · ESC → FILTERED VIEW (' + C.reviewQueue + ')</span>';
 
   // Table
   var vis = fx.rows.slice(0, 30), B = fx.bands;
   $('tq-title').textContent = 'REVIEW QUEUE · ' + C.reviewQueue + ' · ' + vis.length + ' VISIBLE';
   // V-20: N + as-of; cut scores from the fixture snapshot
-  $('tq-meta').textContent = 'SORT: SCORE ↓ · BANDS = PERCENTILE (REV ' + fx.model.rev + ' · N ' + B.n + ' · AS OF ' + fx.asOf + ' · P90 ' + B.cuts.top + ' · P65 ' + B.cuts.upper + ' · P20 ' + B.cuts.low + ')';
+  $('tq-meta').textContent = 'SORT: SCORE ↓ · BANDS · N ' + B.n + ' ELIGIBLE OPEN · P90 ' + B.cuts.top + ' · P65 ' + B.cuts.upper + ' · P20 ' + B.cuts.low + ' · REV ' + fx.model.rev + ' · AS OF ' + fx.asOf;   // V-20
   var WS = { WAITING: '<span class="ws-wait">◷ Waiting for lock · 8 s</span>', CONFIRMED: '<span class="ws-ok">✓ Confirmed · 3 s</span>', FAILED: '<span class="ws-fail">⊗ Failed · Retry</span>' };
   var FX = { 'High flex': 'fx-high', 'Soft flex': 'fx-soft', 'No flex': 'fx-no', 'Unknown': 'fx-unknown', 'Strict': 'fx-strict' };
   $('rows').innerHTML = vis.map(function (r) {
     var b = BAND[r.band], score;
-    if (r.hold) score = '<span class="sc">' + (r.staleEvidence ? '<span class="st">◌</span>' : '') + '<span class="v b-hold">' + r.score + '</span> <span class="hold-tag">⊘ HOLD</span></span>';   // V-03
-    else score = '<span class="sc">' + (r.staleEvidence ? '<span class="st">◌</span>' : '') + '<span class="v ' + b[1] + '">' + r.score + '</span><span class="g ' + b[1] + '">' + b[0] + '</span></span>';
-    var d = r.changed ? '<span class="dl">Δ ' + (r.changed === 'NEW' ? 'NEW' : r.changed.replace('-', '−')) + '</span>' : '<span class="dl none">·</span>';
-    return '<tr class="' + (r.id === s.id ? 'sel' : '') + (r.changed === 'NEW' ? ' new' : '') + '"><td class="c-sc">' + score + d + '</td>' +
+    var st = r.staleEvidence ? '<span class="st">◌</span>' : '';
+    if (r.hold) score = st + '<span class="v b-hold">' + r.score + '</span> <span class="bw r">⊘ HOLD</span>';   // V-03
+    else score = st + '<span class="v ' + b[1] + '">' + r.score + '</span> <span class="bw ' + b[1] + '">' + b[0] + ' ' + r.band + '</span>';   // band glyph + word (Grok Bot V-03 track)
+    var d = r.changed ? (r.changed === 'NEW' ? 'NEW' : r.changed.replace('-', '−')) : '·';
+    return '<tr class="' + (r.id === s.id ? 'sel' : '') + (r.changed === 'NEW' ? ' new' : '') + '"><td class="c-sc">' + score + '</td><td class="c-d">' + d + '</td>' +
       '<td class="t-title">' + esc(r.title) + '</td><td class="t-sec">' + esc(r.company) + '</td><td>' + esc(r.location) + '</td>' +
       '<td class="t-13 ' + (r.bucket === 'NEEDS_DECISION' ? 'bk-need' : 't-sec') + '">' + r.bucketLabel + '</td><td class="r">$' + r.baseK + 'K</td>' +
       '<td class="t-13 ' + FX[r.flex] + '">' + r.flex + '</td><td class="r">' + r.expFit + '</td><td class="r">' + r.age + '</td><td>' + (WS[r.writeState] || '<span class="ws-none">—</span>') + '</td></tr>';
@@ -90,47 +97,53 @@
     '<div class="map-btn" style="right:16px;bottom:113px;width:30px;height:30px;padding:0">◈</div><div class="map-btn" style="right:16px;bottom:82px;width:30px;padding:0;font-size:18px">+</div>' +
     '<div class="map-btn" style="right:16px;bottom:54px;width:30px;height:24px;padding:0">FIT</div><div class="map-btn" style="right:16px;bottom:24px;width:30px;padding:0;font-size:18px">−</div>';
 
-  // Drawer
+  // Drawer (Grok Bot look-owner drawer: ring, band line V-19, evidence ≈ R-3, breakdown V-16, decisions V-01/V-02)
   var b = BAND[s.band], NM = { experience: 'Experience fit', flex: 'Degree FLEX', compensation: 'Net compensation', geo: 'Geography', title: 'Title / scope', culture: 'Company culture', ats: 'ATS match', ownership: 'Ownership' };
-  var ringC = 2 * Math.PI * 53, ticks = '';
-  for (var i = 0; i < 12; i++) { var a = i * 30 * Math.PI / 180; ticks += '<line x1="' + (61 + 47 * Math.sin(a)) + '" y1="' + (61 - 47 * Math.cos(a)) + '" x2="' + (61 + 43 * Math.sin(a)) + '" y2="' + (61 - 43 * Math.cos(a)) + '" stroke="var(--pe-void)" stroke-width="2"/>'; }
-  var ring = '<svg width="122" height="122"><circle cx="61" cy="61" r="53" fill="none" stroke="var(--pe-raised)" stroke-width="9"/>' +
-    '<circle cx="61" cy="61" r="53" fill="none" stroke="var(--pe-band-top)" stroke-width="9" stroke-dasharray="' + (ringC * s.score / 100) + ' ' + ringC + '" transform="rotate(-90 61 61)"/>' + ticks + '</svg><b class="' + b[1] + '">' + s.score + '</b>';
-  var bd = s.breakdown.map(function (p) {
-    var pct = p.score == null ? 0 : p.score, col = p.score == null ? 'transparent' : p.score >= 75 ? 'var(--pe-green)' : p.score >= 50 ? 'var(--pe-amber)' : 'var(--pe-band-low)';
-    return '<div class="bd-row"><span class="nm">' + NM[p.key] + '</span><span class="w">' + p.weight + '%</span><span class="bar"><i style="width:' + (p.weight ? pct : 0) + '%;background:' + col + '"></i></span><span class="p">' + p.points.toFixed(1) + '</span></div>';
+  var R = 54, SW = 8, RC = 2 * Math.PI * R, ticks = '';
+  for (var t = 0; t < 360; t += 30) ticks += '<line x1="' + (R + SW) + '" y1="' + (SW / 2 - 3) + '" x2="' + (R + SW) + '" y2="' + (SW / 2 + 4) + '" stroke="var(--pe-outline)" stroke-width="2" transform="rotate(' + t + ' ' + (R + SW) + ' ' + (R + SW) + ')"/>';
+  var ring = '<svg width="' + (2 * R + 2 * SW) + '" height="' + (2 * R + 2 * SW) + '"><circle cx="' + (R + SW) + '" cy="' + (R + SW) + '" r="' + R + '" fill="none" stroke="var(--pe-raised)" stroke-width="' + SW + '"/>' +
+    '<circle cx="' + (R + SW) + '" cy="' + (R + SW) + '" r="' + R + '" fill="none" stroke="var(--pe-band-top)" stroke-width="' + SW + '" stroke-dasharray="' + (RC * s.score / 100).toFixed(1) + ' ' + RC.toFixed(1) + '" transform="rotate(-90 ' + (R + SW) + ' ' + (R + SW) + ')"/>' + ticks + '</svg><b class="' + b[1] + '">' + s.score + '</b>';
+  var known = s.breakdown.filter(function (p) { return p.weight > 0 && p.score != null; }), kw = known.reduce(function (a, p) { return a + p.weight; }, 0);
+  var shown = s.breakdown.filter(function (p) { return p.weight > 0; });   // zero-weight parts carry no points; Grok Bot pages list the six weighted parts
+  var bd = shown.map(function (p) {
+    if (p.score == null) return '<div class="bd-row"><span class="nm">' + NM[p.key] + '</span><span class="w">' + p.weight + '%</span><span class="bar unk"></span><span class="p unk">? unknown</span></div>';
+    return '<div class="bd-row"><span class="nm">' + NM[p.key] + '</span><span class="w">' + p.weight + '%</span><span class="bar"><i style="width:' + p.score + '%"></i></span><span class="p">' + p.points.toFixed(1) + '</span></div>';
   }).join('');
-  var cov = s.coverage, fac = s.breakdownFactor.toFixed(2), fp = s.parts;
+  var sum = s.breakdown.reduce(function (a, p) { return a + p.points; }, 0), fac = (0.7 + 0.3 * s.coverage / 100).toFixed(3);
+  var foot = (s.coverage < 100 ? 'Σ known ' + kw + '% = ' : 'Σ 100% = ') + sum.toFixed(1) + ' · coverage ' + s.coverage + '% × factor ' + fac + ' = <b>' + s.score + '</b>';
+  var fp = s.parts;
   var waitRow = fx.rows.find(function (r) { return r.writeState === 'WAITING'; }), okRow = fx.rows.find(function (r) { return r.writeState === 'CONFIRMED'; }), failRow = fx.rows.find(function (r) { return r.writeState === 'FAILED'; });
   $('drawer').innerHTML =
     '<div class="d-head"><span>◉ JOB DRAWER · ' + s.id + ' · LOCKED ON MAP</span><span class="nav">‹ › ✕</span></div>' +
     '<div class="d-title">' + esc(s.title) + '</div>' +
     '<div class="d-meta">' + esc(s.company) + ' · ' + esc(s.location) + ' · hybrid · posted ' + s.age + ' · LinkedIn</div>' +
-    '<div class="chips"><span class="chip">NEEDS DECISION</span><span class="chip g">HIGH FLEX</span><span class="chip">$' + s.baseK + 'K EST.</span><span class="chip">' + s.location.split(',')[0].toUpperCase() + '</span></div>' +
+    '<div class="chips"><span class="chip">NEEDS DECISION</span><span class="chip">HIGH FLEX</span><span class="chip">$' + s.baseK + 'K EST.</span><span class="chip">' + s.location.split(',')[0].toUpperCase() + '</span></div>' +
     '<div class="dtabs"><span class="on">OVERVIEW</span><span>POSTING</span><span>FIT &amp; SCORE</span><span>APPLICATION</span><span>DOCUMENTS</span><span>HISTORY</span></div>' +
     '<div class="score-row"><div class="ring">' + ring + '</div><div class="score-info">' +
-      '<div class="band">' + b[0] + ' ' + b[2] + ' · OPPORTUNITY RATING ' + s.score + '</div>' +
-      '<div>Model rev ' + fx.model.rev + ' · computed 23:38 <span class="cur">✓ CURRENT</span></div>' +
+      '<div class="band">' + b[0] + ' ' + s.band + ' · #' + s.rankNo + ' OF ' + fx.bands.n + ' ELIGIBLE OPEN</div>' +   // V-19
+      '<div>as of ' + fx.asOf + ' · score ' + s.score + ' · model rev ' + fx.model.rev + ' <span class="cur">✓ CURRENT</span></div>' +
       '<div class="gain">Δ ' + s.changed + ' since last review (evidence: salary posted)</div>' +
-      '<div>Screen gate <span style="color:var(--pe-green)">' + s.screenGate + '</span> · FLEX impact ' + (s.flexInfluence >= 0 ? '+' : '−') + Math.abs(s.flexInfluence) + ' · rank ' + s.position + ' of ' + fx.bands.n + '</div></div></div>' +
+      '<div>Screen gate <span style="color:var(--pe-green)">' + s.screenGate + '</span> · FLEX impact ' + (s.flexInfluence >= 0 ? '+' : '−') + Math.abs(s.flexInfluence) + ' · coverage ' + s.coverage + '%</div></div></div>' +
     '<div class="sec-label">WHY</div>' +
     '<div class="why">Plant-scale mfg leadership, high degree flex, preferred geography; pay est. near target. <a>Fit &amp; Score ›</a></div>' +
     '<div class="reasons">' +
       '<div class="reason">✓ Experience / content fit ' + fp.experience.score + ' · mfg scale-up, plant P&amp;L</div>' +
       '<div class="reason">✓ Degree FLEX: HIGH_FLEX (equivalent experience)</div>' +
       '<div class="reason">✓ Geo ' + fp.geo.score + ' · nearest control pt ' + s.location + '</div>' +
-      '<div class="reason a">◷ Base pay est. $' + s.baseK + 'K · posted range not stored</div>' +
+      '<div class="reason a">≈ Base pay est. $' + s.baseK + 'K · posted range not stored</div>' +   // R-3
       '<div class="reason n">? Ownership unknown · research</div></div>' +
-    '<div class="sec-label tight"><span>SCORE BREAKDOWN · WEIGHT · POINTS</span><span>Σ ' + s.breakdown.reduce(function (a, p) { return a + p.points; }, 0).toFixed(1) + ' = ' + s.score + '</span></div>' +   // V-16
+    '<div class="sec-label tight"><span>SCORE BREAKDOWN · WEIGHT · POINTS (NORMALIZED)</span><span class="pri">RING = ' + s.score + '</span></div>' +   // V-16
     '<div class="bd">' + bd + '</div>' +
-    '<div class="bd-foot">ALL 8 WEIGHTS SHARED · PUBLISHED MODEL REV ' + fx.model.rev + ' · TOTAL 100 ·<br>HIGH_FLEX → FIXED COMPONENT 80 · COVERAGE ' + cov + '% · FACTOR ' + fac + '</div>' +
+    '<div class="bd-foot">' + foot + '<br>Published model rev ' + fx.model.rev + ' · all weights SHARED · points = weight × score ÷ Σ known weight</div>' +
     '<div class="sec-label tight">TIM DECISION</div>' +
-    '<div class="decide"><span class="dbtn pursue">✓ Pursue <sub>P</sub></span><span class="dbtn hold">⊡ Hold <sub>H</sub></span><span class="dbtn research">Research</span><span class="dsep"></span><span class="dbtn decline">⊖ Decline</span></div>' +   // V-01 V-02
+    '<div class="decide"><span class="dec pursue">✓ Pursue <sub>P</sub></span><span class="dec hold">' + PEIcons.svg('hold') + ' Hold <sub>H</sub></span><span class="dec research">Research</span><span class="dsep"></span><span class="dec decline">⊖ Decline</span></div>' +   // V-01 V-02
     '<div class="receipts">' +
       '<div class="receipt wait"><span class="msg"><span class="k">◷ WAITING FOR WRITER LOCK</span> · Pursue · “' + esc(waitRow.title) + '” · auto-retry 2/4 in 15 s</span><span class="act">Undo</span></div>' +
       '<div class="receipt ok"><span class="msg"><span class="k">✓ CONFIRMED</span> · Hold · “' + esc(okRow.title) + '” · readback 3 s</span><span class="act">Undo</span></div>' +
       '<div class="receipt fail"><span class="msg"><span class="k">⊗ FAILED</span> · Hold · “' + esc(failRow.title) + '” · 4 retries · payload kept</span><span class="act">Retry</span></div></div>';
 
-  ['rows', 'drawer'].forEach(function (id) { var e = $(id); e.innerHTML = e.innerHTML.replace(/([⊗⊖])/g, '<span class="gx-big">$1</span>'); });
-  $('ticker').innerHTML = '<span class="ticker-label">▸ PIPELINE EVENTS</span>' + fx.events.map(function (e, i) { return (i ? '<span class="bar">│</span>' : '') + '<span class="ev"><span class="t">' + e[0] + '</span>' + esc(e[1]) + '</span>'; }).join('') + '<span class="ticker-end">TICKER SCROLLS ← ·</span>';
+  // Ticker: B-16 controls in words (V-02 / V-08)
+  $('ticker').innerHTML = '<span class="ticker-label">▸ PIPELINE EVENTS</span><span class="evs">' + fx.events.map(function (e) { return '<span class="ev"><span class="t">' + e[0] + '</span>' + esc(e[1]) + '</span>'; }).join('') + '</span>' +
+    '<span class="btn tk">Pause ticker</span><span class="btn tk">Hide</span>';
+  PEIcons.apply(document.getElementById('app'));
 }());

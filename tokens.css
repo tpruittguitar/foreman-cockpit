@@ -5,15 +5,13 @@
    and the accessibility-floor corrections (L-1) marked "L-1". Status: GOLDEN-FRAME USE ONLY until frames are approved.
    Change a value here only on a Grok Bot ruling (or a Tim ruling for L-1 / L-2). */
 
-@font-face { font-family: "Inter"; src: url("fonts/inter-latin-wght.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: block; }
+/* Inter variable, subset to Latin + the glyph vocabulary Inter covers (✓ ⊖ ⊗ ⊘ ▲ ◆ ● ▽ ○ ∅ ‖ ≈ → ↗ Δ …). Grok Bot R-7. */
+@font-face { font-family: "Inter"; src: url("fonts/inter-var-pe.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: block; }
 @font-face { font-family: "IBM Plex Mono"; src: url("fonts/ibm-plex-mono-400.woff2") format("woff2"); font-weight: 400; font-display: block; }
 @font-face { font-family: "IBM Plex Mono"; src: url("fonts/ibm-plex-mono-500.woff2") format("woff2"); font-weight: 500; font-display: block; }
 @font-face { font-family: "IBM Plex Mono"; src: url("fonts/ibm-plex-mono-600.woff2") format("woff2"); font-weight: 600; font-display: block; }
 @font-face { font-family: "IBM Plex Mono"; src: url("fonts/ibm-plex-mono-700.woff2") format("woff2"); font-weight: 700; font-display: block; }
-/* Glyph vocabulary (✕ ⊖ ⊗ ⊘ ▲ ◆ ● ▽ ◷ ⟳ ✓ Δ ◌ ◉ ⚠ ⤢ ⇤ ▾ …): the v1.5 PDF draws them with DejaVu Sans fallback.
-   Self-hosted so Windows (Segoe UI Symbol) and iOS draw the same shapes. */
-@font-face { font-family: "PE Glyphs"; src: url("fonts/pe-glyphs-dejavu.woff2") format("woff2"); font-display: block;
-  unicode-range: U+00B7, U+00D7, U+0394, U+2190-21FF, U+2200-22FF, U+2300-23FF, U+25A0-25FF, U+2600-26FF, U+2713, U+2715, U+27F3, U+2922; }
+/* Glyphs Inter / Plex do not cover (◷ ◌ ⟳ ✕ ▸ ✉ ◉ ⤢ ▾ ⌕ and the rail icons) ship as inline SVG: pe-icons.js (R-7). */
 
 :root {
   /* Base surfaces */
@@ -45,6 +43,17 @@
   --pe-tint-green: rgba(74, 222, 128, 0.08);
   --pe-tint-amber: rgba(242, 179, 61, 0.10);
   --pe-tint-red: rgba(255, 77, 61, 0.06);
+  /* Grok Bot look-owner tokens, 2026-10-18 18:30 ET (GROK_20261018_1830ET_PE_LOOK_OWNER_NEW_TOKENS.txt) */
+  --pe-closed: var(--pe-text-secondary); --pe-unknown: var(--pe-text-secondary); --pe-info-bar: var(--pe-outline);
+  --pe-nt-blocking: var(--pe-red); --pe-nt-action: var(--pe-amber); --pe-nt-watch: var(--pe-text-secondary);
+  --pe-badge-text: #000000;
+  --pe-text-min: 11px; --pe-kpi-value: 38px; --pe-kpi-weight: 650; --pe-kpi-line: 1.05;
+  --pe-pill-h: 32px; --pe-pill-bar: 3px; --pe-pill-gap: 12px; --pe-pill-collapse-bp: 2200px; --pe-pill-fs: 12px; --pe-pill-tracking: .08em;
+  --pe-col-score: 112px; --pe-col-company: 140px; --pe-map-canvas-h: 1024px;
+  --pe-nt-watch-row-h: 34px; --pe-target-phone: 44px; --pe-target-decision-phone: 52px;
+  --pe-pill-change: var(--pe-motion-fast);
+  --pe-chip-h: 20px; --pe-dec-h: 44px; --pe-dec-fs: 15px;
+  --pe-weight-bar: rgba(56, 225, 214, 0.6);   /* weight bars: Cyan at .6 (v1.5.1 tokens §4; Grok Bot pages) */
   /* Measured on p40, not yet named by Grok Bot (F02 notes X4) */
   --pe-row-a: #070707; --pe-row-b: #0D0D0D;
   --pe-tint-new: rgba(230, 230, 226, 0.10); --pe-tint-new-end: rgba(230, 230, 226, 0);
@@ -56,8 +65,8 @@
   --pe-nontext-min: 3;
   --pe-glow: 0 0 6px rgba(56, 225, 214, 0.40);
   /* Type */
-  --pe-font-label: "IBM Plex Mono", "PE Glyphs", ui-monospace, monospace;
-  --pe-font-ui: "Inter", "PE Glyphs", system-ui, sans-serif;
+  --pe-font-label: "IBM Plex Mono", "Inter", ui-monospace, monospace;
+  --pe-font-ui: "Inter", system-ui, sans-serif;
   --pe-label-tracking: .12em; --pe-th-tracking: .08em; --pe-btn-tracking: .06em;
   /* Type scale measured on p40 at 1:1 (px). L-1 (N-10): nothing below 11 px. */
   --pe-fs-min: 11px;
@@ -72,7 +81,7 @@
   --pe-fs-score-row: 16px;    /* score in row */
   --pe-fs-btn: 16px;          /* drawer decision buttons */
   --pe-fs-drawer-title: 26px; /* drawer job title */
-  --pe-fs-kpi: 38px;          /* KPI values (V-12 measured: 38, weight 650) */
+  --pe-fs-kpi: var(--pe-kpi-value);  /* V-12 (Grok Bot): 38 px / 650 / line-height 1.05 */
   --pe-fs-ring: 42px;         /* opportunity ring value */
   --pe-fw-heavy: 650;
   /* Targets */
