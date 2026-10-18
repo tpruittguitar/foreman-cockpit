@@ -19,7 +19,7 @@
  var groups=[
   {id:'pipeline',label:'Pipeline',route:'pipeline',icon:'pipeline',items:[['Jobs','pipeline'],['Review queue','pipeline','NEEDS_TIM'],['Decline candidates','pipeline','DECLINE_CANDIDATES'],['My rulings','pipeline','RULED'],['Map','map'],['Trends','reports'],['Compare','pipeline',null,'compare']]},
   {id:'discovery',label:'Intake',route:'quality',icon:'intake',items:[['Scout results','quality'],['Scout intake','pipeline','SCOUT_INTAKE'],['Discovery leads','pipeline','LEADS'],['Manual intake','intake'],['Target companies','companies']]},
-  {id:'operations',label:'System',route:'automations',icon:'system',items:[['Dashboard','automations'],['Schedules','automations',null,'schedules'],['Health','operations',null,'system'],['Incidents','incident-history'],['Writer connection','settings']]},
+  {id:'operations',label:'System',route:'automations',icon:'system',items:[['Needs you','needs-tim'],['Dashboard','automations'],['Schedules','automations',null,'schedules'],['Health','operations',null,'system'],['Incidents','incident-history'],['Writer connection','settings']]},
   {id:'preferences',label:'Settings',route:'scoring',icon:'settings',items:[['Scoring & FLEX','scoring'],['Pay & location','scoring',null,'pay-location'],['Rules','rules'],['Display & columns','columns'],['Documents','documents'],['Resume & ATS','documents',null,'profile']]}
  ];
  function attrs(item){return ' data-go="'+item[1]+'"'+(item[2]?' data-preset="'+item[2]+'"':'')+(item[3]?' data-action="'+item[3]+'"':'');}
@@ -44,7 +44,7 @@
  // One tab row for the current section. Built now, before pipeline.html binds [data-go], so the existing route handler
  // drives every tab; this module only decides which row is visible and which tab is current.
  var strip=document.createElement('nav');strip.id='section-tabs';strip.setAttribute('aria-label','Section pages');
- strip.innerHTML=groups.map(function(g){return '<div class="st-row" data-st-group="'+g.id+'" role="tablist" hidden>'+g.items.map(function(item,i){return '<button role="tab" data-st-key="'+g.id+':'+i+'"'+attrs(item)+'>'+item[0]+'</button>'}).join('')+'</div>'}).join('')+'<button hidden data-st-reset data-go="pipeline" data-preset="ALL" tabindex="-1" aria-hidden="true"></button>';
+ strip.innerHTML=groups.map(function(g){return '<div class="st-row" data-st-group="'+g.id+'" role="tablist" hidden>'+g.items.map(function(item,i){return '<button role="tab" data-st-key="'+g.id+':'+i+'"'+attrs(item)+'>'+item[0]+'</button>'}).join('')+'</div>'}).join('')+'<button hidden data-st-reset data-go="pipeline" data-preset="OPEN" tabindex="-1" aria-hidden="true"></button>';
  var anchor=document.getElementById('filters');(anchor&&anchor.parentNode?anchor.parentNode.insertBefore(strip,anchor):document.body.insertBefore(strip,document.body.firstChild));
  if(!document.getElementById('section-tabs-css')){var css=document.createElement('style');css.id='section-tabs-css';css.textContent='#section-tabs{display:flex;flex:none;border-bottom:1px solid var(--line,#2a2a2a);background:var(--panel,#0d0d0d);overflow-x:auto;scrollbar-width:none}#section-tabs::-webkit-scrollbar{display:none}#section-tabs .st-row{display:flex;gap:2px;padding:0 10px}#section-tabs .st-row[hidden]{display:none}#section-tabs button{flex:none;min-height:40px;padding:0 14px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--dim,#b8b8b8);font:12px var(--mono,monospace);letter-spacing:1.1px;text-transform:uppercase;white-space:nowrap;cursor:pointer}#section-tabs button:hover{color:var(--text,#f5f5f5)}#section-tabs button[aria-selected="true"]{color:var(--text,#f5f5f5);border-bottom-color:var(--px-accent-green,#39ff88)}#section-tabs button:focus-visible{outline:2px solid var(--px-focus-ring,#f5f5f5);outline-offset:-2px}@media(max-width:760px){#section-tabs button{min-height:44px;padding:0 12px}}';document.head.appendChild(css);}
 
@@ -54,7 +54,7 @@
  var DECISION_PRESETS={NEEDS_TIM:1,DECLINE_CANDIDATES:1,RULED:1};
  // App state lives inside pipeline.html's closure; read what pushHash() writes to the URL (replaceState, so no
  // hashchange event) plus the page itself.
- var TAB_GROUP={pipeline:'pipeline',map:'pipeline',reports:'pipeline',quality:'discovery',intake:'discovery',companies:'discovery',automations:'operations','incident-history':'operations',settings:'operations',rules:'preferences',scoring:'preferences',columns:'preferences',documents:'preferences'};
+ var TAB_GROUP={pipeline:'pipeline',map:'pipeline',reports:'pipeline',quality:'discovery',intake:'discovery',companies:'discovery',automations:'operations','incident-history':'operations','needs-tim':'operations',settings:'operations',rules:'preferences',scoring:'preferences',columns:'preferences',documents:'preferences'};
  function state(){
   var o={};try{o=JSON.parse(decodeURIComponent(location.hash.slice(1))||'{}')||{};}catch(e){o={};}
   var v=document.querySelector('.view.on'),tab=(v&&v.id.replace(/^view-/,''))||o.t||'pipeline';
