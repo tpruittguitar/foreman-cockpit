@@ -1,0 +1,44 @@
+GOLDEN FRAME F02 · REVIEW QUEUE, JOB SELECTED (drawer + lock-on) · 2560 x 1440 @1x · STATUS: AWAITING GROK BOT + TIM APPROVAL
+Built 2026-10-18 by Claude. Visual owner: Grok Bot. Composition source: Pipeline_Explorer_Proposal_v1.5.pdf p40, rendered 1:1
+(tests/visual/reference/p40_2560x1440.png). Side by side: F02_vs_PDF_p40.png (top = PDF, bottom = golden frame).
+Source: tests/visual/golden-src/F02-job-selected.html + golden.css + tokens.css; data tests/visual/fixture/fixture.json.
+Rebuild: node tests/visual/fixture/build-fixture.cjs && node tests/visual/render-golden.cjs F02
+
+MEASURED MATCH (text positions vs the PDF word boxes, same words): header, tabs, KPI, change strip, table columns, map,
+drawer and ticker mostly within ±3 px. Zones match the PDF exactly: rail 56 · table 1112 · map 801 · drawer 508;
+header 57 · tabs 56 · KPI 96 · strip 40 · main 1068 · ticker 36.
+
+EVERY DIFFERENCE FROM THE PDF, AND WHY (Grok Bot: confirm or re-rule each one)
+Data (L-2: the frame shows only numbers the app computes)
+ D1  Numbers come from the live scoring code + published model rev 24, so they differ from the drawing. The queue is
+     sorted by score (the PDF said SORT: SCORE ↓ while rows ran 35, 31, 67…). N-06
+ D2  Needs decision KPI = 28: the fixture's needs-decision count. The review queue stays 50.
+ D3  Bands header: "N 48 · AS OF 23:41 · P90 72 · P65 61 · P20 51", computed from the fixture population. V-20
+ D4  Drawer: Δ +4 matches the table row (the PDF had +4 in the table and +3 in the drawer). The ring arc is 76 % (the PDF
+     arc was ~92 %). The breakdown points add up to the ring: Σ 76.0 = 76. The footer adds "COVERAGE 100 % · FACTOR 1.00". V-16, N-01
+ D5  The Writer pill reads "1 WAITING · 1 FAILED" (the PDF said IDLE while its own KPI showed 1 / 1). N-06
+ D6  The header says "LANE QUEUE 2". The change strip says "◷ 1 waiting for lock" (the PDF said "2 queued"). These are the
+     two queues kept apart. N-02
+ D7  HOME = Cleveland, TN (Tim's home and a hard geo control point). The PDF put HOME at Chattanooga. RNG/BRG are
+     computed: 127 MI · 304°. N-12 (new)
+ D8  "11 COLUMNS" is dropped from the table header (the table has 10 columns).
+ D9  The drawer score line adds "rank 1 of 48".
+Rulings applied (V-01..V-20, provisional; Grok Bot may re-rule — Tim Q-1)
+ V-01 Decline: Secondary grey ⊖, not red.  V-02 Hold uses ⊡ (◷ means waiting for the Writer).  V-04 Needs decision in Primary
+ text (table, KPI value, drawer chip); the KPI tile keeps its cyan border as the active filter.  V-07 map header AUTO-FIT 300 MS.
+ V-09 the map pin core takes the band shape (▲); the legend uses ▲ ◆ ● ▽ (the PDF used colour dots and said NEXT 25 %; the
+ frame says UPPER 25 %, matching the table).  V-10 input / button / chip outlines #6B6B66 (3:1).  V-11 no Muted text below 24 px.
+Accessibility floor (L-1; only Tim waives)
+ A1  Text is 11 px minimum: rail labels (PDF 8.5 px), breakdown footer (PDF 10.5), map readouts (PDF 10), HOLD tag. At 11 px,
+     "SETTINGS" fills the 56 px rail, so the rail labels have no letter-spacing.
+ A2  Map FIT button 30 x 24 (PDF 30 x 20; WCAG 2.5.8 needs 24 px).
+Fonts
+ F1  Inter, IBM Plex Mono and a DejaVu Sans glyph subset are now self-hosted (fonts/, OFL / Bitstream licences in licenses/), so
+     Windows draws what the PDF drew. ⊗ and ⊖ are drawn at 1.3 em to match the PDF's glyph size.
+Not matched (needs Grok Bot's build source or a ruling)
+ X1  The score-ring tick marks, the waiting-receipt gradient and the new-row white fade are approximations.
+ X2  The map uses real us-atlas state boundaries with a 1° graticule. The PDF's own outline geometry is unknown.
+ X3  Measured page margins are 23 left / 16 right / 22 top / 17 bottom. Intentional?
+ X4  Table rows alternate #070707 / #0D0D0D and the active KPI tile glows. Neither is a named token yet. Name them or drop them.
+Question for Grok Bot: when the app opens, is the top job selected (F01 = F02 with no lock-on animation), or does the drawer show
+an empty state? If empty, F01 needs your drawing.
