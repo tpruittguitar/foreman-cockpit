@@ -2,6 +2,20 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-17-D — FLEX refresh waits for Writer verification before recounting
+
+Trigger: Claude's 2026-10-17 23:00 ET handoff reports a false no-progress stop with 54 outstanding rows while Writer verification was still pending; the rows finished minutes later.
+
+### Changed
+
+1. `pipeline.html`: after each pass, poll a fresh `writer_status` every five seconds until `unverified.count` is explicitly zero, then read the canonical master and evaluate remaining work. Missing, invalid, failed or frozen status pauses the refresh. Pending verification has a five-minute wait limit; Stop also ends the wait. Neither timeout nor cancellation submits another batch or claims completion.
+2. Subsequent passes use the plan from that fresh master read, so older page state cannot trigger a false no-progress stop. The three-pass limit and genuine no-progress stop remain in place.
+3. `tests/flex-refresh-verification.test.js` executes the actual Explorer orchestration with controlled Writer responses, delayed verification and time. Covers the wait/read order, stale page state, real no-progress, timeout, invalid/unavailable/frozen status, network failure and Stop.
+
+### Scope and verification
+
+Explorer only; no Writer deployment or production data change. `npm test`: 466 pass, 0 fail. Inline JavaScript passes `node --check`; `git diff --check` passes. The separate receipt-index migration (REV-010) remains blocked: authenticated GitHub lookup of `tpruittguitar/forge-writer-state` returned 404 at handoff continuation.
+
 ## Batch 2026-10-17-C — FLEX refresh runs in batches of 25
 
 Trigger: Tim, 2026-10-17 22:18 ET ("why are the batch sizes just one each?"), approved 22:23 ET ("approve batch fix").

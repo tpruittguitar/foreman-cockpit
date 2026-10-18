@@ -2084,6 +2084,28 @@ function paintStoredStatus_(){var e=$('score-stored-status'),b=$('score-stored-r
   if(b)b.hidden=!(p&&p.stale.length)||running}
 function openRefresh_(){var rf=rf_();if(rf.busy)return;rf.view='review';rf.report='';paintRefresh_();Promise.resolve(loadWriterStatus_(true)).then(function(){if(rf_().view==='review')paintRefresh_()})}
 function refreshReport_(title,lines){return '<div class="score-review" role="region" aria-label="Refresh result"><h3>'+esc(title)+'</h3>'+lines.map(function(l){return '<p>'+l+'</p>'}).join('')+'<div class="row"><button id="score-refresh-close">Close</button></div></div>'}
+// A batch's first receipt can be COMPLETE while other writes still await verification.
+// Read status anew after the pass; never use the background monitor's cached response as proof.
+function waitRefreshVerification_(progress){
+  var deadline=Date.now()+300000;
+  function stopped(){if(rf_().stop)throw Object.assign(new Error('Stopped by you'),{stopped:true})}
+  function poll(){
+    stopped();
+    return gsGet('writer_status').then(function(w){
+      stopped();
+      var count=w&&w.unverified&&w.unverified.count;
+      if(!w||!w.ok||w.unsupported||w.fetchError||typeof count!=='number'||!Number.isInteger(count)||count<0)
+        throw new Error('Writer verification status unavailable; completion is unverified.');
+      S.writerStatus=w;w.checkedAt=Date.now();renderWriterStatus_();
+      if(w.freeze&&w.freeze.frozen)throw new Error('Writer is frozen; refresh paused.');
+      if(count===0)return;
+      if(Date.now()>=deadline)throw new Error('Writer verification is still pending after five minutes. Reconcile receipts before resuming.');
+      progress('Waiting for Writer verification: '+count+' write(s) pending…');
+      return new Promise(function(resolve){setTimeout(resolve,5000)}).then(poll);
+    });
+  }
+  return poll();
+}
 function applyRefresh_(){
   var rf=rf_();if(rf.busy)return;
   var first=refreshPlan_();if(!first||!first.stale.length||!refreshChecks_().every(function(c){return c.ok}))return;
@@ -2092,9 +2114,9 @@ function applyRefresh_(){
   paintRefresh_();
   var sent=0,passes=0,previous=first.stale.length,verified=0;
   function progress(text){rf.progress.text=text;paintRefresh_()}
-  function pass(){
+  function pass(verifiedPlan){
     if(rf.stop)return Promise.reject(Object.assign(new Error('Stopped by you'),{stopped:true}));
-    var plan=refreshPlan_();
+    var plan=verifiedPlan||refreshPlan_();
     if(!plan)throw new Error('Canonical FLEX policy or master is not available');
     if(!plan.stale.length)return Promise.resolve();
     if(passes>=3)throw new Error('Three verified passes completed but work remains. Investigate mismatches before further writes.');
@@ -2121,6 +2143,8 @@ function applyRefresh_(){
       });
     });
     return chain.then(function(){
+      return waitRefreshVerification_(progress);
+    }).then(function(){
       progress('Reading canonical master to verify results of pass '+passes+'…');
       return load();
     }).then(function(lv){
@@ -2129,7 +2153,7 @@ function applyRefresh_(){
       verified=Math.max(0,first.stale.length-next.stale.length);
       rf.progress.verified=verified;rf.progress.remaining=next.stale.length;
       progress('Pass '+passes+' verified: '+verified+' completed; '+next.stale.length+' remaining');
-      return next.stale.length?pass():undefined;
+      return next.stale.length?pass(next):undefined;
     });
   }
   return Promise.resolve().then(pass).then(function(){
