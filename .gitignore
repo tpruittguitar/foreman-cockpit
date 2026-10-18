@@ -12,3 +12,6 @@ tools/local-store/__pycache__/
 *.pyc
 # Generated structured runtime snapshots
 data/structured_snapshot*.json
+
+# Visual test output (approved baselines remain tracked)
+tests/visual/artifacts/
