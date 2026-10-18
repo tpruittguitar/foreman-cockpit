@@ -1,9 +1,13 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'..','pipeline.html'),'utf8');
-test('missing measured capacity falls back to one request, not an invented batch size',()=>{
- assert.match(source,/state:'SINGLE_SAFE',records:1/);
- assert.match(source,/admission\.state==='MEASURED'\|\|admission\.state==='SINGLE_SAFE'/);
- assert.match(source,/No verified multi-row capacity/);
+test('missing measured capacity uses the proven single-commit batch size (Tim 2026-10-17), within the Writer max of 50',()=>{
+ assert.match(source,/state:'PROVEN_BATCH',records:PipelineDerivedRefresh\.CHUNK/);
+ assert.match(source,/admission\.state==='MEASURED'\|\|admission\.state==='PROVEN_BATCH'/);
+ assert.ok(require('../pipeline-derived-refresh').CHUNK<=50);
+});
+test('remaining counts come from the master view the verifying load returned',()=>{
+ assert.match(source,/var next=viewPlan_\(lv\)\|\|refreshPlan_\(\)/);
+ assert.match(source,/var p=viewPlan_\(lv\),remaining=p\?p\.stale\.length:null/);
 });
 test('refresh shows a persistent status bar and verified/remaining progress',()=>{
  assert.match(source,/rf-inline-status/);

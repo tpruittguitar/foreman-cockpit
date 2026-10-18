@@ -2032,6 +2032,7 @@ function publishReviewed_(){var rv=S.scoreReview,box=$('score-review');if(!rv||!
    Writer re-derives the values. Batches of at most 25, verified one at a time, stop at the first failure, then the master is re-read and
    re-checked. Nothing here runs by itself. */
 function rf_(){return S.refresh||(S.refresh={busy:false,stop:false,view:null})}
+function viewPlan_(v){if(!v||v.freshness!=='LIVE'||typeof v.text!=='string')return null;var pol=S.canonicalRules&&S.canonicalRules.text&&scoringCfg_().flexPolicy;return pol?PipelineDerivedRefresh.plan(PipelineParser.parse(v.text).rows,pol):null}
 function refreshPlan_(){var rules=S.canonicalRules,pol=rules&&rules.text&&scoringCfg_().flexPolicy;if(!pol||!S.rows||!S.rows.length)return null;var c=S.refreshCache;if(c&&c.rows===S.rows&&c.rules===rules)return c.plan;var plan=PipelineDerivedRefresh.plan(S.rows,pol);S.refreshCache={rows:S.rows,rules:rules,plan:plan};return plan}
 function refreshStatusText_(){var p=refreshPlan_();if(!hasWriter())return 'writer not configured';if(!p)return 'waiting for the canonical rules and the master…';if(!p.stale.length)return 'all '+p.inScope+' eligible jobs match the current FLEX policy';return p.stale.length+' of '+p.inScope+' eligible jobs hold calculations from an older FLEX policy'}
 function refreshStatusHtml_(){var p=refreshPlan_();if(!hasWriter()||!p)return esc(refreshStatusText_());return p.stale.length?'<span class="pill warn">'+p.stale.length+' need recalculation</span> of '+p.inScope+' eligible jobs · refresh in Scoring':'<span class="pill ok">up to date</span> '+p.inScope+' eligible jobs'}
@@ -2039,7 +2040,7 @@ function refreshAdmission_(){
   var w=S.writerStatus||{},m=w.workload||{};
   var admission=PipelineWorkload.admit(m.measurements||[],{profile:m.profile,operation:'BATCH_RULING_SINGLE_COMMIT',build:w.build&&w.build.commit,storageModel:'text/plain',pendingVerification:w.unverified&&w.unverified.count,freeze:w.freeze&&w.freeze.frozen});
   if(admission.state==='UNKNOWN'||(admission.state==='BLOCKED'&&admission.reason==='No measured batch fits the approved remaining budget'))
-    return {state:'SINGLE_SAFE',records:1,reason:'No verified multi-row capacity: use one request per batch, sequentially, with Writer receipt verification and a fresh master check.'};
+    return {state:'PROVEN_BATCH',records:PipelineDerivedRefresh.CHUNK,reason:'Proven production batch (Tim 2026-10-17): the Writer applies an all-ruling batch in ONE master commit (max 50); the 2026-10-12 bulk re-score ran 241 rows in batches of 50, every batch SUCCESS. Batches of '+PipelineDerivedRefresh.CHUNK+', sequential, each receipt-verified with a fresh master check.'};
   return admission;
 }
 function refreshChecks_(){var w=S.writerStatus,v=S.load||{},q=(w&&w.queue)||{},proc=q.processing||[],u=(w&&w.unverified)||{},out=[];
@@ -2048,7 +2049,7 @@ function refreshChecks_(){var w=S.writerStatus,v=S.load||{},q=(w&&w.queue)||{},p
   c('Writer status known',!!w&&!w.unsupported&&!w.fetchError,!w?'checking':w.fetchError||(w.unsupported?'monitor unavailable':''));
   c('Writer not frozen',!(w&&w.freeze&&w.freeze.frozen),w&&w.freeze&&w.freeze.frozen?String(w.freeze.reason||'frozen'):'');
   c('No unverified master writes',!(u.count>0),u.count?u.count+' waiting':'');c('Queue idle',!(q.pending>0)&&!proc.length,(q.pending?q.pending+' waiting':'')+(proc.length?' '+proc.length+' processing':''));
-  var admission=refreshAdmission_();c('Safe batch admission',admission.state==='MEASURED'||admission.state==='SINGLE_SAFE',admission.reason||('Measured batch '+admission.records+' at p95 '+admission.p95Ms+' ms'));
+  var admission=refreshAdmission_();c('Safe batch admission',admission.state==='MEASURED'||admission.state==='PROVEN_BATCH',admission.reason||('Measured batch '+admission.records+' at p95 '+admission.p95Ms+' ms'));
   return out}
 // REV-001 (Tim 2026-10-11): a busy Writer queue is a wait, not a failure. When the only failing checks are the queue ones, the review says so and re-checks on every Writer status poll.
 var REFRESH_QUEUE_CHECKS_={'Queue idle':1,'No unverified master writes':1};
@@ -2122,9 +2123,9 @@ function applyRefresh_(){
     return chain.then(function(){
       progress('Reading canonical master to verify results of pass '+passes+'…');
       return load();
-    }).then(function(){
+    }).then(function(lv){
       if(!S.load||S.load.freshness!=='LIVE')throw new Error('Canonical master could not be read live; completion is unverified');
-      var next=refreshPlan_();if(!next)throw new Error('Cannot recompute remaining jobs');
+      var next=viewPlan_(lv)||refreshPlan_();if(!next)throw new Error('Cannot recompute remaining jobs');
       verified=Math.max(0,first.stale.length-next.stale.length);
       rf.progress.verified=verified;rf.progress.remaining=next.stale.length;
       progress('Pass '+passes+' verified: '+verified+' completed; '+next.stale.length+' remaining');
@@ -2135,8 +2136,8 @@ function applyRefresh_(){
     rf.report=refreshReport_('Refresh complete',['<b>'+verified+' jobs</b> independently verified against the current master.',
       '<b>0 remaining</b> after '+passes+' verified pass'+(passes===1?'':'es')+'.']);
   }).catch(function(e){
-    return Promise.resolve().then(function(){return load()}).catch(function(){}).then(function(){
-      var p=refreshPlan_(),live=S.load&&S.load.freshness==='LIVE',remaining=live&&p?p.stale.length:null;
+    return Promise.resolve().then(function(){return load()}).catch(function(){}).then(function(lv){
+      var p=viewPlan_(lv),remaining=p?p.stale.length:null;
       rf.report=refreshReport_(e.stopped?'Refresh stopped':'Refresh paused — work remains',
         [esc(e.message),'Receipt-verified submissions: '+sent+'.',
          remaining==null?'Remaining balance not verified; a fresh master read is required.':'<b>'+remaining+' remaining</b> after current master read. Reopen Review refresh to resume only outstanding jobs.']);

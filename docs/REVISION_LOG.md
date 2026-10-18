@@ -2,6 +2,18 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-17-C — FLEX refresh runs in batches of 25
+
+Trigger: Tim, 2026-10-17 22:18 ET ("why are the batch sizes just one each?"), approved 22:23 ET ("approve batch fix").
+
+### Changed
+1. `pipeline.html` `refreshAdmission_`: with no measured capacity profile (the normal case; nothing ever supplies one) the refresh used one row per batch, so each row cost a full master read/write plus a separate verification run. It now uses `PipelineDerivedRefresh.CHUNK` (25) rows per batch. Evidence: the Writer applies an all-ruling batch in one master commit (max 50), and the 2026-10-12 bulk re-score ran 241 rows in batches of 50, every batch SUCCESS. Each batch is still receipt-verified, followed by a fresh master read, with the no-progress stop.
+2. `pipeline.html`: the pass check and the stopped/paused report count remaining rows from the master view the verifying load returned (`viewPlan_`). A concurrent background load could leave `S.rows` on an older read, which is why the stopped report said 67 while the status line said 57.
+3. `tests/flex-safe-drain-ui.test.js` updated.
+
+### Verification
+`npm test`: 460 pass, 0 fail. Inline scripts pass `node --check`. `tests/derived-refresh.browser.js` times out in this sandbox both before and after the change (pre-existing, environment).
+
 ## Batch 2026-10-17-B — restore the empty receipt index from its own version history
 
 Trigger: `PIPELINE_RECEIPT_INDEX.json` was saved as 0 bytes at 2026-10-16 01:02:44Z; every Writer write has failed closed since (`receipt index unreadable`). The Drive web UI greys out Download on every old version, and the connector cannot fetch revisions.
