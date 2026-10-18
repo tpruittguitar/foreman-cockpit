@@ -117,7 +117,7 @@
     '<div class="d-head"><span>◉ JOB DRAWER · ' + s.id + ' · LOCKED ON MAP</span><span class="nav">‹ › ✕</span></div>' +
     '<div class="d-title">' + esc(s.title) + '</div>' +
     '<div class="d-meta">' + esc(s.company) + ' · ' + esc(s.location) + ' · hybrid · posted ' + s.age + ' · LinkedIn</div>' +
-    '<div class="chips"><span class="chip">NEEDS DECISION</span><span class="chip">HIGH FLEX</span><span class="chip">$' + s.baseK + 'K EST.</span><span class="chip">' + s.location.split(',')[0].toUpperCase() + '</span></div>' +
+    '<div class="chips"><span class="chip p">NEEDS DECISION</span><span class="chip g">HIGH FLEX</span><span class="chip">$' + s.baseK + 'K EST.</span><span class="chip">' + s.location.split(',')[0].toUpperCase() + '</span></div>' +
     '<div class="dtabs"><span class="on">OVERVIEW</span><span>POSTING</span><span>FIT &amp; SCORE</span><span>APPLICATION</span><span>DOCUMENTS</span><span>HISTORY</span></div>' +
     '<div class="score-row"><div class="ring">' + ring + '</div><div class="score-info">' +
       '<div class="band">' + b[0] + ' ' + s.band + ' · #' + s.rankNo + ' OF ' + fx.bands.n + ' ELIGIBLE OPEN</div>' +   // V-19
