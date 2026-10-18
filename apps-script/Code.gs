@@ -168,7 +168,7 @@ function doPost(e) {
   try { req = JSON.parse((e && e.postData && e.postData.contents) || '{}'); } catch (x) { return out_({ ok: false, error: 'bad JSON' }); }
   if (!auth_(req.key)) return out_({ ok: false, error: 'bad key' });
   try {
-    if (req.action === 'state') { writeState_(req.state || {}); return out_({ ok: true }); }
+    if (req.action === 'state') return out_(writeState_(req.state || {}));
     return out_(dispatchWrite_(req));
   } catch (err) { return out_({ ok: false, mode: err && err.mode, error: String(err && err.message || err), errorStack: errorStack_(err), docAccess: docAccessSummary_() }); }
 }
@@ -2708,7 +2708,26 @@ function findOrCreate_(name, mime, initial) {
   return f.createFile(name, initial || '{}', MimeType.PLAIN_TEXT);
 }
 function readState_() { var f = findOrCreate_(STATE_FILE_NAME, 'text', '{"seen":{},"rulings":{}}'); try { return JSON.parse(f.getBlob().getDataAsString() || '{}'); } catch (e) { return { seen: {}, rulings: {} }; } }
-function writeState_(state) { var f = findOrCreate_(STATE_FILE_NAME, 'text', '{}'); f.setContent(JSON.stringify(state)); }
+/* REV-017: merge-safe state write. Lock; refuse an unreadable stored file (no write); keep a .prev copy; merge with
+ * mergeState_ (StateMerge.gs); read back. Prevents lost rulings, seen marks and incident acknowledgements when a stale
+ * tab posts. Function per FORGE_DIRECTIVE_Function_Over_Privacy_2026-10-17 (data integrity, no privacy step). */
+function writeState_(state) {
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    var f = findOrCreate_(STATE_FILE_NAME, 'text', '{}'), raw, cur;
+    try { raw = f.getBlob().getDataAsString(); } catch (e) { return { ok: false, error: 'STATE_UNREADABLE', detail: String(e && e.message || e) }; }
+    if (raw == null || raw === '') raw = '{}';
+    try { cur = JSON.parse(raw); } catch (e2) { return { ok: false, error: 'STATE_UNREADABLE', detail: 'stored state is not valid JSON' }; }
+    if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return { ok: false, error: 'STATE_UNREADABLE', detail: 'stored state is not an object' };
+    var next = JSON.stringify(mergeState_(cur, state || {}));
+    findOrCreate_(STATE_FILE_NAME + '.prev', 'text', '{}').setContent(raw);
+    f.setContent(next);
+    var back = f.getBlob().getDataAsString();
+    if (back !== next) return { ok: false, error: 'STATE_READBACK_MISMATCH' };
+    var m = JSON.parse(next);
+    return { ok: true, seen: Object.keys(m.seen || {}).length, incidents: Object.keys((m.incidents && m.incidents.incidents) || {}).length };
+  } finally { lock.releaseLock(); }
+}
 /** Extract the runtime Never-Consider rules from active TIM_PIPELINE_RULES_CANONICAL.
  * The historical standalone TIM_NEVER_CONSIDER_RULES file is no longer consulted at runtime.
  */

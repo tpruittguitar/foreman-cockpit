@@ -558,7 +558,7 @@ function incidentsHtml_(hv,hh){
 /* ---------- Needs you (Tim 2026-10-18) ---------- */
 var NT_={repo:null,repoAt:0,repoErr:'',ops:null,opsAt:0,busy:false,items:[]};
 function ntJobs_(){var dr=distinctRows_(),o={decide:0,ready:0,declineCandidates:0,unconfirmed:0,deadActive:0};dr.forEach(function(r){if(!terminalJob_(r)){if(r.BUCKET==='TIM_DECISION_REQUIRED')o.decide++;if(PRESETS.APPLY_NOW.fn(r))o.ready++;if(isDeclineCandidate_(r))o.declineCandidates++}if(PRESETS.DEAD_POSTINGS.fn(r))o.deadActive++;var rs=rulingState(r);if(rs&&rs.s!=='Master verified'&&rs.s!=='Last verified; cached view')o.unconfirmed++});return o}
-function ntModel_(){var u=S.aiUsage?PipelineAiUsage.project(S.aiUsage):[];var live=PipelineNeedsTim.liveItems({writer:S.writerStatus,workQueue:PipelineIncidents.workQueue(S.incidents),obligations:NT_.ops&&NT_.ops.summary&&NT_.ops.summary.open||[],usage:u,jobs:S.master?ntJobs_():{},now:Date.now()});return PipelineNeedsTim.merge(NT_.repo,live,Date.now())}
+function ntModel_(){var u=S.aiUsage?PipelineAiUsage.project(S.aiUsage):[];var live=PipelineNeedsTim.liveItems({stateSync:S.stateSync,writer:S.writerStatus,workQueue:PipelineIncidents.workQueue(S.incidents),obligations:NT_.ops&&NT_.ops.summary&&NT_.ops.summary.open||[],usage:u,jobs:S.master?ntJobs_():{},now:Date.now()});return PipelineNeedsTim.merge(NT_.repo,live,Date.now())}
 function ntBadge_(){var b=$('bell');if(!b)return;var m=ntModel_(),n=PipelineNeedsTim.badge(m),x=b.querySelector('.nt-badge');if(!n){if(x)x.remove();return}if(!x){x=document.createElement('span');x.className='nt-badge';b.appendChild(x)}x.textContent=n>99?'99+':String(n);x.classList.toggle('nt-badge-blocking',!!m.counts.BLOCKING);b.title='Needs you: '+n+' to act on'+(m.counts.BLOCKING?' ('+m.counts.BLOCKING+' blocking)':'')}
 function ntLoad_(force){if(NT_.busy)return Promise.resolve();var now=Date.now(),jobs=[];NT_.busy=true;
   if(force||!NT_.repoAt||now-NT_.repoAt>300000){NT_.repoAt=now;jobs.push(PipelineNeedsTim.load().then(function(j){NT_.repo=j;NT_.repoErr=''}).catch(function(e){NT_.repoErr=e.message}))}
@@ -972,7 +972,10 @@ function syncStateDown(){gsGet('state').then(function(j){if(!j.ok||!j.state)retu
   Object.keys(st.rulings||{}).forEach(function(k){var a=S.rulings[k],b=st.rulings[k];if(!a||(b.ts||'')>(a.ts||'')){S.rulings[k]=b;changed=true}});
   if(st.incidents){var mi=PipelineIncidents.merge(S.incidents,st.incidents);if(mi.changed){S.incidents=mi.store;LS.set('incidents',S.incidents);renderWriterStatus_()}}
   if(changed){LS.set('seen',S.seen);LS.set('rulings',S.rulings);if(S.master)render()}}).catch(function(){})}
-function syncStateUp(){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){gsPost({action:'state',state:{seen:S.seen,rulings:S.rulings,incidents:PipelineIncidents.forSync(S.incidents),updatedAt:new Date().toISOString()}}).catch(function(){})},1500)}
+/* REV-017: send only seen marks and incidents (rulings go to the master through the 'ruling' action); the Writer merges,
+ * never overwrites. A refused or failed sync is kept in S.stateSync and shown on Needs you; localStorage keeps every mark,
+ * and the next sync resends the full set, so nothing is lost while it fails. */
+function syncStateUp(){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){var at=Date.now();gsPost({action:'state',state:{seen:S.seen,incidents:PipelineIncidents.forSync(S.incidents),updatedAt:new Date().toISOString()}}).then(function(j){S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},1500)}
 /* ---------- column model ---------- */
 var COLS=[],COLTYPE={};
 function buildColumnModel(){

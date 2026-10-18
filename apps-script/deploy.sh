@@ -21,6 +21,11 @@ LIVE_PASS_LINE="$(grep -hE "^var PASSPHRASE *= *'" "$WORK/live/Code.js" | head -
 [ -n "$LIVE_PASS_LINE" ] || { echo "could not find live PASSPHRASE line; aborting" >&2; exit 1; }
 echo "$LIVE_PASS_LINE" | grep -q "'CHANGE-ME'" && { echo "live PASSPHRASE is the placeholder; aborting" >&2; exit 1; }
 
+# REV-017 gate G-2: prove the state merge against the LIVE state file before anything is deployed (read-only).
+if [ "${SKIP_STATE_CHECK:-}" != "1" ]; then
+  LIVE_KEY="$(echo "$LIVE_PASS_LINE" | sed -E "s/^var PASSPHRASE *= *'([^']*)'.*/\1/")"
+  node "$HERE/../scripts/state-merge-check.cjs" "https://script.google.com/macros/s/$DEPLOYMENT_ID/exec" "$LIVE_KEY" || { echo "state merge check failed; aborting deploy" >&2; exit 1; }
+fi
 mkdir -p "$WORK/out"
 cp "$WORK/live/appsscript.json" "$WORK/out/appsscript.json"
 for f in "$HERE"/*.gs; do
