@@ -1,32 +1,29 @@
-GOLDEN FRAME F02 · REVIEW QUEUE, JOB SELECTED (drawer + lock-on) · 2560 x 1440 @1x · REVISION 2 · STATUS: AWAITING GROK BOT + TIM APPROVAL
-Revision 2 (2026-10-18 ~18:40 ET) applies Grok Bot's look-owner rulings: forge-coordination/proposals/GROK_20261018_1830ET_PE_LOOK_OWNER_*
-(V-01..V-20 as ruled, R-1..R-7, the new tokens, the P03 drawer and table, the P06 header pills).
-Composition sources: Pipeline_Explorer_Proposal_v1.5.pdf p40 at 1:1 (tests/visual/reference/p40_2560x1440.png) for layout; Grok Bot pages P03 and
-P06 for the restyled table, drawer and header. F02_vs_PDF_p40.png shows them side by side (top = PDF, bottom = this frame).
+GOLDEN FRAME F02 · REVIEW QUEUE, JOB SELECTED (drawer + lock-on) · 2560 x 1440 @1x · REVISION 3 · STATUS: AWAITING GROK BOT + TIM APPROVAL
+TIM RULING 2026-10-18 18:45 ET: "oct 15 look better". The look is the Oct 15 v1.5 PDF, page 40 (tests/visual/reference/p40_2560x1440.png).
+Grok Bot's 18:30 ET presentation changes are NOT used on this screen: header status pills, the band word in the score column, the wider score
+column and table grid, teal weight bars, sentence-case rail labels, grey chips. The meaning rulings ARE used (list below).
+Side by side: F02_vs_PDF_p40.png (top = PDF, bottom = this frame).
 Rebuild: node tests/visual/fixture/build-fixture.cjs && node tests/visual/render-golden.cjs F02
 
-APPLIED FROM GROK BOT'S RULINGS
- V-01 ⊖ Decline in Secondary with an Outline border, after a 1 px divider.  V-02 Hold = pause-bars SVG + the word.  V-03 table score =
- "nn ▲ TOP" (glyph + band word), "nn ⊘ HOLD" for hard blocks; table grid = Grok Bot's 6 · 112 · 40 · 184 · 140 · 112 · 112 · 72 · 88 · 56 · 36 · 1fr.
- V-04 Needs decision in Primary.  V-07 map header has no timing text.  V-09 pin core = band shape.  V-10 #6B6B66 outlines.  V-12 KPI 38 px /
- 650 / 1.05.  V-16 breakdown "points (normalized)", "RING = 76", footer "Σ 100% = 76.0 · coverage 100% × factor 1.000 = 76".  V-19 drawer
- "▲ TOP · #1 OF 48 ELIGIBLE OPEN" (rank = 1 + eligible scores strictly higher).  V-20 bands header "BANDS · N 48 ELIGIBLE OPEN · P90 72 ·
- P65 61 · P20 51 · REV 24 · AS OF 23:41".  R-3 amber evidence line uses ≈.  R-7 Inter covers ✓ ⊖ ⊗ ⊘ ▲ ◆ ● ▽ ○ ∅ ‖ ≈ → Δ (self-hosted
- Inter variable subset, fonts/inter-var-pe.woff2). ◷ ◌ ⟳ ✕ ▸ ◉ ⤢ ▾ ⌕ and the rail and bell icons are inline SVG (pe-icons.js). The DejaVu
- glyph font is removed.  Header = P06 pills in fixed order: Writer · Seen sync · My decisions · Lane queue · Lanes, then Needs you (badge
- black on amber, R-4), ? Shortcuts, Concept · mock data.  Ticker = "Pause ticker" + "Hide" in words (V-08).  Rail labels in sentence case (P01).
+MEANING RULINGS APPLIED (each changes what the screen says, not how it is styled)
+ V-01 ⊖ Decline in Secondary, Outline border, after a divider (red is reserved for failures and hard blocks).
+ V-02 Hold = pause-bars icon + the word (◷ means waiting for the Writer).
+ V-04 "Needs decision" text in Primary (cyan = live / selection only); the KPI tile keeps its cyan border as the active filter.
+ V-07 no "AUTO-FIT" timing text in the map header.  V-09 map pin core = band shape (▲), legend shows ▲ ◆ ● ▽.
+ V-10 #6B6B66 outlines on inputs, buttons and chips (3:1).  V-11 no Muted text under 24 px.
+ V-16 breakdown header "Σ 100% = 76"; footer "Σ 100% = 76.0 · COVERAGE 100% × FACTOR 1.000 = 76 · REV 24"; points sum to the ring.
+ V-19 drawer line 4 ends "#1 of 48" (1 + eligible scores strictly higher).  V-20 bands header "BANDS · N 48 ELIGIBLE OPEN · P90 72 · P65 61 ·
+ P20 51 · REV 24 · AS OF 23:41".  R-3 amber evidence line uses ≈.  R-7 glyphs Inter lacks are inline SVG (pe-icons.js); Inter covers the rest.
+ B-16 / V-08 ticker ends with "PAUSE TICKER · HIDE".
 
-DATA (L-2): every number comes from the fixture (scoreRow + model rev 24) — unchanged from revision 1
- D1 queue sorted by score; D2 Needs decision 28 of a 50-row queue; D4 Δ +4 in the table and the drawer, ring arc 76 %; D5 the "My decisions"
- pill shows the failed decision (fail beats waiting); D6 lane queue 2 · oldest 4 min; D7 HOME = Cleveland, TN, RNG 127 MI · BRG 304° (N-12);
- D8 "11 COLUMNS" dropped.
+DATA (L-2): the fixture (scoreRow + live model rev 24). Queue sorted by score; Needs decision 28 of 50; Δ +4 in table and drawer; ring arc 76 %;
+Writer pill "1 WAITING · 1 FAILED" matches the KPI (the PDF said IDLE); "LANE QUEUE 2" kept apart from "1 waiting for lock" (N-02);
+HOME = Cleveland, TN, RNG 127 MI · BRG 304° (N-12); "11 COLUMNS" dropped (the table has 10).
+ACCESSIBILITY FLOOR (L-1): 11 px minimum text (rail labels, breakdown footer, map readouts, HOLD tag); map FIT button 30 x 24.
 
-QUESTIONS FOR GROK BOT (owner)
- Q1 WRITE STATE column. With your table grid it gets 52 px, so "◷ Waiting for lock · 8 s", "✓ Confirmed · 3 s" and "⊗ Failed · Retry" truncate
-    to the glyph plus 3-4 letters. Re-rule the widths (e.g. take 24 px from TITLE and 20 px from BUCKET), or confirm glyph-first truncation?
- Q2 Receipts. Your P03 drawer has no receipts block; F02 keeps p40's three receipts (waiting / confirmed / failed) under the decision row. Keep?
- Q3 KPI tiles and the change strip keep p40's look (your pages draw Needs-you tiles, not these). Confirm.
- Q4 X1-X4 from revision 1 stay open: ring ticks now follow your ring() (Outline ticks); receipt gradient and new-row fade are measured
-    from p40; margins 23 / 16 / 22 / 17 are measured from p40; --pe-row-a / --pe-row-b (#070707 / #0D0D0D) are not named in your tokens.
- Q5 Drawer head keeps "· LOCKED ON MAP" (p40). Your drawer() drops it. Keep for the locked state?
-L-1 items unchanged: 11 px minimum everywhere; map FIT button 30 x 24.
+QUESTIONS FOR GROK BOT
+ Q1 The new information you drew in P06 (seen-sync, my decisions, lane queue, lane health) still has to appear somewhere. Draw it in the Oct 15
+    header language (the single Writer pill + the mono status text to its right), so it fits this frame.
+ Q2 Same for M-01..M-07: re-draw them in the Oct 15 look (p40 table and drawer styling) where they differ.
+ Q3 Margins 23 / 16 / 22 / 17, row tints #070707 / #0D0D0D, receipt gradient and new-row fade are measured from p40 — confirm or name them.
+ Q4 Opening state: top job selected (F01 = F02) or an empty drawer (then draw it, Oct 15 look).
