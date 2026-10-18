@@ -20,6 +20,6 @@ test('safe drain requires independent receipt and master verification and stops 
  assert.match(source,/recoverWriteResult_\(chunk\[0\]\.ruling\.requestId,0\)/);
  assert.match(source,/No reduction in outstanding jobs after master verification/);
  assert.match(source,/if\(!S\.load\|\|S\.load\.freshness!=='LIVE'\)/);
- assert.match(source,/return next\.stale\.length\?pass\(\):undefined/);
+ assert.match(source,/return next\.stale\.length\?pass\(next\):undefined/);
  assert.match(source,/if\(rf\.stop\)throw/);
 });
