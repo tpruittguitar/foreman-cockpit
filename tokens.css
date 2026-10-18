@@ -19,7 +19,7 @@
   --pe-raised: #1E1E1E; --pe-seam: #2A2A2A; --pe-gridline: #3A3A3A;
   --pe-field: #050505; --pe-divider: #1C1C1C;
   --pe-map-grid-minor: #161616; --pe-map-grid-major: #262626;
-  --pe-map-state-fill: #0A0A0A; --pe-map-state-stroke: #7A7A76; --pe-map-state-label: #8E8E89;
+  --pe-map-state-fill: #0A0A0A; --pe-map-state-stroke: #7A7A76; --pe-map-state-label: #6B6B66; /* T-5: 3.67:1 at full opacity */
   /* L-1 (N-07, V-10): control boundaries need 3:1. Inputs and neutral/ghost buttons use this; Gridline stays for map grid and rules. */
   --pe-outline: #6B6B66;
   /* Text */

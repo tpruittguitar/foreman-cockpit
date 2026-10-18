@@ -112,7 +112,10 @@ function breakdown(r) {
   const exact = order.map(k => (known.includes(k) ? r.parts[k].weight * r.parts[k].score / avail * factor : 0));
   const tenths = exact.map(v => Math.floor(v * 10)), target = r.score * 10;
   let rest = target - tenths.reduce((a, b) => a + b, 0);
-  exact.map((v, i) => [v * 10 - tenths[i], i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (rest > 0 && known.includes(order[i])) { tenths[i]++; rest--; } });
+  const rem = exact.map((v, i) => [v * 10 - tenths[i], i]).filter(([, i]) => known.includes(order[i]));
+  // C-08 (Grok Bot F02 R3): when the ring rounds DOWN the floors can already exceed the target; take tenths back from the smallest remainders.
+  rem.slice().sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (rest > 0) { tenths[i]++; rest--; } });
+  rem.slice().sort((a, b) => a[0] - b[0]).forEach(([, i]) => { if (rest < 0 && tenths[i] > 0) { tenths[i]--; rest++; } });
   return order.map((k, i) => ({ key: k, weight: r.parts[k].weight, score: r.parts[k].known ? r.parts[k].score : null, points: tenths[i] / 10 }));
 }
 const selected = rows.find(r => r.id === 'JOB-0412');

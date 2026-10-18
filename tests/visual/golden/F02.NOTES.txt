@@ -1,3 +1,15 @@
+GOLDEN FRAMES F01 + F02 · REVISION 4 (LAST FRAME ROUND, Tim 19:23 ET) · 2560 x 1440 @1x · STATUS: AWAITING GROK BOT RE-QA
+REV 4 = Grok Bot's F02 R3 verdict (forge-coordination proposals/GROK_20261018_1910ET_PE_FRAME_VERDICT_F02_R3.txt, commit 0586f51) applied:
+ C-01..C-16 come from Grok Bot's corrected renderer, adopted unchanged as golden-src/oct15.js + oct15.css (replaces F02-job-selected.js, golden.js).
+ C-08 rounding fix ported into fixture/build-fixture.cjs; fixture/build-oct15.cjs builds fx-base/agency/closed/applied (C-15 typed values -> fx.oct15).
+ F01 = opening state, empty drawer (Grok Bot Q4). New file golden-src/F01-empty.html, golden/F01_2560x1440.png.
+ Claude deltas from Grok Bot's pages (Tim ruling 19:23 ET, Claude recommendations):
+   T-5 map state labels #6B6B66 full opacity (tokens.css --pe-map-state-label), 3.67:1   T-6 stale bar = staleEvidence / jobs (computed)
+   T-10 BUCKET 110 / AGE 30 content width   T-4 range rings banned   T-7 settled by T-2 NO   T-8 phone only, not in F01/F02.
+ Pixel check vs Grok Bot PNGs: differences only from T-5/T-6/T-10 column shift and font anti-aliasing (Playwright Chromium 1194 vs Chrome).
+After this round: real screens in the app; frame-level nits go to the real build.
+
+---- REVISION 3 NOTES (history) ----
 GOLDEN FRAME F02 · REVIEW QUEUE, JOB SELECTED (drawer + lock-on) · 2560 x 1440 @1x · REVISION 3 · STATUS: AWAITING GROK BOT + TIM APPROVAL
 TIM RULING 2026-10-18 18:45 ET: "oct 15 look better". The look is the Oct 15 v1.5 PDF, page 40 (tests/visual/reference/p40_2560x1440.png).
 Grok Bot's 18:30 ET presentation changes are NOT used on this screen: header status pills, the band word in the score column, the wider score

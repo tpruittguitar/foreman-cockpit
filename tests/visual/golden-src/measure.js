@@ -1,0 +1,4 @@
+(function(){var out=[],hs=[].slice.call(document.querySelectorAll('#grid thead th'));
+hs.forEach(function(th,i){var max=0,over=0,txt='';[].slice.call(document.querySelectorAll('#grid tbody tr')).forEach(function(tr){var td=tr.children[i];var r=document.createRange();r.selectNodeContents(td);var w=r.getBoundingClientRect().width;if(w>max){max=w;txt=td.textContent}if(td.scrollWidth>td.clientWidth)over++});
+var r2=document.createRange();r2.selectNodeContents(th);out.push(th.textContent+' | col '+th.getBoundingClientRect().width.toFixed(0)+' | maxContent '+max.toFixed(1)+' ['+txt+'] | th '+r2.getBoundingClientRect().width.toFixed(1)+' | truncated '+over)});
+var pre=document.createElement('pre');pre.id='out';pre.textContent=out.join('\n')+'\nTABLE '+document.getElementById('grid').getBoundingClientRect().width;document.body.appendChild(pre)})();

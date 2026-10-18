@@ -1,0 +1,75 @@
+<!doctype html>
+<!-- Grok Bot · F01 · opening state · no job selected · Oct 15 look · PROPOSED 2026-10-18 · built on rev3 c69a9f0 (Oct 15 look, PDF p40) -->
+<!-- Golden frame F02 · review queue with a job selected (drawer + lock-on) · 2560 x 1440 @1x.
+     Composition: Grok Bot v1.5 PDF p40 (visual owner). Data: tests/visual/fixture/fixture.json (scoreRow, model rev 24).
+     Look: the Oct 15 v1.5 PDF (Tim 2026-10-18 18:45 ET "oct 15 look better"). Meaning rulings V-01..V-04, V-07, V-09..V-11, V-16, V-19, V-20, R-3, R-7 applied.
+     Every colour, size and duration comes from ../../../tokens.css. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>F01 · opening state · no job selected · Oct 15 look</title>
+<link rel="stylesheet" href="../../../tokens.css">
+<link rel="stylesheet" href="golden.css">
+<link rel="stylesheet" href="oct15.css">
+</head>
+<body>
+<div class="app" id="app">
+  <nav class="rail" aria-label="Sections">
+    <button class="rail-menu" aria-label="Menu">☰</button>
+    <a class="rail-item on" href="#"><span class="ri-glyph">▤</span><span class="ri-label">PIPELINE</span></a>
+    <a class="rail-item" href="#"><span class="ri-glyph">⇲</span><span class="ri-label">INTAKE</span></a>
+    <a class="rail-item" href="#"><span class="ri-glyph">⚙</span><span class="ri-label">SYSTEM</span></a>
+    <a class="rail-item" href="#"><span class="ri-glyph">☷</span><span class="ri-label">SETTINGS</span></a>
+    <div class="rail-foot">
+      <a class="rail-item" href="#"><span class="ri-glyph ri-dot"></span><span class="ri-label">STATUS</span></a>
+      <a class="rail-item" href="#"><span class="ri-glyph">⟳</span><span class="ri-label">REFRESH</span></a>
+      <a class="rail-item cy" href="#"><span class="ri-glyph">⇤</span><span class="ri-label">UNPIN</span></a>
+    </div>
+  </nav>
+
+  <header class="top">
+    <div class="brand">PIPELINE EXPLORER</div>
+    <div class="crumb">PIPELINE <span>›</span> REVIEW QUEUE</div>
+    <label class="search"><span class="s-glyph">⌕</span><span class="s-ph">Search jobs, companies, or locations…</span><kbd>/</kbd></label>
+    <div class="status-pill" id="writer-pill"></div>
+    <div class="hdr-meta" id="hdr-meta"></div>
+    <div class="hdr-ctl">
+      <span>COMPACT <i>▾</i></span><span>LAYOUT</span><span class="g">⟳</span><span class="bell">🔔 <b id="bell-n">3</b></span><span>? SHORTCUTS</span>
+      <span class="concept">CONCEPT — MOCK DATA</span>
+    </div>
+  </header>
+
+  <div class="subtabs" id="subtabs"></div>
+
+  <section class="kpis" id="kpis"></section>
+  <section class="strip" id="strip"></section>
+
+  <section class="panel table-panel">
+    <div class="panel-head">
+      <div class="ph-title" id="tq-title"></div>
+      <div class="ph-meta" id="tq-meta"></div>
+    </div>
+    <table class="grid" id="grid">
+      <colgroup><col style="width:125px"><col style="width:193px"><col style="width:120px"><col style="width:120px"><col style="width:122px"><col style="width:70px"><col style="width:95px"><col style="width:60px"><col style="width:44px"><col></colgroup>
+      <thead><tr><th class="c-score">SCORE <span class="d">Δ</span></th><th>TITLE</th><th>COMPANY</th><th>LOCATION</th><th>BUCKET</th><th class="r">BASE EST</th><th>DEGREE FLEX</th><th class="r">EXP FIT</th><th class="r">AGE</th><th>WRITE STATE</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+
+  <section class="panel map-panel">
+    <div class="panel-head">
+      <div class="ph-title"><span class="pg">◎</span> JOB LOCATION MAP · SELECTED JOB</div>
+      <div class="ph-meta"><span class="pg">⤢</span> FULLSCREEN</div>
+    </div>
+    <div class="map" id="map"></div>
+  </section>
+
+  <aside class="panel drawer" id="drawer"></aside>
+
+  <footer class="ticker" id="ticker"></footer>
+</div>
+<script src="../../../pe-icons.js"></script>
+<script>window.PAGE={fx:'../fixture/fx-base.json',mode:'empty'};</script>
+<script src="oct15.js"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@
 const { chromium } = require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs = require('fs'), path = require('path'), http = require('http');
 const repo = path.resolve(__dirname, '../..');
-const FRAMES = { F02: 'F02-job-selected.html' };
+const FRAMES = { F01: 'F01-empty.html', F02: 'F02-job-selected.html' };
 const MIME = { '.js': 'application/javascript', '.css': 'text/css', '.html': 'text/html', '.json': 'application/json', '.woff2': 'font/woff2', '.png': 'image/png' };
 (async () => {
   const want = process.argv.slice(2); const list = want.length ? want : Object.keys(FRAMES);
