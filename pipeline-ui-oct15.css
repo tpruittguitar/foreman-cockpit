@@ -431,3 +431,46 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #rail button:focus-visible { outline: var(--pe-focus-ring) !important; outline-offset: -2px !important; box-shadow: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { #rail .rail-in, #rail .nav-full, #rail .nav-short, #rail .rail-brand .rl { transition: none !important; } }
+
+/* SYS-1 · System panel: every line wraps, no sideways scroll. #writer-panel sits inside header .writer-identity (white-space:nowrap) and inherited it. */
+#writer-panel.build-panel {
+  white-space: normal;
+  width: clamp(460px, 30vw, 600px); max-width: calc(100vw - var(--pe-rail-w, 96px));
+  box-sizing: border-box; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  padding: 16px 20px calc(20px + env(safe-area-inset-bottom));
+  font-family: var(--pe-font-ui); font-size: var(--pe-fs-small); line-height: 19px; color: var(--pe-text-primary);
+}
+#writer-panel.build-panel * { min-width: 0; max-width: 100%; text-overflow: clip; }
+#writer-panel.build-panel :is(div, span, p, b, a, small, article, li, em) { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+#writer-panel.build-panel h3 { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); line-height: 16px; letter-spacing: var(--pe-label-tracking);
+  text-transform: uppercase; color: var(--pe-text-secondary); font-weight: 400; margin: 18px 0 8px; }
+#writer-panel .sys-head { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+#writer-panel .sys-head h3 { margin: 0; flex: 1; }
+#writer-panel .sys-x { flex: none; min-width: 32px; min-height: 32px; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; color: var(--pe-text-secondary); }
+#writer-panel .sys-x:hover { color: var(--pe-text-primary); }
+#writer-panel .sys-x:focus-visible, #writer-panel a:focus-visible, #writer-panel button:focus-visible { outline: var(--pe-focus-ring); outline-offset: -2px; }
+#writer-panel .build-row { display: grid; grid-template-columns: 132px minmax(0, 1fr); column-gap: 12px; row-gap: 2px; margin: 4px 0; align-items: baseline; }
+#writer-panel .build-key { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); line-height: 19px; letter-spacing: .06em; text-transform: uppercase; color: var(--pe-text-secondary); }
+#writer-panel .build-value { min-width: 0; overflow-wrap: anywhere; }
+#writer-panel .build-value .mono, #writer-panel .build-value a, #writer-panel .mono { overflow-wrap: anywhere; word-break: break-all; }
+#writer-panel .pill { display: inline-block; white-space: nowrap; max-width: 100%; vertical-align: baseline;
+  margin: 0 6px 3px 0; padding: 0 6px; font-family: var(--pe-font-label); font-size: var(--pe-fs-min); line-height: 17px; letter-spacing: .06em; }
+#writer-panel .sys-health { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; }
+#writer-panel .aiu-row { display: block; margin: 10px 0 12px; }
+#writer-panel .aiu-top { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 6px; }
+#writer-panel .aiu-pct { margin-left: auto; white-space: nowrap; }
+#writer-panel .aiu-track { display: block; width: 100%; box-sizing: border-box; margin: 4px 0; }
+#writer-panel .aiu-foot { font-size: var(--pe-fs-small); line-height: 19px; color: var(--pe-text-secondary); }
+#writer-panel .inc-work-item { box-sizing: border-box; width: 100%; overflow-wrap: anywhere; }
+#writer-panel .inc-work-title { overflow-wrap: anywhere; word-break: break-all; }
+#writer-panel .inc-work-error { font-family: var(--pe-font-label); font-size: var(--pe-fs-crumb); line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--pe-text-secondary); }
+#writer-panel .inc-work-next, #writer-panel .tip { overflow-wrap: anywhere; }
+#writer-panel .notice { grid-template-columns: 78px minmax(0, 1fr); }
+#writer-panel .tip, #writer-panel .inc-none { font-size: var(--pe-fs-small); color: var(--pe-text-secondary); }
+#writer-panel small, #writer-panel .lvl, #writer-panel .inc-res, #writer-panel .inc-ev, #writer-panel .inc-ack { font-size: var(--pe-fs-min) !important; }
+@media (max-width: 980px) {
+  #writer-panel.build-panel { width: 100vw; max-width: 100vw; border-left: 0; z-index: 90;   /* above #bottombar (z 85) */
+    padding: calc(16px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left)); }
+  #writer-panel .build-row { grid-template-columns: minmax(0, 1fr); }
+  #writer-panel .sys-x { min-width: var(--pe-target-phone, 44px); min-height: var(--pe-target-phone, 44px); }
+}

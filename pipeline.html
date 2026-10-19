@@ -532,7 +532,7 @@ function incidentTime_(iso){var t=Date.parse(iso||'');if(isNaN(t))return '—';v
 function incidentHtml_(i){var res=i.status!=='ACTIVE'&&i.status!=='ACKNOWLEDGED_UNRESOLVED',lvl=res?'NOTICE':i.severity==='critical'?'FAULT':'CAUTION',n=i.kind==='event'?(i.attempts||1):(i.checks||1);
   return '<div class="notice incident '+lvl+'" data-incident="'+esc(i.id)+'"><span class="lvl">'+esc(res?i.status:i.kind==='event'?'VERIFY':i.severity==='critical'?'CRITICAL':'WARNING')+'<small>'+(i.kind==='event'?n+' attempt'+(n===1?'':'s'):n+' check'+(n===1?'':'s'))+'</small></span><span class="t">'+esc(i.title)
    +'<small>First failure '+esc(incidentTime_(i.firstAt))+' · latest '+esc(incidentTime_(i.latestAt))+(i.kind==='event'&&i.latestFile?' · '+esc(i.latestFile):'')+'</small>'
-   +(i.latestError?'<small>'+esc(String(i.latestError).slice(0,220))+'</small>':'')
+   +(i.latestError?'<small>'+esc(String(i.latestError))+'</small>':'')
    +(res?'<small class="inc-res">'+esc(i.resolution||'')+(i.resolvedAt?' · '+esc(incidentTime_(i.resolvedAt)):'')+'</small>'+(i.recoveryEvidence?'<small class="inc-ev">Recovery evidence: '+esc(i.recoveryEvidence)+'</small>':'')
      :'<small class="inc-res">'+(i.kind==='event'?'Prior failure; current outcome not independently verified':'Current fault requiring action')+'</small>'+(i.kind==='event'?'<button type="button" class="inc-ack" data-ack="'+esc(i.id)+'">Acknowledge · retain unresolved</button>':''))
    +(i.timeline&&i.timeline.length?'<details><summary>Attempt chronology</summary>'+i.timeline.map(function(t){return '<small>'+esc(t.at+' · '+t.status+' · '+(t.error||''))+'</small>'}).join('')+'</details>':'')+' </span></div>'}
@@ -543,7 +543,7 @@ function outstandingWorkHtml_(all,limit){
     return '<article class="inc-work-item" data-work-operation="'+esc(o.operation)+'"><div class="inc-work-title">'+esc(o.operation)+'</div>'
       +'<div class="tip">Unfinished obligation / '+esc(o.status.replace(/_/g,' '))+' / '+o.incidentCount+' incident class(es), '+o.attempts+' failed attempt(s)</div>'
       +(o.latestFile?'<div class="tip">Latest attempt: '+esc(o.latestFile)+' / '+esc(incidentTime_(o.latestAt))+'</div>':'')
-      +(o.latestError?'<div class="inc-work-error">'+esc(String(o.latestError).slice(0,210))+'</div>':'')
+      +(o.latestError?'<div class="inc-work-error">'+esc(String(o.latestError))+'</div>':'')
       +'<div class="inc-work-next"><b>Required next action:</b> '+esc(o.nextStep)+'</div>'
       +'</article>';
   }).join('');
