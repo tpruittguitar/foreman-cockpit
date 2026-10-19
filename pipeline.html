@@ -749,6 +749,7 @@ function loadCanonicalScoring_(){
     if(!j||!j.ok||!j.exists){S.scoringCanonical=null;S.scoringCanonicalMeta=j||null;return j}
     S.scoringCanonical=PipelineScoring.normalize(j.model||{});S.scoringCanonicalMeta=j;
     if(!LS.get('scoringLocalEdited',false)){S.scoring=S.scoringCanonical;LS.set('scoring',S.scoring);scoreCache={fp:"",rows:{}}}
+    if(S.master&&typeof maybeBaselineReviews_==='function')maybeBaselineReviews_();   /* REV-055: baseline once the published model is in */
     if(S.tab==='scoring')renderScoring();
     renderWriterStatus_();
     return j;
@@ -1022,16 +1023,24 @@ function syncStateDown(){gsGet('state').then(function(j){if(!j.ok||!j.state)retu
   if(st.incidents){var mi=PipelineIncidents.merge(S.incidents,st.incidents);if(mi.changed){S.incidents=mi.store;LS.set('incidents',S.incidents);renderWriterStatus_()}}
   if(typeof PipelineReview!=='undefined'){var srv=st.reviewed||{},mr=PipelineReview.merge(S.reviewed,srv);if(mr.changed){S.reviewed=mr.store;LS.set('reviewed',S.reviewed);changed=true}
     // D-3: anything this device holds that the Writer does not (an older Writer dropped it, or a failed send) goes up again
-    var up=0;Object.keys(S.reviewed).forEach(function(k){var a=S.reviewed[k],b=srv[k];if(!b||a.t>Number(b.t)){S.reviewDirty[k]=1;up++}});if(up)syncStateUp()}
+    var up=0;Object.keys(S.reviewed).forEach(function(k){var a=S.reviewed[k],b=srv[k];if(!b||a.t>Number(b.t)){S.reviewDirty[k]=1;up++}});if(up)syncStateUp();maybeBaselineReviews_()}
   if(changed){LS.set('seen',S.seen);LS.set('rulings',S.rulings);if(S.master)render()}}).catch(function(){})}
 /* REV-017: send only seen marks and incidents (rulings go to the master through the 'ruling' action); the Writer merges,
  * never overwrites. A refused or failed sync is kept in S.stateSync and shown on Needs you; localStorage keeps every mark,
  * and the next sync resends the full set, so nothing is lost while it fails. */
+/* REV-055: review records still pending after a send (refused, writes not yet enabled, old Writer) go again on their own,
+   5 s / 15 s / 45 s / 2 min / 5 min, then with the next sync (a job open, Mark seen or the next load). */
+var REVIEW_RETRY_MS_=[5000,15000,45000,120000,300000];
+function reviewRetry_(j){if(!Object.keys(S.reviewDirty||{}).length||S.reviewRetryTimer)return;var n=S.reviewRetry||0;if(n>=REVIEW_RETRY_MS_.length)return;
+  S.reviewRetry=n+1;S.reviewRetryTimer=setTimeout(function(){S.reviewRetryTimer=null;syncStateUp()},REVIEW_RETRY_MS_[n])}
 function syncStateUp(){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){var at=Date.now(),sent={},rv={};
     // D-3: only the review records changed since the last good send (the Writer merges by job id, larger t wins)
     Object.keys(S.reviewDirty||{}).forEach(function(k){if(S.reviewed[k]){rv[k]=S.reviewed[k];sent[k]=S.reviewed[k].t}});
     var body={seen:S.seen,incidents:PipelineIncidents.forSync(S.incidents),updatedAt:new Date().toISOString()};if(Object.keys(rv).length)body.reviewed=rv;
-    gsPost({action:'state',state:body}).then(function(j){if(j&&j.ok)Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},1500)}
+    // REV-055: a review record is done only when the Writer confirms it kept them (writeState_ returns a "reviewed" count;
+    // a Writer older than REV-053 answers ok without it and drops the records, so they stay pending and go again).
+    var keep=function(j){return !!(j&&j.ok&&typeof j.reviewed==='number')};
+    gsPost({action:'state',state:body}).then(function(j){if(keep(j)){Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.reviewRetry=0}reviewRetry_(j);S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){reviewRetry_(null);S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},1500)}
 /* ---------- column model ---------- */
 var COLS=[],COLTYPE={};
 function buildColumnModel(){

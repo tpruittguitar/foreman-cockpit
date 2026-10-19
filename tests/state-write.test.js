@@ -100,7 +100,7 @@ test('browser: state sync sends seen and incidents only, records failures, and N
   assert.match(fn, /var body=\{seen:S\.seen,incidents:PipelineIncidents\.forSync\(S\.incidents\)/);
   assert.match(fn, /gsPost\(\{action:'state',state:body\}\)/);
   // D-3 (REV-053): only review records changed since the last good send ride along, and only a good send clears them
-  assert.match(fn, /Object\.keys\(S\.reviewDirty\|\|\{\}\)/); assert.match(fn, /if\(j&&j\.ok\)Object\.keys\(sent\)/);
+  assert.match(fn, /Object\.keys\(S\.reviewDirty\|\|\{\}\)/); assert.match(fn, /typeof j\.reviewed==='number'/); assert.match(fn, /if\(keep\(j\)\)\{Object\.keys\(sent\)/);   // REV-055: cleared only when the Writer confirms
   assert.match(fn, /S\.stateSync=j&&j\.ok\?\{ok:true/);
   assert.ok(fn.indexOf('.catch(function(){})') < 0, 'failures are no longer swallowed');
   const NT = require('../pipeline-needs-tim.js');
