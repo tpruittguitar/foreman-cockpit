@@ -722,4 +722,21 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
 #grid td .sc-d.down { color: var(--pe-text-secondary); }
 #drawer .ws-delta { font-size: var(--pe-fs-small, 13px); color: var(--pe-text-primary); }
 #drawer .ws-delta.up { color: var(--pe-green); } #drawer .ws-delta.same { color: var(--pe-text-secondary); }
-@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) { #queue-head .since-strip { display: none; } }   /* Track M: phone strip later */
+/* Track M step 1 (REV-067, HF-13 change summary on the phone; Grok Q9-c): the same strip, stacked. Label line, then the four
+   items as a 2 x 2 grid of 44 px tap targets (V-17); 13 px item text, 11 px label (N-10 floor); the cause example stays
+   desktop-only (it would truncate); cyan bar on the left as on desktop. Each item filters the queue (bindSince_). */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #queue-head .since-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; position: relative; margin: 8px 0 0;
+    padding: 8px 10px 4px 14px; background: var(--pe-hull, #0b0b0b); border: 1px solid var(--pe-seam, #2a2a2a); }
+  #queue-head .since-strip::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 3px; background: var(--pe-cyan, #38e1d6); }
+  #queue-head .since-strip .ss-lbl { grid-column: 1 / -1; font-family: var(--pe-font-label, ui-monospace, monospace); font-size: 11px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--pe-text-secondary, #a3a39e); padding: 2px 0 4px; }
+  #queue-head .since-strip .ss-i { min-height: 44px; display: flex; align-items: center; justify-content: flex-start; text-align: left; padding: 4px 2px;
+    background: none; border: 0; border-top: 1px solid var(--pe-seam, #2a2a2a); border-radius: 0; color: var(--pe-text-primary, #e6e6e2);
+    font-family: var(--pe-font-ui, system-ui, sans-serif); font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none;
+    text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; line-height: 1.25; }
+  #queue-head .since-strip .ss-i .ss-eg { display: none; }
+  #queue-head .since-strip .ss-i.zero { color: var(--pe-text-secondary, #a3a39e); text-decoration: none; }
+  #queue-head .since-strip .ss-i.red:not(.zero) { color: var(--pe-red, #ff4d3d); } #queue-head .since-strip .ss-i.amb:not(.zero) { color: var(--pe-amber, #f2b33d); }
+  #queue-head .since-strip .ss-i:focus-visible { outline: 2px solid var(--pe-cyan, #38e1d6); outline-offset: -2px; }
+}
