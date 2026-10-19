@@ -95,7 +95,7 @@ test('lock timeout: nothing written and the client gets ok:false', () => {
 
 test('browser: state sync sends seen and incidents only, records failures, and Needs you shows them', () => {
   const html = fs.readFileSync(path.join(__dirname, '../pipeline.html'), 'utf8');
-  const fn = html.match(/function syncStateUp\(\)\{[\s\S]*?\},1500\)\}/)[0];
+  const fn = html.match(/function syncStateUp\(delay\)\{[\s\S]*?\},delay==null\?1500:delay\)\}/)[0];   // REV-056: optional delay (0 = send now)
   assert.ok(fn.indexOf('rulings') < 0, 'rulings are not sent to the state file');
   assert.match(fn, /var body=\{seen:S\.seen,incidents:PipelineIncidents\.forSync\(S\.incidents\)/);
   assert.match(fn, /gsPost\(\{action:'state',state:body\}\)/);

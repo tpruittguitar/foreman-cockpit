@@ -634,6 +634,7 @@ function renderWriterStatus_(){
   html+=writerRow_('writer',!hasWriter()?'not configured':!w?'checking…':w.unsupported?'monitor unavailable':w.fetchError?'<span class="pill bad">UNREACHABLE</span>':(label+(w.freeze&&w.freeze.frozen?' · '+esc(w.freeze.reason||'')+' · by '+esc(w.freeze.by||'?'):'')));
   html+=writerRow_('live code',writerBuildHtml_());
   html+=writerRow_('scoring',scoringStampHtml_());
+  html+=writerRow_('review records',reviewStatusHtml_());
   html+=writerRow_('stored FLEX values',refreshStatusHtml_());
   html+=writerRow_('frontend',buildStatusHtml_()+' <span class="mono"><a href="'+buildCommitUrl_(i.commit||'')+'" target="_blank" rel="noopener">'+esc(short)+'</a></span>'+(i.pr?' · '+prLink_(i.pr,i.subject):''));
   if(w&&!w.unsupported&&!w.fetchError){var q2=w.queue||{},proc2=q2.processing||[],u=w.unverified||{};
@@ -1030,17 +1031,37 @@ function syncStateDown(){gsGet('state').then(function(j){if(!j.ok||!j.state)retu
  * and the next sync resends the full set, so nothing is lost while it fails. */
 /* REV-055: review records still pending after a send (refused, writes not yet enabled, old Writer) go again on their own,
    5 s / 15 s / 45 s / 2 min / 5 min, then with the next sync (a job open, Mark seen or the next load). */
-var REVIEW_RETRY_MS_=[5000,15000,45000,120000,300000];
+var REVIEW_RETRY_MS_=[5000,15000,45000,120000,300000],REVIEW_CHUNK_=Math.max(50,Number(LS.get('reviewChunk',400))||400);   /* px.reviewChunk: test knob, >= 50 */
+/* REV-056: V2 re-arms the baseline on every device. A V1 flag could be set with nothing made, and then never ran again. */
+var REVIEW_BASELINE_KEY_='reviewBaselineV2';
+/* REV-056: a phone pauses a page in the background; pending records go again when it comes back or reconnects. */
+/* REV-056: coming back to the page (iOS freezes timers while Safari is in the background) or pressing "Send now" in
+   System sends pending review records at once, without the 1.5 s debounce and ahead of a pending retry. force also
+   runs the baseline again (harmless: it only adds baseline records for seen jobs that have none) and sends every record
+   this device holds (the Writer merges by job id, so a repeat changes nothing). */
+function reviewSendNow_(force){if(!S.master)return;clearTimeout(S.reviewRetryTimer);S.reviewRetryTimer=null;S.reviewRetry=0;
+  maybeBaselineReviews_(force);if(force)Object.keys(S.reviewed||{}).forEach(function(k){S.reviewDirty[k]=1});if(Object.keys(S.reviewDirty||{}).length)syncStateUp(0)}
+['visibilitychange','pageshow','online'].forEach(function(ev){(ev==='visibilitychange'?document:window).addEventListener(ev,function(){if(document.visibilityState==='hidden')return;reviewSendNow_(false)})});
+document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&e.target.closest('[data-review-send]');if(!b)return;e.preventDefault();e.stopPropagation();
+  b.disabled=true;b.textContent='Sending…';reviewSendNow_(true);if(!Object.keys(S.reviewDirty||{}).length)renderWriterStatus_()},true);
+/* REV-056: one line in System so a device shows what it holds and whether its records reached the Writer. */
+function reviewStatusHtml_(){if(typeof PipelineReview==='undefined')return 'not loaded';var all=Object.keys(S.reviewed||{}),bl=all.filter(function(k){return S.reviewed[k].bl}).length,pend=Object.keys(S.reviewDirty||{}).length,b=S.reviewBaseline||LS.get('reviewBaselineInfo',null),x=S.reviewSend;
+  var base=LS.get(REVIEW_BASELINE_KEY_,false)?(b&&b.made!=null?'baseline '+b.made+' made'+(b.at?' '+reviewWhen_(b.at):''):'baseline done'):'baseline not run'+(b&&b.reason?': '+b.reason:'');
+  var send=x?(x.ok?'<span class="pill ok">✓</span> last send '+reviewWhen_(x.at)+' · '+x.sent+' sent · Writer holds '+x.kept:'<span class="pill bad">⊗</span> last send '+reviewWhen_(x.at)+' · '+esc(x.error)):'no send yet';
+  return esc(all.length+' on this device ('+bl+' baseline) · '+pend+' waiting to send · '+base)+' · '+send+(S.master&&hasWriter()?' <button type="button" class="mini" data-review-send>Send now</button>':'')}
 function reviewRetry_(j){if(!Object.keys(S.reviewDirty||{}).length||S.reviewRetryTimer)return;var n=S.reviewRetry||0;if(n>=REVIEW_RETRY_MS_.length)return;
   S.reviewRetry=n+1;S.reviewRetryTimer=setTimeout(function(){S.reviewRetryTimer=null;syncStateUp()},REVIEW_RETRY_MS_[n])}
-function syncStateUp(){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){var at=Date.now(),sent={},rv={};
+function syncStateUp(delay){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){var at=Date.now(),sent={},rv={};
     // D-3: only the review records changed since the last good send (the Writer merges by job id, larger t wins)
-    Object.keys(S.reviewDirty||{}).forEach(function(k){if(S.reviewed[k]){rv[k]=S.reviewed[k];sent[k]=S.reviewed[k].t}});
+    // REV-056: at most REVIEW_CHUNK_ records per send (a phone's first baseline is ~1,800); the rest follow once this one is kept
+    Object.keys(S.reviewDirty||{}).filter(function(k){return S.reviewed[k]}).slice(0,REVIEW_CHUNK_).forEach(function(k){rv[k]=S.reviewed[k];sent[k]=S.reviewed[k].t});
     var body={seen:S.seen,incidents:PipelineIncidents.forSync(S.incidents),updatedAt:new Date().toISOString()};if(Object.keys(rv).length)body.reviewed=rv;
     // REV-055: a review record is done only when the Writer confirms it kept them (writeState_ returns a "reviewed" count;
     // a Writer older than REV-053 answers ok without it and drops the records, so they stay pending and go again).
     var keep=function(j){return !!(j&&j.ok&&typeof j.reviewed==='number')};
-    gsPost({action:'state',state:body}).then(function(j){if(keep(j)){Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.reviewRetry=0}reviewRetry_(j);S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){reviewRetry_(null);S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},1500)}
+    var nSent=Object.keys(sent).length;
+    gsPost({action:'state',state:body}).then(function(j){if(nSent)S.reviewSend={at:Date.now(),sent:nSent,ok:keep(j),kept:j&&j.reviewed,error:keep(j)?'':(j&&j.ok?'Writer did not confirm review records (older Writer?)':(j&&(j.error||'refused'))||'no response')};
+      if(keep(j)){Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.reviewRetry=0;if(Object.keys(S.reviewDirty).length)setTimeout(syncStateUp,300)}reviewRetry_(j);if(typeof renderWriterStatus_==='function'&&!S.renderingWriter_)renderWriterStatus_();S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){reviewRetry_(null);S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},delay==null?1500:delay)}
 /* ---------- column model ---------- */
 var COLS=[],COLTYPE={};
 function buildColumnModel(){
@@ -1251,7 +1272,14 @@ function recordReview_(r,t,baseline){if(!r||!reviewReady_())return false;var rec
 function reviewDelta_(r){if(!r||!reviewReady_())return null;var rec=S.reviewed[r.id];return rec?PipelineReview.delta(rec,scoreFor_(r),reviewRev_()):null}
 /* Once per device: jobs Tim had already seen before this feature get a baseline record at their seen time (bl), so later
    score changes show without opening every job again. Never replaces a real record (merge keeps the larger t). */
-function maybeBaselineReviews_(){if(LS.get('reviewBaselineV1',false)||!S.master||!reviewReady_()||hasWriter()&&!S.stateSynced)return;/* after the Writer's records are in */var n=0;S.rows.forEach(function(r){var t=Number(S.seen[r.id]);if(t>0&&!S.reviewed[r.id]&&recordReview_(r,t,true))n++});LS.set('reviewBaselineV1',true);if(n){LS.set('reviewed',S.reviewed);syncStateUp()}}
+function maybeBaselineReviews_(force){if(!force&&LS.get(REVIEW_BASELINE_KEY_,false))return;
+  var why=!S.master?'master not loaded':!reviewReady_()?'published scoring model not loaded':hasWriter()&&!S.stateSynced?'waiting for the Writer state':'';
+  if(why){S.reviewBaseline={at:Date.now(),made:0,reason:why};return}/* after the Writer's records are in */
+  var n=0,seenRows=0,had=0,noScore=0;S.rows.forEach(function(r){var t=Number(S.seen[r.id]);if(!(t>0))return;seenRows++;if(S.reviewed[r.id]){had++;return}if(recordReview_(r,t,true))n++;else noScore++});
+  // REV-056: the flag is set only when the baseline made records or there was nothing left to baseline, and the counts are kept
+  S.reviewBaseline={at:Date.now(),made:n,seenRows:seenRows,had:had,noScore:noScore,rows:S.rows.length,reason:n?'':seenRows?(had===seenRows?'every seen job already has a record':'no score for '+noScore+' seen job(s)'):'no seen jobs on this device'};
+  LS.set('reviewBaselineInfo',S.reviewBaseline);
+  if(n||seenRows&&seenRows===had)LS.set(REVIEW_BASELINE_KEY_,true);if(n){LS.set('reviewed',S.reviewed);syncStateUp(force?0:undefined)}if(typeof renderWriterStatus_==='function'&&!S.renderingWriter_)renderWriterStatus_()}
 function reviewWhen_(t){var d=new Date(t),now=new Date();return (d.toDateString()===now.toDateString()?'':d.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' ')+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false})}
 function deltaMark_(r){if(isNew(r))return '';var x=reviewDelta_(r);if(!x||!x.d)return '';var up=x.d>0,why=PipelineReview.causeText(x);
   return '<span class="sc-d '+(up?'up':'down')+'" title="'+esc(PipelineReview.signed(x.d)+' since '+(x.baseline?'baseline ':'you opened it ')+reviewWhen_(x.at)+(why?' · '+why:''))+'">'+(up?'▲':'▼')+Math.abs(x.d)+'</span>'}

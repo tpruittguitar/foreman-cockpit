@@ -21,12 +21,13 @@ const JOB='V2X-A4CCD49EE686';
     if(opts.ls)await page.addInitScript(ls=>{Object.keys(ls).forEach(k=>localStorage.setItem(k,ls[k]))},opts.ls);
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{sha:'x'}}));
     await page.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));
-    const W={old:!!opts.oldWriter};   // old Writer (before REV-053): answers ok with no "reviewed" count and keeps nothing
+    const W={old:!!opts.oldWriter,refuse:opts.refuse||0};   // old Writer (before REV-053): answers ok with no "reviewed" count and keeps nothing
     await page.route('**/writer*',async r=>{const q=r.request();if(q.method()==='POST'){let b={};try{b=JSON.parse(q.postData()||'{}')}catch(e){}posts.push(b);
+        if(b.action==='state'&&W.refuse>0){W.refuse--;return r.fulfill({json:{ok:false,error:'Writer busy (test)'}})}
         return r.fulfill({json:W.old||b.action!=='state'?{ok:true}:{ok:true,seen:Object.keys((b.state||{}).seen||{}).length,incidents:0,reviewed:Object.keys((b.state||{}).reviewed||{}).length}})}
       if(opts.stateDelay&&new URL(q.url()).searchParams.get('action')==='state')await new Promise(x=>setTimeout(x,opts.stateDelay));
       const a=new URL(q.url()).searchParams.get('action');
-      return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:
+      return r.fulfill({json:a==='master'?{ok:true,id:'m',text:opts.master||fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:
         a==='scoring'?(opts.model===false?{ok:true,exists:false}:{ok:true,exists:true,model:{publishedRevision:26,modelVersion:'test'}}):
         a==='state'?{ok:true,state:opts.state||{seen:{},reviewed:{}}}:{ok:true}})});
     await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(2500);
@@ -58,7 +59,7 @@ const JOB='V2X-A4CCD49EE686';
 
   // 2. baseline once, sent once; a reload does not baseline again
   {const {ctx,page,errors,posts}=await open({});await page.waitForTimeout(2200);
-    const ls=await page.evaluate(()=>({rev:JSON.parse(localStorage.getItem('px.reviewed')||'{}'),flag:localStorage.getItem('px.reviewBaselineV1'),seen:JSON.parse(localStorage.getItem('px.seen')||'{}')}));
+    const ls=await page.evaluate(()=>({rev:JSON.parse(localStorage.getItem('px.reviewed')||'{}'),flag:localStorage.getItem('px.reviewBaselineV2'),seen:JSON.parse(localStorage.getItem('px.seen')||'{}')}));
     const seenIds=Object.keys(ls.seen);assert(seenIds.length>0,'fixture jobs are seen');assert.equal(ls.flag,'true');
     assert(seenIds.every(id=>ls.rev[id]&&ls.rev[id].bl===1&&ls.rev[id].t===Math.round(ls.seen[id])),'every seen job has a baseline at its seen time');
     const sent=sentReviewed(posts);assert(sent.length>=1&&Object.keys(sent[0]).length===Object.keys(ls.rev).length,'baseline sent once');
@@ -68,7 +69,7 @@ const JOB='V2X-A4CCD49EE686';
     const after=await page.evaluate(()=>JSON.parse(localStorage.getItem('px.reviewed')||'{}'));
     assert.deepEqual(Object.keys(after).sort(),Object.keys(ls.rev).sort());Object.keys(after).forEach(k=>assert.equal(after[k].t,ls.rev[k].t,k));
     const again=sentReviewed(posts.slice(before));assert(again.length>=1&&again.every(r=>Object.values(r).every(x=>ls.rev[Object.keys(r).find(k=>r[k]===x)].t===x.t)),'re-sent unchanged records only');
-    assert.equal(await page.evaluate(()=>localStorage.getItem('px.reviewBaselineV1')),'true');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('px.reviewBaselineV2')),'true');
     assert.deepEqual(errors,[]);await ctx.close();}
 
   // 4. REV-055: an old Writer answers ok but drops "reviewed": the records stay pending and go again once the Writer keeps them
@@ -82,8 +83,43 @@ const JOB='V2X-A4CCD49EE686';
 
   // 5. REV-055: the baseline runs as soon as the Writer state arrives, without waiting for a click or a re-render
   {const {ctx,page,errors,posts}=await open({stateDelay:3000});await page.waitForTimeout(4500);
-    assert.equal(await page.evaluate(()=>localStorage.getItem('px.reviewBaselineV1')),'true','baseline ran after the late state read');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('px.reviewBaselineV2')),'true','baseline ran after the late state read');
     assert(sentReviewed(posts).length>=1,'and was sent');assert.deepEqual(errors,[]);await ctx.close();}
+
+  // 6. REV-056: big baselines go in pieces (test chunk 50), each kept before the next; System shows the device's records
+  {const lines=fixture.split('\n'),tpl=lines.find(l=>/\| READY_TO_PURSUE \|/.test(l)),extra=[];for(let i=0;i<130;i++)extra.push(tpl.replace(/^\d+ \| V2X-[0-9A-F]+/,(900+i)+' | V2X-'+String(900+i).padStart(12,'0')));
+    const big=lines.slice(0,lines.indexOf(tpl)).concat(extra,lines.slice(lines.indexOf(tpl))).join('\n');
+    const {ctx,page,errors,posts}=await open({ls:{'px.reviewChunk':'50'},master:big});await page.waitForTimeout(6000);
+    const local=await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('px.reviewed')||'{}')).length);assert(local>100,'big baseline made: '+local);
+    const sizes=sentReviewed(posts).map(r=>Object.keys(r).length);assert(sizes.every(n=>n<=50),'pieces of <= 50: '+sizes);
+    assert.equal(sizes.reduce((a,b)=>a+b,0),local,'every record sent once: '+sizes+' / '+local);
+    await page.evaluate(()=>document.getElementById('writer-badge').click());await page.waitForTimeout(400);
+    const row=await page.evaluate(()=>{const r=[...document.querySelectorAll('#writer-panel *')].find(e=>/^review records$/i.test((e.textContent||'').trim()));return r&&r.parentElement.textContent});
+    assert.match(row||'',new RegExp(local+' on this device \\('+local+' baseline\\) · 0 waiting to send · baseline '+local+' made'),'System row: '+row);assert.match(row,/✓ last send/);
+    assert.deepEqual(errors,[]);await ctx.close();}
+
+  // 7. REV-056: a refused send waits; coming back to the page sends at once (no 1.5 s debounce, ahead of the 5 s retry)
+  {const {ctx,page,errors,posts,W}=await open({refuse:1});await page.waitForTimeout(600);
+    const n=sentReviewed(posts).length;assert.equal(n,1,'one refused send');
+    await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{value:'visible',configurable:true});document.dispatchEvent(new Event('visibilitychange'))});await page.waitForTimeout(700);
+    assert.equal(sentReviewed(posts).length,2,'sent again on return to the page: '+JSON.stringify(posts.map(b=>b.action+':'+(b.state&&b.state.reviewed?Object.keys(b.state.reviewed).length:0))));
+    await page.evaluate(()=>document.getElementById('writer-badge').click());await page.waitForTimeout(400);
+    const row=await page.evaluate(()=>{const r=[...document.querySelectorAll('#writer-panel *')].find(e=>/^review records$/i.test((e.textContent||'').trim()));return r&&r.parentElement.textContent});
+    assert.match(row||'',/ 0 waiting to send /,'System row after the resend: '+row);assert.match(row,/✓ last send/);
+    const nAfter=posts.length;await page.waitForTimeout(6000);assert.equal(sentReviewed(posts.slice(nAfter)).length,0,'the pending 5 s retry was cancelled');
+    assert.deepEqual(errors,[]);await ctx.close();}
+
+  // 8. REV-056: a device whose old V1 flag was set with no records made runs the baseline again (V2) and sends it;
+  //    "Send now" in System re-runs the baseline and sends every record this device holds, at once
+  {const {ctx,page,errors,posts}=await open({ls:{'px.reviewBaselineV1':'true'}});await page.waitForTimeout(2200);
+    const local=await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('px.reviewed')||'{}')).length);assert(local>0,'V2 baseline made despite the V1 flag: '+local);
+    assert(sentReviewed(posts).some(r=>Object.keys(r).length===local),'and sent');
+    await page.evaluate(()=>document.getElementById('writer-badge').click());await page.waitForTimeout(400);
+    const btn=page.locator('#writer-panel [data-review-send]');assert.equal(await btn.count(),1,'Send now button in the review records row');
+    const before=posts.length;await btn.click();await page.waitForTimeout(700);
+    const sent=sentReviewed(posts.slice(before));assert(sent.length===1&&Object.keys(sent[0]).length===local,'Send now posts every record at once: '+sent.map(r=>Object.keys(r).length));
+    assert.equal(await page.locator('#writer-panel').isHidden(),false,'the panel stays open');
+    assert.deepEqual(errors,[]);await ctx.close();}
 
   // 3. no published model: nothing recorded
   {const {ctx,page,errors,posts}=await open({model:false});

@@ -1,0 +1,48 @@
+PE BUILD STEP 9b · REV-056 · D-3 baseline robustness + on-device diagnostics
+Branch backup/claude-20261019-1405ET · Claude · 2026-10-19 · after Grok 14:00 / 14:09 ET: Writer reviewed 12, bl 0 after phone reloads on f34a5ad
+
+WHAT WE KNOW
+FACT     The live site serves #141 (foreman-cockpit.pages.dev/build-info.json: pr 141, built 17:48:49Z). The site has no service worker,
+         so a reload fetches the current pipeline.html (Cloudflare Pages revalidates HTML on every load).
+FACT     The Writer merges and keeps "reviewed" (12 records held, newest 13:56 ET).
+FACT     On f34a5ad the baseline flag px.reviewBaselineV1 is set after one run whatever the run made. A device that ran it once with
+         0 records made never runs it again.
+FACT     In the sandbox, a send runs 1.5 s after it is queued, and a retry timer firing in that window pushes it back again.
+INFERENCE The phone either has the V1 flag set with nothing made (from the REV-053 load), or its send never left the page:
+         iOS stops page timers while Safari is in the background, and the send waits on two timers (state + model load, then
+         the 1.5 s debounce). Without the phone in hand this cannot be told apart, so this build fixes both and makes the
+         phone show which one it is.
+
+WHAT
+1. Baseline flag V2 (px.reviewBaselineV2). Every device runs the baseline once more. This is safe: it only adds baseline records for
+   seen jobs that have no record, a real review always beats a baseline, and nothing is removed.
+   The flag is set only when the run made records, or when every seen job already has one. A run with no seen jobs or no scores
+   leaves it unset, so it runs again on the next load.
+2. Pieces. At most 400 review records per post; the next piece goes once the Writer confirms the last one (a phone's first baseline
+   is about 1,800 records).
+3. Back on the page (visibilitychange / pageshow / online): pending records go at once, with no 1.5 s debounce, and the pending
+   retry is cancelled. With nothing pending, the baseline is checked.
+4. System -> REVIEW RECORDS row (phone and desktop):
+   "N on this device (B baseline) · P waiting to send · baseline M made HH:MM" or "baseline not run: <reason>",
+   then "✓ last send HH:MM · n sent · Writer holds K" or "⊗ last send HH:MM · <error>", plus a SEND NOW button.
+   SEND NOW runs the baseline again and sends every record this device holds, at once. A repeat changes nothing on the Writer,
+   because it merges by job id.
+
+MEASURED (sandbox, mocked Writer, published model rev 26)
+  refused send, then back on the page: re-sent in under 0.7 s; no second send from the cancelled 5 s retry
+  V1 flag already set: V2 baseline makes and sends all 21 seen fixture jobs
+  SEND NOW: one post carrying all 21 records; the panel stays open
+  130-row master with test pieces of 50: posts of 50 or fewer, each record sent once; the System row is correct
+  phone 390 x 844: the row and the button show in System (screenshot checked)
+
+FILES
+  pipeline.html                 maybeBaselineReviews_(force) with V2 flag and reasons; reviewSendNow_; resume listeners; syncStateUp(delay);
+                                REVIEW_CHUNK_ pieces; reviewStatusHtml_ + SEND NOW; System row
+  tests/review-delta.browser.js scenarios 6 (pieces + System row), 7 (resume sends at once, retry cancelled), 8 (V1 flag, SEND NOW)
+  tests/state-write.test.js     source pattern follows syncStateUp(delay)
+
+TESTS
+  npm test 590 / 590. Browser suites pass: review-delta (8 scenarios), system-panel, three-col, needs-tim, map-popup,
+  workspace-layout, rail.
+
+NO WRITER DEPLOY (app only).
