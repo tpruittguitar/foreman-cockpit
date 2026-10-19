@@ -11,7 +11,10 @@ const repo = path.resolve(__dirname, '../..');
 const max = Number(process.env.VISUAL_GOLDEN_MAX_PERCENT || 0.05);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'golden-check-'));
 const art = path.join(repo, 'tests/visual/artifacts/golden-check'); fs.mkdirSync(art, { recursive: true });
-execFileSync(process.execPath, [path.join(__dirname, 'render-golden.cjs')], { stdio: 'inherit', env: Object.assign({ FONTCONFIG_FILE: path.join(__dirname, 'fonts.conf') }, process.env, { VISUAL_GOLDEN_OUT: tmp }) });
+// BUILD 5: fontconfig rules come from the repo (tests/visual/fontconfig), never the machine's /etc/fonts/conf.d.
+const fcFile = path.join(tmp, 'fonts.conf');
+fs.writeFileSync(fcFile, fs.readFileSync(path.join(__dirname, 'fonts.conf'), 'utf8').split('@FONTCONFIG_DIR@').join(path.join(__dirname, 'fontconfig')));
+execFileSync(process.execPath, [path.join(__dirname, 'render-golden.cjs')], { stdio: 'inherit', env: Object.assign({ FONTCONFIG_FILE: fcFile }, process.env, { VISUAL_GOLDEN_OUT: tmp }) });
 let failed = 0;
 for (const id of ['F01', 'F02']) {
   const want = PNG.sync.read(fs.readFileSync(path.join(repo, 'tests/visual/golden', id + '_2560x1440.png')));

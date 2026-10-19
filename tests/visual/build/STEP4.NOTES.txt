@@ -57,3 +57,10 @@ F-6      PipelineBands.shares(counts, n): whole-percent shares of N for TOP/UPPE
 Verified locally: computed colours read back in Chromium (Applied rgb(74,222,128), Interviews rgb(107,107,102), Writer
 rgb(242,179,61); band names rgb(163,163,158), HOLD rgb(255,77,61), first bucket rgb(230,230,226)); npm test 541/541; browser
 tests fail only at the same lines as main; local golden check 0 px on F01 and F02.
+
+GOLDEN CI CAUSE (BUILD 5) · FACT
+The runner's /etc/fonts/conf.d has no 56-prefer-inter.conf (this build container has it), so on the runner sans-serif fallback
+glyphs went to DejaVu Sans instead of Inter and the ticker text shifted: 3336 px on both frames. Reproduced here by removing
+that one rule: 3324 px on both frames, same place. Fix: tests/visual/fontconfig/ holds a copy of the conf.d the goldens were
+rendered with (41 rules; 50-user / 51-local left out), and fonts.conf includes only that directory. check-golden.cjs writes a
+copy of fonts.conf with the absolute path filled in. Goldens unchanged. The temporary font-diagnostics CI step is removed.

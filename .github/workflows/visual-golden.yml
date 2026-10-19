@@ -20,11 +20,6 @@ jobs:
       # The goldens use a few system-font fallback glyphs (Inter, DejaVu Sans Mono, Liberation Sans, Noto Color Emoji); install the
       # same Ubuntu 24.04 packages the rendering machine had; check-golden.cjs limits fontconfig to them (tests/visual/fonts.conf).
       - run: sudo apt-get install -y --no-install-recommends fonts-inter fonts-dejavu-core fonts-dejavu-mono fonts-dejavu-extra fonts-liberation fonts-noto-color-emoji && fc-cache -f
-      - name: Font diagnostics (annotations)
-        env: { FONTCONFIG_FILE: '${{ github.workspace }}/tests/visual/fonts.conf' }
-        run: |
-          echo "::notice title=fonts::$(fc-list | wc -l) fonts; $(fc-match 'sans-serif:charset=2502') | $(fc-match 'monospace:charset=3a3') | $(fc-match 'sans-serif:charset=21e4') | $(dpkg -l fonts-liberation fonts-inter fonts-dejavu-core fonts-noto-color-emoji | awk '/^ii/{printf \"%s=%s \", $2, $3}')"
-          echo "::notice title=conf.d dirs::$(grep -lh '<dir' /etc/fonts/conf.d/* 2>/dev/null | tr '\n' ' ')"
       - run: node tests/visual/check-golden.cjs
         env:
           PIPELINE_PLAYWRIGHT_MODULE: ${{ github.workspace }}/node_modules/playwright
