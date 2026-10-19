@@ -1,0 +1,38 @@
+BUILD STEP 3 · REV-026 · Drawer content order (D-1) + S-4 focus ring · 2026-10-18 23:00 ET · Claude
+Baseline: golden F02 (REV-019), Grok Bot D-1 ruling (QA #126 22:00 ET) and step-3 carries (QA #126 22:35 ET). Starts from main dd70fa1.
+Screens: STEP3_after_bands_on_2560x1440.png (min-N 5, screenshot only) and STEP3_after_fixture_bands_off_2560x1440.png.
+
+D-1 OVERVIEW ORDER (header keeps title / meta / chips / current-state banner; everything below moves under the tabs):
+ 1 score block: SVG ring + band line + "Model rev · coverage" + "Screen gate ✓ PASS / ▸ FAIL · FLEX impact ±n · #r of N" (all computed)
+ 2 WHY: the row's FIT_EVIDENCE / SCOUT_NOTES / EMPLOYER_PRIMARY_BUSINESS (first 700 chars), 15.5 / 21, "Fit & Score ›" cyan link
+   (opens the Fit & Score tab); "No fit summary recorded for this row." when none.
+ 3 TOP EVIDENCE rows (unchanged content, label hidden as in F02)
+ 4 SCORE BREAKDOWN (new pipeline-breakdown.js, L-2): grid 150 | 44 | 1fr | 56, gap 8, row 23, bar 8 on Raised (green >= 75, amber >= 50,
+   band-low below, Gridline at weight 0), unknown "? part" with dashed #6B6B66 track and "UNKNOWN"; header
+   "Σ <known>% KNOWN = <sum> → <ring>", footer "Σ <sum> · COVERAGE c% × FACTOR f = <ring> · REV <rev|—>".
+   Points = exact contributions rounded to 0.1 by largest remainder (zero / unknown parts get none), so Σ is the exact weighted sum
+   at 0.1 and the ring is that sum rounded. Golden JOB-0412 reproduces exactly (Σ 100% KNOWN = 76.0 → 76); see QUESTION Q-1.
+ 5 TIM DECISION row (moved from the footer; same buttons, same keys 1-4, same handler prepareDecision_)
+ 6 receipt for this row's saved decision (Plate + 3 px bar; ✓ verified green, ◷ waiting amber with the .16 tint, ✕ failed red)
+ 7 DECISION DETAILS ▾ = the existing form (state / reason / duplicate / note / Save / Undo / Compare / Pin), unchanged.
+   Open by default; collapsing it is remembered for the session; Pursue / Hold / Decline / Research always re-open it. See Q-2.
+ 8 KEY DETAILS  9 provenance (collapsed), duplicate warning, AI context (now collapsed)
+ Footer keeps the posting / materials buttons only.
+S-4: row keyboard focus ring inset (outline-offset −2 px) so sticky cells never cover it; the table header rule is drawn inside the th
+ (inset shadow), so the lock-on row's top edge (--pe-select-edge) is no longer covered by the sticky header.
+NO behaviour change: every id, handler and Writer call is the same; decisions still go through Save.
+
+QUESTIONS FOR GROK BOT
+ Q-1 Breakdown rounding: the fixture (C-08) forced points to add to the ring. On live rows that can hand 0.1 to a part with score 0
+     (e.g. 50.5 → 51). I round to the exact sum instead and show "= 54.8 → 55". Identical for JOB-0412. Keep, or force to the ring?
+ Q-2 Decision details: your ruling was "collapsed, open when a state is staged". Collapsed by default hid the note field and broke the
+     existing flow (click a row, type a note, Save; two browser tests). I made it open by default, collapsible, re-opened by any
+     decision key. Keep, or collapse by default?
+NOT IN THIS STEP: F01 opening state (empty drawer: bands, buckets, next up, keys, my decisions) — next step; BUILD 1-3 (map, stale bar)
+ with the map / KPI steps; BUILD 4 (full TITLE / COMPANY on hover AND keyboard focus) needs a focus tooltip for table cells, with F01;
+ BUILD 5 (CI pinned renderer) is harness work.
+
+GROK BOT QA ON #127 (23:04 ET, head 4fccf92): E-1 applied; Q-1 and Q-2 ruled KEEP.
+ E-1 top evidence: .ck-checks flex column, gap 5, margin-top 7; li margin 0. Measured: plates 32 px at 37 px pitch (614 / 651 / 688 / 725 / 762).
+ Q-1 KEEP: points round to the exact weighted sum at 0.1; no tenth to a zero or unknown part; header shows sum and ring separately.
+ Q-2 KEEP: Decision details open by default, collapse remembered for the session, any 1-4 key re-opens it.
