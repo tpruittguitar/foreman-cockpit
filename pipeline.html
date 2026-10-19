@@ -1036,7 +1036,12 @@ function syncStateDown(){if(S.stateReading)return;S.stateReading=true;clearTimeo
   if(st.incidents){var mi=PipelineIncidents.merge(S.incidents,st.incidents);if(mi.changed){S.incidents=mi.store;LS.set('incidents',S.incidents);renderWriterStatus_()}}
   if(typeof PipelineReview!=='undefined'){var srv=st.reviewed||{},mr=PipelineReview.merge(S.reviewed,srv);if(mr.changed){S.reviewed=mr.store;LS.set('reviewed',S.reviewed);changed=true}
     // D-3: anything this device holds that the Writer does not (an older Writer dropped it, or a failed send) goes up again
-    var up=0;Object.keys(S.reviewed).forEach(function(k){var a=S.reviewed[k],b=srv[k];if(!b||a.t>Number(b.t)){S.reviewDirty[k]=1;up++}});if(up)syncStateUp();maybeBaselineReviews_()}
+    /* REV-060: a record waiting to send that the Writer already holds (same or better) is done. Grok 16:17 ET: a lock-timeout
+       answer reached the phone while its pieces had been kept, so 1,432 records showed as waiting and kept going again. */
+    var held=0;Object.keys(S.reviewDirty||{}).forEach(function(k){var a=S.reviewed[k],b=PipelineReview.clean(srv[k]);if(a&&b&&!PipelineReview.wins(a,b)){delete S.reviewDirty[k];held++}});
+    if(held&&S.reviewSend&&!S.reviewSend.ok)S.reviewSend={at:Date.now(),ok:true,sent:held,kept:Object.keys(srv).length,viaRead:true};
+    if(!Object.keys(S.reviewDirty).length){clearTimeout(S.reviewRetryTimer);S.reviewRetryTimer=null;S.reviewRetry=0}
+    var up=0;Object.keys(S.reviewed).forEach(function(k){var a=S.reviewed[k],b=srv[k];if(!b||a.t>Number(b.t)){S.reviewDirty[k]=1;up++}});if(up&&!S.reviewRetryTimer)syncStateUp();/* a pending retry keeps its backoff */maybeBaselineReviews_()}
   if(changed){LS.set('seen',S.seen);LS.set('rulings',S.rulings);if(S.master)render()}}).catch(function(e){S.stateReading=false;stateReadFailed_(e&&e.message||e)})}
 /* REV-017: send only seen marks and incidents (rulings go to the master through the 'ruling' action); the Writer merges,
  * never overwrites. A refused or failed sync is kept in S.stateSync and shown on Needs you; localStorage keeps every mark,
@@ -1059,11 +1064,18 @@ document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&
 /* REV-056: one line in System so a device shows what it holds and whether its records reached the Writer. */
 function reviewStatusHtml_(){if(typeof PipelineReview==='undefined')return 'not loaded';var all=Object.keys(S.reviewed||{}),bl=all.filter(function(k){return S.reviewed[k].bl}).length,pend=Object.keys(S.reviewDirty||{}).length,b=S.reviewBaseline||LS.get('reviewBaselineInfo',null),x=S.reviewSend;
   var base=LS.get(REVIEW_BASELINE_KEY_,false)?(b&&b.made!=null?'baseline '+b.made+' made'+(b.at?' '+reviewWhen_(b.at):''):'baseline done'):'baseline not run'+(b&&b.reason?': '+b.reason:'')+(!S.stateSynced&&S.stateRead&&!S.stateRead.ok?' (state read failed '+reviewWhen_(S.stateRead.at)+' · '+S.stateRead.error+' · try '+S.stateRead.tries+', retrying)':'');
-  var send=x?(x.ok?'<span class="pill ok">✓</span> last send '+reviewWhen_(x.at)+' · '+x.sent+' sent · Writer holds '+x.kept:'<span class="pill bad">⊗</span> last send '+reviewWhen_(x.at)+' · '+esc(x.error)):'no send yet';
+  var send=x?(x.ok?(x.viaRead?'<span class="pill ok">✓</span> checked the Writer '+reviewWhen_(x.at)+' · '+x.sent+' already there · Writer holds '+x.kept:'<span class="pill ok">✓</span> last send '+reviewWhen_(x.at)+' · '+x.sent+' sent · Writer holds '+x.kept):'<span class="pill bad">⊗</span> last send '+reviewWhen_(x.at)+' · '+esc(x.error)):'no send yet';
   return esc(all.length+' on this device ('+bl+' baseline) · '+pend+' waiting to send · '+base)+' · '+send+(S.master&&hasWriter()?' <button type="button" class="mini" data-review-send>Send now</button>':'')}
-function reviewRetry_(j){if(!Object.keys(S.reviewDirty||{}).length||S.reviewRetryTimer)return;var n=S.reviewRetry||0;if(n>=REVIEW_RETRY_MS_.length)return;
-  S.reviewRetry=n+1;S.reviewRetryTimer=setTimeout(function(){S.reviewRetryTimer=null;syncStateUp()},REVIEW_RETRY_MS_[n])}
-function syncStateUp(delay){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){var at=Date.now(),sent={},rv={};
+/* REV-060: a Writer lock timeout ("another process was holding the lock") is not a failure of the records: those retries never
+   run out (every 60 s at most while records wait). Other errors keep the 5 s .. 5 min schedule, then wait for the next sync. */
+function reviewRetry_(j){if(!Object.keys(S.reviewDirty||{}).length||S.reviewRetryTimer)return;var n=S.reviewRetry||0,busy=!!(j&&!j.ok&&WRITER_BUSY_RE_.test(String(j.error||'')));
+  if(n>=REVIEW_RETRY_MS_.length&&!busy)return;var wait=REVIEW_RETRY_MS_[Math.min(n,REVIEW_RETRY_MS_.length-1)];if(busy)wait=Math.min(wait,60000);
+  S.reviewRetry=n+1;S.reviewRetryTimer=setTimeout(function(){S.reviewRetryTimer=null;syncStateUp()},wait)}
+/* REV-060: one state write at a time. Tim 16:15 ET (phone): "Lock timeout: another process was holding the lock for too long"
+   with 1,432 records waiting. The next piece (300 ms) and the 5 s retry could both fire while a piece was still being written, so
+   this device's own writes queued behind each other on the Writer lock. A sync asked for while a write is in flight now runs
+   once that write answers. */
+function syncStateUp(delay){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){if(S.stateSending){S.stateSendAgain=true;return}var at=Date.now(),sent={},rv={};
     // D-3: only the review records changed since the last good send (the Writer merges by job id, larger t wins)
     // REV-056: at most REVIEW_CHUNK_ records per send (a phone's first baseline is ~1,800); the rest follow once this one is kept
     Object.keys(S.reviewDirty||{}).filter(function(k){return S.reviewed[k]}).slice(0,REVIEW_CHUNK_).forEach(function(k){rv[k]=S.reviewed[k];sent[k]=S.reviewed[k].t});
@@ -1072,8 +1084,9 @@ function syncStateUp(delay){if(!hasWriter())return;clearTimeout(syncTimer);syncT
     // a Writer older than REV-053 answers ok without it and drops the records, so they stay pending and go again).
     var keep=function(j){return !!(j&&j.ok&&typeof j.reviewed==='number')};
     var nSent=Object.keys(sent).length;
-    gsPost({action:'state',state:body}).then(function(j){if(nSent)S.reviewSend={at:Date.now(),sent:nSent,ok:keep(j),kept:j&&j.reviewed,error:keep(j)?'':(j&&j.ok?'Writer did not confirm review records (older Writer?)':(j&&(j.error||'refused'))||'no response')};
-      if(keep(j)){Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.reviewRetry=0;if(Object.keys(S.reviewDirty).length)setTimeout(syncStateUp,300)}reviewRetry_(j);if(typeof renderWriterStatus_==='function'&&!S.renderingWriter_)renderWriterStatus_();S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){reviewRetry_(null);S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},delay==null?1500:delay)}
+    S.stateSending=true;S.stateSendAgain=false;
+    gsPost({action:'state',state:body}).then(function(j){S.stateSending=false;if(nSent)S.reviewSend={at:Date.now(),sent:nSent,ok:keep(j),kept:j&&j.reviewed,error:keep(j)?'':(j&&j.ok?'Writer did not confirm review records (older Writer?)':(j&&(j.error||'refused'))||'no response')};
+      if(keep(j)){Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.reviewRetry=0;if(Object.keys(S.reviewDirty).length)S.stateSendAgain=true}else{reviewRetry_(j);if(nSent)syncStateDown()}if(S.stateSendAgain){S.stateSendAgain=false;syncStateUp(300)}if(typeof renderWriterStatus_==='function'&&!S.renderingWriter_)renderWriterStatus_();S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){S.stateSending=false;reviewRetry_(null);if(nSent)syncStateDown();if(S.stateSendAgain){S.stateSendAgain=false;syncStateUp(1500)}S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},delay==null?1500:delay)}
 /* ---------- column model ---------- */
 var COLS=[],COLTYPE={};
 function buildColumnModel(){
