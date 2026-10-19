@@ -31,3 +31,36 @@ STILL DIFFERENT FROM F02 (content, not look; for Grok Bot to rule or schedule):
      EXP FIT, AGE, WRITE STATE); FLEX / BUCKET words still raw codes (SOFT_FLEX, Ready).  D-5 full-width KPI row (6 tiles).
 PRE-EXISTING (also on main f45e9aa): page error "Cannot read properties of null (reading 'HIGH_FLEX_MODIFIER')" when opening one drawer
  tab on the local fixture. Not touched here.
+
+GROK BOT LOOK QA ON #126 (22:00 ET, head 7bcbfcf) — fix-up commit, all 12 LOOK items + D-2 + D-4 words:
+ 1 Ring: SVG 124 px, R 54, stroke 8, track Raised, arc in band colour from 12 o'clock (stroke-dasharray from the animated --pct),
+   12 ticks 2 px Gridline 54->61; value 42 px / 650 in band colour (Primary for HOLD / NONE / bands off). Band line beside it
+   (mono 13, band colour): "▲ TOP 10% · OPPORTUNITY RATING 55"; "#1 of N · Model rev <rev|—>" 13 px Secondary.
+   Placed after the chips (the drawer's own content order is D-1, later step).
+ 2 STRICT HOLD: glyph ⊘ (‖ stays the Hold decision icon); table "⊘ HOLD" tag mono 11, red text, --pe-badge-red border; drawer
+   "⊘ HOLD · OUTSIDE THE BANDS".
+ 3 Decision row: --pe-dec-h 50 px, --pe-dec-fs = --pe-fs-btn 16 px (undefined --pe-fs-dec reference removed); left aligned, gap 8;
+   "✓ Pursue 1" 132 / "<hold svg> Hold 2" 103 / "Research" 102 / divider / "⊖ Decline" 92 at the right; hints = the real keys.
+   Legends render as .sec-label (left, mono 11, no rule).
+ 4 Chips: exactly bucket · FLEX · pay · location, C-05 kinds (need / ok / amb / cy / prov / red / local); FLEX words; pay "~… EST."
+   (.prov) when not verified, plain (.local) when verified; primary city uppercase, max 200 px, full string in title. Score chip removed.
+ 5 Disabled OPEN POSTING (and any disabled primary/secondary action): dashed #6B6B66, Secondary, no glow; :disabled wins.
+ 6 Bands line always ends "· REV <rev> · AS OF <HH:MM>" ("REV —" / "AS OF —" when not known); AS OF = last verified master read;
+   full text in title.
+ 7 Evidence: unknown "?" Secondary glyph, row text Primary, Secondary bar; label word mono 11 in the state colour.
+   (No ≈ state exists in the app's signals today; the class is ready when one does.)
+ 8 Tabs: space-between, padding 0 16, active underline label -8 / +8 px, bottom -1.
+ 9 Meta separators " · " in Secondary.
+10 Bands cache keyed on id|score|hold|eligible over every row (built once per synchronous render, then reused).
+11 tests/bands.test.js: all four golden fixtures (base / agency / closed / applied: N 48 / 49 / 48 / 48, 0 mismatches), HOLD and
+   NONE rank null, literal tie case, and PipelineBands.itemsFromRows (the app's row -> item mapping, now in the module) tested.
+12 tokens.css: --pe-badge-local/ok/prov/cy/red/shared, --pe-row-a #0B0B0B / --pe-row-b #070707, --pe-tint-wait-start .16,
+   new --pe-select-edge rgba(56,225,214,.35) for the lock-on row edges (6 px bar stays full cyan). The lock-on row no longer draws
+   its own outline; keyboard focus keeps the tokens.css ring. Golden F01/F02 re-rendered after the token change: byte-identical.
+ D-2 Header row: "◉ JOB DRAWER · <ID>" (+ " · LOCKED ON MAP" when the map is in selected-job mode and the job has a location),
+   mono 12 cyan, 46 px; ‹ › ✕ UI font 18 px Secondary, no boxes, aria-labels kept; title margin-top -12 px.
+ D-4 Words: BUCKET Needs decision / Ready / Research / Blocked / Applied / Scout intake / Discovery lead; FLEX High / Soft / No flex /
+   Unknown (Unknown, Scout intake, Discovery lead olive). Raw codes in the title. Tim's saved columns untouched.
+ Also: Fit & Score tab page error fixed ("Cannot read ... HIGH_FLEX_MODIFIER": guarded the three FLEX modifier reads when rules
+   carry no FLEX policy); L-1 on that tab's research note (10.8 -> 11 px).
+ Not changed: D-1 content order, D-3 Δ (none drawn), D-5 KPI row — later steps per Grok Bot.

@@ -52,12 +52,14 @@
   --pe-col-score: 112px; --pe-col-company: 140px; --pe-map-canvas-h: 1024px;
   --pe-nt-watch-row-h: 34px; --pe-target-phone: 44px; --pe-target-decision-phone: 52px;
   --pe-pill-change: var(--pe-motion-fast);
-  --pe-chip-h: 20px; --pe-dec-h: 44px; --pe-dec-fs: 15px;
+  --pe-chip-h: 20px; --pe-dec-h: 50px; --pe-dec-fs: var(--pe-fs-btn);   /* LOOK-3: golden .decide 50 px, .dbtn 16 px */
   --pe-weight-bar: rgba(56, 225, 214, 0.6);   /* weight bars: Cyan at .6 (v1.5.1 tokens §4; Grok Bot pages) */
-  /* Measured on p40, not yet named by Grok Bot (F02 notes X4) */
-  --pe-row-a: #070707; --pe-row-b: #0D0D0D;
+  /* Grok Bot R3 C-03 / C-05 / C-09, ported from golden-src/oct15.css (QA #126 LOOK-12) */
+  --pe-row-a: #0B0B0B; --pe-row-b: #070707;   /* p40: first row #0B0B0B, then #070707 */
+  --pe-select-edge: rgba(56, 225, 214, 0.35); /* C-03: selected-row top / bottom / right edges */
+  --pe-badge-local: #3A3A3A; --pe-badge-ok: #1F4A2C; --pe-badge-prov: #3A3D33; --pe-badge-cy: #17403D; --pe-badge-red: #4A1D18; --pe-badge-shared: #4A3A17;
   --pe-tint-new: rgba(230, 230, 226, 0.10); --pe-tint-new-end: rgba(230, 230, 226, 0);
-  --pe-tint-wait-start: rgba(242, 179, 61, 0.32); --pe-tint-wait-end: rgba(242, 179, 61, 0.06);
+  --pe-tint-wait-start: rgba(242, 179, 61, 0.16);   /* C-09: .16 -> Plate at 70 % */ --pe-tint-wait-end: rgba(242, 179, 61, 0.06);
   --pe-glow-green: 0 0 6px rgba(74, 222, 128, 0.25);
   /* Shape, glow, focus */
   --pe-border: 1px solid var(--pe-seam); --pe-radius: 2px; --pe-bar: 2px; --pe-bar-card: 3px;

@@ -6,7 +6,7 @@
    Quantiles and minN are tokens (tokens.css --pe-band-rank-* / --pe-band-min-n); the caller passes them in. */
 (function(root){
   'use strict';
-  var GLYPH = { TOP: '▲', UPPER: '◆', MID: '●', LOW: '▽', HOLD: '‖', NONE: '—' };
+  var GLYPH = { TOP: '▲', UPPER: '◆', MID: '●', LOW: '▽', HOLD: '⊘', NONE: '—' };
   var LABEL = { TOP: 'TOP 10%', UPPER: 'UPPER 25%', MID: 'MID 45%', LOW: 'LOW 20%', HOLD: 'HOLD', NONE: 'NOT RANKED' };
   var DEFAULTS = { top: 0.90, upper: 0.65, low: 0.20, minN: 40 };
 
@@ -35,14 +35,25 @@
     return { n: n, on: on, minN: o.minN, cuts: cuts, byId: byId };
   }
 
+  /* The app's row -> item mapping (LOOK-11d): eligible = not terminal and not APPLIED; hold = scoring band STRICT HOLD.
+     scoreFor(r) -> {overall, band}; isTerminal(r) -> bool. Returns items plus a key over every input that decides a band (LOOK-10). */
+  function itemsFromRows(rows, scoreFor, isTerminal){
+    var items = (rows || []).map(function(r){
+      var sc = (scoreFor && scoreFor(r)) || {};
+      return { id: r.id, score: typeof sc.overall === 'number' && isFinite(sc.overall) ? sc.overall : null, hold: sc.band === 'STRICT HOLD',
+        eligible: !(isTerminal && isTerminal(r)) && String(r.BUCKET || '').toUpperCase() !== 'APPLIED' };
+    });
+    return { items: items, key: items.map(function(it){ return it.id + '|' + it.score + '|' + (it.hold ? 1 : 0) + '|' + (it.eligible ? 1 : 0); }).join(';') };
+  }
+
   /* Header line for the queue panel (V-20 wording). rev / asOf are optional strings. */
   function summary(res, rev, asOf){
     if (!res) return '';
-    if (!res.on) return 'BANDS OFF · N ' + res.n + ' ELIGIBLE OPEN < ' + res.minN;
-    return 'BANDS = PERCENTILE · N ' + res.n + ' ELIGIBLE OPEN · P90 ' + res.cuts.top + ' · P65 ' + res.cuts.upper + ' · P20 ' + res.cuts.low +
-      (rev ? ' · REV ' + rev : '') + (asOf ? ' · AS OF ' + asOf : '');
+    var tail = ' · REV ' + (rev ? rev : '—') + ' · AS OF ' + (asOf ? asOf : '—');   // LOOK-6: never omitted, never invented
+    if (!res.on) return 'BANDS OFF · N ' + res.n + ' ELIGIBLE OPEN < ' + res.minN + tail;
+    return 'BANDS = PERCENTILE · N ' + res.n + ' ELIGIBLE OPEN · P90 ' + res.cuts.top + ' · P65 ' + res.cuts.upper + ' · P20 ' + res.cuts.low + tail;
   }
 
-  var api = { compute: compute, summary: summary, GLYPH: GLYPH, LABEL: LABEL, DEFAULTS: DEFAULTS };
+  var api = { compute: compute, summary: summary, itemsFromRows: itemsFromRows, GLYPH: GLYPH, LABEL: LABEL, DEFAULTS: DEFAULTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PipelineBands = api;
 })(typeof window !== 'undefined' ? window : globalThis);

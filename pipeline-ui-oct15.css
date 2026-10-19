@@ -118,17 +118,17 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #grid tbody tr:nth-child(odd) td { background: var(--pe-row-a) !important; }
   #grid tbody tr:nth-child(even) td { background: var(--pe-row-b) !important; }
   #grid tbody tr:hover td { background: var(--pe-plate) !important; }
-  #grid tbody tr.focus td { background: var(--pe-raised) !important; color: var(--pe-text-primary) !important; box-shadow: inset 0 1px 0 var(--pe-cyan), inset 0 -1px 0 var(--pe-cyan) !important; }
-  #grid tbody tr.focus td:first-child { box-shadow: inset 6px 0 0 var(--pe-cyan), inset 0 1px 0 var(--pe-cyan), inset 0 -1px 0 var(--pe-cyan) !important; }
-  #grid tbody tr.focus td:last-child { box-shadow: inset 0 1px 0 var(--pe-cyan), inset 0 -1px 0 var(--pe-cyan), inset -1px 0 0 var(--pe-cyan) !important; }
+  /* Lock-on row (golden C-03): Raised, 6 px cyan bar, top / bottom / right edges in --pe-select-edge (cyan .35). */
+  #grid tbody tr.focus td { background: var(--pe-raised) !important; color: var(--pe-text-primary) !important; box-shadow: inset 0 1px 0 var(--pe-select-edge), inset 0 -1px 0 var(--pe-select-edge) !important; }
+  #grid tbody tr.focus td:first-child { box-shadow: inset 6px 0 0 var(--pe-cyan), inset 0 1px 0 var(--pe-select-edge), inset 0 -1px 0 var(--pe-select-edge) !important; }
+  #grid tbody tr.focus td:last-child { box-shadow: inset 0 1px 0 var(--pe-select-edge), inset 0 -1px 0 var(--pe-select-edge), inset -1px 0 0 var(--pe-select-edge) !important; }
   #grid tbody tr.focus td[title]:nth-child(2) { font-weight: 600; }
   #grid td.mono { font-family: var(--pe-font-ui); font-variant-numeric: tabular-nums; }
   #grid td .score-badge { font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-score-row) !important; font-weight: var(--pe-fw-heavy) !important; color: var(--pe-text-primary); font-variant-numeric: tabular-nums; }
   #grid td .score-badge.strong { color: var(--pe-band-top); }
   #grid td .bpill { border: 0 !important; background: transparent !important; padding: 0; font-family: var(--pe-font-ui); font-size: var(--pe-fs-body); text-transform: none; letter-spacing: 0; color: var(--pe-text-primary); }
-  /* Lock-on row (golden .sel): 1 px cyan outline. When that row also holds keyboard focus the cyan outline is the focus
-     indicator (3:1+ on Raised); any other focused row keeps the tokens.css focus ring. */
-  #grid tbody tr.focus, #grid tbody tr.focus:focus-visible { outline: 1px solid var(--pe-cyan); outline-offset: -1px; }
+  /* No outline on the lock-on row (golden .sel outline 0); keyboard focus keeps the tokens.css :focus-visible ring (Grok Bot QA #126). */
+  #grid tbody tr.focus:not(:focus-visible) { outline: 0; }
   /* Row checkbox: outline square (V-10), cyan when ticked; no white block. */
   #grid .row-select { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; margin: 0; vertical-align: middle; border: 1px solid var(--pe-outline); border-radius: 0; background: transparent; cursor: pointer; }
   #grid .row-select:checked { background: var(--pe-cyan); border-color: var(--pe-cyan); box-shadow: inset 0 0 0 2px var(--pe-hull); }
@@ -140,76 +140,119 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #grid td .score-badge.band-mid, #grid .band-g.band-mid { color: var(--pe-band-mid) !important; }
   #grid td .score-badge.band-low, #grid .band-g.band-low { color: var(--pe-band-low) !important; }
   #grid td .score-badge.band-hold, #grid td .score-badge.band-none, #grid .band-g.band-hold, #grid .band-g.band-none { color: var(--pe-text-secondary) !important; }
-  #grid .band-g { font-style: normal; font-size: var(--pe-fs-min); margin-left: 4px; vertical-align: 1px; }
+  #grid .band-g { font-style: normal; font-family: var(--pe-font-label); font-size: var(--pe-fs-min); margin-left: 4px; vertical-align: 1px; }
+  /* STRICT HOLD (LOOK-2): score Secondary + "⊘ HOLD" tag, red text on a --pe-badge-red border (golden C-04). */
+  #grid .hold-tag { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: .06em; color: var(--pe-red); border: 1px solid var(--pe-badge-red); padding: 0 4px; margin-left: 4px; white-space: nowrap; }
+  /* Words for codes (D-4): FLEX and BUCKET (golden .fx-* / .bk-*). Raw code stays in the title. */
+  #grid .flex-w.flex-highflex { color: var(--pe-text-primary); } #grid .flex-w.flex-softflex { color: var(--pe-amber); }
+  #grid .flex-w.flex-noflex { color: var(--pe-text-secondary); } #grid .flex-w.flex-strict { color: var(--pe-red); }
+  #grid .flex-w.flex-unknown, #grid td .bpill.b-SCOUT_INTAKE, #grid td .bpill.b-DISCOVERY_LEAD { color: var(--pe-olive) !important; }
+  #grid td .bpill.b-READY_TO_PURSUE { color: var(--pe-green) !important; } #grid td .bpill.b-MANUAL_RESEARCH, #grid td .bpill.b-BLOCKED { color: var(--pe-amber) !important; }
   #queue-head .qh-bands { display: block; margin-top: 6px; font-family: var(--pe-font-label); font-size: var(--pe-fs-th); font-weight: 400; letter-spacing: var(--pe-label-tracking); color: var(--pe-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
 
-  /* 6. Job drawer (golden .drawer): hull panel with a 2 px cyan top rule, 26 px title, outline mono chips, mono tabs,
-        band-coloured ring, mono section labels, evidence rows on Plate with a 3 px state bar, F02 decision buttons. */
+  /* 6. Job drawer (golden .drawer + Grok Bot QA #126). */
   aside#drawer { background: var(--pe-hull) !important; border: var(--pe-border) !important; border-top: 2px solid var(--pe-cyan) !important; border-radius: 0 !important; box-shadow: none !important; color: var(--pe-text-primary); }
   #drawer .dh, #drawer .wh-top, #drawer .wh-chips, #drawer .wh-actions, #drawer #d-body { background: transparent !important; }
+  /* D-2 header label row (golden .d-head): 46 px, mono 12 cyan; nav ‹ › ✕ UI font 18 px Secondary, no boxes. */
+  #drawer .d-head { height: 46px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+  #drawer .d-label { font-family: var(--pe-font-label); font-size: var(--pe-fs-label); letter-spacing: var(--pe-label-tracking); color: var(--pe-cyan); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #drawer .d-head .wh-nav { display: flex !important; flex-direction: row !important; gap: 4px; position: static !important; }
+  #drawer .d-head .wh-nav button { min-width: var(--pe-target-desktop-min); height: var(--pe-target-desktop-min); padding: 0 4px; border: 0 !important; border-radius: var(--pe-radius) !important; background: transparent !important; box-shadow: none !important;
+    font-family: var(--pe-font-ui) !important; font-size: 18px !important; line-height: 1; color: var(--pe-text-secondary) !important; }
+  #drawer .d-head .wh-nav button:hover { color: var(--pe-text-primary) !important; }
+  #drawer .d-head .wh-nav button:disabled { opacity: .45; }
+  #drawer .wh-top { padding-top: 0 !important; }
+  #drawer .wh-title { margin-top: -12px; }
   #drawer #d-title { font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-drawer-title) !important; font-weight: 600 !important; line-height: 32px !important; letter-spacing: -.005em; color: var(--pe-text-primary) !important; }
-  #drawer #d-meta { font-family: var(--pe-font-ui); font-size: var(--pe-fs-body) !important; color: var(--pe-text-secondary) !important; }
-  #drawer #d-meta i { color: var(--pe-seam); font-style: normal; }
-  #drawer .wh-nav button, #drawer #d-close { border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: transparent !important; color: var(--pe-text-secondary) !important; }
-  #drawer .wh-nav button:hover, #drawer #d-close:hover { color: var(--pe-text-primary) !important; }
-  #drawer .wh-chips .bpill, #drawer .wh-chips .wchip, #drawer .wh-chips .score-badge { height: var(--pe-chip-h); padding: 0 7px !important; display: inline-flex; align-items: center; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: transparent !important;
-    font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; font-weight: 400 !important; letter-spacing: var(--pe-btn-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
-  #drawer .wh-chips .bpill { color: var(--pe-text-primary) !important; }
-  /* Ring: arc and value in the band colour; small line = band label + rank (computed, pipeline-bands.js). */
-  #drawer .ws-ring { --ring: var(--pe-text-secondary); width: 112px !important; height: 112px !important; background: conic-gradient(var(--ring) calc(var(--pct) * 1%), var(--pe-raised) 0) !important; }
-  #drawer .ws-ring::before { inset: 7px; background: var(--pe-hull) !important; }
+  #drawer #d-meta { font-family: var(--pe-font-ui); font-size: var(--pe-fs-body) !important; color: var(--pe-text-secondary) !important; margin-top: 3px; }
+  #drawer #d-meta i { color: var(--pe-text-secondary); font-style: normal; }   /* LOOK-9: " · " in Secondary */
+  /* LOOK-4 chips (golden C-05 kinds): bucket · FLEX · pay · location. */
+  #drawer .wh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  #drawer .pe-chip { display: inline-flex; align-items: center; height: var(--pe-chip-h); padding: 2px 7px; border: 1px solid var(--pe-badge-local); border-radius: 0;
+    font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: .08em; text-transform: uppercase; color: var(--pe-text-secondary); white-space: nowrap; }
+  #drawer .pe-chip.need { color: var(--pe-text-primary); border-color: var(--pe-badge-cy); }
+  #drawer .pe-chip.cy { color: var(--pe-cyan); border-color: var(--pe-badge-cy); }
+  #drawer .pe-chip.ok { color: var(--pe-green); border-color: var(--pe-badge-ok); }
+  #drawer .pe-chip.amb { color: var(--pe-amber); border-color: var(--pe-badge-shared); }
+  #drawer .pe-chip.prov { color: var(--pe-olive); border-color: var(--pe-badge-prov); }
+  #drawer .pe-chip.red { color: var(--pe-red); border-color: var(--pe-badge-red); }
+  #drawer .pe-chip.local { color: var(--pe-text-secondary); border-color: var(--pe-badge-local); }
+  #drawer .pe-chip.loc { max-width: 200px; overflow: hidden; text-overflow: ellipsis; display: inline-block; line-height: 14px; }
+  /* LOOK-1 score row (golden .score-row): SVG ring 124 px, R 54, stroke 8, track Raised, arc in band colour from 12 o'clock,
+     12 ticks (2 px Gridline, radius 54 -> 61); the ring holds only the value (42 px / 650). Band line + rank sit to the right. */
+  #drawer .ws-score { order: 2; display: flex; align-items: center; gap: 17px; margin: 10px 0 8px; min-height: 130px; }
+  #drawer .ws-ring { --ring: var(--pe-text-secondary); position: relative; flex: none; width: 124px !important; height: 124px !important; background: none !important; border-radius: 0 !important; order: 0 !important; }
+  #drawer .ws-ring::before { display: none !important; }
+  #drawer .ws-ring svg { position: absolute; inset: 0; width: 124px; height: 124px; }
+  #drawer .ws-ring .trk { fill: none; stroke: var(--pe-raised); stroke-width: 8; }
+  #drawer .ws-ring .arc { --pct: inherit; fill: none; stroke: var(--ring); stroke-width: 8; stroke-dasharray: calc(var(--pct) * 3.3929px) 400px; transform: rotate(-90deg); transform-origin: 62px 62px; }
+  #drawer .ws-ring .tk line { stroke: var(--pe-gridline); stroke-width: 2; }
   #drawer .ws-ring.band-top { --ring: var(--pe-band-top); } #drawer .ws-ring.band-upper { --ring: var(--pe-band-upper); }
   #drawer .ws-ring.band-mid { --ring: var(--pe-band-mid); } #drawer .ws-ring.band-low { --ring: var(--pe-band-low); }
-  #drawer .ws-ring b { font-family: var(--pe-font-ui) !important; font-size: 36px !important; font-weight: var(--pe-fw-heavy) !important; color: var(--ring) !important; }
-  #drawer .ws-ring.band-none b, #drawer .ws-ring.band-hold b { color: var(--pe-text-primary) !important; }
-  #drawer .ws-ring small { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; letter-spacing: var(--pe-btn-tracking); color: var(--ring) !important; text-align: center; line-height: 13px !important; text-transform: uppercase; }
-  #drawer .ws-ring.band-none small, #drawer .ws-ring.band-hold small { color: var(--pe-text-secondary) !important; }
-  /* Current state block = golden reason row (Plate, 3 px bar). */
-  #drawer .decision-essentials { background: var(--pe-plate) !important; border: 0 !important; border-left: var(--pe-bar-card) solid var(--pe-text-secondary) !important; border-radius: 0 !important; box-shadow: none !important; }
+  #drawer .ws-ring b { position: absolute !important; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-ring) !important; font-weight: var(--pe-fw-heavy) !important; color: var(--ring) !important; }
+  #drawer .ws-ring.band-none b, #drawer .ws-ring.band-hold b, #drawer .ws-ring.band-off b { color: var(--pe-text-primary) !important; }
+  #drawer .ws-score-info { font-family: var(--pe-font-ui); font-size: var(--pe-fs-small); line-height: 24px; color: var(--pe-text-secondary); min-width: 0; }
+  #drawer .ws-score-info .band { font-family: var(--pe-font-label); font-size: 13px; letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--ring-c, var(--pe-text-secondary)); }
+  #drawer .ws-score:has(.band-top) .band { color: var(--pe-band-top); } #drawer .ws-score:has(.band-upper) .band { color: var(--pe-band-upper); }
+  #drawer .ws-score:has(.band-mid) .band { color: var(--pe-band-mid); } #drawer .ws-score:has(.band-low) .band { color: var(--pe-band-low); }
+  /* Current state block (golden .banner): Plate, 3 px bar, 13 / 19. */
+  #drawer .decision-essentials { background: var(--pe-plate) !important; border: 0 !important; border-left: var(--pe-bar-card) solid var(--pe-text-secondary) !important; border-radius: 0 !important; box-shadow: none !important; font-size: var(--pe-fs-small); line-height: 19px; }
   #drawer .decision-status b { font-family: var(--pe-font-label); font-size: var(--pe-fs-th); font-weight: 400; letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary); }
   #drawer .decision-status span { font-size: var(--pe-fs-small); color: var(--pe-text-primary); }
   #drawer .next-job-step { border: 0 !important; background: transparent !important; color: var(--pe-cyan) !important; text-decoration: underline; text-underline-offset: 3px; font-size: var(--pe-fs-small) !important; padding: 0 !important; }
-  /* Tabs (golden .dtabs). */
-  #drawer #detail-tabs { border: 0 !important; border-bottom: var(--pe-border) !important; background: transparent !important; gap: 0; }
-  #drawer #detail-tabs button { height: 40px; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important;
+  /* LOOK-8 tabs (golden .dtabs): space-between, padding 0 16, active underline label -8 / +8 px. */
+  #drawer #detail-tabs { display: flex !important; justify-content: space-between; padding: 0 16px !important; height: 40px; border: 0 !important; border-bottom: var(--pe-border) !important; background: transparent !important; gap: 0; }
+  #drawer #detail-tabs button { position: relative; flex: none !important; width: auto !important; min-width: 0 !important; height: 40px; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important;
     font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-th) !important; letter-spacing: var(--pe-btn-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
-  #drawer #detail-tabs button.on { color: var(--pe-cyan) !important; box-shadow: inset 0 -2px 0 var(--pe-cyan) !important; }
-  /* Body: section labels (golden .sec-label), text sizes, evidence rows (golden .reason). */
+  #drawer #detail-tabs button.on { color: var(--pe-cyan) !important; }
+  #drawer #detail-tabs button.on::after { content: ""; position: absolute; left: -8px; right: -8px; bottom: -1px; height: 2px; background: var(--pe-cyan); }
+  /* Body: section labels (golden .sec-label), text sizes. */
   #drawer #d-body h3, #drawer .detail-card h3, #drawer .detail-card summary { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-th) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
   #drawer #d-body h3 .faint { font-size: var(--pe-fs-min) !important; color: var(--pe-text-secondary) !important; }
   #drawer #d-body, #drawer .ck-kd li, #drawer .ck-kd li span { font-family: var(--pe-font-ui); font-size: var(--pe-fs-body) !important; line-height: 20px !important; color: var(--pe-text-primary); }
   #drawer .ck-kd li .faint, #drawer .faint { color: var(--pe-text-secondary) !important; }
   #drawer .ck-kd li svg { color: var(--pe-text-secondary); }
+  /* LOOK-7 evidence rows (golden .reason): Plate, 3 px state bar, 32 px, gap 5; ✓ green / ✕ red / ? Secondary; row text Primary;
+     label word mono 11 in the state colour. */
   #drawer .ck-checks li { position: relative; min-height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 34px !important; margin-bottom: 5px; background: var(--pe-plate) !important; border: 0 !important; border-left: var(--pe-bar-card) solid var(--pe-text-secondary) !important; border-radius: 0 !important;
     font-family: var(--pe-font-ui); font-size: var(--pe-fs-body) !important; color: var(--pe-text-primary) !important; }
   #drawer .ck-checks li::before { left: 12px !important; top: 50% !important; transform: translateY(-50%); font: 600 14px/1 var(--pe-font-ui) !important; }
-  #drawer .ck-checks li.ok::before { color: var(--pe-green) !important; } #drawer .ck-checks li.bad::before { color: var(--pe-red) !important; } #drawer .ck-checks li.unk::before { color: var(--pe-text-secondary) !important; }
-  #drawer .ck-checks li.ok { border-left-color: var(--pe-green) !important; }
-  #drawer .ck-checks li.bad { border-left-color: var(--pe-red) !important; }
-  #drawer .ck-checks li.unk { color: var(--pe-text-secondary) !important; }
-  #drawer .ck-checks li small { font-family: var(--pe-font-label); font-size: var(--pe-fs-min) !important; letter-spacing: var(--pe-btn-tracking); text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  #drawer .ck-checks li.ok::before { color: var(--pe-green) !important; } #drawer .ck-checks li.bad::before { color: var(--pe-red) !important; }
+  #drawer .ck-checks li.unk::before { content: "?" !important; color: var(--pe-text-secondary) !important; }
+  #drawer .ck-checks li.ok { border-left-color: var(--pe-green) !important; } #drawer .ck-checks li.bad { border-left-color: var(--pe-red) !important; }
+  #drawer .ck-checks li small { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; letter-spacing: var(--pe-btn-tracking); text-transform: uppercase; color: var(--pe-text-secondary) !important; }
   #drawer .ck-checks li.ok small { color: var(--pe-green) !important; } #drawer .ck-checks li.bad small { color: var(--pe-red) !important; }
   #drawer .detail-card { background: var(--pe-hull) !important; border: var(--pe-border) !important; border-radius: 0 !important; box-shadow: none !important; }
   #drawer .detail-card label, #drawer .kv > div:nth-child(odd) { font-family: var(--pe-font-label); font-size: var(--pe-fs-min) !important; letter-spacing: var(--pe-btn-tracking); text-transform: uppercase; color: var(--pe-text-secondary) !important; }
-  #drawer .kv > div, #drawer .kv .conf, #drawer .bpill { font-size: var(--pe-fs-min) !important; }   /* L-1: provenance grid drew 10.8 px */
+  #drawer .kv > div, #drawer .kv .conf, #drawer .bpill, #drawer .research-note { font-size: var(--pe-fs-min) !important; }   /* L-1: provenance grid drew 10.8 px */
   #drawer select, #drawer input[type=text], #drawer input:not([type]), #drawer textarea { border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: var(--pe-field) !important; color: var(--pe-text-primary) !important; font-family: var(--pe-font-ui); font-size: var(--pe-fs-body) !important; }
   #drawer select:focus, #drawer input:focus, #drawer textarea:focus { border-color: var(--pe-cyan) !important; box-shadow: var(--pe-glow); outline: 0; }
   #drawer textarea::placeholder, #drawer input::placeholder { color: var(--pe-text-secondary); opacity: 1; }
   #drawer .detail-card .row button, #drawer .wh-prepare button { min-height: 32px; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important;
     font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-crumb) !important; font-weight: 400 !important; letter-spacing: var(--pe-btn-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; opacity: 1 !important; }
   #drawer .detail-card .row button:hover, #drawer .wh-prepare button:hover { color: var(--pe-text-primary) !important; border-color: var(--pe-text-secondary) !important; }
-  #drawer #save-decision.neon, #drawer .wh-actions #ws-open { border-color: var(--pe-cyan) !important; background: transparent !important; color: var(--pe-cyan) !important; }   /* primary action: cyan outline (no white slab) */
-  #drawer .wh-prepare button:disabled, #drawer .detail-card .row button:disabled { color: var(--pe-text-secondary) !important; border-style: dashed !important; }
-  /* Decision row (golden .decide / .dbtn): Pursue green, Hold amber, Research neutral, then a divider and Decline in Secondary (V-01). */
-  #drawer .wh-actions { border-top: var(--pe-border) !important; }
-  #drawer .wh-action-group legend { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-th) !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
-  #drawer .wh-decide { display: flex; gap: 8px; align-items: stretch; }
-  #drawer .wh-decide button { height: var(--pe-dec-h) !important; min-width: 100px; padding: 0 16px !important; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: var(--pe-hull) !important; box-shadow: none !important;
-    font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-dec) !important; font-weight: 400 !important; letter-spacing: 0 !important; text-transform: none !important; color: var(--pe-text-primary) !important; }
-  #drawer .wh-decide [data-decide-key="1"] { order: 1; border-color: var(--pe-green) !important; background: var(--pe-raised) !important; color: var(--pe-green) !important; font-weight: 600 !important; box-shadow: var(--pe-glow-green) !important; }
-  #drawer .wh-decide [data-decide-key="2"] { order: 2; border-color: var(--pe-amber) !important; color: var(--pe-amber) !important; font-weight: 600 !important; }
-  #drawer .wh-decide [data-decide-key="4"] { order: 3; }
-  #drawer .wh-decide [data-decide-key="3"] { order: 5; margin-left: 14px; color: var(--pe-text-secondary) !important; }
-  #drawer .wh-decide::after { content: ""; order: 4; width: 1px; background: var(--pe-seam); margin-left: 6px; }
+  #drawer #save-decision.neon, #drawer .wh-actions #ws-open { border-color: var(--pe-cyan) !important; background: transparent !important; color: var(--pe-cyan) !important; }   /* enabled primary action: cyan outline */
+  /* LOOK-5: disabled wins (golden .dbtn.off): dashed #6B6B66, Secondary, no glow. */
+  #drawer .wh-actions #ws-open:disabled, #drawer #save-decision.neon:disabled, #drawer .wh-prepare button:disabled, #drawer .detail-card .row button:disabled {
+    border: 1px dashed var(--pe-outline) !important; color: var(--pe-text-secondary) !important; background: transparent !important; box-shadow: none !important; }
+  /* LOOK-3 decision row (golden .decide / .dbtn): 50 px row, gap 8, left aligned, 16 px; Pursue 132 / Hold 103 / Research 102 /
+     divider / Decline 92 at the right; key hints are the real keys (1, 2). Legend as a .sec-label. */
+  #drawer .wh-actions { border-top: var(--pe-border) !important; display: flex !important; flex-direction: column !important; align-items: stretch !important; }
+  #drawer .wh-action-group { width: 100%; margin: 0 !important; padding: 0 !important; border: 0 !important; text-align: left; }
+  #drawer .wh-action-group legend { float: left; width: 100%; padding: 0 !important; margin: 10px 0 6px !important; text-align: left !important; font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-th) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  #drawer .wh-action-group legend::before, #drawer .wh-action-group legend::after { display: none !important; content: none !important; }
+  #drawer .wh-prepare { display: flex !important; flex-wrap: wrap; gap: 8px; }
+  #drawer .wh-prepare button { width: 152px; grid-column: auto !important; }
+  #drawer .wh-decide { display: flex !important; flex-wrap: wrap; justify-content: flex-start !important; gap: 8px; align-items: stretch; }
+  #drawer .wh-decide button { height: var(--pe-dec-h) !important; min-width: 0 !important; padding: 0 16px !important; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+    border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: var(--pe-hull) !important; box-shadow: none !important;
+    font-family: var(--pe-font-ui) !important; font-size: var(--pe-dec-fs) !important; font-weight: 400 !important; letter-spacing: 0 !important; text-transform: none !important; color: var(--pe-text-primary) !important; }
+  #drawer .wh-decide button sub { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); color: var(--pe-text-secondary); vertical-align: baseline; position: relative; top: 3px; }
+  #drawer .wh-decide .dec-ic { width: 12px; height: 14px; }
+  #drawer .wh-decide [data-decide-key="1"] { order: 1; width: 132px; border-color: var(--pe-green) !important; background: var(--pe-raised) !important; color: var(--pe-green) !important; font-weight: 600 !important; box-shadow: var(--pe-glow-green) !important; }
+  #drawer .wh-decide [data-decide-key="2"] { order: 2; width: 103px; border-color: var(--pe-amber) !important; color: var(--pe-amber) !important; font-weight: 600 !important; }
+  #drawer .wh-decide [data-decide-key="4"] { order: 3; width: 102px; }
+  #drawer .wh-decide::after { content: ""; order: 4; width: 1px; background: var(--pe-seam); margin: 0 6px 0 auto; }
+  #drawer .wh-decide [data-decide-key="3"] { order: 5; width: 92px; padding: 0 8px !important; color: var(--pe-text-secondary) !important; }
   #drawer .wh-decide button:hover { background: var(--pe-plate) !important; }
 }
