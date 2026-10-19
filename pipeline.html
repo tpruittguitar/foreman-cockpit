@@ -944,6 +944,10 @@ function bucketWord_(b){return BUCKET_WORD_[String(b||'').toUpperCase()]||bucket
 var FLEX_WORD_={HIGH_FLEX:'High flex',SOFT_FLEX:'Soft flex',NO_FLEX:'No flex',STRICT:'Strict'};
 function flexWord_(c){return FLEX_WORD_[String(c||'').toUpperCase()]||'Unknown'}
 function bandsLine_(){var st=scoringStamp_(),lr=S.connection&&S.connection.lastRead,d=lr?new Date(lr):null,hm=d&&!isNaN(d)?('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2):null;return PipelineBands.summary(bands_(),st&&st.revision,hm)}
+// Drawer location chip (QA #126 S-3): the geocoded city when the cache has it, else the label's city with any source tag
+// ("ATS", "JD says", "LinkedIn" ...) removed. The full LOCATION string stays in the chip title.
+function chipCity_(label){var key=String(label||'').toLowerCase().trim(),c=(LS.get('geoCache',{})||{})[key];if(c&&c.city)return c.city;
+  return String(label||'').split(',')[0].replace(/^\s*(?:ATS|JD(?:\s+says)?|LinkedIn|Indeed|ZipRecruiter|Glassdoor|posting|posted|job\s+page)\b[:\s-]*/i,'').trim()}
 function bandOf_(r){var b=bands_();return (b&&r&&b.byId[r.id])||{band:'NONE',rankNo:null}}
 function bandMark_(r){var x=bandOf_(r),bb=bands_();if(x.band==='HOLD')return '<span class="hold-tag" title="STRICT HOLD · outside the bands">⊘ HOLD</span>';if(x.band==='NONE'&&!(bb&&bb.on))return '';return '<i class="band-g band-'+x.band.toLowerCase()+'" aria-hidden="true">'+PipelineBands.GLYPH[x.band]+'</i>'}
 function scoreCell_(v){return v==null?'—':String(Math.round(v))}
@@ -1275,7 +1279,7 @@ function bindNextStep_(r){var button=document.querySelector('[data-next-job-step
 function renderWorkspaceHead_(r){var dh=document.querySelector('#drawer .dh');if(!dh)return;var p=r.payload||{},sc=scoreFor_(r),fa=sc.assessment,ls=PipelinePolicy.links(r),pay=PipelineTrust.salaryRange(p),rows=filteredRows(),i=rows.findIndex(function(x){return x.id===r.id});
   var bkU=String(r.BUCKET||'').toUpperCase(),bkKind=terminalJob_(r)?'local':bkU==='TIM_DECISION_REQUIRED'?'need':bkU==='READY_TO_PURSUE'?'ok':(bkU==='MANUAL_RESEARCH'||bkU==='BLOCKED')?'amb':bkU==='APPLIED'?'cy':(bkU==='SCOUT_INTAKE'||bkU==='DISCOVERY_LEAD')?'prov':'local';
   var fxC=String(fa.flex.class||'').toUpperCase(),fxKind=fxC==='HIGH_FLEX'?'ok':fxC==='SOFT_FLEX'?'amb':(fxC==='NO_FLEX'||fxC==='STRICT')?'red':'local',fxWord=FLEX_WORD_[fxC]?FLEX_WORD_[fxC].toUpperCase():'FLEX UNKNOWN';
-  var locs=mapLocationsForRow_(r),prim=locs.filter(function(x){return x.type==='primary'})[0]||locs[0],city=prim?String(prim.label).split(',')[0].trim():'';
+  var locs=mapLocationsForRow_(r),prim=locs.filter(function(x){return x.type==='primary'})[0]||locs[0],city=prim?chipCity_(prim.label):'';
   var chips='<span class="pe-chip '+bkKind+'" title="'+esc(r.BUCKET)+'">'+esc(bucketWord_(r.BUCKET))+'</span><span class="pe-chip '+fxKind+'" title="Degree FLEX class · '+esc(fa.flex.class||'not recorded')+'">'+esc(fxWord)+'</span>'+(pay.text?'<span class="pe-chip '+(pay.approx?'prov':'local')+'" title="'+esc(pay.label)+'">'+(pay.approx?'~':'')+esc(pay.text)+(pay.approx?' EST.':'')+'</span>':'<span class="pe-chip local">PAY UNKNOWN</span>')+(city?'<span class="pe-chip prov loc" title="'+esc(r.LOCATION||'')+'">'+esc(city)+'</span>':'');
   var band=String(sc.band||''),bandCls=band.toLowerCase().replace(/[^a-z]/g,''),wa=p.WORK_ARRANGEMENT||p.REMOTE_HYBRID||'',posted=PipelineParser.parseDate(p.POSTING_DATE),age=posted?Math.max(0,Math.round((Date.now()-posted.getTime())/864e5)):r.dateAdded?Math.max(0,Math.round((Date.now()-r.dateAdded.getTime())/864e5)):null;
   var meta=[esc(r.COMPANY),r.LOCATION?esc(r.LOCATION):'',wa?esc(wa):'',age==null?'':(posted?'Posted ':'Added ')+age+'d'].filter(Boolean).join('<i> · </i>');
@@ -1603,7 +1607,7 @@ function geocodePlace_(loc){
     for(var i=0;i<rs.length;i++){if(!want||String(rs[i].admin1||'').toLowerCase()===want.toLowerCase()){hit=rs[i];break}}
     if(!hit)hit=rs[0];
     if(!hit)throw new Error('no geocode');
-    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,approx:false,source:'city geocode'};cache[key]=val;LS.set('geoCache',cache);return Object.assign({},loc,val);
+    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,city:String(hit.name||''),approx:false,source:'city geocode'};cache[key]=val;LS.set('geoCache',cache);return Object.assign({},loc,val);
   }).catch(function(){var fb=stateFallback_(loc.label);return Object.assign({},loc,fb||{})});
 }
 function projectUS_(lat,lon,state){return PipelineMap.project(lat,lon,state)}

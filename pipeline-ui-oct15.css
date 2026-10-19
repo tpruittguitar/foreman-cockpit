@@ -183,7 +183,8 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .ws-score { order: 2; display: flex; align-items: center; gap: 17px; margin: 10px 0 8px; min-height: 130px; }
   #drawer .ws-ring { --ring: var(--pe-text-secondary); position: relative; flex: none; width: 124px !important; height: 124px !important; background: none !important; border-radius: 0 !important; order: 0 !important; }
   #drawer .ws-ring::before { display: none !important; }
-  #drawer .ws-ring svg { position: absolute; inset: 0; width: 124px; height: 124px; }
+  #drawer .ws-ring svg { --pct: inherit; position: absolute;   /* R-1: --pct is registered inherits:false; pass it .ws-ring -> svg -> .arc */
+    inset: 0; width: 124px; height: 124px; }
   #drawer .ws-ring .trk { fill: none; stroke: var(--pe-raised); stroke-width: 8; }
   #drawer .ws-ring .arc { --pct: inherit; fill: none; stroke: var(--ring); stroke-width: 8; stroke-dasharray: calc(var(--pct) * 3.3929px) 400px; transform: rotate(-90deg); transform-origin: 62px 62px; }
   #drawer .ws-ring .tk line { stroke: var(--pe-gridline); stroke-width: 2; }
@@ -242,7 +243,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .wh-action-group legend { float: left; width: 100%; padding: 0 !important; margin: 10px 0 6px !important; text-align: left !important; font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-th) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
   #drawer .wh-action-group legend::before, #drawer .wh-action-group legend::after { display: none !important; content: none !important; }
   #drawer .wh-prepare { display: flex !important; flex-wrap: wrap; gap: 8px; }
-  #drawer .wh-prepare button { width: 152px; grid-column: auto !important; }
+  #drawer .wh-prepare button { width: auto; min-width: 152px; height: 32px; padding: 0 12px; white-space: nowrap; grid-column: auto !important; }
   #drawer .wh-decide { display: flex !important; flex-wrap: wrap; justify-content: flex-start !important; gap: 8px; align-items: stretch; }
   #drawer .wh-decide button { height: var(--pe-dec-h) !important; min-width: 0 !important; padding: 0 16px !important; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
     border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: var(--pe-hull) !important; box-shadow: none !important;
@@ -252,7 +253,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .wh-decide [data-decide-key="1"] { order: 1; width: 132px; border-color: var(--pe-green) !important; background: var(--pe-raised) !important; color: var(--pe-green) !important; font-weight: 600 !important; box-shadow: var(--pe-glow-green) !important; }
   #drawer .wh-decide [data-decide-key="2"] { order: 2; width: 103px; border-color: var(--pe-amber) !important; color: var(--pe-amber) !important; font-weight: 600 !important; }
   #drawer .wh-decide [data-decide-key="4"] { order: 3; width: 102px; }
-  #drawer .wh-decide::after { content: ""; order: 4; width: 1px; background: var(--pe-seam); margin: 0 6px 0 auto; }
-  #drawer .wh-decide [data-decide-key="3"] { order: 5; width: 92px; padding: 0 8px !important; color: var(--pe-text-secondary) !important; }
+  #drawer .wh-decide::after { content: ""; order: 4; width: 1px; background: var(--pe-seam); margin: 0 6px; }
+  #drawer .wh-decide [data-decide-key="3"] { order: 5; width: 92px; margin-left: auto; padding: 0 8px !important; color: var(--pe-text-secondary) !important; }
   #drawer .wh-decide button:hover { background: var(--pe-plate) !important; }
 }

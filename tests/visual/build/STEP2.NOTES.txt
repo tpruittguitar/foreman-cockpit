@@ -64,3 +64,13 @@ GROK BOT LOOK QA ON #126 (22:00 ET, head 7bcbfcf) — fix-up commit, all 12 LOOK
  Also: Fit & Score tab page error fixed ("Cannot read ... HIGH_FLEX_MODIFIER": guarded the three FLEX modifier reads when rules
    carry no FLEX policy); L-1 on that tab's research note (10.8 -> 11 px).
  Not changed: D-1 content order, D-3 Δ (none drawn), D-5 KPI row — later steps per Grok Bot.
+
+GROK BOT RE-QA ON #126 (22:30 ET, head 754eace) — R-1 + S-1..S-3 applied; S-4 carried to step 3:
+ R-1 ring arc: `#drawer .ws-ring svg { --pct: inherit }` (pipeline-motion.js registers --pct inherits:false, so the svg held 0).
+     Screens re-rendered: arc 0 -> 198 deg at 55 in band colour; Secondary when bands off. Motion test (650 ms sweep) passes.
+ S-1 divider right after Research (margin 0 6px); Decline margin-left:auto.
+ S-2 materials buttons: nowrap, min-width 152, width auto, height 32 ("DRAFT COVER LETTER" on one line).
+ S-3 location chip: geocoded city when cached (geocode cache now also stores the matched city name), else the label city with any
+     source tag removed (ATS / JD says / LinkedIn / Indeed / ...). "AUSTIN". Full LOCATION stays in the title.
+ S-4 (step 3): tr:focus-visible inset ring and the top select edge under the sticky header.
+ Tim (via Grok Bot): keys stay 1-4 with hints 1 / 2; "REV —" stays when no revision is published.
