@@ -15,12 +15,13 @@ let failed = 0;
 for (const id of ['F01', 'F02']) {
   const want = PNG.sync.read(fs.readFileSync(path.join(repo, 'tests/visual/golden', id + '_2560x1440.png')));
   const got = PNG.sync.read(fs.readFileSync(path.join(tmp, id + '_2560x1440.png')));
-  if (want.width !== got.width || want.height !== got.height) { console.error(id + ': size ' + got.width + 'x' + got.height + ' vs ' + want.width + 'x' + want.height); failed++; continue; }
+  if (want.width !== got.width || want.height !== got.height) { if (process.env.GITHUB_ACTIONS) console.log('::error title=golden ' + id + '::size mismatch'); console.error(id + ': size ' + got.width + 'x' + got.height + ' vs ' + want.width + 'x' + want.height); failed++; continue; }
   const diff = new PNG({ width: want.width, height: want.height });
   const n = pixelmatch(want.data, got.data, diff.data, want.width, want.height, { threshold: 0.1 });
   const pct = n / (want.width * want.height) * 100;
   fs.writeFileSync(path.join(art, id + '-actual.png'), PNG.sync.write(got)); fs.writeFileSync(path.join(art, id + '-diff.png'), PNG.sync.write(diff));
   console.log(id + ': ' + n + ' differing pixels (' + pct.toFixed(4) + '%), limit ' + max + '%');
+  if (process.env.GITHUB_ACTIONS) console.log('::' + (pct > max ? 'error' : 'notice') + ' title=golden ' + id + '::' + id + ' ' + n + ' differing pixels (' + pct.toFixed(4) + '%), limit ' + max + '%');   // readable as a check annotation
   if (pct > max) failed++;
 }
 if (failed) { console.error('golden check FAILED (' + failed + ' frame(s))'); process.exit(1); }
