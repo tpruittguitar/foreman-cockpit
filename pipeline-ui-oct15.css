@@ -382,3 +382,52 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
 }
 /* Phone layout: the empty-drawer panel and the row tip are desktop features. */
 @media (max-width: 760px), (pointer: coarse) and (max-width: 980px) { #d-empty, .row-tip { display: none !important; } }
+
+/* RAIL-1 (Grok Bot 2026-10-18 23:59 ET): the side rail never moves under the cursor. Icon size and position are identical in
+   both states; only the label column is revealed. Expands on hover, keyboard focus (:has(:focus-visible); a mouse click does
+   not leave it open) or .open. Replaces base.css hover scale, desktop.css collapsed / hover rail rows, pr70.css rail label sizes.
+   Media query = desktop.css's own, so the 761-980 px fine-pointer windows those rules covered keep a rail layout.
+   Test: tests/rail.browser.js. */
+:root { --pe-rail-w: 96px; --pe-rail-w-open: 268px; --pe-rail-row: 84px; --pe-rail-row-foot: 62px; --pe-rail-icon: 26px; }
+@media (min-width: 981px), (min-width: 761px) and (pointer: fine) {
+  #rail { width: var(--pe-rail-w) !important; position: relative; z-index: 40; }
+  #rail .rail-in { position: absolute !important; top: 0; bottom: 0; left: 0; width: var(--pe-rail-w) !important;
+    overflow-x: hidden !important; overflow-y: auto !important; scrollbar-width: none; padding-top: 6px !important;
+    transition: width 180ms cubic-bezier(.16,1,.3,1), box-shadow 180ms cubic-bezier(.16,1,.3,1) !important; will-change: width; }
+  #rail .rail-in::-webkit-scrollbar { display: none; }
+  #rail:hover .rail-in, #rail:has(:focus-visible) .rail-in, #rail.open .rail-in { width: var(--pe-rail-w-open) !important; box-shadow: 12px 0 24px rgba(0,0,0,.55); }
+  /* one grid in both states: col 1 = fixed icon slot (rail width), col 2 = label column the rail reveals */
+  #rail .rail-group > button, #rail .rail-foot button {
+    display: grid !important; grid-template-columns: var(--pe-rail-w) calc(var(--pe-rail-w-open) - var(--pe-rail-w));
+    grid-template-rows: 1fr var(--pe-rail-icon) 7px 15px 1fr; height: var(--pe-rail-row) !important;
+    width: var(--pe-rail-w-open) !important; padding: 0 !important; gap: 0 !important; margin: 0 !important; transform: none !important;
+    box-sizing: border-box; border: 0 !important; justify-content: start !important; align-content: stretch !important; flex-direction: unset !important;
+    justify-items: start; align-items: center; text-align: left; }
+  #rail .rail-foot button { height: var(--pe-rail-row-foot) !important; }
+  #rail .rail-group > button > svg, #rail .rail-foot button > svg, #rail .rail-foot button > .sys-dot {
+    grid-area: 2 / 1; justify-self: center; align-self: center; width: var(--pe-rail-icon) !important; height: var(--pe-rail-icon) !important;
+    margin: 0 !important; transform: none !important; transition: none !important; }
+  #rail .rail-foot button > .sys-dot { width: 10px !important; height: 10px !important; }
+  #rail button:hover svg, #rail button:focus-visible svg { transform: none !important; }
+  #rail .rail-group > button > .rl { display: contents !important; }
+  #rail .rail-foot button > .rl { grid-area: 4 / 1; justify-self: center; display: block !important; }
+  /* labels: 11 px uppercase under the icon (collapsed); the full word on the icon's centre line in col 2 (expanded); opacity only */
+  #rail .rl, #rail .nav-short, #rail .nav-full { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important;
+    line-height: 15px !important; letter-spacing: .08em !important; text-transform: uppercase; white-space: nowrap; }
+  #rail .nav-short, #rail .rail-foot .rl { grid-area: 4 / 1; justify-self: center; display: block !important; transition: opacity 120ms linear; }
+  /* STATUS / REFRESH keep their label in both states (pipeline.html #rail .rl is opacity 0 collapsed; desktop.css:28 used to undo it) */
+  #rail .rail-foot .rl { opacity: 1; }
+  #rail .nav-full { grid-area: 2 / 2; justify-self: start; display: block !important; font-size: var(--pe-fs-label) !important; line-height: 16px !important;
+    letter-spacing: var(--pe-label-tracking) !important; opacity: 0; transition: opacity 140ms linear 60ms; }
+  #rail:hover .nav-full, #rail:has(:focus-visible) .nav-full, #rail.open .nav-full { opacity: 1; }
+  #rail:hover .nav-short, #rail:has(:focus-visible) .nav-short, #rail.open .nav-short { opacity: 0; }
+  #rail .rail-brand { display: grid !important; grid-template-columns: var(--pe-rail-w) 1fr; height: 44px; padding: 0 !important; width: var(--pe-rail-w-open); align-items: center; }
+  #rail .rail-brand > svg { justify-self: center; }
+  #rail .rail-brand .rl { display: block !important; opacity: 0; transition: opacity 140ms linear 60ms; color: var(--pe-text-primary); }
+  #rail:hover .rail-brand .rl, #rail:has(:focus-visible) .rail-brand .rl, #rail.open .rail-brand .rl { opacity: 1; }
+  /* current group: 3 px inset bar (no border; the 2 px border + desktop.css justify-content:center shifted icons 1 px) */
+  #rail .rail-group.cur > button { box-shadow: inset var(--pe-bar-card) 0 0 var(--pe-cyan) !important; }
+  /* L-1: inset focus ring (the 2 px outset ring was clipped by .rail-in overflow) */
+  #rail button:focus-visible { outline: var(--pe-focus-ring) !important; outline-offset: -2px !important; box-shadow: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { #rail .rail-in, #rail .nav-full, #rail .nav-short, #rail .rail-brand .rl { transition: none !important; } }

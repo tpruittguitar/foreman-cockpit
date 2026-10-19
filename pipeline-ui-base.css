@@ -182,7 +182,6 @@ button:not(:disabled):active{transform:scale(.985)}
 /* Rail: icon with its label underneath; hover (or the menu button) still opens the sub-items */
 #rail .rail-group.cur>button{color:var(--forge-amber);border-left-color:var(--forge-amber);background:linear-gradient(90deg,#ffc21c12,transparent 70%)}
 #rail button svg{width:26px;height:26px}
-#rail button:hover svg{transform:translateY(-1px) scale(1.08)}
 
 /* Chips, tiles and buttons in panels */
 .score-badge.strong,.bpill.b-READY_TO_PURSUE{border-color:var(--forge-green);color:var(--forge-green)}

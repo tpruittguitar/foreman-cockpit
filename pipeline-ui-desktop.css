@@ -24,14 +24,9 @@
   #rail .rail-brand{height:44px;justify-content:center;padding:0}
   #rail button{height:52px;padding:0 22px;gap:16px;font-size:13.5px}
   #rail:not(.open) .rail-brand .rl{display:none}
-  #rail:not(.open) .rail-group>button,#rail:not(.open) .rail-foot button{flex-direction:column;justify-content:center;align-items:center;gap:7px;height:84px;padding:0}
-  #rail:not(.open) .rl{opacity:1;font:13px/1 var(--sans);color:inherit}
-  #rail:not(.open) .rail-foot button{height:62px}
   @media(hover:hover){
     #rail:hover .rail-in{width:268px}
     #rail:hover .rail-brand .rl{display:inline}
-    #rail:hover .rail-group>button,#rail:hover .rail-foot button{flex-direction:row;justify-content:flex-start;height:52px;padding:0 22px;gap:16px}
-    #rail:hover .rl{font-size:14px}
   }
 
   /* Pipeline view: queue + map | workspace */
