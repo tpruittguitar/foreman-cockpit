@@ -272,6 +272,9 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .why { font-family: var(--pe-font-ui); font-size: var(--pe-fs-why) !important; line-height: 21px !important; margin-top: 8px; color: var(--pe-text-primary); }
   #drawer .why-link { text-transform: none !important; letter-spacing: 0 !important; border: 0 !important; background: transparent !important; padding: 0 !important; min-height: 0; font: inherit; color: var(--pe-cyan) !important; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
   #drawer #d-body .ck-ev { margin-top: 7px; }
+  /* E-1 (Grok Bot QA #127): F02 .reasons spacing, gap 5 -> 37 px pitch for the 32 px plates. */
+  #drawer .ck-checks { display: flex; flex-direction: column; gap: 5px; margin: 7px 0 0 !important; padding: 0 !important; }
+  #drawer .ck-checks li { margin: 0 !important; }
   #drawer #d-body .ck-ev h3 { display: none; }   /* golden: the evidence rows follow WHY without their own label */
   #drawer .bd { margin-top: 5px; }
   #drawer .bd-row { display: grid; grid-template-columns: 150px 44px 1fr 56px; column-gap: 8px; align-items: center; height: 23px; font-size: var(--pe-fs-small); }

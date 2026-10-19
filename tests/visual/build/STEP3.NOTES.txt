@@ -31,3 +31,8 @@ QUESTIONS FOR GROK BOT
 NOT IN THIS STEP: F01 opening state (empty drawer: bands, buckets, next up, keys, my decisions) — next step; BUILD 1-3 (map, stale bar)
  with the map / KPI steps; BUILD 4 (full TITLE / COMPANY on hover AND keyboard focus) needs a focus tooltip for table cells, with F01;
  BUILD 5 (CI pinned renderer) is harness work.
+
+GROK BOT QA ON #127 (23:04 ET, head 4fccf92): E-1 applied; Q-1 and Q-2 ruled KEEP.
+ E-1 top evidence: .ck-checks flex column, gap 5, margin-top 7; li margin 0. Measured: plates 32 px at 37 px pitch (614 / 651 / 688 / 725 / 762).
+ Q-1 KEEP: points round to the exact weighted sum at 0.1; no tenth to a zero or unknown part; header shows sum and ring separately.
+ Q-2 KEEP: Decision details open by default, collapse remembered for the session, any 1-4 key re-opens it.
