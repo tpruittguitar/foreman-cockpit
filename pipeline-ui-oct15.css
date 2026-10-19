@@ -386,6 +386,22 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
 /* Phone layout: the empty-drawer panel and the row tip are desktop features. */
 @media (max-width: 760px), (pointer: coarse) and (max-width: 980px) { #d-empty, .row-tip { display: none !important; } }
 
+/* Track M step 2 (REV-068, Grok Bot 18:57 / 19:28 ET): score colours on the phone come from the percentile bands, as on
+   desktop. Colour only: sizes and layout stay mobile. Before this, the phone coloured scores from the old band() label
+   (base .score-badge.strong green) and drew every drawer ring in the dim default. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #grid td .score-badge.band-top, #grid .band-g.band-top { color: var(--pe-band-top) !important; }
+  #grid td .score-badge.band-upper, #grid .band-g.band-upper { color: var(--pe-band-upper) !important; }
+  #grid td .score-badge.band-mid, #grid .band-g.band-mid { color: var(--pe-band-mid) !important; }
+  #grid td .score-badge.band-low, #grid .band-g.band-low { color: var(--pe-band-low) !important; }
+  #grid td .score-badge.band-hold, #grid td .score-badge.band-none, #grid .band-g.band-hold, #grid .band-g.band-none { color: var(--pe-text-secondary) !important; }
+  #drawer .ws-ring.band-top { --ring: var(--pe-band-top); } #drawer .ws-ring.band-upper { --ring: var(--pe-band-upper); }
+  #drawer .ws-ring.band-mid { --ring: var(--pe-band-mid); } #drawer .ws-ring.band-low { --ring: var(--pe-band-low); }
+  #drawer .ws-ring.band-hold, #drawer .ws-ring.band-none, #drawer .ws-ring.band-off { --ring: var(--pe-text-secondary); }
+  #drawer .ws-score:has(.band-top) .band { color: var(--pe-band-top); } #drawer .ws-score:has(.band-upper) .band { color: var(--pe-band-upper); }
+  #drawer .ws-score:has(.band-mid) .band { color: var(--pe-band-mid); } #drawer .ws-score:has(.band-low) .band { color: var(--pe-band-low); }
+}
+
 /* RAIL-1 (Grok Bot 2026-10-18 23:59 ET): the side rail never moves under the cursor. Icon size and position are identical in
    both states; only the label column is revealed. Expands on hover, keyboard focus (:has(:focus-visible); a mouse click does
    not leave it open) or .open. Replaces base.css hover scale, desktop.css collapsed / hover rail rows, pr70.css rail label sizes.
