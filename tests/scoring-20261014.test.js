@@ -25,7 +25,7 @@ test('culture reads the Target Companies list from canonical rules',()=>{
   assert.deepEqual(list.map(c=>c.company),['Anduril','Pyka','GITAI']);
   const cfg=S.normalize({targetCompanies:list});
   const cul=co=>S.scoreRow({COMPANY:co,TITLE:'Director',LOCATION:'Austin, TX',payload:{}},cfg).parts.culture;
-  assert.equal(cul('Anduril Industries').score,80);   // P2 (REV-040 tiers: DREAM 100, P1 90, P2 80, P3 70, WATCH 60)
+  assert.equal(cul('Anduril Industries').score,80);   // P2 (REV-046 tiers: DREAM 100, P1 90, P2 80, P3 70, WATCH 60)
   assert.equal(cul('Pyka, Inc.').score,70);
   assert.equal(cul('GITAI USA').score,40);
   assert.equal(cul('Raytheon').score,40);
