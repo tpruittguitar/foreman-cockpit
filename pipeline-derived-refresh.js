@@ -6,6 +6,15 @@
  * Calculated ratings (OVERALL_RATING and the component scores) are not stored in the master and are out of scope here. */
 (function(root){'use strict';
 var Policy=typeof module==='object'&&module.exports?require('./pipeline-policy'):root.PipelinePolicy;
+var Scoring=typeof module==='object'&&module.exports?require('./pipeline-scoring'):root.PipelineScoring;
+var Evidence=typeof module==='object'&&module.exports?require('./pipeline-evidence'):root.PipelineEvidence;
+/* PAY WORTH backfill (Tim 2026-10-19 02:31 ET, REV-039): live jobs with a salary figure whose stored PAY_WORTH, Writer-derived
+ * FLOOR_STATUS or PURSUIT_STATUS differ from the current scoring, or whose one-site US city has not been looked up yet, are sent
+ * through the same receipt-verified ENRICH batches. The ENRICH repeats a value the row already holds (FLEX_CLASS, else the salary
+ * key the pay comes from), so nothing changes but the Writer's re-derivation (deriveWriterScores_: city lookup, PAY_WORTH,
+ * FLOOR_STATUS, PURSUIT_STATUS). Mirrors the Writer: it scores the payload without the Writer-owned score keys. */
+var LIVE_PAY_BUCKETS=['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','BLOCKED'];
+var WRITER_OWNED=['OVERALL','GEO','NET_COMP','OVERALL_RATING','EXPERIENCE_FIT','GEO_SCORE','NET_COMP_SCORE','RATING_CONFIDENCE','FLEX_RATING_IMPACT','PAY_WORTH','PAY_WORTH_BASIS','FLEX_MODIFIER','ADJUSTED_FIT','PURSUIT_STATUS'];
 var ACTIVE_BUCKETS=['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','BLOCKED','APPLIED','DECLINED_BY_TIM'];
 var CHUNK=25;
 function str(v){return v==null?'':String(v).trim()}
@@ -45,11 +54,35 @@ function plan(rows,policyRaw,opts){
  * is never changed (a conflicting class is reported for review, not touched). Request ids are stable per policy and row, so a rerun after
  * a partial failure cannot write a row twice. */
 function requests(stale,policyIdValue,note){
-  return stale.map(function(s){return {action:'ruling',ruling:{primaryId:s.primaryId,kind:'ENRICH',fields:{FLEX_CLASS:s.flexClass},actor:'EXPLORER',
-    note:note||'Refresh policy-derived FLEX values to the current canonical policy (Pipeline Explorer, Tim-approved)',requestId:'PX-REFRESH-'+policyIdValue+'-'+s.primaryId}}});
+  return stale.map(function(s){var pay=s.kind==='PAY';return {action:'ruling',ruling:{primaryId:s.primaryId,kind:'ENRICH',fields:s.fields||{FLEX_CLASS:s.flexClass},actor:'EXPLORER',
+    note:pay?'Refresh PAY_WORTH, pay status and city location to the current scoring (Pipeline Explorer, Tim-approved REV-039)':note||'Refresh policy-derived FLEX values to the current canonical policy (Pipeline Explorer, Tim-approved)',
+    requestId:(pay?'PX-PAYWORTH-'+(s.payId||policyIdValue):'PX-REFRESH-'+policyIdValue)+'-'+s.primaryId}}});
 }
+function payId(scoring,policy){var c=Scoring.normalize(scoring||{});return hash6(JSON.stringify([Scoring.payWorthCfg(c),c.geo&&c.geo.controlPoints,policyId(policy)]))}
+function needsLookup(r){var p=r.payload||{},loc=str(r.LOCATION||p.LOCATION);return !!loc&&!(str(p.LATITUDE)&&str(p.LONGITUDE))&&!str(p.GEOCODE_STATUS)&&!/\bremote\b|\/|;|\||\s+or\s+/i.test(loc)&&!Scoring.isNonUs(loc)}
+/* rows: parsed rows. scoring: the published scoring model. policyRaw: canonical FLEX policy. skip: primary ids already planned. */
+function payPlan(rows,scoring,policyRaw,skip){
+  var policy=Policy.normalizeFlexPolicy(policyRaw||{}),cfg=Object.assign({},Scoring.normalize(scoring||{}),{flexPolicy:policy}),id=payId(scoring,policy),out={payId:id,scanned:0,upToDate:0,stale:[]};
+  (rows||[]).forEach(function(r){var p=r.payload||{};if(LIVE_PAY_BUCKETS.indexOf(r.BUCKET)<0||str(p.ARCHIVE_STATE))return;var ev=Evidence.salary(p);if(ev.mid==null)return;out.scanned++;
+    if(skip&&skip[r.PRIMARY_ID])return;
+    var input={};Object.keys(p).forEach(function(k){if(WRITER_OWNED.indexOf(k)<0)input[k]=p[k]});
+    var sc=Scoring.scoreRow({COMPANY:r.COMPANY,TITLE:r.TITLE,LOCATION:r.LOCATION,payload:input},cfg),pw=sc.payWorth,changes=[];
+    function check(field,before,after){if(after==null)return;if(!same(before,after))changes.push({field:field,before:str(before),after:String(after)})}
+    if(pw&&pw.score!=null)check('PAY_WORTH',p.PAY_WORTH,pw.score);
+    if(sc.floor&&sc.floor.derived&&sc.floor.status)check('FLOOR_STATUS',p.FLOOR_STATUS,sc.floor.status);
+    if(Policy.isV4(policy))check('PURSUIT_STATUS',p.PURSUIT_STATUS,sc.assessment.decision);
+    if(needsLookup(r))changes.push({field:'LATITUDE / LONGITUDE',before:'',after:'city lookup'});
+    if(!changes.length){out.upToDate++;return}
+    var key=ev.source==='SALARY_BASE_LOW/HIGH'?'SALARY_BASE_LOW':ev.source,fields=str(p.FLEX_CLASS)?{FLEX_CLASS:str(p.FLEX_CLASS)}:{};if(!fields.FLEX_CLASS)fields[key]=str(p[key]);
+    out.stale.push({id:r.id,primaryId:r.PRIMARY_ID,company:r.COMPANY,title:r.TITLE,bucket:r.BUCKET,flexClass:str(p.FLEX_CLASS)||'PAY',kind:'PAY',payId:id,fields:fields,changes:changes});
+  });
+  return out;
+}
+/* FLEX plan plus the PAY WORTH backfill in one list; a row stale on both goes once (its FLEX ENRICH re-derives pay as well). */
+function fullPlan(rows,policyRaw,scoring,opts){var p=plan(rows,policyRaw,opts);if(!scoring)return p;var skip={};p.stale.forEach(function(s){skip[s.primaryId]=1});
+  var pp=payPlan(rows,scoring,policyRaw,skip);p.payId=pp.payId;p.payScanned=pp.scanned;p.payUpToDate=pp.upToDate;p.payStale=pp.stale.length;p.flexStale=p.stale.length;p.stale=p.stale.concat(pp.stale);return p}
 function chunk(list,size){size=size||CHUNK;var out=[];for(var i=0;i<list.length;i+=size)out.push(list.slice(i,i+size));return out}
 
-var api={ACTIVE_BUCKETS:ACTIVE_BUCKETS,CHUNK:CHUNK,derive:derive,plan:plan,requests:requests,chunk:chunk,policyId:policyId,same:same};
+var api={ACTIVE_BUCKETS:ACTIVE_BUCKETS,LIVE_PAY_BUCKETS:LIVE_PAY_BUCKETS,CHUNK:CHUNK,derive:derive,plan:plan,payPlan:payPlan,fullPlan:fullPlan,payId:payId,needsLookup:needsLookup,requests:requests,chunk:chunk,policyId:policyId,same:same};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineDerivedRefresh=api;
 })(typeof window!=='undefined'?window:globalThis);
