@@ -1,6 +1,7 @@
 /* BUILD 5 (Grok Bot rev4): re-render the golden frames with the pinned Playwright Chromium and the repo fonts, and compare
    them to the committed PNGs. Read only: the committed golden files are never written here.
    node tests/visual/check-golden.cjs   (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for render-golden.cjs)
+   System fonts are limited to tests/visual/fonts.conf (same fallback glyphs on every machine).
    Fails when any frame differs in more than VISUAL_GOLDEN_MAX_PERCENT (default 0.05) % of its pixels. Diff PNGs go to
    tests/visual/artifacts/golden-check/. */
 'use strict';
@@ -10,7 +11,7 @@ const repo = path.resolve(__dirname, '../..');
 const max = Number(process.env.VISUAL_GOLDEN_MAX_PERCENT || 0.05);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'golden-check-'));
 const art = path.join(repo, 'tests/visual/artifacts/golden-check'); fs.mkdirSync(art, { recursive: true });
-execFileSync(process.execPath, [path.join(__dirname, 'render-golden.cjs')], { stdio: 'inherit', env: Object.assign({}, process.env, { VISUAL_GOLDEN_OUT: tmp }) });
+execFileSync(process.execPath, [path.join(__dirname, 'render-golden.cjs')], { stdio: 'inherit', env: Object.assign({ FONTCONFIG_FILE: path.join(__dirname, 'fonts.conf') }, process.env, { VISUAL_GOLDEN_OUT: tmp }) });
 let failed = 0;
 for (const id of ['F01', 'F02']) {
   const want = PNG.sync.read(fs.readFileSync(path.join(repo, 'tests/visual/golden', id + '_2560x1440.png')));
