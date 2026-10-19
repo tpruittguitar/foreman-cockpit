@@ -1,0 +1,39 @@
+PE BUILD STEP 5 · map rebuild toward the golden F01 / F02 map panel · rev4 BUILD 1-2 · REV-030 · Claude · 2026-10-19
+
+WHAT (desktop; JS adds .pe-map under desktop.css's media query, the phone map is unchanged)
+- Panel head 44 px: "◎ JOB LOCATION MAP · <MODE>" mono 13 uppercase; #map-sub on the right as the meta line.
+- HUD top left: SHOWING line (cyan for SELECTED JOB) · CURSOR lat / lon (inverse projection, CONUS only) · ZOOM n% · map status.
+- SELECTED JOB | FILTERED VIEW · N segmented control, top right (N = rows in the current view). Other map modes stay in the
+  layers panel, restyled to the tokens (11 px floor, active filter cyan).
+- Graticule: 1° minor / 5° major lines under the states (1 px at every zoom), edge labels in screen space.
+- States: fill .55, stroke --pe-map-state-stroke; state labels Secondary, Muted (#6B6B66, T-5) only once they render >= 24 px,
+  hidden when they would render under 11 px (L-1); Alaska / Hawaii captions likewise.
+- Pins: band glyph (▲ ◆ ● ▽ ⊘ —) on a 40% disc in the band colour over a hull disc; additional locations dashed ring; HOME ◇.
+- Lock on the selected job: golden reticle (r22, dashed r31, 4 ticks, 4 corner brackets) + readout "◉ LOCK · <id>",
+  lat / lon 4 dp, "RNG n MI · BRG nnn° FROM HOME" (great circle, HOME = Cleveland, TN), "NEAREST GEO PT <basis> · <geo score>".
+  The readout takes the first spot right / left / above that is inside the open canvas and clear of the overlays; on a short
+  canvas it drops the NEAREST GEO line (the drawer shows it) before giving up. The pin popup gives way to the readout.
+- HUD band 44 px at the bottom: band legend (glyph + label) left, RECENTER / RESET right.
+- Zoom stack + layers on the right above the band; on a canvas <= 520 px tall (e.g. 1440x900) they form one row above the band.
+BUILD 1  pipeline-map-hud.js graticule(): lat labels at x 8, lon labels one row 16 px above the band, starting at x >= 48 and
+         not over the Alaska / Hawaii insets; any label within 8 px of another label, a bracket arm or an overlay is dropped
+         (lat labels go first on the lon row). Steps adapt to zoom (lon >= 120 px apart, lat >= 32 px).
+BUILD 2  brackets(): four brackets (inset 10, arm 34, stroke 2, Secondary, 8.0:1 on the hull) frame the open canvas between the
+         head and the band; every overlay is laid out clear of the arms.
+TESTS    tests/map-hud.test.js (projection = pipeline-map.js, labels, BUILD 1 spacing incl. the golden 33°N / 089°W case,
+         BUILD 2 geometry, range / bearing = golden RNG 127 / BRG 304 for Nashville). tests/map-hud.browser.js (live app,
+         2560x1440 + 1440x900, filtered 100% and selected zoomed: BUILD 1 + BUILD 2 + 3:1 + no map text < 11 px + uppercase HUD
+         + pin glyphs + computed lock readout + cursor readout + layers panel 11 px floor; no page errors).
+SCREENS  STEP5_selected_2560x1440.png · STEP5_filtered_2560x1440.png · STEP5_selected_1440x900.png (fixture, bands minN 5).
+
+FOR GROK BOT (rulings asked; Claude's choice in brackets)
+Q-a Layout: the map stays under the table (live layout); the golden middle-column layout is not part of this step. [keep]
+Q-b The golden SHOWING line ends "· Esc = filtered view", but Esc today only closes the drawer; the map stays on SELECTED JOB.
+    I left that clause out. Rule: (1) keep it out, or (2) make Esc also switch the map to FILTERED VIEW (behaviour change). [1]
+Q-c HUD band is one 44 px row (golden 84 px, two rows): the live canvas is ~470 px tall at 2560x1440. No FULLSCREEN button on
+    desktop: Expand is phone-only today and desktop has the MAP tab. [keep]
+Q-d Zoom stack is + / n% / − (+ layers); no ◈ / FIT: the n% button already resets to 100%. [keep]
+Q-e No map-centre crosshair (golden cross at W/2, H/2). [leave out]
+KNOWN  The old ui.browser.js / map.browser.js stop at pre-existing lines (20 / 20) in this sandbox, same as on main, before their
+       map steps; the map interactions were smoke-tested by hand script (zoom +, wheel, pan, reset, pin click opens the job and
+       locks, recenter, layers) with no page errors.

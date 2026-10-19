@@ -431,3 +431,138 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #rail button:focus-visible { outline: var(--pe-focus-ring) !important; outline-offset: -2px !important; box-shadow: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { #rail .rail-in, #rail .nav-full, #rail .nav-short, #rail .rail-brand .rl { transition: none !important; } }
+
+/* §10 Step 5 map rebuild (golden F01 / F02 map panel; rev4 BUILD 1-2). Desktop only (JS adds .pe-map under the same media query);
+   the phone keeps its map layout. Head 44 px; canvas under it; HUD band at the bottom over the canvas; four corner brackets frame
+   the open canvas between the head and the band (BUILD 2); every overlay keeps clear of the bracket arms; graticule labels skip
+   anything within 8 px (BUILD 1, pipeline-map-hud.js). Nothing under 11 px; Muted state labels only once they render >= 24 px. */
+:root { --pe-map-band-h: 44px; --pe-map-head-h: 44px; }
+@media (min-width: 981px), (min-width: 761px) and (pointer: fine) {
+  body:not(.pe-nomap) #job-map-card.pe-map { background: var(--pe-hull) !important; overflow: hidden; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-head { position: absolute !important; left: 0 !important; right: 0 !important; top: 0 !important; height: var(--pe-map-head-h);
+    padding: 0 14px !important; margin: 0 !important; display: flex !important; align-items: center !important; border-bottom: var(--pe-border); background: var(--pe-hull); z-index: 4; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-head .map-title { display: flex !important; align-items: baseline; gap: 16px; flex: 1; min-width: 0; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-head h4 { margin: 0 !important; font: 400 13px/1 var(--pe-font-label) !important; letter-spacing: var(--pe-label-tracking) !important;
+    text-transform: uppercase; color: var(--pe-text-primary) !important; white-space: nowrap; flex: none; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-head h4 .pg { color: var(--pe-text-secondary); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-head #map-sub { display: block !important; margin-left: auto; min-width: 0; font: 11px/1 var(--pe-font-label) !important; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--pe-text-secondary) !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map { position: absolute !important; inset: var(--pe-map-head-h) 0 0 0 !important; background: var(--pe-hull) !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map .map-empty { font: 11px var(--pe-font-label); letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary); }
+  /* base map: graticule under the states, states at .55 fill, 1 px strokes at every zoom */
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map svg .map-gl line { vector-effect: non-scaling-stroke; stroke-width: 1; }
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map svg .map-gl .mn { stroke: var(--pe-map-grid-minor); }
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map svg .map-gl .mj { stroke: var(--pe-map-grid-major); stroke-width: 1.2; }
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map svg .map-outline { fill: var(--pe-map-state-fill) !important; fill-opacity: .55; stroke: var(--pe-map-state-stroke) !important; stroke-width: 1.2 !important;
+    vector-effect: non-scaling-stroke; opacity: 1 !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map svg .map-state-label, body:not(.pe-nomap) #job-map-card.pe-map .job-map svg > text { fill: var(--pe-text-secondary) !important; font-family: var(--pe-font-label) !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map svg.lbl-large .map-state-label { fill: var(--pe-map-state-label) !important; }   /* T-5: Muted only as large text */
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map svg.lbl-hide .map-state-label, body:not(.pe-nomap) #job-map-card.pe-map .job-map svg.ak-hide > text { display: none; }   /* L-1: would render under 11 px */
+  body:not(.pe-nomap) #job-map-card.pe-map .job-map svg .map-pin { display: none; }   /* the pins are the .map-target buttons */
+  /* graticule labels (screen space) and corner brackets */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-grat, body:not(.pe-nomap) #job-map-card.pe-map .map-frame { position: absolute; pointer-events: none; overflow: visible; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-grat { z-index: 2; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-grat text { font: 11px var(--pe-font-label); fill: var(--pe-text-secondary); paint-order: stroke; stroke: var(--pe-hull); stroke-width: 3px; stroke-linejoin: round; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-frame { z-index: 8; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-frame path { fill: none; stroke: var(--pe-text-secondary); stroke-width: 2; }
+  /* HUD lines, top left */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-hud-tl { position: absolute; left: 22px; top: calc(var(--pe-map-head-h) + 18px); z-index: 6; pointer-events: none; white-space: nowrap;
+    font: 11px/19px var(--pe-font-label); letter-spacing: var(--pe-label-tracking); color: var(--pe-text-secondary); }
+  body:not(.pe-nomap) #job-map-card.pe-map #map-hud-show { color: var(--pe-text-primary); }
+  body:not(.pe-nomap) #job-map-card.pe-map #map-hud-show.cy { color: var(--pe-cyan); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-loc-status { position: absolute !important; left: 22px !important; right: auto !important; bottom: auto !important; top: calc(var(--pe-map-head-h) + 56px) !important;
+    z-index: 6; font: 11px/19px var(--pe-font-label) !important; letter-spacing: var(--pe-label-tracking); color: var(--pe-text-secondary) !important; text-transform: uppercase; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-loc-status:empty { display: none; }
+  /* SELECTED JOB | FILTERED VIEW · N, top right, clear of the top-right bracket */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-seg { position: absolute; right: 20px; top: calc(var(--pe-map-head-h) + 20px); z-index: 6; display: flex; border: 1px solid var(--pe-outline); background: var(--pe-hull); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-seg button { height: 28px; min-height: 28px; padding: 0 12px; margin: 0; border: 0; border-radius: 0; background: var(--pe-hull); color: var(--pe-text-secondary);
+    font: 11px var(--pe-font-label); letter-spacing: var(--pe-label-tracking); text-transform: uppercase; cursor: pointer; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-seg button + button { border-left: 1px solid var(--pe-outline); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-seg button.on { background: var(--pe-cyan); color: var(--pe-void); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-seg button:focus-visible { outline: var(--pe-focus-ring); outline-offset: -2px; }
+  /* HUD band: legend (band glyph + label, no colour-only state) and the map buttons */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-legend { display: none !important; }   /* phone legend (Primary / Additional / Home) */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-band { position: absolute; left: 0; right: 0; bottom: 0; height: var(--pe-map-band-h); background: rgba(11, 11, 11, .92); border-top: 1px solid var(--pe-seam); z-index: 5; pointer-events: none; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-blegend { position: absolute !important; left: 16px !important; bottom: 0 !important; height: var(--pe-map-band-h); max-width: none !important; display: flex !important;
+    flex-direction: row !important; align-items: center !important; gap: 18px !important; z-index: 6; font: 11px var(--pe-font-label) !important; letter-spacing: .08em !important; text-transform: uppercase;
+    color: var(--pe-text-secondary) !important; white-space: nowrap; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-blegend span { display: inline-flex; align-items: center; gap: 6px; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-blegend .lg { font-style: normal; }
+  body:not(.pe-nomap) #job-map-card.pe-map .lg.band-top, body:not(.pe-nomap) #job-map-card.pe-map .map-target.band-top { --pin: var(--pe-band-top); color: var(--pe-band-top); }
+  body:not(.pe-nomap) #job-map-card.pe-map .lg.band-upper, body:not(.pe-nomap) #job-map-card.pe-map .map-target.band-upper { --pin: var(--pe-band-upper); color: var(--pe-band-upper); }
+  body:not(.pe-nomap) #job-map-card.pe-map .lg.band-mid, body:not(.pe-nomap) #job-map-card.pe-map .map-target.band-mid { --pin: var(--pe-band-mid); color: var(--pe-band-mid); }
+  body:not(.pe-nomap) #job-map-card.pe-map .lg.band-low, body:not(.pe-nomap) #job-map-card.pe-map .map-target.band-low { --pin: var(--pe-band-low); color: var(--pe-band-low); }
+  body:not(.pe-nomap) #job-map-card.pe-map .lg.band-hold, body:not(.pe-nomap) #job-map-card.pe-map .map-target.band-hold { --pin: var(--pe-red); color: var(--pe-red); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target.band-none { --pin: var(--pe-text-secondary); color: var(--pe-text-secondary); }
+  body:not(.pe-nomap) #job-map-card.pe-map .lg.home, body:not(.pe-nomap) #job-map-card.pe-map .map-target.home { --pin: var(--pe-text-primary); color: var(--pe-text-primary); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-actions { position: absolute !important; right: 16px !important; left: auto !important; top: auto !important; bottom: 8px !important; z-index: 6; display: flex !important; gap: 8px !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-actions button { height: 28px; min-height: 28px !important; padding: 0 10px !important; margin: 0; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important;
+    background: var(--pe-hull) !important; color: var(--pe-text-primary) !important; font: 11px var(--pe-font-label) !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; }
+  /* zoom stack + layers, right edge above the band, clear of the bottom-right bracket */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-zoom { position: absolute !important; right: 20px !important; left: auto !important; top: auto !important; bottom: calc(var(--pe-map-band-h) + 56px) !important;
+    display: flex !important; flex-direction: column-reverse !important; gap: 6px !important; border: 0 !important; background: transparent !important; z-index: 6; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-zoom button { width: 40px; min-width: 40px !important; height: 32px; min-height: 32px !important; padding: 0 !important; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important;
+    background: var(--pe-hull) !important; color: var(--pe-text-primary) !important; font: 18px/1 var(--pe-font-ui) !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-zoom #map-zoom-level { height: 24px; min-height: 24px !important; font: 11px var(--pe-font-label) !important; color: var(--pe-text-secondary) !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-layers { position: absolute !important; right: 20px !important; top: auto !important; bottom: calc(var(--pe-map-band-h) + 56px + 112px) !important; width: 40px;
+    min-width: 40px !important; height: 32px; min-height: 32px !important; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: var(--pe-hull) !important; z-index: 6; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-zoom button:focus-visible, body:not(.pe-nomap) #job-map-card.pe-map .map-layers:focus-visible, body:not(.pe-nomap) #job-map-card.pe-map .map-actions button:focus-visible {
+    outline: var(--pe-focus-ring) !important; outline-offset: -2px !important; }
+  /* short canvas (e.g. 1440 x 900): zoom + layers go to one row above the band so nothing stacks into the selector */
+  body:not(.pe-nomap) #job-map-card.pe-map { container-type: size; container-name: pemap; }
+  @container pemap (max-height: 520px) {
+    body:not(.pe-nomap) #job-map-card.pe-map .map-zoom { flex-direction: row !important; bottom: calc(var(--pe-map-band-h) + 20px) !important; right: 20px !important; align-items: center; }
+    body:not(.pe-nomap) #job-map-card.pe-map .map-zoom #map-zoom-level { height: 32px; min-width: 52px !important; }
+    body:not(.pe-nomap) #job-map-card.pe-map.layers-open #mapfilters { max-height: calc(100% - var(--pe-map-head-h) - 56px - var(--pe-map-band-h) - 64px) !important; }   /* ends above the zoom row */
+    body:not(.pe-nomap) #job-map-card.pe-map .map-layers { bottom: calc(var(--pe-map-band-h) + 20px) !important; right: calc(20px + 40px * 2 + 52px + 6px * 2 + 8px) !important; }
+  }
+  body:not(.pe-nomap) #job-map-card.pe-map #mapfilters { top: calc(var(--pe-map-head-h) + 56px) !important; left: auto !important; right: 76px !important; bottom: auto !important; z-index: 9;
+    width: min(420px, calc(100% - 120px)); max-height: calc(100% - var(--pe-map-head-h) - 56px - var(--pe-map-band-h) - 16px) !important; overflow: auto !important; box-sizing: border-box;
+    background: var(--pe-hull) !important; border: 1px solid var(--pe-outline) !important; padding: 10px 12px !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map #mapfilters .map-prefs, body:not(.pe-nomap) #job-map-card.pe-map #mapfilters .map-prefs label, body:not(.pe-nomap) #job-map-card.pe-map #mapfilters select {
+    font: 13px var(--pe-font-ui) !important; color: var(--pe-text-primary) !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map #mapfilters button { min-height: 28px !important; padding: 0 10px !important; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important;
+    background: var(--pe-hull) !important; color: var(--pe-text-secondary) !important; font: 11px var(--pe-font-label) !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; text-align: left; }
+  body:not(.pe-nomap) #job-map-card.pe-map #mapfilters button .mono { margin-left: 8px; font-size: 11px !important; color: inherit; }
+  body:not(.pe-nomap) #job-map-card.pe-map #mapfilters button.on { background: var(--pe-cyan) !important; color: var(--pe-void) !important; border-color: var(--pe-cyan) !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map #mapfilters button:focus-visible { outline: var(--pe-focus-ring) !important; outline-offset: -2px !important; }
+  /* pins: band glyph on a 40% disc in the band colour (glyph + colour, never colour alone); additional locations dashed */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target { width: 24px !important; height: 24px !important; background: none !important; opacity: 1 !important; outline: 0 !important; border: 0 !important; isolation: isolate; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target::before, body:not(.pe-nomap) #job-map-card.pe-map .map-target::after, body:not(.pe-nomap) #job-map-card.pe-map .map-target .map-reticle { display: none !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target .pin-g { position: absolute; inset: 2px; background: var(--pe-hull); display: grid; place-items: center; font: 600 13px/1 var(--pe-font-ui); color: var(--pin, var(--pe-band-mid)); border-radius: 50%; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target .pin-g::before { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--pin, var(--pe-band-mid)); opacity: .4; z-index: -1; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target.secondary .pin-g::before { background: none; border: 1.5px dashed var(--pin, var(--pe-band-mid)); opacity: .9; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target:hover .pin-g, body:not(.pe-nomap) #job-map-card.pe-map .map-target.active .pin-g { box-shadow: 0 0 0 2px var(--pe-text-primary); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target:focus-visible .pin-g { outline: var(--pe-focus-ring); outline-offset: 2px; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target-label { background: var(--pe-hull) !important; border: 1px solid var(--pe-outline) !important; box-shadow: none !important; color: var(--pe-text-primary) !important;
+    font: 11px/1.35 var(--pe-font-label) !important; padding: 6px 8px !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target-label strong, body:not(.pe-nomap) #job-map-card.pe-map .map-target-label span { font-size: 11px !important; letter-spacing: .04em !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target-label span { color: var(--pe-text-secondary) !important; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-target-leader { background: var(--pe-outline) !important; }
+  /* HOME marker */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-home { position: absolute; z-index: 3; width: 0; height: 0; pointer-events: none; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-home[hidden] { display: none; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-home i { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; box-sizing: border-box; transform: rotate(45deg); background: var(--pe-hull);
+    border: 1.6px solid var(--pe-text-primary); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-home i::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; border-radius: 50%; background: var(--pe-text-primary); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-home span { position: absolute; left: 12px; top: 8px; font: 11px var(--pe-font-label); letter-spacing: .08em; color: var(--pe-text-primary);
+    text-shadow: 0 0 3px var(--pe-hull), 0 0 3px var(--pe-hull), 0 0 3px var(--pe-hull); }
+  /* lock reticle + readout on the selected job */
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock { position: absolute; z-index: 4; width: 0; height: 0; pointer-events: none; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock[hidden] { display: none; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock .ret { position: absolute; left: -50px; top: -50px; overflow: visible; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock .ret * { fill: none; stroke: var(--pe-cyan); stroke-width: 1.6; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock .ret .r2 { stroke-opacity: .35; stroke-dasharray: 2 4; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock .ret path { stroke-width: 2; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock .ro { position: absolute; left: 50px; top: -40px; font: 11px/15px var(--pe-font-label); letter-spacing: .08em; white-space: nowrap;
+    text-shadow: 0 0 3px var(--pe-hull), 0 0 3px var(--pe-hull), 0 0 3px var(--pe-hull); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock.flip .ro { left: auto; right: 50px; text-align: right; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock.up .ro { top: auto; bottom: 54px; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock.compact .ro .ng { display: none; }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock .ro .cy { color: var(--pe-cyan); letter-spacing: var(--pe-label-tracking); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock .ro .ll { color: var(--pe-text-primary); }
+  body:not(.pe-nomap) #job-map-card.pe-map .map-lock .ro .sd { color: var(--pe-text-secondary); }
+}
+/* phone / no-JS: the new map parts stay out of the way */
+#job-map-card:not(.pe-map) .map-grat, #job-map-card:not(.pe-map) .map-frame, #job-map-card:not(.pe-map) .map-home, #job-map-card:not(.pe-map) .map-lock,
+#job-map-card:not(.pe-map) .map-hud-tl, #job-map-card:not(.pe-map) .map-seg, #job-map-card:not(.pe-map) .map-band, #job-map-card:not(.pe-map) .map-blegend, #job-map-card:not(.pe-map) .pin-g, #job-map-card:not(.pe-map) #map-mode-t { display: none !important; }
