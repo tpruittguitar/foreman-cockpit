@@ -1,0 +1,76 @@
+BUILD STEP 2 · REV-025 · Review queue table + job drawer toward golden F02 · 2026-10-18 22:00 ET · Claude
+Baseline: tests/visual/golden/F02_2560x1440.png (REV-019) and tokens.css. Starts from main f45e9aa (step 1 live).
+Screens (2560 x 1440, local fixture tests/fixtures/master.sample.txt, 11 rows, first row selected):
+ STEP2_after_bands_on_2560x1440.png      --pe-band-min-n overridden to 5 for the screenshot ONLY, so the bands show on 11 rows.
+ STEP2_after_fixture_bands_off_2560x1440.png  real token (min N 40): 11 < 40, so bands are off, as the app shows them on small data.
+ Live data (~1,100 rows) is well above 40, so Tim sees bands on.
+
+NEW: pipeline-bands.js (display only, L-2). Population = open jobs with a score that are not applied / terminal, minus STRICT HOLD.
+ cut(q) = sorted[min(n-1, ceil(q*n))]; equal to a cut -> higher band; rank = 1 + eligible scores strictly higher (V-19).
+ Quantiles .90/.65/.20 and min N 40 are read from tokens.css (--pe-band-rank-*, --pe-band-min-n).
+ tests/bands.test.js reproduces the golden fixture exactly: N 48, P90 72 / P65 61 / P20 51, every row's band and rank, JOB-0412 #1.
+ Cached on rows + scoring fingerprint + bucket signature (no re-score; scores come from the existing scoreFor_ cache).
+
+TABLE (golden .sc / .b-*): score in band colour + band glyph ▲ ◆ ● ▽ (shape carries the band, L-1); hold/not ranked in Secondary.
+ Tooltip adds band and rank. The .score-badge text is still the bare number (tests read it). With bands off: no glyph, score in Primary.
+ Queue head: mono line "BANDS = PERCENTILE · N .. ELIGIBLE OPEN · P90 .. · P65 .. · P20 .. · REV .." (V-20), or "BANDS OFF · N .. < 40".
+DRAWER (golden .drawer): 2 px cyan top rule; 26 px / 600 title; 14 px Secondary meta; outline mono chips (V-10); tabs mono 11 px,
+ current Cyan + 2 px rule; ring 112 px, arc and value in band colour, "▲ TOP 10% / #1 of N" (computed), BANDS OFF / NOT RANKED otherwise;
+ current-state block on Plate with 3 px bar; section labels mono 11 px Secondary; evidence rows on Plate with 3 px state bar
+ (✓ green, ✕ red, ○ Secondary); form fields Field bg + #6B6B66 outline, cyan focus; secondary buttons outline mono;
+ primary actions (Save job decision, Open posting) cyan outline in place of the white slab; decision row 44 px / 15 px:
+ Pursue green + glow, Hold amber, Research neutral, divider, Decline Secondary (V-01). Order Pursue · Hold · Research | Decline.
+ L-1: provenance grid and Application-tab bucket pill were 10.2-10.8 px -> 11 px.
+NO behaviour change: same buttons, same handlers, same fields; band data is display only.
+
+STILL DIFFERENT FROM F02 (content, not look; for Grok Bot to rule or schedule):
+ D-1 drawer content order: F02 = ring + band line, WHY sentence, evidence reasons, score breakdown, Tim decision, receipts.
+     The app shows key details / top evidence / Tim decision form / provenance / AI context. Re-ordering moves working controls.
+ D-2 drawer header label "◉ JOB DRAWER · JOB-ID · LOCKED ON MAP" not drawn.  D-3 Δ since last review (needs a stored prior score).
+ D-4 table column set: the app keeps Tim's saved columns (F02 = SCORE Δ, TITLE, COMPANY, LOCATION, BUCKET, BASE EST, DEGREE FLEX,
+     EXP FIT, AGE, WRITE STATE); FLEX / BUCKET words still raw codes (SOFT_FLEX, Ready).  D-5 full-width KPI row (6 tiles).
+PRE-EXISTING (also on main f45e9aa): page error "Cannot read properties of null (reading 'HIGH_FLEX_MODIFIER')" when opening one drawer
+ tab on the local fixture. Not touched here.
+
+GROK BOT LOOK QA ON #126 (22:00 ET, head 7bcbfcf) — fix-up commit, all 12 LOOK items + D-2 + D-4 words:
+ 1 Ring: SVG 124 px, R 54, stroke 8, track Raised, arc in band colour from 12 o'clock (stroke-dasharray from the animated --pct),
+   12 ticks 2 px Gridline 54->61; value 42 px / 650 in band colour (Primary for HOLD / NONE / bands off). Band line beside it
+   (mono 13, band colour): "▲ TOP 10% · OPPORTUNITY RATING 55"; "#1 of N · Model rev <rev|—>" 13 px Secondary.
+   Placed after the chips (the drawer's own content order is D-1, later step).
+ 2 STRICT HOLD: glyph ⊘ (‖ stays the Hold decision icon); table "⊘ HOLD" tag mono 11, red text, --pe-badge-red border; drawer
+   "⊘ HOLD · OUTSIDE THE BANDS".
+ 3 Decision row: --pe-dec-h 50 px, --pe-dec-fs = --pe-fs-btn 16 px (undefined --pe-fs-dec reference removed); left aligned, gap 8;
+   "✓ Pursue 1" 132 / "<hold svg> Hold 2" 103 / "Research" 102 / divider / "⊖ Decline" 92 at the right; hints = the real keys.
+   Legends render as .sec-label (left, mono 11, no rule).
+ 4 Chips: exactly bucket · FLEX · pay · location, C-05 kinds (need / ok / amb / cy / prov / red / local); FLEX words; pay "~… EST."
+   (.prov) when not verified, plain (.local) when verified; primary city uppercase, max 200 px, full string in title. Score chip removed.
+ 5 Disabled OPEN POSTING (and any disabled primary/secondary action): dashed #6B6B66, Secondary, no glow; :disabled wins.
+ 6 Bands line always ends "· REV <rev> · AS OF <HH:MM>" ("REV —" / "AS OF —" when not known); AS OF = last verified master read;
+   full text in title.
+ 7 Evidence: unknown "?" Secondary glyph, row text Primary, Secondary bar; label word mono 11 in the state colour.
+   (No ≈ state exists in the app's signals today; the class is ready when one does.)
+ 8 Tabs: space-between, padding 0 16, active underline label -8 / +8 px, bottom -1.
+ 9 Meta separators " · " in Secondary.
+10 Bands cache keyed on id|score|hold|eligible over every row (built once per synchronous render, then reused).
+11 tests/bands.test.js: all four golden fixtures (base / agency / closed / applied: N 48 / 49 / 48 / 48, 0 mismatches), HOLD and
+   NONE rank null, literal tie case, and PipelineBands.itemsFromRows (the app's row -> item mapping, now in the module) tested.
+12 tokens.css: --pe-badge-local/ok/prov/cy/red/shared, --pe-row-a #0B0B0B / --pe-row-b #070707, --pe-tint-wait-start .16,
+   new --pe-select-edge rgba(56,225,214,.35) for the lock-on row edges (6 px bar stays full cyan). The lock-on row no longer draws
+   its own outline; keyboard focus keeps the tokens.css ring. Golden F01/F02 re-rendered after the token change: byte-identical.
+ D-2 Header row: "◉ JOB DRAWER · <ID>" (+ " · LOCKED ON MAP" when the map is in selected-job mode and the job has a location),
+   mono 12 cyan, 46 px; ‹ › ✕ UI font 18 px Secondary, no boxes, aria-labels kept; title margin-top -12 px.
+ D-4 Words: BUCKET Needs decision / Ready / Research / Blocked / Applied / Scout intake / Discovery lead; FLEX High / Soft / No flex /
+   Unknown (Unknown, Scout intake, Discovery lead olive). Raw codes in the title. Tim's saved columns untouched.
+ Also: Fit & Score tab page error fixed ("Cannot read ... HIGH_FLEX_MODIFIER": guarded the three FLEX modifier reads when rules
+   carry no FLEX policy); L-1 on that tab's research note (10.8 -> 11 px).
+ Not changed: D-1 content order, D-3 Δ (none drawn), D-5 KPI row — later steps per Grok Bot.
+
+GROK BOT RE-QA ON #126 (22:30 ET, head 754eace) — R-1 + S-1..S-3 applied; S-4 carried to step 3:
+ R-1 ring arc: `#drawer .ws-ring svg { --pct: inherit }` (pipeline-motion.js registers --pct inherits:false, so the svg held 0).
+     Screens re-rendered: arc 0 -> 198 deg at 55 in band colour; Secondary when bands off. Motion test (650 ms sweep) passes.
+ S-1 divider right after Research (margin 0 6px); Decline margin-left:auto.
+ S-2 materials buttons: nowrap, min-width 152, width auto, height 32 ("DRAFT COVER LETTER" on one line).
+ S-3 location chip: geocoded city when cached (geocode cache now also stores the matched city name), else the label city with any
+     source tag removed (ATS / JD says / LinkedIn / Indeed / ...). "AUSTIN". Full LOCATION stays in the title.
+ S-4 (step 3): tr:focus-visible inset ring and the top select edge under the sticky header.
+ Tim (via Grok Bot): keys stay 1-4 with hints 1 / 2; "REV —" stays when no revision is published.
