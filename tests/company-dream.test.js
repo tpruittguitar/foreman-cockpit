@@ -50,3 +50,22 @@ test('Companies registry keeps DREAM, writes it to the rules, and the drawer sho
   assert.match(src, /function companyChip_\(sc\)\{[^\n]*>COMPANY '\+m\[1\]\+' · '\+esc\(m\[2\]\)\+\(bp\?' · \+'\+bp:''\)/);
   assert.match(src, /\+payWorthChip_\(sc\)\+companyChip_\(sc\)/);
 });
+
+test('Companies tip and the rules text it writes follow the live company-boost setting, listing only tiers above zero (Tim 08:53 ET)', () => {
+  const r = T.normalizeRegistry({ companies: [{ company: 'Shield AI', priority: 'DREAM' }] });
+  const rules = b => T.sectionText(r, b).match(/WATCH 60, unlisted or PAUSED 40\)(.*?)\. It never overrides/)[1];
+  assert.equal(rules({ DREAM: 10, P1: 3 }), ' and a separate company boost on the overall score (DREAM +10, P1 +3; scoring model companyBoost)');
+  assert.equal(rules({ DREAM: 15, P1: 0 }), ' and a separate company boost on the overall score (DREAM +15; scoring model companyBoost)');
+  assert.equal(rules({ DREAM: 0, P1: 0 }), '', 'no boost above zero: no boost clause');
+  assert.match(T.tipText({ DREAM: 15, P1: 0 }), /Paused 40\) plus a separate boost on the overall score \(Dream \+15\)\. It never/);
+  assert.doesNotMatch(T.tipText({ DREAM: 15, P1: 0 }), /P1 \+/);
+  assert.match(T.tipText({ DREAM: 0, P1: 0 }), /Paused 40\)\. It never/);
+  assert.equal(T.tipText(), T.tipText({ DREAM: 10, P1: 3 }), 'no setting = the model defaults');
+  const text = 'STATUS=ACTIVE\nSECTION=CORE\n- keep\nEND TIM_PIPELINE_RULES_CANONICAL';
+  assert.match(T.setRules(text, r, { DREAM: 15, P1: 0 }), /\(DREAM \+15; scoring model companyBoost\)/);
+  const src = fs.readFileSync(path.join(__dirname, '..', 'pipeline-target-companies.js'), 'utf8');
+  assert.doesNotMatch(src, /\+10|\+3\b/, 'no boost numbers typed into the Companies module');
+  assert.match(src, /setRules\(j\.text\|\|'',draft,liveBoost\(\)\)/);
+  assert.match(src, /esc\(tipText\(liveBoost\(\)\)\)/);
+  assert.match(src, /S\.scoringCanonical\|\|S\.scoring/);
+});
