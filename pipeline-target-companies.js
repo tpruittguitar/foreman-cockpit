@@ -1,8 +1,15 @@
 (function(root){
 'use strict';
-var PRIORITIES=['P1','P2','P3','WATCH','PAUSED'];
-var CADENCE={P1:'Every Scout run',P2:'At least daily',P3:'Rotating weekly coverage',WATCH:'Opportunistic',PAUSED:'No targeted search'};
+var PRIORITIES=['DREAM','P1','P2','P3','WATCH','PAUSED'];
+var CADENCE={DREAM:'Every Scout run, first',P1:'Every Scout run',P2:'At least daily',P3:'Rotating weekly coverage',WATCH:'Opportunistic',PAUSED:'No targeted search'};
 var SECTION='TARGET_COMPANIES';
+var Scoring=typeof module==='object'&&module.exports?require('./pipeline-scoring'):root.PipelineScoring;
+/* REV-046 (Tim 2026-10-19 08:53 ET): the company boost wording on the Companies page and in the rules it writes is built from the live
+   scoring-model setting (companyBoost), listing only tiers whose boost is above zero; nothing is typed in. */
+function boostCfg(b){return Scoring&&Scoring.companyBoostCfg?Scoring.companyBoostCfg({companyBoost:b}):Object.assign({},b||{})}
+function boostList(b,label){var c=boostCfg(b);return PRIORITIES.filter(function(p){return +c[p]>0}).map(function(p){return (label?label(p):p)+' +'+c[p]})}
+function tipText(boost){var l=boostList(boost,tierLabel);return 'Manual priority sets discovery intensity and the culture score in the job rating (Dream 100, P1 90, P2 80, P3 70, Watch 60, unlisted or Paused 40)'+(l.length?' plus a separate boost on the overall score ('+l.join(', ')+')':'')+'. It never overrides pay, FLEX, scope, fit, Never-Consider, or application-state rules.'}
+function tierLabel(p){return p==='DREAM'?'Dream':p==='WATCH'?'Watch':p==='PAUSED'?'Paused':p}
 function clean(v){return String(v==null?'':v).trim()}
 /* Locations may contain commas ("Hayward, CA"), so a typed list is separated by semicolons or new lines. */
 function splitLocations(v){return (Array.isArray(v)?v:String(v==null?'':v).split(/[;\n]+/)).map(clean).filter(Boolean)}
@@ -34,19 +41,19 @@ function parseRules(text){
   var rows=[];if(m){m[1].split(/\r?\n/).forEach(function(line){var x=line.match(/^TARGET_COMPANY=(\{.*\})\s*$/);if(!x)return;try{rows.push(JSON.parse(x[1]))}catch(e){}})}
   return normalizeRegistry({companies:rows})
 }
-function sectionText(registry){
+function sectionText(registry,boost){
   var r=normalizeRegistry(registry),lines=[
     'SECTION=TARGET_COMPANIES',
     'TARGET_COMPANY_REGISTRY_VERSION='+r.schema_version,
     'TARGET_COMPANY_MANUAL_PRIORITY_CONTROLS=YES',
-    'TARGET_COMPANY_PRIORITY_POLICY=P1 every Scout run; P2 at least daily; P3 rotating weekly coverage; WATCH opportunistic; PAUSED no targeted search.',
-    '- Target-company priority sets discovery intensity and the culture component of the weighted rating (P1 100, P2 90, P3 75, WATCH 60, unlisted or PAUSED 40). It never overrides compensation, geography, FLEX, scope/fit, Never-Consider, protected application state, dedupe, or canonical intake rules.',
+    'TARGET_COMPANY_PRIORITY_POLICY=DREAM every Scout run, first; P1 every Scout run; P2 at least daily; P3 rotating weekly coverage; WATCH opportunistic; PAUSED no targeted search.',
+    '- Target-company priority sets discovery intensity and the culture component of the weighted rating (DREAM 100, P1 90, P2 80, P3 70, WATCH 60, unlisted or PAUSED 40)'+(function(l){return l.length?' and a separate company boost on the overall score ('+l.join(', ')+'; scoring model companyBoost)':''}(boostList(boost)))+'. It never overrides compensation, geography, FLEX, scope/fit, Never-Consider, protected application state, dedupe, or canonical intake rules.',
     '- Broad fresh discovery remains mandatory every run; target-company sweeps are additive, not a replacement.'
   ];
   r.companies.forEach(function(c){lines.push('TARGET_COMPANY='+JSON.stringify(c))});return lines.join('\n')+'\n';
 }
-function setRules(text,registry){
-  text=String(text||'');var sec=sectionText(registry),re=/(^|\n)SECTION=TARGET_COMPANIES\s*\n[\s\S]*?(?=\nSECTION=|\nEND TIM_PIPELINE_RULES_CANONICAL|$)/;
+function setRules(text,registry,boost){
+  text=String(text||'');var sec=sectionText(registry,boost),re=/(^|\n)SECTION=TARGET_COMPANIES\s*\n[\s\S]*?(?=\nSECTION=|\nEND TIM_PIPELINE_RULES_CANONICAL|$)/;
   if(re.test(text))return text.replace(re,function(m,p){return p+sec.replace(/\n$/,'')});
   var end='END TIM_PIPELINE_RULES_CANONICAL';if(text.indexOf(end)>=0)return text.replace(end,sec+end);
   return text.replace(/\s*$/,'\n\n')+sec;
@@ -96,6 +103,7 @@ function notesHtml(c,esc){
 function createTargetCompanies(deps){
   var $=deps.$,esc=deps.esc,gsGet=deps.gsGet,gsPost=deps.gsPost,S=deps.S;
   var draft=null,editingId='',dirty=false,baseRules='',sortKey='priority',sortDir='asc';
+  function liveBoost(){var m=S&&(S.scoringCanonical||S.scoring);return m&&m.companyBoost}
   function setStatus(msg,bad){var el=$('companies-status');if(el){el.textContent=msg||'';el.style.color=bad?'var(--nm)':''}}
   function load(){
     var v=$('view-companies');if(!v)return;
@@ -103,7 +111,7 @@ function createTargetCompanies(deps){
     gsGet('canonical_rules').then(function(j){if(!j||!j.ok)throw new Error((j&&j.error)||'Canonical rules could not be loaded');baseRules=j.text||'';S.canonicalRules=j;draft=parseRules(baseRules);dirty=false;render()}).catch(function(e){v.innerHTML='<div class="panel"><h3>Target Companies</h3><div class="tip">'+esc(e.message)+'</div></div>'});
   }
   function options(cur){return PRIORITIES.map(function(p){return '<option value="'+p+'"'+(p===cur?' selected':'')+'>'+p+' · '+cadence(p)+'</option>'}).join('')}
-  function summary(list){var c={P1:0,P2:0,P3:0,WATCH:0,PAUSED:0};list.forEach(function(x){if(c[x.priority]!==undefined)c[x.priority]++});return PRIORITIES.map(function(p){return '<span class="kpi"><b>'+c[p]+'</b><span>'+p+'</span></span>'}).join('')}
+  function summary(list){var c={DREAM:0,P1:0,P2:0,P3:0,WATCH:0,PAUSED:0};list.forEach(function(x){if(c[x.priority]!==undefined)c[x.priority]++});return PRIORITIES.map(function(p){return '<span class="kpi"><b>'+c[p]+'</b><span>'+p+'</span></span>'}).join('')}
   function clearForm(){editingId='';['tc-company','tc-aliases','tc-careers','tc-locations','tc-builds','tc-rationale','tc-notes'].forEach(function(id){if($(id))$(id).value=''});if($('tc-priority'))$('tc-priority').value='P2';if($('tc-form-title'))$('tc-form-title').textContent='Add company'}
   function populateForm(c){editingId=c.id;$('tc-form-title').textContent='Edit company';$('tc-company').value=c.company;$('tc-priority').value=c.priority;$('tc-aliases').value=(c.aliases||[]).join(', ');$('tc-careers').value=c.careers_url||'';$('tc-locations').value=(c.locations||[]).join('; ');$('tc-builds').value=c.builds||'';$('tc-rationale').value=c.rationale||'';$('tc-notes').value=c.notes||'';if($('tc-form-title').scrollIntoView)$('tc-form-title').scrollIntoView({block:'start'})}
   function upsertForm(){
@@ -116,11 +124,11 @@ function createTargetCompanies(deps){
   }
   function save(){
     setStatus('Saving through canonical rules and verifying…');
-    PipelineProgress.run('#companies-save','Saving and verifying company registry',function(progress){return gsGet('canonical_rules').then(function(j){if(!j||!j.ok)throw new Error((j&&j.error)||'Fresh rules read failed');var submitted=setRules(j.text||'',draft);progress.stage('Saving company registry');return gsPost({action:'save_rules',rules:{text:submitted,actor:'TIM',note:'Pipeline Explorer target-company registry update'}}).then(function(w){if(!w||!w.ok)throw new Error((w&&w.error)||'Save failed');return {submitted:submitted}})}).then(function(ctx){progress.stage('Verifying company registry');return gsGet('canonical_rules').then(function(j){if(!j||!j.ok)throw new Error((j&&j.error)||'Readback failed');var back=parseRules(j.text||'');if(JSON.stringify(back.companies)!==JSON.stringify(normalizeRegistry(draft).companies))throw new Error('Target-company readback differs from submitted registry');baseRules=j.text||'';S.canonicalRules=j;draft=back;dirty=false;render();setStatus('Saved and verified. Scout will use these priorities on its next run.')})})}).catch(function(e){setStatus(e.message,true)})
+    PipelineProgress.run('#companies-save','Saving and verifying company registry',function(progress){return gsGet('canonical_rules').then(function(j){if(!j||!j.ok)throw new Error((j&&j.error)||'Fresh rules read failed');var submitted=setRules(j.text||'',draft,liveBoost());progress.stage('Saving company registry');return gsPost({action:'save_rules',rules:{text:submitted,actor:'TIM',note:'Pipeline Explorer target-company registry update'}}).then(function(w){if(!w||!w.ok)throw new Error((w&&w.error)||'Save failed');return {submitted:submitted}})}).then(function(ctx){progress.stage('Verifying company registry');return gsGet('canonical_rules').then(function(j){if(!j||!j.ok)throw new Error((j&&j.error)||'Readback failed');var back=parseRules(j.text||'');if(JSON.stringify(back.companies)!==JSON.stringify(normalizeRegistry(draft).companies))throw new Error('Target-company readback differs from submitted registry');baseRules=j.text||'';S.canonicalRules=j;draft=back;dirty=false;render();setStatus('Saved and verified. Scout will use these priorities on its next run.')})})}).catch(function(e){setStatus(e.message,true)})
   }
   function render(){
     var v=$('view-companies');if(!v)return;draft=normalizeRegistry(draft||{});var rows=sortCompanies(draft.companies,sortKey,sortDir);
-    var h='<div class="panel active"><h3>Target Companies</h3><div class="tip">Manual priority sets discovery intensity and the culture score in the job rating (P1 100, P2 90, P3 75, Watch 60, unlisted or Paused 40). It never overrides pay, FLEX, scope, fit, Never-Consider, or application-state rules.</div><div style="margin:8px 0">'+summary(rows)+'</div><div class="row"><button id="companies-save" class="neon">Save registry</button><button id="companies-reload">Discard / reload</button><span id="companies-status" class="tip">'+(dirty?'Unsaved changes':'Stored in canonical Rules'+sourceLabel(S.canonicalRules)+' · SECTION=TARGET_COMPANIES')+'</span></div></div>';
+    var h='<div class="panel active"><h3>Target Companies</h3><div class="tip">'+esc(tipText(liveBoost()))+'</div><div style="margin:8px 0">'+summary(rows)+'</div><div class="row"><button id="companies-save" class="neon">Save registry</button><button id="companies-reload">Discard / reload</button><span id="companies-status" class="tip">'+(dirty?'Unsaved changes':'Stored in canonical Rules'+sourceLabel(S.canonicalRules)+' · SECTION=TARGET_COMPANIES')+'</span></div></div>';
     h+='<div class="panel"><h3 id="tc-form-title">Add company</h3><div class="edit-grid"><label>Company</label><input id="tc-company"><label>Priority</label><select id="tc-priority">'+options('P2')+'</select><label>Aliases</label><input id="tc-aliases" placeholder="comma separated"><label>Careers URL</label><input id="tc-careers" placeholder="https://…"><label>Locations</label><input id="tc-locations" placeholder="Hayward, CA (factory); Austin, TX — separate with ;"><label>What they build</label><textarea id="tc-builds" placeholder="Products and what they manufacture in-house"></textarea><label>Why they are on the list</label><input id="tc-rationale"><label>Notes</label><textarea id="tc-notes"></textarea></div><div class="row"><button id="tc-upsert" class="neon">Add / update</button><button id="tc-cancel">Clear</button></div></div>';
     h+='<div class="panel rep"><h3>Registry · '+rows.length+' companies</h3><table><thead><tr>'+[['company','Company'],['notes','Notes · what they build / why here'],['locations','Locations'],['priority','Priority'],['cadence','Scout cadence'],['careers','Careers'],['source_rank','Source rank'],['yield','Yield'],['last_hit','Last useful hit']].map(function(x){var on=x[0]===sortKey;return '<th data-sort="'+x[0]+'" tabindex="0" style="cursor:pointer" aria-sort="'+(on?(sortDir==='asc'?'ascending':'descending'):'none')+'" title="Sort by '+esc(x[1])+'">'+esc(x[1])+(on?(sortDir==='asc'?' ▲':' ▼'):'')+'</th>'}).join('')+'<th></th></tr></thead><tbody>'+rows.map(function(c){var y=c.jobs_found?Math.round(100*c.qualified_hits/c.jobs_found)+'%':'—';return '<tr><td><b>'+esc(c.company)+'</b></td><td class="tc-notes">'+notesHtml(c,esc)+'</td><td class="tc-locations">'+locationsHtml(c,esc)+'</td><td><select data-priority="'+esc(c.id)+'">'+options(c.priority)+'</select><div class="tip">'+esc(c.priority_source||'')+'</div></td><td>'+esc(cadence(c.priority))+'</td><td>'+(c.careers_url?'<a href="'+esc(c.careers_url)+'" target="_blank" rel="noopener">careers ↗</a>':'—')+'</td><td>'+esc(c.source_rank||'—')+'</td><td>'+esc(y)+'</td><td>'+esc(c.last_useful_hit_at||'—')+'</td><td><button data-edit="'+esc(c.id)+'">Edit</button></td></tr>'}).join('')+'</tbody></table></div>';
     v.innerHTML=h;$('companies-save').onclick=save;$('companies-reload').onclick=load;$('tc-upsert').onclick=upsertForm;$('tc-cancel').onclick=clearForm;
@@ -130,6 +138,6 @@ function createTargetCompanies(deps){
   }
   return {open:load,render:render};
 }
-var api={create:createTargetCompanies,applyEdit:applyEdit,notesHtml:notesHtml,locationsHtml:locationsHtml,splitLocations:splitLocations,normalizeRegistry:normalizeRegistry,parseRules:parseRules,setRules:setRules,sectionText:sectionText,sortCompanies:sortCompanies,cadence:cadence,PRIORITIES:PRIORITIES};
+var api={create:createTargetCompanies,applyEdit:applyEdit,notesHtml:notesHtml,locationsHtml:locationsHtml,splitLocations:splitLocations,normalizeRegistry:normalizeRegistry,parseRules:parseRules,setRules:setRules,sectionText:sectionText,boostList:boostList,tipText:tipText,sortCompanies:sortCompanies,cadence:cadence,PRIORITIES:PRIORITIES};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineTargetCompanies=api;
 })(typeof window!=='undefined'?window:globalThis);

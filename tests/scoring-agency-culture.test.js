@@ -22,7 +22,7 @@ test('agency row flagged only in SCOUT_NOTES -> culture unknown', () => {
 test('agency row with CLIENT_EMPLOYER named -> target list checked on the client', () => {
   const s = Scoring.scoreRow(row('Aerotek', { EMPLOYER_PRIMARY_BUSINESS: 'RECRUITING_AGENCY', CLIENT_EMPLOYER: 'Halvorsen Robotics' }), cfg);
   assert.equal(s.parts.culture.known, true);
-  assert.equal(s.parts.culture.score, 100);   // P1
+  assert.equal(s.parts.culture.score, 90);    // P1 (REV-046: DREAM 100 above P1 90)
   assert.equal(s.confidence, 100);
 });
 test('CLIENT_EMPLOYER=UNKNOWN counts as unnamed', () => {
