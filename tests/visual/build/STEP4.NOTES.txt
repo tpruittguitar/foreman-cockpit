@@ -1,0 +1,35 @@
+BUILD STEP 4 · REV-027 · F01 opening / no-job state, full-width KPI row (D-5), BUILD 3-5 · 2026-10-18 23:30 ET · Claude
+Starts from main f7a5073 (step 3 live). Screens (2560 x 1440, local fixture, min-N 5 for the screenshots only):
+ STEP4_F01_empty_bands_on   drawer closed (Esc): the F01 panel.   STEP4_F02_selected_bands_on   a job open.
+ STEP4_name_tip_keyboard    BUILD 4: a long title (fixture copy with a lengthened title, screenshot only) reached with ↓ ↑.
+
+F01 NO-JOB PANEL (#d-empty, shown whenever the drawer is closed on desktop; all values computed from the current view):
+ "○ JOB DRAWER · NO JOB SELECTED", "No job selected", hint, chips (view · map mode);
+ BANDS: TOP / UPPER / MID / LOW / HOLD counts in the view, bars relative to the largest band, share of the eligible population N;
+ the bands line (P90 / P65 / P20 · REV · AS OF) and "⊘ HOLD rows are outside the bands"; BUCKETS (words, counts, Σ);
+ NEXT UP: the three highest scores in the view (score + band glyph, title, company · location · #rank of N, "Open ›" opens the job);
+ keys actually bound: ↓ ↑ move · Enter open · Esc close · 1–4 decide ("/" is not bound in the app, so it is not shown);
+ MY DECISIONS · WRITER: the three latest decisions on this device as receipts, with waiting / failed counts.
+ Opening behaviour is UNCHANGED: on first load the app still shows the top job (map.browser.js covers that). F01 shows after Esc,
+ ✕, or any time no job is open. See Q-1.
+D-5 KPI ROW: full width (spans the list and the drawer); six tiles: Needs decision, Applied, Research, Interviews 14d, WRITER ·
+ WAITING / FAILED ("w / f": this device's saved decisions waiting for a fresh master read / not confirmed), STALE EVIDENCE (rows whose
+ stored FLEX class was computed under an older FLEX policy = the derived-refresh plan; bar = share of live jobs, caption
+ "FLEX class stamped under older rule"; "—" until the canonical rules load). Clicking either new tile filters the queue to those
+ rows, like Research. Active tile glow = new token --pe-glow-kpi (C-11: 0 0 10px cyan .35), only while its filter is on.
+ The queue title, bands line and view / filter tools moved to a 44 px table panel head (#grid-head, golden .panel-head).
+BUILD 3: stale-evidence bar sits 4 px above its caption (k-bar margin 6 / 4).
+BUILD 4: hover keeps the cell title; a row reached by keyboard (Tab focus or ↓ ↑ J K) shows a tip with the full TITLE and COMPANY when
+ either cell is clipped (role=tooltip, aria-describedby on the row); pointer use, Esc or scrolling hide it.
+BUILD 5: tests/visual/check-golden.cjs re-renders F01 / F02 and pixel-compares them with tests/visual/golden (limit 0.05 %);
+ .github/workflows/visual-golden.yml runs it on pull requests that touch tokens / fonts / icons / tests/visual, with Playwright pinned
+ to 1.56.1 (the build that rendered the goldens, Chromium 1194) and the repo fonts. Local run: F01 0 px, F02 0 px different.
+ render-golden.cjs accepts VISUAL_GOLDEN_OUT so the check never writes the committed goldens.
+BUILD 1-2 (map lat / lon label spacing, map corner brackets under the HUD): the live map has not been rebuilt in the F02 look yet
+ (no graticule labels, brackets or HUD band exist in the app), so there is nothing to fix yet; they go with the map step.
+TEST CHANGES (spec changes, not weakened checks): ui.browser.js expects 6 KPI tiles (was 4) and the workspace to start under the
+ full-width KPI row (was: at the top of the queue head).
+
+QUESTIONS
+ Q-1 (Tim / Grok Bot): F01 as the opening state means first load shows the empty panel instead of the top job. Today the app opens
+     the top job on load (a tested behaviour). Keep auto-open (F01 after Esc / close), or open on F01?
