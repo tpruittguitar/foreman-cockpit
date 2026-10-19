@@ -21,13 +21,11 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   const openLayers=async()=>{if(!(await page.locator('#job-map-card').evaluate(e=>e.classList.contains('layers-open'))))await page.locator('#map-layers').click();await page.waitForTimeout(220)};
   const closeLayers=async()=>{await page.locator('#job-map-card').evaluate(e=>e.classList.remove('layers-open'))};
 
-  // 1. First load shows the top row in the workspace, display only: no write, no seen mark, no zoom, no URL change.
-  const first=await page.evaluate(()=>({on:document.getElementById('drawer').classList.contains('on'),focus:document.querySelector('#grid tr.focus')&&document.querySelector('#grid tr.focus').dataset.id,top:document.querySelector('#grid tbody tr[data-id]').dataset.id,seen:JSON.parse(localStorage.getItem('px.seen')||'{}'),hash:decodeURIComponent(location.hash)}));
-  assert(first.on,'workspace is filled on first load');assert.equal(first.focus,first.top,'the top row is the one shown');
-  assert(!first.seen[first.focus],'auto-display does not mark the row seen');assert(!/"j":/.test(first.hash),'auto-display does not write the job into the URL');
-  assert.equal(posts.length,0,'auto-display sends nothing to the Writer');assert.equal(await label(),'100%','auto-display does not zoom the map');
-  const topClass=await page.locator('#grid tbody tr[data-id]').first().getAttribute('class');assert(!/\bseen\b/.test(topClass||''),'auto-display does not reorder or restyle the row as seen');
-
+  // 1. First load (desktop) opens on the F01 no-job panel (Grok Bot Q-1, 2026-10-18): no row selected, nothing written, no zoom.
+  const first=await page.evaluate(()=>({on:document.getElementById('drawer').classList.contains('on'),focus:document.querySelector('#grid tr.focus')&&document.querySelector('#grid tr.focus').dataset.id,empty:!!document.querySelector('#d-empty .e-title'),seen:JSON.parse(localStorage.getItem('px.seen')||'{}'),hash:decodeURIComponent(location.hash)}));
+  assert(!first.on,'desktop opens with no job open');assert(!first.focus,'no row is selected on first load');assert(first.empty,'the F01 no-job panel is shown');
+  assert.equal(Object.keys(first.seen).length,0,'first load marks nothing seen');assert(!/"j":/.test(first.hash),'first load writes no job into the URL');
+  assert.equal(posts.length,0,'first load sends nothing to the Writer');assert.equal(await label(),'100%','first load does not zoom the map');
   // 2. Defaults: auto zoom on, 600%, dense boost on.
   await openLayers();assert(await page.locator('#map-autozoom').isChecked());assert.equal(await page.locator('#map-selzoom').inputValue(),'6');assert(await page.locator('#map-dense').isChecked());await closeLayers();
   await pick('V2X-299323199555');assert.equal(await label(),'600%','an ordinary location is acquired at 600%');

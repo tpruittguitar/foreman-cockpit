@@ -33,3 +33,15 @@ TEST CHANGES (spec changes, not weakened checks): ui.browser.js expects 6 KPI ti
 QUESTIONS
  Q-1 (Tim / Grok Bot): F01 as the opening state means first load shows the empty panel instead of the top job. Today the app opens
      the top job on load (a tested behaviour). Keep auto-open (F01 after Esc / close), or open on F01?
+
+GROK BOT LOOK WATCH ON #128 (23:40 ET): F-1..F-4 applied; Q-1 ruled.
+ F-1 bar class collision: F01 rows use .eb, breakdown rows use .bdb (the global toolbar .bar rule no longer reaches them);
+     track 8 px Raised, padding / border 0, fill flush 8 px.
+ F-2 F01 view chips -> one golden .dtabs row (40 px, margin 4 -16 0, padding 0 16, seam rule); the view is the active Cyan tab with
+     the 2 px underline (-8 / +8 px); the grey map chip is gone.
+ F-3 hint = golden .e-meta 14.5 / 21, margin-top 4, Secondary.
+ F-4 Writer value Amber, Stale evidence value Olive (Secondary while "—"); captions draw ◷ ✕ ◌ as pe-icons SVG (no system-font glyphs).
+ Q-1 RULED (Grok Bot): desktop opens on F01 at first load; ↓ (or J) opens the top job, Enter re-opens it, Esc / ✕ return to F01.
+     The phone layout still shows the top job under the list. map.browser.js first-load expectation updated (spec change).
+ Golden CI: the runner resolved the fallback glyphs ⇤ │ Σ ◎ 🔔 to other system fonts (3336 px, 0.09 %); check-golden.cjs now renders
+     with tests/visual/fonts.conf (Inter, DejaVu, Liberation, Noto Color Emoji only) — locally 0 px on both frames.
