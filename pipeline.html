@@ -586,6 +586,8 @@ function renderIncidentHistory_(){
   var oldQ=host.querySelector('#inc-history-search'),oldStatus=host.querySelector('#inc-history-state');
   var q=oldQ?oldQ.value:'',status=oldStatus?oldStatus.value:'ALL';
   host.innerHTML='<section class="inc-history-page"><div class="inc-history-header"><h2>Incident History</h2><button type="button" id="history-to-system">System Health</button></div>'
+    /* REV-059: the D-3 review-records line also sits here, where a tap on the Writer tile lands on the phone (Tim 16:00 ET) */
+    +(hasWriter()?'<div class="tip review-line"><b>Review records</b> · '+reviewStatusHtml_()+'</div>':'')
     +'<p class="tip">History retained in available synchronized/local storage. Failed attempts remain visible after verified recovery; missing proof is not recovery. Clearing browser storage may remove locally held records.</p>'
     +'<div class="inc-history-summary"><b>'+hv.active.filter(function(i){return i.kind!=='event'}).length+'</b> current faults <b>'+PipelineIncidents.workQueue(S.incidents).length+'</b> unfinished operations <b>'+hv.active.filter(function(i){return i.kind==='event'}).length+'</b> unverified failure classes <b>'+hv.recovered.length+'</b> recovered (24h) <b>'+hv.historical.length+'</b> older resolved</div>'
     +'<div class="inc-history-tools"><label>Search <input id="inc-history-search" type="search" placeholder="Request ID, component, error or owner" value="'+esc(q)+'"></label>'
