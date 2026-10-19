@@ -46,7 +46,7 @@ POST to the Explorer's Apps Script web app (the same one that applies Tim's ruli
 }
 ```
 
-**Pay at intake (SALARY RULE, Tim 2026-10-19).** An estimated salary is real pay. When a posting or alert shows a pay estimate (Glassdoor, LinkedIn, ZipRecruiter, recruiter), send it as `SALARY_BASE_EST` with `SALARY_BASIS` (e.g. `THIRD_PARTY_ESTIMATE`), `SALARY_CONF` (`LOW` is fine), `SALARY_SOURCE` and `SALARY_ASOF`. Only employer-posted pay goes in `PAY_POSTED`. The Writer keeps all of these at intake (`INTAKE_FACT_KEYS`) and runs the floor check on any figure; a job is held on pay only when that check is BELOW.
+**Pay at intake (SALARY RULE, Tim 2026-10-19).** An estimated salary is real pay. When a posting or alert shows a pay estimate (Glassdoor, LinkedIn, ZipRecruiter, recruiter), send it as `SALARY_BASE_EST` with `SALARY_BASIS` (e.g. `THIRD_PARTY_ESTIMATE`), `SALARY_CONF` (`LOW` is fine), `SALARY_SOURCE` and `SALARY_ASOF`. Only employer-posted pay goes in `PAY_POSTED`. The Writer keeps all of these at intake (`INTAKE_FACT_KEYS`) and scores any figure as `PAY_WORTH` (0-100: pay against what the place needs on Tim's geo map, $180k at geo score 100 to $300k at geo score 0). A job is held on pay only when `PAY_WORTH` is under 15 and the job has no remote or relocation upside. Lanes do not set `PAY_WORTH`; send a one-site `LOCATION` (city, state) and any relocation wording you see.
 
 `COMPANY` and `TITLE` are required. Other job-detail fields may be empty or UNKNOWN, but new intake still requires a usable initiating SOURCE_URL under Writer admission safeguards. `SOURCE` is accepted as an alias of `DISCOVERY_SOURCE`. `EMPLOYER_DOMAIN_HINT` is the employer's **primary business** (never the job title). Batch limit 200 records.
 
