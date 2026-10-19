@@ -658,9 +658,10 @@ function renderWriterStatus_(){
 }
 var writerRefreshTimer_=null,writerRefreshPromise_=null,writerNextRefreshAt_=0;
 function scheduleWriterRefresh_(){
-  clearTimeout(writerRefreshTimer_);writerNextRefreshAt_=hasWriter()?Date.now()+60000:0;
+  /* REV-058: after a failed read, check again in 8 s (was the regular 60 s), so a dropped request does not show UNREACHABLE for a minute */
+  var gap=S.writerStatus&&S.writerStatus.fetchError?8000:60000;clearTimeout(writerRefreshTimer_);writerNextRefreshAt_=hasWriter()?Date.now()+gap:0;
   PipelineProgress.clock({enabled:hasWriter(),busy:false,deadline:writerNextRefreshAt_});
-  if(hasWriter()&&!document.hidden)writerRefreshTimer_=setTimeout(function(){loadWriterStatus_()},60000);
+  if(hasWriter()&&!document.hidden)writerRefreshTimer_=setTimeout(function(){loadWriterStatus_()},gap);
 }
 function loadWriterStatus_(manual){
   if(!S.writerBound){var wb=$('writer-badge'),wp=$('writer-panel'),al=$('writer-alert');if(wb&&wp){wb.onclick=function(e){e.stopPropagation();var show=wp.hidden;wp.hidden=!show;wb.setAttribute('aria-expanded',show?'true':'false');if(show)loadWriterStatus_(true)};if(al)al.onclick=function(e){e.stopPropagation();wp.hidden=false;wb.setAttribute('aria-expanded','true')};document.addEventListener('click',function(e){if(!e.target.closest('.writer-identity')&&!e.target.closest('#writer-alert')){wp.hidden=true;wb.setAttribute('aria-expanded','false')}});document.addEventListener('visibilitychange',function(){if(document.hidden){clearTimeout(writerRefreshTimer_);PipelineProgress.clock({deadline:writerNextRefreshAt_})}else loadWriterStatus_()});S.writerBound=true}}
@@ -1018,14 +1019,23 @@ function val(r,c){
 }
 /* ---------- cross-device state via the writer script (seen + rulings) ---------- */
 var syncTimer=null;
-function syncStateDown(){gsGet('state').then(function(j){if(!j.ok||!j.state)return;S.stateSynced=true;var st=j.state;var changed=false;
+/* REV-058: the state read ran once per load and a failure was swallowed, so a phone whose first read failed (iOS drops
+   requests around app switches; the Writer can be slow on a cold start) never got the Writer's seen marks or review
+   records that session, and the D-3 baseline waited for it forever. A failed read is kept and tried again
+   (3 s, 10 s, 30 s, 1 min, then every 2 min) and on return to the page, until one succeeds. */
+var STATE_READ_RETRY_MS_=[3000,10000,30000,60000,120000];
+function stateReadFailed_(err){S.stateRead={ok:false,at:Date.now(),error:String(err||'no response'),tries:(S.stateRead&&S.stateRead.tries||0)+1};
+  clearTimeout(S.stateReadTimer);var n=Math.min(S.stateRead.tries-1,STATE_READ_RETRY_MS_.length-1);S.stateReadTimer=setTimeout(syncStateDown,STATE_READ_RETRY_MS_[n]);
+  if(typeof renderWriterStatus_==='function'&&!S.renderingWriter_)renderWriterStatus_()}
+function syncStateDown(){if(S.stateReading)return;S.stateReading=true;clearTimeout(S.stateReadTimer);gsGet('state').then(function(j){S.stateReading=false;if(!j||!j.ok||!j.state){stateReadFailed_(j&&j.error||'no state in the response');return}
+  S.stateRead={ok:true,at:Date.now(),tries:0};S.stateSynced=true;var st=j.state;var changed=false;
   Object.keys(st.seen||{}).forEach(function(k){if(!S.seen[k]){S.seen[k]=st.seen[k];changed=true}});
   Object.keys(st.rulings||{}).forEach(function(k){var a=S.rulings[k],b=st.rulings[k];if(!a||(b.ts||'')>(a.ts||'')){S.rulings[k]=b;changed=true}});
   if(st.incidents){var mi=PipelineIncidents.merge(S.incidents,st.incidents);if(mi.changed){S.incidents=mi.store;LS.set('incidents',S.incidents);renderWriterStatus_()}}
   if(typeof PipelineReview!=='undefined'){var srv=st.reviewed||{},mr=PipelineReview.merge(S.reviewed,srv);if(mr.changed){S.reviewed=mr.store;LS.set('reviewed',S.reviewed);changed=true}
     // D-3: anything this device holds that the Writer does not (an older Writer dropped it, or a failed send) goes up again
     var up=0;Object.keys(S.reviewed).forEach(function(k){var a=S.reviewed[k],b=srv[k];if(!b||a.t>Number(b.t)){S.reviewDirty[k]=1;up++}});if(up)syncStateUp();maybeBaselineReviews_()}
-  if(changed){LS.set('seen',S.seen);LS.set('rulings',S.rulings);if(S.master)render()}}).catch(function(){})}
+  if(changed){LS.set('seen',S.seen);LS.set('rulings',S.rulings);if(S.master)render()}}).catch(function(e){S.stateReading=false;stateReadFailed_(e&&e.message||e)})}
 /* REV-017: send only seen marks and incidents (rulings go to the master through the 'ruling' action); the Writer merges,
  * never overwrites. A refused or failed sync is kept in S.stateSync and shown on Needs you; localStorage keeps every mark,
  * and the next sync resends the full set, so nothing is lost while it fails. */
@@ -1039,14 +1049,14 @@ var REVIEW_BASELINE_KEY_='reviewBaselineV2';
    System sends pending review records at once, without the 1.5 s debounce and ahead of a pending retry. force also
    runs the baseline again (harmless: it only adds baseline records for seen jobs that have none) and sends every record
    this device holds (the Writer merges by job id, so a repeat changes nothing). */
-function reviewSendNow_(force){if(!S.master)return;clearTimeout(S.reviewRetryTimer);S.reviewRetryTimer=null;S.reviewRetry=0;
+function reviewSendNow_(force){if(!S.master)return;if(hasWriter()&&!S.stateSynced){syncStateDown();if(!force)return}clearTimeout(S.reviewRetryTimer);S.reviewRetryTimer=null;S.reviewRetry=0;
   maybeBaselineReviews_(force);if(force)Object.keys(S.reviewed||{}).forEach(function(k){S.reviewDirty[k]=1});if(Object.keys(S.reviewDirty||{}).length)syncStateUp(0)}
 ['visibilitychange','pageshow','online'].forEach(function(ev){(ev==='visibilitychange'?document:window).addEventListener(ev,function(){if(document.visibilityState==='hidden')return;reviewSendNow_(false)})});
 document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&e.target.closest('[data-review-send]');if(!b)return;e.preventDefault();e.stopPropagation();
   b.disabled=true;b.textContent='Sending…';reviewSendNow_(true);if(!Object.keys(S.reviewDirty||{}).length)renderWriterStatus_()},true);
 /* REV-056: one line in System so a device shows what it holds and whether its records reached the Writer. */
 function reviewStatusHtml_(){if(typeof PipelineReview==='undefined')return 'not loaded';var all=Object.keys(S.reviewed||{}),bl=all.filter(function(k){return S.reviewed[k].bl}).length,pend=Object.keys(S.reviewDirty||{}).length,b=S.reviewBaseline||LS.get('reviewBaselineInfo',null),x=S.reviewSend;
-  var base=LS.get(REVIEW_BASELINE_KEY_,false)?(b&&b.made!=null?'baseline '+b.made+' made'+(b.at?' '+reviewWhen_(b.at):''):'baseline done'):'baseline not run'+(b&&b.reason?': '+b.reason:'');
+  var base=LS.get(REVIEW_BASELINE_KEY_,false)?(b&&b.made!=null?'baseline '+b.made+' made'+(b.at?' '+reviewWhen_(b.at):''):'baseline done'):'baseline not run'+(b&&b.reason?': '+b.reason:'')+(!S.stateSynced&&S.stateRead&&!S.stateRead.ok?' (state read failed '+reviewWhen_(S.stateRead.at)+' · '+S.stateRead.error+' · try '+S.stateRead.tries+', retrying)':'');
   var send=x?(x.ok?'<span class="pill ok">✓</span> last send '+reviewWhen_(x.at)+' · '+x.sent+' sent · Writer holds '+x.kept:'<span class="pill bad">⊗</span> last send '+reviewWhen_(x.at)+' · '+esc(x.error)):'no send yet';
   return esc(all.length+' on this device ('+bl+' baseline) · '+pend+' waiting to send · '+base)+' · '+send+(S.master&&hasWriter()?' <button type="button" class="mini" data-review-send>Send now</button>':'')}
 function reviewRetry_(j){if(!Object.keys(S.reviewDirty||{}).length||S.reviewRetryTimer)return;var n=S.reviewRetry||0;if(n>=REVIEW_RETRY_MS_.length)return;

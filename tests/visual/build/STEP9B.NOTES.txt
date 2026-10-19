@@ -46,3 +46,19 @@ TESTS
   workspace-layout, rail.
 
 NO WRITER DEPLOY (app only).
+
+REV-058 · Writer state read retries (Tim 15:44 ET phone screenshot on d221ff8)
+SEEN     REVIEW RECORDS: "12 on this device (0 baseline) · 0 waiting to send · baseline not run: waiting for the Writer state ·
+         no send yet". WRITER IDLE, MASTER LIVE, scoring rev 26.
+FACT     The phone held 0 records waiting to send, so #142's resume send and pieces made no requests. The only read
+         the baseline still needed was the Writer state.
+FACT     syncStateDown ran once per load, and a failed read was swallowed (.catch(function(){})). One dropped request left the session
+         without the Writer state, so the baseline waited forever. This predates #142 (f34a5ad had the same gate). #142's row is
+         what made it visible.
+INFERENCE The "WRITER UNREACHABLE" Tim saw is the writer_status read failing at an iOS app switch (the existing resume handler
+         reads it right away). It then showed for up to 60 s, until the next regular check.
+FIX      Failed state reads retry at 3 s, 10 s, 30 s and 1 min, then every 2 min, plus on return to the page, until one succeeds.
+         The System row adds "(state read failed HH:MM · <error> · try n, retrying)". A failed Writer status read
+         re-checks in 8 s (was 60 s).
+TEST     review-delta scenario 9: the state read is dropped twice. System shows the failed read, the third read succeeds, and the baseline
+         is made, sent, and flagged. npm test 590 / 590. Browser suites as above pass.
