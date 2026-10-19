@@ -1,0 +1,20 @@
+PE BUILD STEP 8 · REV-052 · latitude labels never sit on a state name (Grok Q7-d, 10:43 ET)
+Branch backup/claude-20261019-1055ET · Claude · 2026-10-19
+
+WHAT
+- The map draws the state names first (they already avoid the HUD, the pins and the lock readout); any latitude label
+  (left column, x 8) that overlaps a placed state name is dropped. As ruled: the lat label gives way, the state name
+  stays. Longitude labels, graticule lines and the BUILD 1 spacing rules are unchanged.
+- mapStateLabels_ now returns the rectangles it placed; the HUD re-renders the label layer only when a lat label drops.
+
+MEASURED (2560 x 1440, spread test master, filtered fit 241 %)
+  before: 13 lat labels, 30 state names, 4 overlaps (e.g. 40°N on NE)
+  after : 0 overlaps in the fitted view and at 100 %; lat labels still drawn where there is room (46°N, 40°N, 36°N, ...)
+
+FILES
+  pipeline.html               HUD: drop lat labels that hit a placed state name; mapStateLabels_ returns placed rects
+  tests/three-col.browser.js  no lat label overlaps a state name (fit and 100 %); labels still drawn
+  tests/visual/build/STEP8_F01_lat_labels_2560x1440.png
+
+TESTS
+  npm test 579 / 579. three-col (fails on main with 4 overlaps, passes here), map-hud, map-popup browser tests pass.

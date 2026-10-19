@@ -1,4 +1,4 @@
-/* PE build step 6 (REV-049, PDF p40 / golden F01-F02): three columns on wide desktops. Step 7 (REV-050): the map in the tall column.
+/* PE build step 6 (REV-049, PDF p40 / golden F01-F02): three columns on wide desktops. Step 7 (REV-050): the map in the tall column. Step 8 (REV-052): no lat label on a state name.
    2560x1440: KPI row full width; job table | 16 px splitter | map | 16 px gutter | 508 px drawer, table:map at the golden
    1112:801 (58 %); the splitter is vertical, drags and keys move columns, the ratio saves under px.listMapSplitCols and
    double-click restores 58; the table fits its pane (TITLE / LOCATION / COMPANY shrink, never below 192 / 120 / 120);
@@ -94,7 +94,13 @@ const near=(a,b,t,msg)=>assert(Math.abs(a-b)<=t,msg+': '+a+' vs '+b);
     assert.equal(m.seg,'visible');const mo=m.sub.match(/^(\d+) PINS .* · (\d+) OUTSIDE VIEW$/);assert(mo,'far-off jobs counted: '+m.sub);
     assert(+mo[2]>=2&&+mo[2]<=Math.ceil(.1*+mo[1]),'outside view = the far-off jobs only (<= 5 % per side): '+m.sub);assert(m.zoom>1.2,'fit zooms past the national view ('+m.zoom+')');
     await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/three-col-map-spread-fit.png'});
+    // Q7-d: no latitude label sits on a state name (fitted view, then 100 %); lat labels still drawn where there is room
+    const latOnState=()=>page.evaluate(()=>{const box=r=>{const b=r.getBoundingClientRect();return {x:b.left,y:b.top,w:b.width,h:b.height}},hit=(a,b)=>a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h;
+      const lat=[...document.querySelectorAll('#map-grat text')].filter(t=>/°N$/.test(t.textContent)).map(box),st=[...document.querySelectorAll('#job-map svg.map-slbl text')].map(t=>({t:t.textContent,...box(t)}));
+      return {lat:lat.length,states:st.length,bad:lat.filter(a=>st.some(b=>hit(a,b))).length}});
+    let lo=await latOnState();assert(lo.states>5&&lo.lat>0,'labels drawn '+JSON.stringify(lo));assert.equal(lo.bad,0,'lat label on a state name (fit) '+JSON.stringify(lo));
     await page.locator('#map-zoom-level').click();await page.waitForTimeout(800);m=await mapState(page);
+    lo=await latOnState();assert(lo.states>5&&lo.lat>0,'labels drawn at 100 % '+JSON.stringify(lo));assert.equal(lo.bad,0,'lat label on a state name (100 %) '+JSON.stringify(lo));
     assert.doesNotMatch(m.sub,/OUTSIDE VIEW/,'100 % shows every pin: '+m.sub);
     await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/three-col-map-spread-100.png'});
     assert.deepEqual(errors,[]);await ctx.close();}
