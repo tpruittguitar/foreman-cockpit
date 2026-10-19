@@ -1,0 +1,116 @@
+/* Pipeline Explorer — Oct 15 look, build step 1 (REV-023): header, KPI row, job table.
+   Look owner: Grok Bot. Baseline: Tim ruling 2026-10-18 18:45 ET ("oct 15 look better") = v1.5 PDF p40, frozen as
+   tests/visual/golden/F02_2560x1440.png (REV-019). Every value here is a tokens.css variable; no raw colours or sizes
+   except layout lengths taken from golden-src/golden.css. Presentation only: no selector changes what a control does.
+   Loaded last so it wins over pipeline-ui-*.css. Later steps (drawer, opening state, map) add their own sections. */
+
+/* 1. Legacy variables -> tokens. Every older stylesheet reads these, so the whole app picks up the Oct 15 palette and
+      type (Inter + IBM Plex Mono). --faint was used for small text; L-1 (V-11) forbids Muted under 24 px, so it maps to
+      Secondary. --line2 marks strong rules, not control outlines, so it maps to Gridline. */
+:root {
+  --bg: var(--pe-void); --panel: var(--pe-hull); --panel2: var(--pe-plate); --raised: var(--pe-raised);
+  --line: var(--pe-seam); --line2: var(--pe-gridline);
+  --text: var(--pe-text-primary); --dim: var(--pe-text-secondary); --faint: var(--pe-text-secondary); --white: var(--pe-text-primary); --brand: var(--pe-text-primary);
+  --ok: var(--pe-green); --caution: var(--pe-amber); --attn: var(--pe-amber); --fault: var(--pe-red); --focus: var(--pe-cyan); --new: var(--pe-green);
+  --mono: var(--pe-font-label); --sans: var(--pe-font-ui); --ease: var(--pe-ease-out);
+  --forge-bg: var(--pe-void); --forge-panel: var(--pe-hull); --forge-panel2: var(--pe-plate); --forge-line: var(--pe-seam); --forge-line-strong: var(--pe-gridline);
+  --forge-text: var(--pe-text-primary); --forge-dim: var(--pe-text-secondary); --forge-faint: var(--pe-text-secondary);
+  --forge-green: var(--pe-green); --forge-cyan: var(--pe-cyan); --forge-amber: var(--pe-amber); --forge-red: var(--pe-red); --forge-ease: var(--pe-ease-out);
+  --px-bg-page: var(--pe-void); --px-bg-shell: var(--pe-void); --px-bg-panel: var(--pe-hull); --px-bg-panel-2: var(--pe-plate); --px-bg-elevated: var(--pe-raised);
+  --px-border-muted: var(--pe-seam); --px-border-strong: var(--pe-gridline);
+  --px-text-main: var(--pe-text-primary); --px-text-secondary: var(--pe-text-secondary); --px-text-muted: var(--pe-text-secondary);
+  --px-accent-green: var(--pe-green); --px-accent-yellow: var(--pe-amber); --px-accent-orange: var(--pe-amber); --px-accent-red: var(--pe-red); --px-focus-ring: var(--pe-text-primary);
+}
+html, body, #app { background: var(--pe-void) !important; color: var(--pe-text-primary); }
+body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
+
+/* Desktop only (same query the desktop layer uses). The phone layout keeps its own sizes in this step. */
+@media (min-width: 981px), (min-width: 761px) and (pointer: fine) {
+
+  /* 2. Header (golden .top): 57 px, void, one seam rule, mono labels in Secondary. */
+  header { background: var(--pe-void) !important; background-image: none !important; border-bottom: var(--pe-border) !important; min-height: var(--pe-row-header); box-shadow: none !important; }
+  header .menu-btn, header .icon-btn { color: var(--pe-text-primary); border-radius: var(--pe-radius); }
+  header .brand { font-family: var(--pe-font-label); font-size: var(--pe-fs-brand); font-weight: 400; letter-spacing: var(--pe-label-tracking); color: var(--pe-text-primary); text-transform: uppercase; }
+  header .brand small { display: none; }
+  header #crumb { font-family: var(--pe-font-label); font-size: var(--pe-fs-crumb); letter-spacing: var(--pe-label-tracking); color: var(--pe-text-secondary); text-transform: uppercase; }
+  header #search { height: 38px; border: 1px solid var(--pe-outline) !important; border-radius: 0; background-color: var(--pe-hull) !important; color: var(--pe-text-primary); font-family: var(--pe-font-ui); font-size: var(--pe-fs-small); box-shadow: none; }
+  header #search::placeholder { color: var(--pe-text-secondary); opacity: 1; }
+  header #search:focus { border-color: var(--pe-cyan) !important; box-shadow: var(--pe-glow); outline: 0; }
+  /* Writer badge = the single status pill (golden .status-pill). */
+  header .writer-badge { flex-direction: row !important; align-items: center !important; gap: 8px !important; height: 38px; min-height: 38px; padding: 0 12px 0 11px !important; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: transparent !important; font-family: var(--pe-font-label); }
+  header .writer-badge small, header .writer-badge b { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-crumb) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; line-height: 1 !important; }
+  header .writer-badge small { color: var(--pe-text-secondary) !important; }
+  header .writer-badge b { color: var(--pe-text-primary) !important; }
+  header .writer-badge.ok b { color: var(--pe-green) !important; }
+  header .writer-badge.warn b { color: var(--pe-amber) !important; }
+  header .writer-badge.critical { border-color: var(--pe-red) !important; background: var(--pe-tint-red) !important; }
+  header .writer-badge.critical b { color: var(--pe-red) !important; }
+  header .writer-countdown, header .writer-countdown span { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: var(--pe-btn-tracking); color: var(--pe-text-secondary); }
+  header .writer-countdown-track { background: var(--pe-raised); }
+  header .writer-countdown-track > i { background: var(--pe-text-secondary); }
+  /* Status cells = the mono status text right of the pill (golden .hdr-meta). */
+  header .hcell { flex-direction: row !important; align-items: center !important; gap: 6px !important; min-height: 38px; padding: 0 0 0 14px !important; border-left: 0 !important; }
+  header .hcell small, header .hcell b { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-crumb) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; line-height: 1 !important; }
+  header .hcell.bad b { color: var(--pe-red) !important; }
+  /* Header controls (golden .hdr-ctl): mono text controls, no boxes. */
+  header #compare-open, header #density-toggle, header #refresh, header #settings, header #layout-toggle, header .build-badge:not(.writer-badge) {
+    min-height: var(--pe-target-desktop-min); padding: 0 6px; border: 0 !important; border-radius: var(--pe-radius); background: transparent !important; box-shadow: none !important;
+    font-family: var(--pe-font-label); font-size: var(--pe-fs-crumb); font-weight: 400; letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  header #compare-open:hover, header #density-toggle:hover, header #refresh:hover, header #settings:hover, header #bell:hover { color: var(--pe-text-primary) !important; }
+  header #bell { color: var(--pe-text-secondary); }
+
+  /* Sub-tabs (golden .subtabs): mono, Secondary; current tab Cyan with a 3 px rule. */
+  .st-row [role=tab] { font-family: var(--pe-font-label); font-size: var(--pe-fs-tab); letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary); background: transparent !important; border: 0 !important; border-radius: 0; position: relative; }
+  .st-row [role=tab][aria-selected=true] { color: var(--pe-cyan) !important; box-shadow: inset 0 -3px 0 var(--pe-cyan) !important; }
+
+  /* 3. KPI row (golden .kpi): hull tiles, seam border, mono label, 38 px / 650 value, Small caption. */
+  /* The queue head now carries the 96 px KPI tiles (golden row 4), so its grid row grows from 66 px. List/map split is unchanged. */
+  body:not(.map-full) #view-pipeline.on, body:not(.map-full) #view-pipeline.on:has(#drawer.on) { grid-template-rows: calc(var(--pe-row-kpi) + 22px) minmax(0, var(--list-track, 55fr)) 10px minmax(0, var(--map-track, 45fr)) !important; }
+  .queue-head, #queue-head { height: auto !important; min-height: calc(var(--pe-row-kpi) + 22px) !important; padding: 11px 14px !important; align-items: center; }
+  #queue-head .decide-strip { gap: var(--pe-gap); flex: 1 1 auto; overflow: visible; }
+  #queue-head .decide, .decide { min-height: var(--pe-row-kpi); padding: 11px 16px 9px !important; gap: 3px; border: var(--pe-border) !important; border-radius: var(--pe-radius) !important; background: var(--pe-hull) !important; color: var(--pe-text-primary); box-shadow: none; }
+  #queue-head .decide, .queue-head .decide { flex: 1 1 0; min-width: 180px; align-items: flex-start !important; justify-content: flex-start !important; text-align: left; }
+  #queue-head .decide b, .queue-head .decide b { order: 0 !important; }
+  #queue-head .decide small, .queue-head .decide small { text-align: left !important; white-space: nowrap !important; }
+  .decide:hover { border-color: var(--pe-gridline) !important; background: var(--pe-hull) !important; transform: none !important; }
+  .decide.on { border-color: var(--pe-cyan) !important; box-shadow: var(--pe-glow) !important; background: var(--pe-hull) !important; }
+  .decide small { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-label) !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; line-height: 1.2 !important; }
+  .decide b { font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-kpi) !important; font-weight: var(--pe-kpi-weight) !important; line-height: var(--pe-kpi-line) !important; letter-spacing: -.01em; color: var(--pe-text-primary) !important; }
+  .decide.warn b { color: var(--pe-text-primary) !important; }   /* V-04: count in Primary; the active filter shows by the cyan border */
+  .decide .delta { font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-small) !important; color: var(--pe-text-secondary) !important; }
+  .queue-head .decide .delta { display: block !important; white-space: nowrap; }   /* golden .k-cap: the caption line shows */
+  .decide .delta.up { color: var(--pe-green) !important; }
+  .decide .decide-viz { color: var(--pe-text-secondary); }
+  .decide .mini-share { background: var(--pe-raised); height: 3px; }
+  .decide .mini-share > i { background: var(--pe-text-secondary); }
+  #queue-head .qh-title { font-family: var(--pe-font-label); font-size: 13px; font-weight: 400; letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-primary); }
+  #queue-head .qh-title .mono { color: var(--pe-text-secondary); }
+
+  /* 4. Job table (golden .grid): 36 px mono header, 32 px Inter rows on alternating tints, lock-on row with cyan rules + 6 px bar. */
+  #gridwrap, #gridpane, #worksplit, .queue-head, #dash { background: var(--pe-hull) !important; border-color: var(--pe-seam) !important; }
+  #grid th { height: var(--pe-row-h-header) !important; padding: 0 4px 0 8px !important; background: var(--pe-hull) !important; color: var(--pe-text-secondary) !important; border-bottom: var(--pe-border) !important;
+    font-family: var(--pe-font-label); font-size: var(--pe-fs-th); font-weight: 400; letter-spacing: var(--pe-th-tracking); text-transform: uppercase; }
+  #grid th.sorted { color: var(--pe-text-primary) !important; }
+  #grid th .fx { color: var(--pe-text-secondary); font-size: var(--pe-fs-min) !important; }
+  #grid th::before { font-family: var(--pe-font-label); font-size: var(--pe-fs-th) !important; letter-spacing: var(--pe-th-tracking); }
+  #grid td, body:not([data-density=comfortable]) #grid td { height: var(--pe-row-h) !important; padding: 0 4px 0 8px !important; font-family: var(--pe-font-ui); font-size: var(--pe-fs-body) !important; line-height: 1.2 !important;
+    color: var(--pe-text-primary) !important; border-bottom: 1px solid var(--pe-divider) !important; }
+  #grid tbody tr:nth-child(odd) td { background: var(--pe-row-a) !important; }
+  #grid tbody tr:nth-child(even) td { background: var(--pe-row-b) !important; }
+  #grid tbody tr:hover td { background: var(--pe-plate) !important; }
+  #grid tbody tr.focus td { background: var(--pe-raised) !important; color: var(--pe-text-primary) !important; box-shadow: inset 0 1px 0 var(--pe-cyan), inset 0 -1px 0 var(--pe-cyan) !important; }
+  #grid tbody tr.focus td:first-child { box-shadow: inset 6px 0 0 var(--pe-cyan), inset 0 1px 0 var(--pe-cyan), inset 0 -1px 0 var(--pe-cyan) !important; }
+  #grid tbody tr.focus td:last-child { box-shadow: inset 0 1px 0 var(--pe-cyan), inset 0 -1px 0 var(--pe-cyan), inset -1px 0 0 var(--pe-cyan) !important; }
+  #grid tbody tr.focus td[title]:nth-child(2) { font-weight: 600; }
+  #grid td.mono { font-family: var(--pe-font-ui); font-variant-numeric: tabular-nums; }
+  #grid td .score-badge { font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-score-row) !important; font-weight: var(--pe-fw-heavy) !important; color: var(--pe-text-primary); font-variant-numeric: tabular-nums; }
+  #grid td .score-badge.strong { color: var(--pe-band-top); }
+  #grid td .bpill { border: 0 !important; background: transparent !important; padding: 0; font-family: var(--pe-font-ui); font-size: var(--pe-fs-body); text-transform: none; letter-spacing: 0; color: var(--pe-text-primary); }
+  /* Lock-on row (golden .sel): 1 px cyan outline. When that row also holds keyboard focus the cyan outline is the focus
+     indicator (3:1+ on Raised); any other focused row keeps the tokens.css focus ring. */
+  #grid tbody tr.focus, #grid tbody tr.focus:focus-visible { outline: 1px solid var(--pe-cyan); outline-offset: -1px; }
+  /* Row checkbox: outline square (V-10), cyan when ticked; no white block. */
+  #grid .row-select { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; margin: 0; vertical-align: middle; border: 1px solid var(--pe-outline); border-radius: 0; background: transparent; cursor: pointer; }
+  #grid .row-select:checked { background: var(--pe-cyan); border-color: var(--pe-cyan); box-shadow: inset 0 0 0 2px var(--pe-hull); }
+  #grid .row-select:focus-visible { outline: var(--pe-focus-ring); outline-offset: var(--pe-focus-offset); }
+}
