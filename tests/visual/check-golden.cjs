@@ -23,6 +23,13 @@ for (const id of ['F01', 'F02']) {
   fs.writeFileSync(path.join(art, id + '-actual.png'), PNG.sync.write(got)); fs.writeFileSync(path.join(art, id + '-diff.png'), PNG.sync.write(diff));
   console.log(id + ': ' + n + ' differing pixels (' + pct.toFixed(4) + '%), limit ' + max + '%');
   if (process.env.GITHUB_ACTIONS) console.log('::' + (pct > max ? 'error' : 'notice') + ' title=golden ' + id + '::' + id + ' ' + n + ' differing pixels (' + pct.toFixed(4) + '%), limit ' + max + '%');   // readable as a check annotation
+  if (n) {   // where the differences are: bounding box + the busiest 64 px tiles (readable in the CI annotation)
+    const W = want.width, tiles = {}; let x0 = W, y0 = want.height, x1 = -1, y1 = -1;
+    for (let i = 0; i < W * want.height; i++) { const r = diff.data[i * 4], g = diff.data[i * 4 + 1], b = diff.data[i * 4 + 2]; if (r === 255 && g === 0 && b === 0) { const x = i % W, y = (i / W) | 0; x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); const k = (x >> 6) + ',' + (y >> 6); tiles[k] = (tiles[k] || 0) + 1; } }
+    const top = Object.entries(tiles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => { const [tx, ty] = k.split(','); return (tx * 64) + ',' + (ty * 64) + ':' + v; }).join(' ');
+    const where = 'bbox ' + x0 + ',' + y0 + '-' + x1 + ',' + y1 + ' tiles ' + top;
+    console.log(id + ' ' + where); if (process.env.GITHUB_ACTIONS) console.log('::warning title=golden ' + id + ' where::' + where);
+  }
   if (pct > max) failed++;
 }
 if (failed) { console.error('golden check FAILED (' + failed + ' frame(s))'); process.exit(1); }
