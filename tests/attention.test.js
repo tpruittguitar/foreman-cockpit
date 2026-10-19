@@ -27,3 +27,18 @@ assert(A.evaluate(est).strong,'estimated pay above the floor can be hot');
 assert.equal(A.evaluate({...est,payload:{...est.payload,SALARY_CONF:'UNVERIFIED'}}).signals[0],1,'UNVERIFIED confidence keeps pay +1');
 assert.equal(A.evaluate({...est,payload:{...est.payload,FLOOR_STATUS:'BELOW_FLOOR'}}).signals[0],-1,'the floor check still holds pay');
 console.log('PASS: SALARY RULE — estimated pay above the floor is real pay');
+
+// REV-066 (spec v1.5.2 B-4, R-3): a recorded middle value is soft evidence; a missing one is unknown; signals unchanged
+{const base={id:'s',TITLE:'Director of Manufacturing',BUCKET:'READY_TO_PURSUE',compMid:230000,payload:{FLOOR_STATUS:'CLEARS_200K',FLEX:'YES',FIT_SCORE:'92',DOMAIN_FIT:'HIGH'}};
+ const ev=p=>A.evaluate({...base,payload:{...base.payload,...p}});
+ assert.deepEqual(ev({}).soft,[false,false,false,false,false],'all decided: nothing soft');
+ assert.equal(ev({FLEX:'SOFT'}).signals[1],0);assert.equal(ev({FLEX:'SOFT'}).soft[1],true,'FLEX SOFT is soft');
+ assert.equal(ev({FLEX_CLASS:'SOFT_FLEX'}).soft[1],true,'FLEX_CLASS SOFT_FLEX is soft');
+ assert.equal(ev({FLEX:'',FLEX_CLASS:''}).soft[1],false,'missing FLEX is unknown');
+ assert.equal(ev({FIT_SCORE:'70'}).signals[2],0);assert.equal(ev({FIT_SCORE:'70'}).soft[2],true,'fit 70 is soft');
+ assert.equal(ev({FIT_SCORE:''}).soft[2],false,'missing fit is unknown');
+ assert.equal(ev({DOMAIN_FIT:'MEDIUM'}).soft[4],true,'MEDIUM domain is soft');
+ assert.equal(ev({FIT_SCORE:'70',FIT_CONF:'LOW'}).soft[2],true,'low confidence on a middle score stays soft');
+ assert.equal(ev({FIT_SCORE:'92',FIT_CONF:'LOW'}).soft[2],false,'low confidence on a high score is unknown, never soft');
+ assert.equal(ev({FLEX:'SOFT'}).strong,false,'soft never makes a job hot');}
+console.log('PASS: soft evidence is told apart from unknown without changing any signal');

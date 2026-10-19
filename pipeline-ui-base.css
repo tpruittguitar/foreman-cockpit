@@ -155,6 +155,8 @@ button:not(:disabled):active{transform:scale(.985)}
 .ck-checks li.ok:before{content:"✓";color:var(--forge-green)}
 .ck-checks li.bad:before{content:"✕";color:var(--forge-red)}
 .ck-checks li.unk{color:var(--forge-faint)}.ck-checks li.unk:before{content:"○";color:var(--forge-faint)}
+/* REV-066: soft evidence glyph everywhere (phone colours otherwise wait for Track M) */
+.ck-checks li.soft:before{content:"≈";color:var(--forge-amber)}
 .ck-sum,.ck-next{grid-column:1/-1;margin-top:14px}
 .ck-sum p{margin:0;font:15px/1.5 var(--sans);color:#dce2e0}
 .ck-next{display:flex;align-items:baseline;gap:22px;padding-top:12px;border-top:1px solid var(--forge-line)}

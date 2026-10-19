@@ -151,7 +151,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #grid .flex-w.flex-highflex { color: var(--pe-text-primary); } #grid .flex-w.flex-softflex { color: var(--pe-amber); }
   #grid .flex-w.flex-noflex { color: var(--pe-text-secondary); } #grid .flex-w.flex-strict { color: var(--pe-red); }
   #grid .flex-w.flex-unknown, #grid td .bpill.b-SCOUT_INTAKE, #grid td .bpill.b-DISCOVERY_LEAD { color: var(--pe-olive) !important; }
-  #grid td .bpill.b-READY_TO_PURSUE { color: var(--pe-green) !important; } #grid td .bpill.b-MANUAL_RESEARCH, #grid td .bpill.b-BLOCKED { color: var(--pe-amber) !important; }
+  #grid td .bpill.b-READY_TO_PURSUE { color: var(--pe-green) !important; } #grid td .bpill.b-MANUAL_RESEARCH, #grid td .bpill.b-BLOCKED { color: var(--pe-text-secondary) !important; }   /* REV-066 (v1.5.2 B-5): Research / Blocked words in Secondary as on p40 */
   #queue-head .qh-bands { display: block; margin-top: 6px; font-family: var(--pe-font-label); font-size: var(--pe-fs-th); font-weight: 400; letter-spacing: var(--pe-label-tracking); color: var(--pe-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; }
 
   /* 6. Job drawer (golden .drawer + Grok Bot QA #126). */
@@ -224,6 +224,9 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .ck-checks li::before { left: 12px !important; top: 50% !important; transform: translateY(-50%); font: 600 14px/1 var(--pe-font-ui) !important; }
   #drawer .ck-checks li.ok::before { color: var(--pe-green) !important; } #drawer .ck-checks li.bad::before { color: var(--pe-red) !important; }
   #drawer .ck-checks li.unk::before { content: "?" !important; color: var(--pe-text-secondary) !important; }
+  /* REV-066 (v1.5.2 B-4, Grok Bot R-3 / E-10): soft evidence = ≈ in amber with the word "soft" ("needs attention, not failed"). */
+  #drawer .ck-checks li.soft::before { content: "≈" !important; color: var(--pe-amber) !important; }
+  #drawer .ck-checks li.soft { border-left-color: var(--pe-amber) !important; } #drawer .ck-checks li.soft small { color: var(--pe-amber) !important; }
   #drawer .ck-checks li.ok { border-left-color: var(--pe-green) !important; } #drawer .ck-checks li.bad { border-left-color: var(--pe-red) !important; }
   #drawer .ck-checks li small { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; letter-spacing: var(--pe-btn-tracking); text-transform: uppercase; color: var(--pe-text-secondary) !important; }
   #drawer .ck-checks li.ok small { color: var(--pe-green) !important; } #drawer .ck-checks li.bad small { color: var(--pe-red) !important; }
