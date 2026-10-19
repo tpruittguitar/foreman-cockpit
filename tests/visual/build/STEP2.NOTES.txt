@@ -1,0 +1,33 @@
+BUILD STEP 2 · REV-025 · Review queue table + job drawer toward golden F02 · 2026-10-18 22:00 ET · Claude
+Baseline: tests/visual/golden/F02_2560x1440.png (REV-019) and tokens.css. Starts from main f45e9aa (step 1 live).
+Screens (2560 x 1440, local fixture tests/fixtures/master.sample.txt, 11 rows, first row selected):
+ STEP2_after_bands_on_2560x1440.png      --pe-band-min-n overridden to 5 for the screenshot ONLY, so the bands show on 11 rows.
+ STEP2_after_fixture_bands_off_2560x1440.png  real token (min N 40): 11 < 40, so bands are off, as the app shows them on small data.
+ Live data (~1,100 rows) is well above 40, so Tim sees bands on.
+
+NEW: pipeline-bands.js (display only, L-2). Population = open jobs with a score that are not applied / terminal, minus STRICT HOLD.
+ cut(q) = sorted[min(n-1, ceil(q*n))]; equal to a cut -> higher band; rank = 1 + eligible scores strictly higher (V-19).
+ Quantiles .90/.65/.20 and min N 40 are read from tokens.css (--pe-band-rank-*, --pe-band-min-n).
+ tests/bands.test.js reproduces the golden fixture exactly: N 48, P90 72 / P65 61 / P20 51, every row's band and rank, JOB-0412 #1.
+ Cached on rows + scoring fingerprint + bucket signature (no re-score; scores come from the existing scoreFor_ cache).
+
+TABLE (golden .sc / .b-*): score in band colour + band glyph ▲ ◆ ● ▽ (shape carries the band, L-1); hold/not ranked in Secondary.
+ Tooltip adds band and rank. The .score-badge text is still the bare number (tests read it). With bands off: no glyph, score in Primary.
+ Queue head: mono line "BANDS = PERCENTILE · N .. ELIGIBLE OPEN · P90 .. · P65 .. · P20 .. · REV .." (V-20), or "BANDS OFF · N .. < 40".
+DRAWER (golden .drawer): 2 px cyan top rule; 26 px / 600 title; 14 px Secondary meta; outline mono chips (V-10); tabs mono 11 px,
+ current Cyan + 2 px rule; ring 112 px, arc and value in band colour, "▲ TOP 10% / #1 of N" (computed), BANDS OFF / NOT RANKED otherwise;
+ current-state block on Plate with 3 px bar; section labels mono 11 px Secondary; evidence rows on Plate with 3 px state bar
+ (✓ green, ✕ red, ○ Secondary); form fields Field bg + #6B6B66 outline, cyan focus; secondary buttons outline mono;
+ primary actions (Save job decision, Open posting) cyan outline in place of the white slab; decision row 44 px / 15 px:
+ Pursue green + glow, Hold amber, Research neutral, divider, Decline Secondary (V-01). Order Pursue · Hold · Research | Decline.
+ L-1: provenance grid and Application-tab bucket pill were 10.2-10.8 px -> 11 px.
+NO behaviour change: same buttons, same handlers, same fields; band data is display only.
+
+STILL DIFFERENT FROM F02 (content, not look; for Grok Bot to rule or schedule):
+ D-1 drawer content order: F02 = ring + band line, WHY sentence, evidence reasons, score breakdown, Tim decision, receipts.
+     The app shows key details / top evidence / Tim decision form / provenance / AI context. Re-ordering moves working controls.
+ D-2 drawer header label "◉ JOB DRAWER · JOB-ID · LOCKED ON MAP" not drawn.  D-3 Δ since last review (needs a stored prior score).
+ D-4 table column set: the app keeps Tim's saved columns (F02 = SCORE Δ, TITLE, COMPANY, LOCATION, BUCKET, BASE EST, DEGREE FLEX,
+     EXP FIT, AGE, WRITE STATE); FLEX / BUCKET words still raw codes (SOFT_FLEX, Ready).  D-5 full-width KPI row (6 tiles).
+PRE-EXISTING (also on main f45e9aa): page error "Cannot read properties of null (reading 'HIGH_FLEX_MODIFIER')" when opening one drawer
+ tab on the local fixture. Not touched here.
