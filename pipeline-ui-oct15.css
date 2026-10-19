@@ -728,12 +728,12 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
 @media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
   #queue-head .since-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; position: relative; margin: 8px 0 0;
     padding: 8px 10px 4px 14px; background: var(--pe-hull, #0b0b0b); border: 1px solid var(--pe-seam, #2a2a2a); }
-  #queue-head .since-strip::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 3px; background: var(--pe-cyan, #38e1d6); }
-  #queue-head .since-strip .ss-lbl { grid-column: 1 / -1; font-family: var(--pe-font-label, ui-monospace, monospace); font-size: 11px; letter-spacing: .08em;
+  #queue-head .since-strip::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: var(--pe-bar-card); background: var(--pe-cyan); }
+  #queue-head .since-strip .ss-lbl { grid-column: 1 / -1; font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: .08em;   /* --pe-fs-label 12 px / .12em wraps "none recorded yet" at 390 (Grok Bot 19:28 fallback) */
     text-transform: uppercase; color: var(--pe-text-secondary, #a3a39e); padding: 2px 0 4px; }
   #queue-head .since-strip .ss-i { min-height: 44px; display: flex; align-items: center; justify-content: flex-start; text-align: left; padding: 4px 2px;
     background: none; border: 0; border-top: 1px solid var(--pe-seam, #2a2a2a); border-radius: 0; color: var(--pe-text-primary, #e6e6e2);
-    font-family: var(--pe-font-ui, system-ui, sans-serif); font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none;
+    font-family: var(--pe-font-ui); font-size: var(--pe-fs-small); font-weight: 400; letter-spacing: 0; text-transform: none;
     text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; line-height: 1.25; }
   #queue-head .since-strip .ss-i .ss-eg { display: none; }
   #queue-head .since-strip .ss-i.zero { color: var(--pe-text-secondary, #a3a39e); text-decoration: none; }

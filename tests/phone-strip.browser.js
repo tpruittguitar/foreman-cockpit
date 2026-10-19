@@ -40,8 +40,8 @@ const JOB='V2X-A4CCD49EE686';
     assert(box.x>=0&&box.x+box.width<=w+0.5,w+'x'+h+': strip inside the screen: '+JSON.stringify(box));
     const items=await page.$$eval('#queue-head .since-strip .ss-i',els=>els.map(e=>{const r=e.getBoundingClientRect(),cs=getComputedStyle(e);return {t:e.innerText.trim(),h:r.height,w:r.width,fs:cs.fontSize,dis:e.disabled}}));
     assert.equal(items.length,4,'four items');items.forEach(x=>{assert(x.h>=44,w+'x'+h+' tap target >= 44 px: '+JSON.stringify(x));assert.equal(x.fs,'13px')});
-    const lbl=await page.$eval('#queue-head .since-strip .ss-lbl',e=>({t:e.textContent,fs:getComputedStyle(e).fontSize}));
-    assert.match(lbl.t,/^Since your last review · /);assert.equal(lbl.fs,'11px','label at the 11 px floor');
+    const lbl=await page.$eval('#queue-head .since-strip .ss-lbl',e=>({t:e.textContent,fs:getComputedStyle(e).fontSize,h:e.getBoundingClientRect().height,lh:parseFloat(getComputedStyle(e).fontSize)}));
+    assert.match(lbl.t,/^Since your last review · /);assert.equal(lbl.fs,'11px','label at --pe-fs-min (11 px floor)');if(w<600)assert(lbl.h<lbl.lh*2,w+'x'+h+': label on one line in portrait ('+lbl.h+')');
     const ch=items.find(x=>/score change/.test(x.t));assert.match(ch.t,/^Δ 1 score change \(▲1 ▼0\)$/,'changed item, cause example hidden on the phone: '+ch.t);
     const sw=await page.evaluate(()=>document.documentElement.scrollWidth);assert(sw<=w+1,w+'x'+h+': no sideways scroll ('+sw+')');
     if(w===390){await page.locator('#queue-head .since-strip').screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-strip-only.png'});await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-strip-390x844.png'});
@@ -51,6 +51,9 @@ const JOB='V2X-A4CCD49EE686';
       assert(cards.includes('V2X-A4CCD49EE686'),'tap filters to the changed job: '+JSON.stringify(cards.slice(0,5)));}
     assert.deepEqual(errors,[]);await ctx.close();}
 
+  // longest label ("none recorded yet") still one line in portrait at 390
+  {const {ctx,page}=await open({phone:[390,844]});const x=await page.$eval('#queue-head .since-strip .ss-lbl',e=>({t:e.textContent,h:e.getBoundingClientRect().height,lh:parseFloat(getComputedStyle(e).fontSize)}));
+    assert.match(x.t,/none recorded yet$/);assert(x.h<x.lh*2,'longest label on one line at 390: '+x.h);await ctx.close();}
   // desktop strip unchanged: one 40 px row, example shown
   {const {ctx,page,errors}=await open({state:{seen:{},reviewed:older}});
     const b=await page.locator('#queue-head .since-strip').boundingBox();assert.equal(Math.round(b.height),40,'desktop strip 40 px');
