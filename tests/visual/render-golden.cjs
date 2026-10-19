@@ -20,7 +20,9 @@ const MIME = { '.js': 'application/javascript', '.css': 'text/css', '.html': 'te
     await page.evaluate(() => document.fonts.ready);
     await page.waitForTimeout(150);
     if (errors.length) { console.error(id, errors); process.exitCode = 1; }
-    const out = path.join(repo, 'tests/visual/golden', id + '_2560x1440.png');
+    const outDir = process.env.VISUAL_GOLDEN_OUT || path.join(repo, 'tests/visual/golden');   // check-golden.cjs renders to a temp dir
+    fs.mkdirSync(outDir, { recursive: true });
+    const out = path.join(outDir, id + '_2560x1440.png');
     await page.screenshot({ path: out, animations: 'disabled' });
     const words = await page.evaluate(() => {
       const res = [], walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -32,8 +34,8 @@ const MIME = { '.js': 'application/javascript', '.css': 'text/css', '.html': 'te
       document.querySelectorAll('svg text').forEach(e => { const b = e.getBoundingClientRect(); res.push([+b.left.toFixed(1), +b.top.toFixed(1), +b.right.toFixed(1), +b.bottom.toFixed(1), e.textContent]); });
       return res;
     });
-    fs.writeFileSync(path.join(repo, 'tests/visual/golden', id + '.words.json'), JSON.stringify(words));
-    console.log(id + ' -> ' + path.relative(repo, out) + ' (' + words.length + ' words)');
+    fs.writeFileSync(path.join(outDir, id + '.words.json'), JSON.stringify(words));
+    console.log(id + ' -> ' + out + ' (' + words.length + ' words)');
     await page.close();
   }
   await browser.close(); server.close();

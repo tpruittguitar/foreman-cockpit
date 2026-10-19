@@ -1,0 +1,28 @@
+# BUILD 5 (Grok Bot rev4): re-render golden frames F01 / F02 with the same pinned Playwright Chromium (1.56.1, the build that
+# rendered them) and the fonts committed in fonts/, and compare to tests/visual/golden. Read only; never writes the goldens.
+name: visual-golden
+on:
+  pull_request:
+    paths: ['tokens.css', 'fonts/**', 'pe-icons.js', 'tests/visual/**', '.github/workflows/visual-golden.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  golden:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm i --no-save --ignore-scripts playwright@1.56.1
+      - run: npx --no-install playwright install --with-deps chromium
+      # The goldens use a few system-font fallback glyphs (Inter, DejaVu Sans Mono, Liberation Sans, Noto Color Emoji); install the
+      # same Ubuntu 24.04 packages the rendering machine had; check-golden.cjs limits fontconfig to them (tests/visual/fonts.conf).
+      - run: sudo apt-get install -y --no-install-recommends fonts-inter fonts-dejavu-core fonts-dejavu-mono fonts-dejavu-extra fonts-liberation fonts-noto-color-emoji && fc-cache -f
+      - run: node tests/visual/check-golden.cjs
+        env:
+          PIPELINE_PLAYWRIGHT_MODULE: ${{ github.workspace }}/node_modules/playwright
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with: { name: golden-check, path: tests/visual/artifacts/golden-check/ }

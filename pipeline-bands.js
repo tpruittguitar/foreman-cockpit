@@ -54,6 +54,19 @@
     return 'BANDS = PERCENTILE · N ' + res.n + ' ELIGIBLE OPEN · P90 ' + res.cuts.top + ' · P65 ' + res.cuts.upper + ' · P20 ' + res.cuts.low + tail;
   }
 
-  var api = { compute: compute, summary: summary, itemsFromRows: itemsFromRows, GLYPH: GLYPH, LABEL: LABEL, DEFAULTS: DEFAULTS };
+  /* F-6 (golden emptyDrawer): whole-percent shares of N for TOP / UPPER / MID / LOW by largest remainder, so they add up to
+     the rounded share of the counted rows (100 when the counts cover the whole population). counts: {TOP, UPPER, MID, LOW}. */
+  var SHARE_ORDER = ['TOP', 'UPPER', 'MID', 'LOW'];
+  function shares(counts, n){
+    var out = {}; if (!n) { SHARE_ORDER.forEach(function(k){ out[k] = null; }); return out; }
+    var raw = SHARE_ORDER.map(function(k){ return ((counts && counts[k]) || 0) / n * 100; }), fl = raw.map(function(v){ return Math.floor(v + 1e-9); });
+    var target = Math.round(raw.reduce(function(a, v){ return a + v; }, 0) + 1e-9), rest = target - fl.reduce(function(a, v){ return a + v; }, 0);
+    raw.map(function(v, i){ return [v - fl[i], i]; }).filter(function(x){ return raw[x[1]] > 0; }).sort(function(a, b){ return b[0] - a[0] || a[1] - b[1]; })
+      .forEach(function(x){ if (rest > 0) { fl[x[1]]++; rest--; } });
+    SHARE_ORDER.forEach(function(k, i){ out[k] = fl[i]; });
+    return out;
+  }
+
+  var api = { compute: compute, summary: summary, itemsFromRows: itemsFromRows, shares: shares, GLYPH: GLYPH, LABEL: LABEL, DEFAULTS: DEFAULTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PipelineBands = api;
 })(typeof window !== 'undefined' ? window : globalThis);

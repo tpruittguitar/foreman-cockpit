@@ -66,6 +66,7 @@
   --pe-focus-ring: 2px solid #E6E6E2; --pe-focus-offset: 2px;
   --pe-nontext-min: 3;
   --pe-glow: 0 0 6px rgba(56, 225, 214, 0.40);
+  --pe-glow-kpi: 0 0 10px rgba(56, 225, 214, 0.35);   /* C-11: active KPI tile (golden oct15.css .kpi.active) */
   /* Type */
   --pe-font-label: "IBM Plex Mono", "Inter", ui-monospace, monospace;
   --pe-font-ui: "Inter", system-ui, sans-serif;

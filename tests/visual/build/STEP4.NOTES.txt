@@ -1,0 +1,66 @@
+BUILD STEP 4 · REV-028 · F01 opening / no-job state, full-width KPI row (D-5), BUILD 3-5 · 2026-10-18 23:30 ET · Claude
+Starts from main f7a5073 (step 3 live). Screens (2560 x 1440, local fixture, min-N 5 for the screenshots only):
+ STEP4_F01_empty_bands_on   drawer closed (Esc): the F01 panel.   STEP4_F02_selected_bands_on   a job open.
+ STEP4_name_tip_keyboard    BUILD 4: a long title (fixture copy with a lengthened title, screenshot only) reached with ↓ ↑.
+
+F01 NO-JOB PANEL (#d-empty, shown whenever the drawer is closed on desktop; all values computed from the current view):
+ "○ JOB DRAWER · NO JOB SELECTED", "No job selected", hint, chips (view · map mode);
+ BANDS: TOP / UPPER / MID / LOW / HOLD counts in the view, bars relative to the largest band, share of the eligible population N;
+ the bands line (P90 / P65 / P20 · REV · AS OF) and "⊘ HOLD rows are outside the bands"; BUCKETS (words, counts, Σ);
+ NEXT UP: the three highest scores in the view (score + band glyph, title, company · location · #rank of N, "Open ›" opens the job);
+ keys actually bound: ↓ ↑ move · Enter open · Esc close · 1–4 decide ("/" is not bound in the app, so it is not shown);
+ MY DECISIONS · WRITER: the three latest decisions on this device as receipts, with waiting / failed counts.
+ Opening behaviour is UNCHANGED: on first load the app still shows the top job (map.browser.js covers that). F01 shows after Esc,
+ ✕, or any time no job is open. See Q-1.
+D-5 KPI ROW: full width (spans the list and the drawer); six tiles: Needs decision, Applied, Research, Interviews 14d, WRITER ·
+ WAITING / FAILED ("w / f": this device's saved decisions waiting for a fresh master read / not confirmed), STALE EVIDENCE (rows whose
+ stored FLEX class was computed under an older FLEX policy = the derived-refresh plan; bar = share of live jobs, caption
+ "FLEX class stamped under older rule"; "—" until the canonical rules load). Clicking either new tile filters the queue to those
+ rows, like Research. Active tile glow = new token --pe-glow-kpi (C-11: 0 0 10px cyan .35), only while its filter is on.
+ The queue title, bands line and view / filter tools moved to a 44 px table panel head (#grid-head, golden .panel-head).
+BUILD 3: stale-evidence bar sits 4 px above its caption (k-bar margin 6 / 4).
+BUILD 4: hover keeps the cell title; a row reached by keyboard (Tab focus or ↓ ↑ J K) shows a tip with the full TITLE and COMPANY when
+ either cell is clipped (role=tooltip, aria-describedby on the row); pointer use, Esc or scrolling hide it.
+BUILD 5: tests/visual/check-golden.cjs re-renders F01 / F02 and pixel-compares them with tests/visual/golden (limit 0.05 %);
+ .github/workflows/visual-golden.yml runs it on pull requests that touch tokens / fonts / icons / tests/visual, with Playwright pinned
+ to 1.56.1 (the build that rendered the goldens, Chromium 1194) and the repo fonts. Local run: F01 0 px, F02 0 px different.
+ render-golden.cjs accepts VISUAL_GOLDEN_OUT so the check never writes the committed goldens.
+BUILD 1-2 (map lat / lon label spacing, map corner brackets under the HUD): the live map has not been rebuilt in the F02 look yet
+ (no graticule labels, brackets or HUD band exist in the app), so there is nothing to fix yet; they go with the map step.
+TEST CHANGES (spec changes, not weakened checks): ui.browser.js expects 6 KPI tiles (was 4) and the workspace to start under the
+ full-width KPI row (was: at the top of the queue head).
+
+QUESTIONS
+ Q-1 (Tim / Grok Bot): F01 as the opening state means first load shows the empty panel instead of the top job. Today the app opens
+     the top job on load (a tested behaviour). Keep auto-open (F01 after Esc / close), or open on F01?
+
+GROK BOT LOOK WATCH ON #128 (23:40 ET): F-1..F-4 applied; Q-1 ruled.
+ F-1 bar class collision: F01 rows use .eb, breakdown rows use .bdb (the global toolbar .bar rule no longer reaches them);
+     track 8 px Raised, padding / border 0, fill flush 8 px.
+ F-2 F01 view chips -> one golden .dtabs row (40 px, margin 4 -16 0, padding 0 16, seam rule); the view is the active Cyan tab with
+     the 2 px underline (-8 / +8 px); the grey map chip is gone.
+ F-3 hint = golden .e-meta 14.5 / 21, margin-top 4, Secondary.
+ F-4 Writer value Amber, Stale evidence value Olive (Secondary while "—"); captions draw ◷ ✕ ◌ as pe-icons SVG (no system-font glyphs).
+ Q-1 RULED (Grok Bot): desktop opens on F01 at first load; ↓ (or J) opens the top job, Enter re-opens it, Esc / ✕ return to F01.
+     The phone layout still shows the top job under the list. map.browser.js first-load expectation updated (spec change).
+ Golden CI: the runner resolved the fallback glyphs ⇤ │ Σ ◎ 🔔 to other system fonts (3336 px, 0.09 %); check-golden.cjs now renders
+     with tests/visual/fonts.conf (Inter, DejaVu, Liberation, Noto Color Emoji only) — locally 0 px on both frames.
+
+GROK BOT ADD-ON 23:45 ET (F-5, F-6, F-4 add)
+F-4 add  The Writer tile no longer takes .warn, so the V-04 ".decide.warn b = Primary" rule cannot reach it; its value stays Amber.
+         APPLIED value var(--pe-green), INTERVIEWS 14D value var(--pe-text-muted) (golden kp[]; the KPI value is 38 px, large text).
+F-5      #d-empty .e-row .nm = Secondary. HOLD name = Red (.nm.band-hold). In BUCKETS only the largest bucket (first row, .nm.lead)
+         is Primary. Band names no longer carry their band colour on the name (golden: .e-row .nm outranks .b-*).
+F-6      PipelineBands.shares(counts, n): whole-percent shares of N for TOP/UPPER/MID/LOW by largest remainder; they add up to the
+         rounded share of the counted rows, which is 100 when the view covers the population (sample: 9/18/45/27 -> 9/18/46/27).
+         HOLD stays "—". Test: tests/bands.test.js "F-6 shares".
+Verified locally: computed colours read back in Chromium (Applied rgb(74,222,128), Interviews rgb(107,107,102), Writer
+rgb(242,179,61); band names rgb(163,163,158), HOLD rgb(255,77,61), first bucket rgb(230,230,226)); npm test 541/541; browser
+tests fail only at the same lines as main; local golden check 0 px on F01 and F02.
+
+GOLDEN CI CAUSE (BUILD 5) · FACT
+The runner's /etc/fonts/conf.d has no 56-prefer-inter.conf (this build container has it), so on the runner sans-serif fallback
+glyphs went to DejaVu Sans instead of Inter and the ticker text shifted: 3336 px on both frames. Reproduced here by removing
+that one rule: 3324 px on both frames, same place. Fix: tests/visual/fontconfig/ holds a copy of the conf.d the goldens were
+rendered with (41 rules; 50-user / 51-local left out), and fonts.conf includes only that directory. check-golden.cjs writes a
+copy of fonts.conf with the absolute path filled in. Goldens unchanged. The temporary font-diagnostics CI step is removed.
