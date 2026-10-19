@@ -40,11 +40,13 @@ POST to the Explorer's Apps Script web app (the same one that applies Tim's ruli
       "INITIAL_UNKNOWN_FIELDS": ["PAY", "DEGREE", "FLEX", "FIT", "LIVENESS", "REPORTING_LEVEL"],
       "EMPLOYER_DOMAIN_HINT": "defense robotics manufacturer",
       "NEVER_CONSIDER_RULE_ID": "", "EXCLUSION_CONFIDENCE": "", "EXCLUSION_REASON": "",
-      "PAY_POSTED": "", "DEGREE_TEXT": "", "FLEX_HINT": "", "REPORTING_LEVEL": "", "POSTING_DATE": "", "REMOTE_HYBRID": "", "SCOUT_NOTES": ""
+      "PAY_POSTED": "", "SALARY_BASE_EST": "", "SALARY_BASIS": "", "SALARY_CONF": "", "SALARY_SOURCE": "", "SALARY_ASOF": "", "DEGREE_TEXT": "", "FLEX_HINT": "", "REPORTING_LEVEL": "", "POSTING_DATE": "", "REMOTE_HYBRID": "", "SCOUT_NOTES": ""
     }
   ]
 }
 ```
+
+**Pay at intake (SALARY RULE, Tim 2026-10-19).** An estimated salary is real pay. When a posting or alert shows a pay estimate (Glassdoor, LinkedIn, ZipRecruiter, recruiter), send it as `SALARY_BASE_EST` with `SALARY_BASIS` (e.g. `THIRD_PARTY_ESTIMATE`), `SALARY_CONF` (`LOW` is fine), `SALARY_SOURCE` and `SALARY_ASOF`. Only employer-posted pay goes in `PAY_POSTED`. The Writer keeps all of these at intake (`INTAKE_FACT_KEYS`) and runs the floor check on any figure; a job is held on pay only when that check is BELOW.
 
 `COMPANY` and `TITLE` are required. Other job-detail fields may be empty or UNKNOWN, but new intake still requires a usable initiating SOURCE_URL under Writer admission safeguards. `SOURCE` is accepted as an alias of `DISCOVERY_SOURCE`. `EMPLOYER_DOMAIN_HINT` is the employer's **primary business** (never the job title). Batch limit 200 records.
 
