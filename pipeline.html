@@ -981,6 +981,14 @@ function bandsLine_(){var st=scoringStamp_(),lr=S.connection&&S.connection.lastR
 function chipCity_(label){var key=String(label||'').toLowerCase().trim(),c=(LS.get('geoCache',{})||{})[key];if(c&&c.city)return c.city;
   return String(label||'').split(',')[0].replace(/^\s*(?:ATS|JD(?:\s+says)?|LinkedIn|Indeed|ZipRecruiter|Glassdoor|posting|posted|job\s+page)\b[:\s-]*/i,'').trim()}
 function bandOf_(r){var b=bands_();return (b&&r&&b.byId[r.id])||{band:'NONE',rankNo:null}}
+/* REV-063 (v1.5.2 B-1 / B-2, V-19): score text on screen names the percentile band only. The old score label from band()
+   (PRIORITY / STRONG / WATCH / WEAK / NO-GO) stays inside the scoring code; it never shows as a band. */
+function bandAsOf_(){var lr=S.connection&&S.connection.lastRead,d=lr?new Date(lr):null;return d&&!isNaN(d)?('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2):null}
+function bandWord_(r){var b=bands_(),ob=bandOf_(r);return ob.band==='HOLD'?'⊘ HOLD':ob.band==='NONE'?(b&&b.on?'not ranked':'bands off'):PipelineBands.GLYPH[ob.band]+' '+ob.band}
+function scoreTitle_(r,overall){if(overall==null)return '';var b=bands_(),ob=bandOf_(r);
+  if(ob.band==='HOLD')return overall+' · ⊘ HOLD · outside the bands';
+  if(ob.band==='NONE')return overall+' · '+(b&&b.on?'not ranked (applied or closed)':'bands off · N '+(b?b.n:0)+' eligible open < '+(b?b.minN:40));
+  return PipelineBands.GLYPH[ob.band]+' '+ob.band+' · '+overall+(ob.rankNo?' · #'+ob.rankNo+' of '+b.n+' eligible open':'')+' · '+(bandAsOf_()||'—')}
 function bandMark_(r){var x=bandOf_(r),bb=bands_();if(x.band==='HOLD')return '<span class="hold-tag" title="STRICT HOLD · outside the bands">⊘ HOLD</span>';if(x.band==='NONE'&&!(bb&&bb.on))return '';return '<i class="band-g band-'+x.band.toLowerCase()+'" aria-hidden="true">'+PipelineBands.GLYPH[x.band]+'</i>'}
 function scoreCell_(v){return v==null?'—':String(Math.round(v))}
 
@@ -998,7 +1006,7 @@ function val(r,c){
     case 'AGE':return r.dateAdded?String(Math.max(0,Math.floor((Date.now()-r.dateAdded.getTime())/864e5))):'';
     case 'LINK':return PipelinePolicy.links(r).preferred;
     case 'MASTER_LOADED_AT':return r.masterLoadedAtStr;
-    case 'OVERALL_RATING':var os=scoreFor_(r);return os.overall==null?'':String(os.overall)+' · '+os.band+' · FLEX '+(os.flexInfluence>=0?'+':'')+os.flexInfluence;
+    case 'OVERALL_RATING':var os=scoreFor_(r);return os.overall==null?'':String(os.overall)+' · '+bandWord_(r)+' · FLEX '+(os.flexInfluence>=0?'+':'')+os.flexInfluence;
     case 'EXPERIENCE_FIT':return scoreCell_(scoreFor_(r).assessment.rawFit);
     case 'NET_COMP_SCORE':return scoreCell_(scoreFor_(r).parts.compensation.score);
     case 'GEO_SCORE':return scoreCell_(scoreFor_(r).parts.geo.score);
@@ -1240,7 +1248,7 @@ function render(){
       else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'rule':'pend')+'">'+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'◈':'◇')+'</span>'+esc(v):''}
       else if(c==='COMPANY')v=(ruling(r)?'<span class="write-tag">'+esc(rulingState(r).s)+'</span> ':'')+(r.parseError?'<span class="g err" title="'+esc(r.parseError)+'">!</span>':'')+esc(v);
       else if(c==='BUCKET'){extra=' b-'+esc(r.BUCKET);v='<span class="bpill b-'+esc(r.BUCKET)+'" title="'+esc(v)+'">'+esc(bucketWord_(r.BUCKET))+'</span>'+(r.mismatch?' <span class="faint" title="heading says '+esc(r.section)+'">§</span>':'')}
-      else if(c==='OVERALL_RATING'){var os=scoreFor_(r);var ob=bandOf_(r);v=os.overall==null?'':'<span class="score-badge '+esc(String(os.band||'').toLowerCase().replace(/[^a-z]/g,''))+' band-'+ob.band.toLowerCase()+'" title="'+esc('Score '+os.overall+' — '+(os.band||'Unclassified'))+esc(' · '+PipelineBands.LABEL[ob.band]+(ob.rankNo?' · #'+ob.rankNo:''))+'">'+os.overall+'</span>'+bandMark_(r)+deltaMark_(r)}
+      else if(c==='OVERALL_RATING'){var os=scoreFor_(r);var ob=bandOf_(r);v=os.overall==null?'':'<span class="score-badge '+esc(String(os.band||'').toLowerCase().replace(/[^a-z]/g,''))+' band-'+ob.band.toLowerCase()+'" title="'+esc(scoreTitle_(r,os.overall))+'">'+os.overall+'</span>'+bandMark_(r)+deltaMark_(r)}
       else if(c==='LINK'){v=v?'<a class="rowlink" href="'+esc(v)+'" target="_blank" rel="noopener" title="'+esc(v)+'" onclick="event.stopPropagation()">'+LINK_ICON+'</a>':''}
       else if(c==='AGE'){v=v?esc(v)+'<span class="faint">d</span>':''}
       else if(c==='SOURCE_URL'){v=v?'<a href="'+esc(v)+'" target="_blank" rel="noopener" title="'+esc(v)+'" onclick="event.stopPropagation()">'+esc(v.replace(/^https?:\/\//,'').slice(0,70))+'</a>':''}
@@ -1469,7 +1477,7 @@ function scoreBlock_(r){var sc=scoreFor_(r)||{},band=String(sc.band||'');
   var od=S.openDelta&&S.openDelta.id===r.id?S.openDelta:null,dl='';
   if(od&&od.delta){var dx=od.delta,why=PipelineReview.causeText(dx,2);dl='<div class="ws-delta '+(dx.d>0?'up':dx.d<0?'down':'same')+'">'+(dx.d>0?'▲ ':dx.d<0?'▼ ':'= ')+(dx.d?esc(PipelineReview.signed(dx.d)):'No change')+' since '+(dx.baseline?'baseline ':'you last opened it ')+esc(reviewWhen_(dx.at))+(why?' · '+esc(why):'')+'</div>'}
   else if(od&&!od.had&&reviewReady_())dl='<div class="ws-delta same">First review of this job</div>';
-  var stamp=scoringStamp_(),ring=sc.overall!=null?'<div class="ws-score"><div class="ws-ring band-'+(bres&&bres.on?pb.band.toLowerCase():'off')+'" style="--pct:'+Math.max(0,Math.min(100,+sc.overall))+'" title="'+esc('Opportunity rating · viewer-derived from the scoring model · '+(band.charAt(0)+band.slice(1).toLowerCase()))+'"><svg viewBox="0 0 124 124" aria-hidden="true"><circle class="trk" cx="62" cy="62" r="54"/><circle class="arc" cx="62" cy="62" r="54"/><g class="tk">'+ticks+'</g></svg><b>'+sc.overall+'</b></div><div class="ws-score-info"><div class="band">'+esc(bandTxt)+'</div>'+dl+'<div>Model rev '+(stamp?esc(String(stamp.revision)):'—')+' · coverage '+(sc.confidence!=null?sc.confidence+'%':'—')+'</div><div>Screen gate '+(sc.screenGate==='PASS'?'<span class="ok">✓ PASS</span>':sc.screenGate==='FAIL'?'<span class="amb">▸ FAIL</span>':'? '+esc(sc.screenGate||'UNKNOWN'))+' · FLEX impact '+(sc.flexInfluence>=0?'+':'−')+Math.abs(sc.flexInfluence||0)+(pb.rankNo&&bres&&bres.on?' · #'+pb.rankNo+' of '+bres.n:'')+'</div></div></div>':'';
+  var stamp=scoringStamp_(),ring=sc.overall!=null?'<div class="ws-score"><div class="ws-ring band-'+(bres&&bres.on?pb.band.toLowerCase():'off')+'" style="--pct:'+Math.max(0,Math.min(100,+sc.overall))+'" title="'+esc('Opportunity rating · viewer-derived from the scoring model · '+scoreTitle_(r,sc.overall))+'"><svg viewBox="0 0 124 124" aria-hidden="true"><circle class="trk" cx="62" cy="62" r="54"/><circle class="arc" cx="62" cy="62" r="54"/><g class="tk">'+ticks+'</g></svg><b>'+sc.overall+'</b></div><div class="ws-score-info"><div class="band">'+esc(bandTxt)+'</div>'+dl+'<div>Model rev '+(stamp?esc(String(stamp.revision)):'—')+' · coverage '+(sc.confidence!=null?sc.confidence+'%':'—')+'</div><div>Screen gate '+(sc.screenGate==='PASS'?'<span class="ok">✓ PASS</span>':sc.screenGate==='FAIL'?'<span class="amb">▸ FAIL</span>':'? '+esc(sc.screenGate||'UNKNOWN'))+' · FLEX impact '+(sc.flexInfluence>=0?'+':'−')+Math.abs(sc.flexInfluence||0)+(pb.rankNo&&bres&&bres.on?' · #'+pb.rankNo+' of '+bres.n:'')+'</div></div></div>':'';
   return ring}
 function decideRow_(){return '<fieldset class="wh-action-group wh-decide"><button data-decide-key="1" title="Prepare READY_TO_PURSUE (1)">✓ Pursue <sub>1</sub></button><button data-decide-key="2" title="Prepare MANUAL_RESEARCH hold (2)">'+(typeof PEIcons!=='undefined'?PEIcons.svg('hold','dec-ic'):'')+' Hold <sub>2</sub></button><button data-decide-key="3" title="Prepare DECLINED_BY_TIM (3)">⊖ Decline</button><button data-decide-key="4" title="Request research (4)">Research</button></fieldset>'}
 function breakdownHtml_(r){var sc=scoreFor_(r),b=typeof PipelineBreakdown!=='undefined'&&PipelineBreakdown.breakdown(sc);if(!b)return '';var st=scoringStamp_();
