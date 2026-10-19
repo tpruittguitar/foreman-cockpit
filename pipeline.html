@@ -1638,16 +1638,18 @@ var GEO_CITY_OVERRIDES={
 };
 function stateCodeFromText_(txt){
   txt=String(txt||'').trim();
+  // Same reading as PipelineScoring.stateCode (2026-10-19): DC before Washington, upper-case codes, longest state name wins.
+  if(/\bwashington\s*,?\s*d\.?\s?c\b|\bD\.?C\.?\b|district of columbia/i.test(txt))return 'DC';
   var m=txt.match(/(?:,|\s)\s*([A-Z]{2})(?:\b|$)/);if(m&&US_STATE_NAMES[m[1]])return m[1];
-  var low=txt.toLowerCase(),keys=Object.keys(US_STATE_NAMES);for(var i=0;i<keys.length;i++)if(low.indexOf(US_STATE_NAMES[keys[i]].toLowerCase())>=0)return keys[i];
-  return '';
+  var low=txt.toLowerCase(),best='',bestLen=0;Object.keys(US_STATE_NAMES).forEach(function(k){var n=US_STATE_NAMES[k].toLowerCase();if(n.length>bestLen&&new RegExp('\\b'+n+'\\b').test(low)){best=k;bestLen=n.length}});
+  return best;
 }
 function cleanLocation_(x){
   return String(x||'').replace(/\b(USA|United States|United States of America)\b/ig,'').replace(/\(.*?\)/g,'').replace(/^[-–—\s]+|[-–—\s]+$/g,'').replace(/\s+,/g,',').replace(/\s{2,}/g,' ').trim();
 }
 function splitLocations_(txt){
   txt=String(txt||'').trim();if(!txt)return[];
-  return txt.split(/\s*(?:;|\||\/|\bor\b)\s*/i).map(cleanLocation_).filter(function(x){return x&&!/^remote\b/i.test(x)&&!/^hybrid\b/i.test(x)&&!/^(multiple|various) locations?$/i.test(x)});
+  return txt.split(/\s*[;|\/]\s*|\s+or\s+/).map(cleanLocation_).filter(function(x){return x&&!/^remote\b/i.test(x)&&!/^hybrid\b/i.test(x)&&!/^(multiple|various) locations?$/i.test(x)});
 }
 function remoteRow_(r){
   var t=[r.LOCATION,r.payload.REMOTE_STATUS,r.payload.WORK_ARRANGEMENT,r.payload.REMOTE,r.payload.WORK_MODE].join(' ');
@@ -1833,7 +1835,7 @@ function mapPinBand_(p){var rank={TOP:5,UPPER:4,MID:3,LOW:2,HOLD:1,NONE:0},best=
 function renderMapTargets_(found,active){
   var box=$('job-map');if(!box)return;var width=box.clientWidth,height=box.clientHeight,buttons=box.querySelectorAll('.map-target');
   if(buttons.length!==found.length||box._points!==found){buttons.forEach(function(e){e.remove()});found.forEach(function(p,i){var button=document.createElement('button');var pb=mapPinBand_(p);button.className='map-target '+(p.type||'secondary')+' band-'+pb.toLowerCase();button.dataset.pin=i;button.dataset.band=pb;var nRows=(p.rowIds||[]).length;button.innerHTML='<i class="map-reticle"></i><b class="pin-g" aria-hidden="true">'+mapPinSvg_(pb,p.home||p.type==='home')+'</b>'+(nRows>1?'<span class="pin-n" aria-hidden="true">×'+nRows+'</span>':'');button.classList.toggle('priority-hot',(p.rowIds||[]).some(function(id){var r=rowById(id);return r&&attentionFor_(r).strong}));button.setAttribute('aria-label',(p.labels&&p.labels.length>1?p.labels.join(' / '):p.label)+(p.approx?' (approximate state location)':''));
-    function show(){mapView.active=i;renderMapTargets_(found,i)}function hide(){if(mapView.tapPin===i)return;if(found.length>1){mapView.active=restingPin_();renderMapTargets_(found,mapView.active)}}
+    function show(){mapView.active=i;renderMapTargets_(found,i)}function hide(){if(mapView.tapPin===i)return;if(found.length>1)mapView.active=restingPin_();renderMapTargets_(found,mapView.active)}   /* a lone pin also returns to rest (2026-10-19) */
     button.onpointerenter=function(e){if(e.pointerType!=='touch'){mapView.hoverPin=i;show()}};button.onpointerleave=function(e){if(e.pointerType!=='touch'){mapView.hoverPin=null;hide()}};button.onfocus=function(){mapView.hoverPin=i;show()};button.onblur=function(){mapView.hoverPin=null;hide()};box.appendChild(button);
   });box._points=found;buttons=box.querySelectorAll('.map-target')}
   buttons.forEach(function(button,i){var p=found[i],q=mapScreenPoint_(projectUS_(+p.lat,+p.lon,stateCodeFromText_(p.label)));button.style.translate=q.x+'px '+q.y+'px';button.hidden=q.x<-15||q.x>width+15||q.y<-15||q.y>height+15;button.classList.toggle('active',i===active);button.classList.toggle('checked',(p.rowIds||[]).some(function(id){return !!S.checked[id]}));button.classList.toggle('focused',i===mapView.focusPin);button.setAttribute('aria-pressed',i===active?'true':'false')});
