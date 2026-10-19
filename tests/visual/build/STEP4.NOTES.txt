@@ -45,3 +45,15 @@ GROK BOT LOOK WATCH ON #128 (23:40 ET): F-1..F-4 applied; Q-1 ruled.
      The phone layout still shows the top job under the list. map.browser.js first-load expectation updated (spec change).
  Golden CI: the runner resolved the fallback glyphs ⇤ │ Σ ◎ 🔔 to other system fonts (3336 px, 0.09 %); check-golden.cjs now renders
      with tests/visual/fonts.conf (Inter, DejaVu, Liberation, Noto Color Emoji only) — locally 0 px on both frames.
+
+GROK BOT ADD-ON 23:45 ET (F-5, F-6, F-4 add)
+F-4 add  The Writer tile no longer takes .warn, so the V-04 ".decide.warn b = Primary" rule cannot reach it; its value stays Amber.
+         APPLIED value var(--pe-green), INTERVIEWS 14D value var(--pe-text-muted) (golden kp[]; the KPI value is 38 px, large text).
+F-5      #d-empty .e-row .nm = Secondary. HOLD name = Red (.nm.band-hold). In BUCKETS only the largest bucket (first row, .nm.lead)
+         is Primary. Band names no longer carry their band colour on the name (golden: .e-row .nm outranks .b-*).
+F-6      PipelineBands.shares(counts, n): whole-percent shares of N for TOP/UPPER/MID/LOW by largest remainder; they add up to the
+         rounded share of the counted rows, which is 100 when the view covers the population (sample: 9/18/45/27 -> 9/18/46/27).
+         HOLD stays "—". Test: tests/bands.test.js "F-6 shares".
+Verified locally: computed colours read back in Chromium (Applied rgb(74,222,128), Interviews rgb(107,107,102), Writer
+rgb(242,179,61); band names rgb(163,163,158), HOLD rgb(255,77,61), first bucket rgb(230,230,226)); npm test 541/541; browser
+tests fail only at the same lines as main; local golden check 0 px on F01 and F02.

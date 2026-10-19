@@ -70,3 +70,16 @@ test('every band has a distinct glyph and label (no colour-only state, L-1); STR
   assert.equal(new Set(l).size, l.length);
   assert.equal(B.GLYPH.HOLD, '⊘');
 });
+
+test('F-6 shares: largest remainder makes TOP/UPPER/MID/LOW add up to 100 over the whole population (golden emptyDrawer)', () => {
+  assert.deepEqual(B.shares({ TOP: 1, UPPER: 2, MID: 5, LOW: 3 }, 11), { TOP: 9, UPPER: 18, MID: 46, LOW: 27 });   // was 9/18/45/27 = 99
+  for (const [name, fx] of FX) {
+    const res = B.compute(itemsOf(fx), { minN: 40 }), cnt = {};
+    Object.values(res.byId).forEach(v => { cnt[v.band] = (cnt[v.band] || 0) + 1; });
+    const s = B.shares(cnt, res.n);
+    assert.equal(s.TOP + s.UPPER + s.MID + s.LOW, 100, name + ' adds up to 100');
+  }
+  const part = B.shares({ TOP: 1, UPPER: 1, MID: 1, LOW: 0 }, 10);   // a filtered view: shares add up to the rounded 30%, LOW gets no tenth
+  assert.deepEqual(part, { TOP: 10, UPPER: 10, MID: 10, LOW: 0 });
+  assert.deepEqual(B.shares({}, 0), { TOP: null, UPPER: null, MID: null, LOW: null });
+});

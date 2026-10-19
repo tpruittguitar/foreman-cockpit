@@ -318,6 +318,9 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #queue-head .decide[data-decide="writer"] b { color: var(--pe-amber) !important; }
   #queue-head .decide[data-decide="stale"] b { color: var(--pe-olive) !important; }
   #queue-head .decide[data-decide="stale"].none b { color: var(--pe-text-secondary) !important; }
+  /* F-4 add (golden kp[], carried from step 1): Applied value Green, Interviews 14D value Muted (KPI value is large text). */
+  #queue-head .decide[data-decide="applied"] b { color: var(--pe-green) !important; }
+  #queue-head .decide[data-decide="interviews"] b { color: var(--pe-text-muted) !important; }
   .decide .delta.cap .olv { color: var(--pe-olive); }
   /* Table panel head (golden .panel-head): queue title, bands line and the view / filter tools. */
   #gridpane .grid-head { position: absolute; left: 0; right: 0; top: 0; height: 44px; display: flex; align-items: center; gap: 16px; padding: 0 14px; border-bottom: var(--pe-border); background: var(--pe-hull); z-index: 2; }
@@ -343,13 +346,15 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #d-empty .e-tabs .on::after { content: ""; position: absolute; left: -8px; right: -8px; bottom: -1px; height: 2px; background: var(--pe-cyan); }
   #d-empty .e-list { margin-top: 5px; }
   #d-empty .e-row { display: grid; grid-template-columns: 22px 128px 1fr 44px 56px; column-gap: 8px; align-items: center; height: 25px; font-size: var(--pe-fs-small); }
-  #d-empty .e-row .nm { color: var(--pe-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #d-empty .e-row .nm { color: var(--pe-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #d-empty .e-row .nm.mono { font-family: var(--pe-font-label); font-size: var(--pe-fs-crumb); letter-spacing: .08em; }
   #d-empty .e-row .eb { display: block; height: 8px; padding: 0; border: 0; margin: 0; background: var(--pe-raised); } #d-empty .e-row .eb i { display: block; height: 8px; margin: 0; }
   #d-empty .e-row .n { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
   #d-empty .e-row .pc { text-align: right; font-family: var(--pe-font-label); font-size: var(--pe-fs-min); color: var(--pe-text-secondary); }
   #d-empty .band-top { color: var(--pe-band-top); } #d-empty .band-upper { color: var(--pe-band-upper); } #d-empty .band-mid { color: var(--pe-band-mid); }
   #d-empty .band-low { color: var(--pe-band-low); } #d-empty .band-hold { color: var(--pe-red); } #d-empty .band-none { color: var(--pe-text-secondary); }
+  /* F-5 (golden .e-row .nm): row names Secondary; the HOLD name Red; in Buckets only the largest bucket's name Primary. */
+  #d-empty .e-row .nm.band-hold { color: var(--pe-red); } #d-empty .e-row .nm.lead { color: var(--pe-text-primary); }
   #d-empty .e-foot { margin-top: 4px; font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: var(--pe-label-tracking); line-height: 16px; text-transform: uppercase; color: var(--pe-text-secondary); }
   #d-empty .e-next { display: flex; flex-direction: column; gap: 5px; margin-top: 7px; }
   #d-empty .nx { position: relative; display: grid; grid-template-columns: 1fr auto; row-gap: 2px; padding: 6px 12px; background: var(--pe-plate); border-left: var(--pe-bar-card) solid var(--pe-text-secondary); }
