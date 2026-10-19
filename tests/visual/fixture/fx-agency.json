@@ -1,0 +1,4234 @@
+{
+ "schema": "pe.golden-fixture.v1",
+ "note": "Fictional data. Scores from pipeline-scoring.js scoreRow + PIPELINE_SCORING_MODEL rev 24. Scenario \"agency\" built by tests/visual/oct15/build-oct15.cjs (Grok Bot).",
+ "model": {
+  "rev": 24,
+  "version": "2026-10-14.1",
+  "weights": {
+   "experience": 35,
+   "flex": 30,
+   "compensation": 15,
+   "geo": 10,
+   "ats": 0,
+   "title": 5,
+   "culture": 5,
+   "ownership": 0
+  }
+ },
+ "asOf": "23:41",
+ "lastReview": "18:05",
+ "bands": {
+  "n": 49,
+  "cuts": {
+   "top": 72,
+   "upper": 61,
+   "low": 51
+  }
+ },
+ "counters": {
+  "jobs": 578,
+  "reviewQueue": 51,
+  "needsDecision": 29,
+  "declineCandidates": 9,
+  "myRulings": 0,
+  "appliedAllTime": 84,
+  "research": 49,
+  "interviews14d": 0,
+  "writerWaiting": 1,
+  "writerFailed": 1,
+  "staleEvidence": 185,
+  "compare": 0,
+  "laneQueue": 2,
+  "laneQueueOldestMin": 4,
+  "lanes": 10,
+  "lanesQuiet": 0,
+  "needsYou": 3
+ },
+ "sinceLastReview": {
+  "newRows": 12,
+  "evidenceUpdates": 4,
+  "writeFailed": 1,
+  "queued": 2,
+  "provisional": 185
+ },
+ "selectedId": "JOB-0588",
+ "rows": [
+  {
+   "id": "JOB-0412",
+   "title": "Director, Manufacturing Ops",
+   "company": "Halvorsen Robotics",
+   "location": "Nashville, TN",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 245,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 74,
+   "age": "2h",
+   "writeState": "",
+   "changed": "+4",
+   "staleEvidence": false,
+   "lat": 36.1627,
+   "lon": -86.7816,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 76,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "PASS",
+   "parts": {
+    "experience": {
+     "score": 74,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 54,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Nashville, TN"
+    },
+    "ats": {
+     "score": 82,
+     "known": true,
+     "weight": 0,
+     "basis": "Explicit ATS score"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "TOP",
+   "rank": 0.98,
+   "rankNo": 1,
+   "position": 1
+  },
+  {
+   "id": "JOB-0405",
+   "title": "Head of Production",
+   "company": "Vantor Defense Systems",
+   "location": "Cleveland, TN",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 260,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 63,
+   "age": "1h",
+   "writeState": "",
+   "changed": "NEW",
+   "staleEvidence": false,
+   "lat": 35.1595,
+   "lon": -84.8766,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 74,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 63,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 67,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 100,
+     "known": true,
+     "weight": 10,
+     "basis": "Cleveland, TN hard override"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · production"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "TOP",
+   "rank": 0.96,
+   "rankNo": 2,
+   "position": 2
+  },
+  {
+   "id": "JOB-0201",
+   "title": "VP Operations",
+   "company": "Ironwood Aerospace",
+   "location": "Columbia, SC",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 270,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 64,
+   "age": "11d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.0007,
+   "lon": -81.0348,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 73,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 64,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 75,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Columbia, SC"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "TOP",
+   "rank": 0.94,
+   "rankNo": 3,
+   "position": 3
+  },
+  {
+   "id": "JOB-0212",
+   "title": "Director, Production",
+   "company": "Clearwater Batteries",
+   "location": "Tampa, FL",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 240,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 65,
+   "age": "9d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 27.9506,
+   "lon": -82.4572,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 72,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 65,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 54,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Tampa, FL hard override"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · production"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "TOP",
+   "rank": 0.9,
+   "rankNo": 4,
+   "position": 4
+  },
+  {
+   "id": "JOB-0233",
+   "title": "Director, Tool Systems",
+   "company": "Brightwater EV",
+   "location": "Huntsville, AL",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 220,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 76,
+   "age": "7d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.7304,
+   "lon": -86.5861,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 72,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 76,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 30,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 91,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Birmingham, AL"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · tool systems"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "TOP",
+   "rank": 0.9,
+   "rankNo": 4,
+   "position": 5
+  },
+  {
+   "id": "JOB-0307",
+   "title": "Mfg Program Director",
+   "company": "Tidewell Avionics",
+   "location": "Savannah, GA",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 225,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 68,
+   "age": "2d",
+   "writeState": "",
+   "changed": "-5",
+   "staleEvidence": false,
+   "lat": 32.0809,
+   "lon": -81.0912,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 69,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 68,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 35,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Columbia, SC"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.88,
+   "rankNo": 6,
+   "position": 6
+  },
+  {
+   "id": "JOB-0588",
+   "title": "Director of Manufacturing",
+   "company": "Keystone Recruiting Group",
+   "location": "Huntsville, AL",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 235,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 74,
+   "age": "3h",
+   "writeState": "",
+   "changed": "NEW",
+   "staleEvidence": false,
+   "lat": 34.7304,
+   "lon": -86.5861,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 67,
+   "hold": false,
+   "coverage": 95,
+   "flexInfluence": 3,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 74,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 45,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 91,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Birmingham, AL"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · manufacturing"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": null,
+     "known": false,
+     "weight": 5,
+     "basis": "Target company list not loaded"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.86,
+   "rankNo": 7,
+   "position": 7,
+   "breakdown": [
+    {
+     "key": "experience",
+     "weight": 35,
+     "score": 74,
+     "known": true,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW",
+     "points": 26.8
+    },
+    {
+     "key": "flex",
+     "weight": 30,
+     "score": 62,
+     "known": true,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier",
+     "points": 19.2
+    },
+    {
+     "key": "compensation",
+     "weight": 15,
+     "score": 45,
+     "known": true,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling",
+     "points": 7
+    },
+    {
+     "key": "geo",
+     "weight": 10,
+     "score": 91,
+     "known": true,
+     "basis": "Distance-weighted interpolation; nearest Birmingham, AL",
+     "points": 9.4
+    },
+    {
+     "key": "title",
+     "weight": 5,
+     "score": 90,
+     "known": true,
+     "basis": "Title level heuristic",
+     "points": 4.6
+    },
+    {
+     "key": "culture",
+     "weight": 5,
+     "score": null,
+     "known": false,
+     "basis": "Target company list not loaded",
+     "points": 0
+    },
+    {
+     "key": "ats",
+     "weight": 0,
+     "score": 40,
+     "known": true,
+     "basis": "Keyword proxy · manufacturing",
+     "points": 0
+    },
+    {
+     "key": "ownership",
+     "weight": 0,
+     "score": null,
+     "known": false,
+     "basis": "No evidence recorded · neutral placeholder",
+     "points": 0
+    }
+   ],
+   "breakdownFactor": 0.985
+  },
+  {
+   "id": "JOB-0259",
+   "title": "Director, Plant Operations",
+   "company": "Ashgrove Metals",
+   "location": "Greensboro, NC",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 225,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 62,
+   "age": "5d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 36.0726,
+   "lon": -79.792,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 66,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 62,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 35,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 72,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Raleigh, NC"
+    },
+    "ats": {
+     "score": 46,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations, plant"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.76,
+   "rankNo": 8,
+   "position": 8
+  },
+  {
+   "id": "JOB-0359",
+   "title": "Head of Hardware Ops",
+   "company": "Pinecrest Orbital",
+   "location": "Birmingham, AL",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 240,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 51,
+   "age": "10h",
+   "writeState": "",
+   "changed": "-3",
+   "staleEvidence": false,
+   "lat": 33.5207,
+   "lon": -86.8025,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 66,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 51,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 50,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Birmingham, AL"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.76,
+   "rankNo": 8,
+   "position": 9
+  },
+  {
+   "id": "JOB-0377",
+   "title": "VP Operations",
+   "company": "Ridgeline Composites",
+   "location": "Chattanooga, TN",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 275,
+   "flex": "Unknown",
+   "flexClass": "UNKNOWN",
+   "expFit": 60,
+   "age": "6h",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": true,
+   "lat": 35.0456,
+   "lon": -85.3097,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 66,
+   "hold": false,
+   "coverage": 70,
+   "flexInfluence": 0,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 60,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 79,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 100,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Cleveland, TN"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 50,
+     "known": false,
+     "weight": 30,
+     "basis": "UNKNOWN · +0 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.76,
+   "rankNo": 8,
+   "position": 10
+  },
+  {
+   "id": "JOB-0389",
+   "title": "Plant Manager",
+   "company": "Ironbark Battery",
+   "location": "Knoxville, TN",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 210,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 57,
+   "age": "8h",
+   "writeState": "CONFIRMED",
+   "changed": "+3",
+   "staleEvidence": false,
+   "lat": 35.9606,
+   "lon": -83.9207,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 66,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 57,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 20,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 99,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Cleveland, TN"
+    },
+    "ats": {
+     "score": 46,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · plant, battery"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.76,
+   "rankNo": 8,
+   "position": 11
+  },
+  {
+   "id": "JOB-0398",
+   "title": "Director, Production Ops",
+   "company": "Cobalt Aerostructures",
+   "location": "Huntsville, AL",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 230,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 68,
+   "age": "5h",
+   "writeState": "WAITING",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.7304,
+   "lon": -86.5861,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 66,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 4,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 68,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 40,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 91,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Birmingham, AL"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · production"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.76,
+   "rankNo": 8,
+   "position": 12
+  },
+  {
+   "id": "JOB-0190",
+   "title": "Director of Manufacturing",
+   "company": "Bridgeport Motion",
+   "location": "Nashville, TN",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 230,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 67,
+   "age": "12d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 36.1627,
+   "lon": -86.7816,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 65,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 4,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 67,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 40,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Nashville, TN"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · manufacturing"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.69,
+   "rankNo": 13,
+   "position": 13
+  },
+  {
+   "id": "JOB-0255",
+   "title": "Head of Manufacturing",
+   "company": "Silverpine Robotics",
+   "location": "Austin, TX",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 250,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 70,
+   "age": "5d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 30.2672,
+   "lon": -97.7431,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 65,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 4,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 70,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 58,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 50,
+     "known": true,
+     "weight": 10,
+     "basis": "Austin, TX"
+    },
+    "ats": {
+     "score": 46,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · manufacturing, robotics"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.69,
+   "rankNo": 13,
+   "position": 14
+  },
+  {
+   "id": "JOB-0296",
+   "title": "Sr. Dir., Operations",
+   "company": "Bayline Medical",
+   "location": "Orlando, FL",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 240,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 66,
+   "age": "3d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": true,
+   "lat": 28.5384,
+   "lon": -81.3789,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 65,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 4,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 66,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 54,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Tampa, FL"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 65,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.69,
+   "rankNo": 13,
+   "position": 15
+  },
+  {
+   "id": "JOB-0237",
+   "title": "Sr. Manager, Launch",
+   "company": "Halcyon Mobility",
+   "location": "Knoxville, TN",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 185,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 64,
+   "age": "7d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 35.9606,
+   "lon": -83.9207,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 64,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 64,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 99,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Cleveland, TN"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · launch"
+    },
+    "title": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.67,
+   "rankNo": 16,
+   "position": 16
+  },
+  {
+   "id": "JOB-0222",
+   "title": "Plant Manager",
+   "company": "Westbrook Glass",
+   "location": "Dalton, GA",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 180,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 59,
+   "age": "8d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.7698,
+   "lon": -84.9702,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 61,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 59,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 100,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Cleveland, TN"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · plant"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.61,
+   "rankNo": 17,
+   "position": 17
+  },
+  {
+   "id": "JOB-0244",
+   "title": "Director, Quality & Ops",
+   "company": "Larkspur Devices",
+   "location": "Lexington, KY",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 210,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 61,
+   "age": "6d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": true,
+   "lat": 38.0406,
+   "lon": -84.5037,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 61,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 61,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 20,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 60,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Columbus, OH"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · quality"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.61,
+   "rankNo": 17,
+   "position": 18
+  },
+  {
+   "id": "JOB-0314",
+   "title": "Director, Ops Strategy",
+   "company": "Harbor Point Rail",
+   "location": "Atlanta, GA",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 215,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 70,
+   "age": "2d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 33.749,
+   "lon": -84.388,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 61,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 3,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 70,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 25,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Atlanta, GA"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "UPPER",
+   "rank": 0.61,
+   "rankNo": 17,
+   "position": 19
+  },
+  {
+   "id": "JOB-0229",
+   "title": "Head of Industrialization",
+   "company": "Stonebridge Energy",
+   "location": "Birmingham, AL",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 235,
+   "flex": "Unknown",
+   "flexClass": "UNKNOWN",
+   "expFit": 69,
+   "age": "8d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": true,
+   "lat": 33.5207,
+   "lon": -86.8025,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 60,
+   "hold": false,
+   "coverage": 70,
+   "flexInfluence": 0,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 69,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 45,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Birmingham, AL"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · industrialization"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 50,
+     "known": false,
+     "weight": 30,
+     "basis": "UNKNOWN · +0 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.57,
+   "rankNo": 20,
+   "position": 20
+  },
+  {
+   "id": "JOB-0303",
+   "title": "Director, Industrial Ops",
+   "company": "Graniteworks",
+   "location": "Louisville, KY",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 215,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 67,
+   "age": "2d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 38.2527,
+   "lon": -85.7585,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 60,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 4,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 67,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 25,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 77,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Nashville, TN"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.57,
+   "rankNo": 20,
+   "position": 21
+  },
+  {
+   "id": "JOB-0219",
+   "title": "Director, Assembly Ops",
+   "company": "Juniper Drive",
+   "location": "Cleveland, TN",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 205,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 63,
+   "age": "9d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 35.1595,
+   "lon": -84.8766,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 59,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 3,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 63,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 15,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 100,
+     "known": true,
+     "weight": 10,
+     "basis": "Cleveland, TN hard override"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.55,
+   "rankNo": 22,
+   "position": 22
+  },
+  {
+   "id": "JOB-0251",
+   "title": "Operations Director",
+   "company": "Redfern Castings",
+   "location": "Jackson, MS",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 195,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 58,
+   "age": "6d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 32.2988,
+   "lon": -90.1848,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 58,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 58,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 5,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 62,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Memphis, TN"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.53,
+   "rankNo": 23,
+   "position": 23
+  },
+  {
+   "id": "JOB-0194",
+   "title": "Plant Leader",
+   "company": "Mossy Oak Mills",
+   "location": "Montgomery, AL",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 175,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 55,
+   "age": "12d",
+   "writeState": "FAILED",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 32.3792,
+   "lon": -86.3077,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 57,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 55,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Birmingham, AL"
+    },
+    "ats": {
+     "score": 46,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · plant, leader"
+    },
+    "title": {
+     "score": 45,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.49,
+   "rankNo": 24,
+   "position": 24
+  },
+  {
+   "id": "JOB-0208",
+   "title": "Head of Plant Ops",
+   "company": "Fairmont Composites",
+   "location": "Charlotte, NC",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 210,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 60,
+   "age": "10d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 35.2271,
+   "lon": -80.8431,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 57,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 3,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 60,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 20,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Charlotte, NC"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · plant"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.49,
+   "rankNo": 24,
+   "position": 25
+  },
+  {
+   "id": "JOB-0215",
+   "title": "GM, Manufacturing",
+   "company": "Ravenwood Steel",
+   "location": "Memphis, TN",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 230,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 57,
+   "age": "9d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 35.1495,
+   "lon": -90.049,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 56,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 57,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 40,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 10,
+     "known": true,
+     "weight": 10,
+     "basis": "Memphis, TN"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · manufacturing"
+    },
+    "title": {
+     "score": 65,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.39,
+   "rankNo": 26,
+   "position": 26
+  },
+  {
+   "id": "JOB-0241",
+   "title": "Plant Director",
+   "company": "Copperline Foods",
+   "location": "Chattanooga, TN",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 200,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 56,
+   "age": "7d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 35.0456,
+   "lon": -85.3097,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 56,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 3,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 56,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 10,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 100,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Cleveland, TN"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · plant"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.39,
+   "rankNo": 26,
+   "position": 27
+  },
+  {
+   "id": "JOB-0266",
+   "title": "Ops Manager, Plant 2",
+   "company": "Fernhill Paper",
+   "location": "Montgomery, AL",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 140,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 50,
+   "age": "4d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 32.3792,
+   "lon": -86.3077,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 56,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 50,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Birmingham, AL"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · plant"
+    },
+    "title": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.39,
+   "rankNo": 26,
+   "position": 28
+  },
+  {
+   "id": "JOB-0328",
+   "title": "Ops Director, Assembly",
+   "company": "Sablewood Manufacturing",
+   "location": "Cleveland, TN",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 195,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 41,
+   "age": "1d",
+   "writeState": "",
+   "changed": "+2",
+   "staleEvidence": false,
+   "lat": 35.1595,
+   "lon": -84.8766,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 56,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 41,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 5,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 100,
+     "known": true,
+     "weight": 10,
+     "basis": "Cleveland, TN hard override"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · manufacturing"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.39,
+   "rankNo": 26,
+   "position": 29
+  },
+  {
+   "id": "JOB-0331",
+   "title": "Director, Supply & Mfg",
+   "company": "Meridian Freight",
+   "location": "Tampa, FL",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 230,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 44,
+   "age": "1d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 27.9506,
+   "lon": -82.4572,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 56,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 3,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 44,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 45,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Tampa, FL hard override"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.39,
+   "rankNo": 26,
+   "position": 30
+  },
+  {
+   "id": "JOB-0270",
+   "title": "Head of Production",
+   "company": "Wexley Industries",
+   "location": "Chicago, IL",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 270,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 81,
+   "age": "4d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 41.8781,
+   "lon": -87.6298,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 55,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 81,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 75,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 0,
+     "known": true,
+     "weight": 10,
+     "basis": "Chicago, IL hard override"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · production"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.35,
+   "rankNo": 31,
+   "position": 31
+  },
+  {
+   "id": "JOB-0371",
+   "title": "Director of Operations",
+   "company": "Kestrel Microgrid",
+   "location": "Remote (US)",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 235,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 53,
+   "age": "9h",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": null,
+   "lon": null,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 55,
+   "hold": false,
+   "coverage": 90,
+   "flexInfluence": 3,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 53,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 45,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": null,
+     "known": false,
+     "weight": 10,
+     "basis": "Location not geocoded"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.35,
+   "rankNo": 31,
+   "position": 32
+  },
+  {
+   "id": "JOB-0262",
+   "title": "Dir., Operations",
+   "company": "Cindercone Labs",
+   "location": "New York, NY",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 290,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 78,
+   "age": "5d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 40.7128,
+   "lon": -74.006,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 54,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 4,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 78,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 19,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 0,
+     "known": true,
+     "weight": 10,
+     "basis": "New York, NY hard override"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 65,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.33,
+   "rankNo": 33,
+   "position": 33
+  },
+  {
+   "id": "JOB-0281",
+   "title": "Dir., Mfg Engineering",
+   "company": "Bluefin Hydraulics",
+   "location": "Columbus, OH",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 215,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 64,
+   "age": "3d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 39.9612,
+   "lon": -82.9988,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 53,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 4,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 64,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 25,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 40,
+     "known": true,
+     "weight": 10,
+     "basis": "Columbus, OH"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 45,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.27,
+   "rankNo": 34,
+   "position": 34
+  },
+  {
+   "id": "JOB-0336",
+   "title": "Sr. Mgr., Mfg Excellence",
+   "company": "Vantage Additive",
+   "location": "Raleigh, NC",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 198,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 46,
+   "age": "1d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 35.7796,
+   "lon": -78.6382,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 53,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 46,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 8,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 70,
+     "known": true,
+     "weight": 10,
+     "basis": "Raleigh, NC"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 45,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.27,
+   "rankNo": 34,
+   "position": 35
+  },
+  {
+   "id": "JOB-0342",
+   "title": "Dir., Factory Engineering",
+   "company": "Quarry Fabrication",
+   "location": "Charlotte, NC",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 225,
+   "flex": "Soft flex",
+   "flexClass": "SOFT_FLEX",
+   "expFit": 49,
+   "age": "1d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 35.2271,
+   "lon": -80.8431,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 53,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 3,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 49,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 35,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Charlotte, NC"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 45,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 62,
+     "known": true,
+     "weight": 30,
+     "basis": "SOFT_FLEX · +6 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.27,
+   "rankNo": 34,
+   "position": 36
+  },
+  {
+   "id": "JOB-0248",
+   "title": "VP Manufacturing",
+   "company": "Northgate Power",
+   "location": "Detroit, MI",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 285,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 72,
+   "age": "6d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 42.3314,
+   "lon": -83.0458,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 52,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 72,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 64,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 5,
+     "known": true,
+     "weight": 10,
+     "basis": "Detroit, MI"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · manufacturing"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.22,
+   "rankNo": 37,
+   "position": 37
+  },
+  {
+   "id": "JOB-0292",
+   "title": "Ops Manager, Machining",
+   "company": "Orbital Tooling",
+   "location": "Memphis, TN",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 170,
+   "flex": "High flex",
+   "flexClass": "HIGH_FLEX",
+   "expFit": 60,
+   "age": "2d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 35.1495,
+   "lon": -90.049,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 52,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": 9,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 60,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 10,
+     "known": true,
+     "weight": 10,
+     "basis": "Memphis, TN"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · tooling"
+    },
+    "title": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 80,
+     "known": true,
+     "weight": 30,
+     "basis": "HIGH_FLEX · +15 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.22,
+   "rankNo": 37,
+   "position": 38
+  },
+  {
+   "id": "JOB-0311",
+   "title": "Plant Operations Lead",
+   "company": "Elmstead Polymers",
+   "location": "Dalton, GA",
+   "bucket": "DISCOVERY_LEAD",
+   "bucketLabel": "Discovery lead",
+   "baseK": 190,
+   "flex": "Unknown",
+   "flexClass": "UNKNOWN",
+   "expFit": 66,
+   "age": "2d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.7698,
+   "lon": -84.9702,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 51,
+   "hold": false,
+   "coverage": 70,
+   "flexInfluence": 0,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 66,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 100,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Cleveland, TN"
+    },
+    "ats": {
+     "score": 46,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations, plant"
+    },
+    "title": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 50,
+     "known": false,
+     "weight": 30,
+     "basis": "UNKNOWN · +0 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.18,
+   "rankNo": 39,
+   "position": 39
+  },
+  {
+   "id": "JOB-0366",
+   "title": "Sr. Dir., NPI & Scale-up",
+   "company": "Tallgrass Motion",
+   "location": "Atlanta, GA",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 250,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 55,
+   "age": "9h",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": true,
+   "lat": 33.749,
+   "lon": -84.388,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 51,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 55,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 58,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Atlanta, GA"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 45,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "MID",
+   "rank": 0.18,
+   "rankNo": 39,
+   "position": 40
+  },
+  {
+   "id": "JOB-0198",
+   "title": "Director, Mfg Systems",
+   "company": "Cedar Ridge Labs",
+   "location": "Greenville, SC",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 205,
+   "flex": "Unknown",
+   "flexClass": "UNKNOWN",
+   "expFit": 58,
+   "age": "11d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.8526,
+   "lon": -82.394,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 48,
+   "hold": false,
+   "coverage": 70,
+   "flexInfluence": 0,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 58,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 15,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 81,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Charlotte, NC"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 50,
+     "known": false,
+     "weight": 30,
+     "basis": "UNKNOWN · +0 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0.16,
+   "rankNo": 41,
+   "position": 41
+  },
+  {
+   "id": "JOB-0299",
+   "title": "Head of Fulfillment Ops",
+   "company": "Northstar Parcel",
+   "location": "Atlanta, GA",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 200,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 64,
+   "age": "2d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 33.749,
+   "lon": -84.388,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 47,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 64,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 10,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Atlanta, GA"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0.14,
+   "rankNo": 42,
+   "position": 42
+  },
+  {
+   "id": "JOB-0226",
+   "title": "Ops Excellence Director",
+   "company": "Tamarack Systems",
+   "location": "Atlanta, GA",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 215,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 54,
+   "age": "8d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 33.749,
+   "lon": -84.388,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 46,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 54,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 25,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Atlanta, GA"
+    },
+    "ats": {
+     "score": 35,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · No strong keyword overlap"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0.1,
+   "rankNo": 43,
+   "position": 43
+  },
+  {
+   "id": "JOB-0408",
+   "title": "Production Director",
+   "company": "Arclight Energy",
+   "location": "Gulf Shores, AL",
+   "bucket": "SCOUT_INTAKE",
+   "bucketLabel": "Scout intake",
+   "baseK": 205,
+   "flex": "Unknown",
+   "flexClass": "UNKNOWN",
+   "expFit": 48,
+   "age": "3h",
+   "writeState": "",
+   "changed": "NEW",
+   "staleEvidence": true,
+   "lat": 30.246,
+   "lon": -87.7008,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 46,
+   "hold": false,
+   "coverage": 70,
+   "flexInfluence": 0,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 48,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 15,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 100,
+     "known": true,
+     "weight": 10,
+     "basis": "Gulf Shores, AL hard override"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · production"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 50,
+     "known": false,
+     "weight": 30,
+     "basis": "UNKNOWN · +0 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0.1,
+   "rankNo": 43,
+   "position": 44
+  },
+  {
+   "id": "JOB-0285",
+   "title": "Plant Manager",
+   "company": "Kestrel Mfg",
+   "location": "Greenville, SC",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 185,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 58,
+   "age": "3d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.8526,
+   "lon": -82.394,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 44,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 58,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 81,
+     "known": true,
+     "weight": 10,
+     "basis": "Distance-weighted interpolation; nearest Charlotte, NC"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · plant"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0.08,
+   "rankNo": 45,
+   "position": 45
+  },
+  {
+   "id": "JOB-0288",
+   "title": "Director, Production Plan.",
+   "company": "Kitehill Foods",
+   "location": "Remote (US)",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 205,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 62,
+   "age": "3d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": null,
+   "lon": null,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 43,
+   "hold": false,
+   "coverage": 90,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 62,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 15,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": null,
+     "known": false,
+     "weight": 10,
+     "basis": "Location not geocoded"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · production"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0.06,
+   "rankNo": 46,
+   "position": 46
+  },
+  {
+   "id": "JOB-0273",
+   "title": "Operations Lead",
+   "company": "Granger Plastics",
+   "location": "Columbia, SC",
+   "bucket": "SCOUT_INTAKE",
+   "bucketLabel": "Scout intake",
+   "baseK": 150,
+   "flex": "Unknown",
+   "flexClass": "UNKNOWN",
+   "expFit": 52,
+   "age": "4d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.0007,
+   "lon": -81.0348,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 42,
+   "hold": false,
+   "coverage": 70,
+   "flexInfluence": 0,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 52,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Columbia, SC"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 50,
+     "known": false,
+     "weight": 30,
+     "basis": "UNKNOWN · +0 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0.02,
+   "rankNo": 47,
+   "position": 47
+  },
+  {
+   "id": "JOB-0325",
+   "title": "Head of Operations",
+   "company": "Lumen Grid Storage",
+   "location": "Columbia, SC",
+   "bucket": "NEEDS_DECISION",
+   "bucketLabel": "Needs decision",
+   "baseK": 220,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 37,
+   "age": "1d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 34.0007,
+   "lon": -81.0348,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 42,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 37,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 30,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Columbia, SC"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 60,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0.02,
+   "rankNo": 47,
+   "position": 48
+  },
+  {
+   "id": "JOB-0204",
+   "title": "Operations Manager",
+   "company": "Pell City Plastics",
+   "location": "Birmingham, AL",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 160,
+   "flex": "No flex",
+   "flexClass": "NO_FLEX",
+   "expFit": 50,
+   "age": "10d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 33.5207,
+   "lon": -86.8025,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 41,
+   "hold": false,
+   "coverage": 100,
+   "flexInfluence": -6,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 50,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 90,
+     "known": true,
+     "weight": 10,
+     "basis": "Birmingham, AL"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · operations"
+    },
+    "title": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 30,
+     "known": true,
+     "weight": 30,
+     "basis": "NO_FLEX · -10 degree-flex modifier"
+    }
+   },
+   "band": "LOW",
+   "rank": 0,
+   "rankNo": 49,
+   "position": 49
+  },
+  {
+   "id": "JOB-0277",
+   "title": "Production Manager",
+   "company": "Oakridge Cabinetry",
+   "location": "Atlanta, GA",
+   "bucket": "DECLINE_CANDIDATE",
+   "bucketLabel": "Decline candidate",
+   "baseK": 160,
+   "flex": "Strict",
+   "flexClass": "STRICT",
+   "expFit": 55,
+   "age": "3d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": false,
+   "lat": 33.749,
+   "lon": -84.388,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 33,
+   "hold": true,
+   "coverage": 100,
+   "flexInfluence": -15,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 55,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 0,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": 80,
+     "known": true,
+     "weight": 10,
+     "basis": "Atlanta, GA"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · production"
+    },
+    "title": {
+     "score": 75,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 0,
+     "known": true,
+     "weight": 30,
+     "basis": "STRICT · -10 degree-flex modifier"
+    }
+   },
+   "band": "HOLD",
+   "position": 50
+  },
+  {
+   "id": "JOB-0318",
+   "title": "VP Mfg & Quality",
+   "company": "Corvid Marine",
+   "location": "Remote (US)",
+   "bucket": "RESEARCH",
+   "bucketLabel": "Research",
+   "baseK": 265,
+   "flex": "Strict",
+   "flexClass": "STRICT",
+   "expFit": 33,
+   "age": "2d",
+   "writeState": "",
+   "changed": "",
+   "staleEvidence": true,
+   "lat": null,
+   "lon": null,
+   "liveness": "OPEN",
+   "appliedEvidence": null,
+   "score": 31,
+   "hold": true,
+   "coverage": 90,
+   "flexInfluence": -16,
+   "screenGate": "FAIL",
+   "parts": {
+    "experience": {
+     "score": 33,
+     "known": true,
+     "weight": 35,
+     "basis": "Existing role-fit evidence · SCOPE_FIT_RAW"
+    },
+    "compensation": {
+     "score": 71,
+     "known": true,
+     "weight": 15,
+     "basis": "Salary midpoint × state net-value factor; 0 at floor, 50 at target, 100 at ceiling"
+    },
+    "geo": {
+     "score": null,
+     "known": false,
+     "weight": 10,
+     "basis": "Location not geocoded"
+    },
+    "ats": {
+     "score": 40,
+     "known": true,
+     "weight": 0,
+     "basis": "Keyword proxy · quality"
+    },
+    "title": {
+     "score": 90,
+     "known": true,
+     "weight": 5,
+     "basis": "Title level heuristic"
+    },
+    "culture": {
+     "score": 40,
+     "known": true,
+     "weight": 5,
+     "basis": "Explicit culture evidence"
+    },
+    "ownership": {
+     "score": 50,
+     "known": false,
+     "weight": 0,
+     "basis": "No evidence recorded · neutral placeholder"
+    },
+    "flex": {
+     "score": 0,
+     "known": true,
+     "weight": 30,
+     "basis": "STRICT · -10 degree-flex modifier"
+    }
+   },
+   "band": "HOLD",
+   "position": 51
+  }
+ ],
+ "events": [
+  [
+   "23:41",
+   "Scout intake +3 (LinkedIn)"
+  ],
+  [
+   "23:38",
+   "Δ Evidence: Head of Production (Anduril) FLEX HIGH → NO · 77 → 59"
+  ],
+  [
+   "23:22",
+   "✓ Writer confirmed APPLIED #W-2287"
+  ],
+  [
+   "23:19",
+   "◷ Writer lock busy #W-2280 · retried at 8 s · ✓ 11 s"
+  ],
+  [
+   "23:05",
+   "Discovery leads +9"
+  ],
+  [
+   "22:51",
+   "Sources normalized: LINKEDIN → LinkedIn (69)"
+  ]
+ ],
+ "oct15": {
+  "writer": {
+   "state": "LOCK BUSY",
+   "refreshS": 42,
+   "buildPr": 121,
+   "buildCommit": "e7389ed",
+   "deployedAt": "18 Oct 17:38",
+   "buildRev": "REV-017",
+   "buildSubject": "State-write fix: Writer merges explorer state, never overwrites (includes REV-016 tests)",
+   "pageCommit": "e7389ed"
+  },
+  "seenSync": {
+   "state": "OK",
+   "at": "23:41"
+  },
+  "lanes": {
+   "n": 10,
+   "quiet": 0,
+   "unfinished": 0
+  },
+  "receipts": {
+   "wait": {
+    "action": "Pursue",
+    "attempt": 2,
+    "of": 4,
+    "nextS": 15,
+    "waitS": 8
+   },
+   "ok": {
+    "action": "Hold",
+    "readbackS": 3
+   },
+   "fail": {
+    "action": "Hold",
+    "retries": 4
+   }
+  },
+  "selected": {
+   "workMode": "hybrid",
+   "source": "LinkedIn",
+   "computedAt": "23:38",
+   "changeEvidence": "salary posted"
+  },
+  "closed": {
+   "at": "18 Oct",
+   "method": "CLOSED_EMPLOYER_ATS",
+   "provider": "Greenhouse",
+   "checkedAt": "18 Oct 09:12"
+  },
+  "applied": {
+   "at": "16 Oct 2026",
+   "evidence": "EMAIL",
+   "subject": "Thank you for applying – Director, Assembly Operations",
+   "from": "careers@cobaltaero.example",
+   "received": "16 Oct 09:42",
+   "supersededDecision": "Decline",
+   "supersededAt": "15 Oct"
+  }
+ }
+}
