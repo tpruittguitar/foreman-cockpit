@@ -1321,7 +1321,7 @@ function renderWorkspaceHead_(r){var dh=document.querySelector('#drawer .dh');if
   var band=String(sc.band||''),bandCls=band.toLowerCase().replace(/[^a-z]/g,''),wa=p.WORK_ARRANGEMENT||p.REMOTE_HYBRID||'',posted=PipelineParser.parseDate(p.POSTING_DATE),age=posted?Math.max(0,Math.round((Date.now()-posted.getTime())/864e5)):r.dateAdded?Math.max(0,Math.round((Date.now()-r.dateAdded.getTime())/864e5)):null;
   var meta=[esc(r.COMPANY),r.LOCATION?esc(r.LOCATION):'',wa?esc(wa):'',age==null?'':(posted?'Posted ':'Added ')+age+'d'].filter(Boolean).join('<i> · </i>');
   var locked=S.mapMode==='selected'&&mapLocationsForRow_(r).length>0;
-  dh.innerHTML='<div class="d-head"><span class="d-label">◉ JOB DRAWER · '+esc(r.id)+(locked?' · LOCKED ON MAP':'')+'</span><span class="wh-nav"><button id="ws-prev" title="Previous row (K)" aria-label="Previous job" '+(i<=0?'disabled':'')+'>‹</button><button id="ws-next" title="Next row (J)" aria-label="Next job" '+(i<0||i>=rows.length-1?'disabled':'')+'>›</button><button id="d-close" aria-label="Close job">✕</button></span></div><div class="wh-top"><div class="wh-title"><h2 id="d-title"></h2><div class="ws-meta" id="d-meta">'+meta+'</div><div class="sub" id="d-sub"></div></div></div><div class="wh-chips">'+chips+'</div>'+decisionEssentials_(r)+'<div class="wh-actions"><fieldset class="wh-action-group wh-prepare"><legend>Posting and application materials</legend><button id="ws-open" '+(ls.preferred?'':'disabled')+' title="'+esc(ls.preferred||'No usable posting link on this row')+'">Open posting</button><button id="ws-packet" title="Copy a plain-text packet of this row for an AI or a note">Copy packet</button><button id="ws-cover" disabled title="Phase 5 · AI cover-letter drafting waits for Tim\'s decision on the recommendation">Draft cover letter</button></fieldset></div>';
+  dh.innerHTML='<div class="d-head"><span class="d-label">◉ JOB DRAWER · '+esc(r.id)+(locked?' · <span class="nb">LOCKED ON MAP</span>':'')+'</span><span class="wh-nav"><button id="ws-prev" title="Previous row (K)" aria-label="Previous job" '+(i<=0?'disabled':'')+'>‹</button><button id="ws-next" title="Next row (J)" aria-label="Next job" '+(i<0||i>=rows.length-1?'disabled':'')+'>›</button><button id="d-close" aria-label="Close job">✕</button></span></div><div class="wh-top"><div class="wh-title"><h2 id="d-title"></h2><div class="ws-meta" id="d-meta">'+meta+'</div><div class="sub" id="d-sub"></div></div></div><div class="wh-chips">'+chips+'</div>'+decisionEssentials_(r)+'<div class="wh-actions"><fieldset class="wh-action-group wh-prepare"><legend>Posting and application materials</legend><button id="ws-open" '+(ls.preferred?'':'disabled')+' title="'+esc(ls.preferred||'No usable posting link on this row')+'">Open posting</button><button id="ws-packet" title="Copy a plain-text packet of this row for an AI or a note">Copy packet</button><button id="ws-cover" disabled title="Phase 5 · AI cover-letter drafting waits for Tim\'s decision on the recommendation">Draft cover letter</button></fieldset></div>';
   $('d-title').textContent=r.TITLE;$('d-title').title=r.COMPANY+' — '+r.TITLE;
   $('d-close').onclick=function(){$('drawer').classList.remove('on');S.focus=null;render();pushHash()};
   $('ws-prev').onclick=function(){stepFocus_(-1)};$('ws-next').onclick=function(){stepFocus_(1)};
@@ -1550,8 +1550,30 @@ function autoFitRenderedColumns_(){
     var max=c==='OVERALL_RATING'?76:c==='TITLE'?(phone?320:450):c==='COMPANY'?(phone?250:320):(phone?210:275);
     widths[c]=Math.ceil(Math.max(columnMin(c),Math.min(max,width)));
   });
+  S.colNatural={};Object.keys(PANE_FIT_FLOOR_).forEach(function(c){if(widths[c])S.colNatural[c]=widths[c]});
+  fitColumnsToPane_(cols,widths);
   S.pendingTableAutoFit=false;
 }
+/* PE build step 6: in the three-column layout the table pane is ~1110 px wide (golden --pe-col-table 1112). After the
+   content fit, shrink only the long text columns (TITLE, LOCATION, COMPANY), each by the same share of its room
+   above its golden width (192 / 120 / 120), until the table fits its pane; ellipsised names keep the keyboard name tip (BUILD 4).
+   Other columns, Tim's column set and manual resizes are untouched. Stacked layout: no change. */
+var PANE_FIT_FLOOR_={TITLE:192,LOCATION:120,COMPANY:120};
+function fitColumnsToPane_(cols,widths){
+  if(!document.body.classList.contains('pe-three-col')||phoneLayout()||!S.colNatural)return false;
+  var wrap=$('gridwrap'),avail=wrap&&wrap.clientWidth;if(!avail)return false;
+  Object.keys(S.colNatural).forEach(function(c){widths[c]=S.colNatural[c]});   // refit from the content widths, so a wider pane gives the room back
+  function w(c){return Number(widths[c])||columnWidth(c)}
+  var over=cols.reduce(function(n,c){return n+w(c)},0)-avail;if(over<=0)return;
+  var flex=Object.keys(PANE_FIT_FLOOR_).filter(function(c){return cols.indexOf(c)>=0}),slack=flex.reduce(function(n,c){return n+Math.max(0,w(c)-PANE_FIT_FLOOR_[c])},0);
+  if(!slack)return true;var share=Math.min(1,over/slack);   // each column gives the same share of its room above its floor
+  flex.forEach(function(c){var room=Math.max(0,w(c)-PANE_FIT_FLOOR_[c]);widths[c]=Math.floor(w(c)-room*share)});return true;
+}
+/* Pane resizes (layout settle, splitter drag, window resize) refit until Tim resizes a column by hand. */
+function refitColumnsToPane_(){if(S.pendingTableAutoFit||!S.colNatural||S.tab!=='pipeline')return;var widths=columnWidths(),cols=visibleCols();
+  var before=JSON.stringify(Object.keys(S.colNatural).map(function(c){return widths[c]}));
+  if(!fitColumnsToPane_(cols,widths)){Object.keys(S.colNatural).forEach(function(c){widths[c]=S.colNatural[c]})}   // stacked layout: content widths
+  if(JSON.stringify(Object.keys(S.colNatural).map(function(c){return widths[c]}))!==before)applyColumnWidths();}
 
 function columnWidths(){return phoneLayout()?S.colWidthsPhone:S.colWidths}
 function persistColumnWidths(){/* Manual sizing stays authoritative in this session until next load or refresh. */}
@@ -1559,8 +1581,8 @@ function columnMin(c){return c==='NEW'||c==='LINK'?44:60}
 function columnWidth(c){var phone=phoneLayout(),defaults={NEW:phone?44:95,COMPANY:phone?140:180,TITLE:phone?240:285,LINK:48,AGE:64,BUCKET:170,TIM_RULING:155,DISPOSITION:210,LOCATION:185};return Math.max(columnMin(c),Math.min(1200,Number(columnWidths()[c])||defaults[c]||150))}
 function applyColumnWidths(){var grid=$('grid'),cols=visibleCols(),cg=grid.querySelector('colgroup');if(!cg){cg=document.createElement('colgroup');grid.prepend(cg)}cg.innerHTML=cols.map(function(c){return '<col style="width:'+columnWidth(c)+'px">'}).join('');grid.style.width=cols.reduce(function(n,c){return n+columnWidth(c)},0)+'px';grid.querySelectorAll('thead th').forEach(function(th){var h=th.querySelector('.resize-handle');if(h)h.setAttribute('aria-valuenow',columnWidth(th.getAttribute('data-c')))});fixSticky()}
 function enableColumnResize(){$('grid').querySelectorAll('thead th').forEach(function(th){var c=th.getAttribute('data-c');if(!c||th.querySelector('.resize-handle'))return;var h=document.createElement('span');h.className='resize-handle';h.tabIndex=0;h.setAttribute('role','separator');h.setAttribute('aria-orientation','vertical');h.setAttribute('aria-label','Resize '+c+' column');h.setAttribute('aria-valuemin',columnMin(c));h.setAttribute('aria-valuemax','1200');h.setAttribute('aria-valuenow',columnWidth(c));th.appendChild(h);
-  h.onclick=function(e){e.stopPropagation()};h.onkeydown=function(e){if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();e.stopPropagation();columnWidths()[c]=Math.max(columnMin(c),Math.min(1200,columnWidth(c)+(e.key==='ArrowRight'?10:-10)));applyColumnWidths();persistColumnWidths()};
-  h.onpointerdown=function(e){if(e.button!==0)return;e.preventDefault();e.stopPropagation();closePop();var x=e.clientX,w=columnWidth(c);h.setPointerCapture(e.pointerId);document.body.classList.add('resizing');h.onpointermove=function(ev){columnWidths()[c]=Math.max(columnMin(c),Math.min(1200,w+ev.clientX-x));applyColumnWidths()};function done(){h.onpointermove=null;document.body.classList.remove('resizing');persistColumnWidths()}h.onpointerup=done;h.onpointercancel=done;h.onlostpointercapture=done;
+  h.onclick=function(e){e.stopPropagation()};h.onkeydown=function(e){if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();e.stopPropagation();S.colNatural=null;columnWidths()[c]=Math.max(columnMin(c),Math.min(1200,columnWidth(c)+(e.key==='ArrowRight'?10:-10)));applyColumnWidths();persistColumnWidths()};
+  h.onpointerdown=function(e){if(e.button!==0)return;e.preventDefault();e.stopPropagation();closePop();var x=e.clientX,w=columnWidth(c);h.setPointerCapture(e.pointerId);document.body.classList.add('resizing');S.colNatural=null;h.onpointermove=function(ev){columnWidths()[c]=Math.max(columnMin(c),Math.min(1200,w+ev.clientX-x));applyColumnWidths()};function done(){h.onpointermove=null;document.body.classList.remove('resizing');persistColumnWidths()}h.onpointerup=done;h.onpointercancel=done;h.onlostpointercapture=done;
   }})}
 function distinctRows_(){return PipelineParser.distinctRows?PipelineParser.distinctRows(S.rows):S.rows.slice()}
 function bucketLabel(b){return {READY_TO_PURSUE:'Ready',DECLINED_BY_TIM:'Declined by Tim',REJECTED_BY_EMPLOYER:'Employer rejected',TIM_DECISION_REQUIRED:'Tim decision',MANUAL_RESEARCH:'Research',SCOUT_INTAKE:'Scout intake',DISCOVERY_LEAD:'Discovery lead',CLOSED_DEAD:'Closed / dead',INVALID_DISCOVERY:'Invalid'}[b]||b.charAt(0)+b.slice(1).toLowerCase()}
@@ -2623,7 +2645,7 @@ function pushHash(){var o={t:S.tab,p:S.preset,s:S.sort,f:S.filters};if(S.focus)o
 function readHash(){try{if(location.hash.length>1){var o=JSON.parse(decodeURIComponent(location.hash.slice(1)));if(o.t&&$('view-'+o.t))S.tab=o.t;if(o.p&&PRESETS[o.p])S.preset=o.p;if(o.s)S.sort=o.s;if(o.f)S.filters=o.f;if(o.j)S.pendingFocus=String(o.j);if(o.m)S.pendingMap=true}}catch(e){}}
 window.addEventListener('resize',function(){if(S.master)render()});
 PipelineMotion.inviteDivider($('list-map-divider'),LS.get('listMapSplit',null)!==null);
-var paneSplit_=PipelinePaneSplit.create({view:$('view-pipeline'),handle:$('list-map-divider'),load:function(){return LS.get('listMapSplit',null)},save:function(ratio){LS.set('listMapSplit',ratio)},onResize:function(){fitRows_();applyMapView_()}});
+var paneSplit_=PipelinePaneSplit.create({view:$('view-pipeline'),handle:$('list-map-divider'),load:function(axis){return LS.get(axis==='x'?'listMapSplitCols':'listMapSplit',null)},save:function(ratio,axis){LS.set(axis==='x'?'listMapSplitCols':'listMapSplit',ratio)},onResize:function(){refitColumnsToPane_();fitRows_();applyMapView_()}});
 loadBuildInfo_();loadWriterStatus_();
 S.tab='pipeline';readHash();/* Tim 2026-10-18: applied, rejected and dead jobs are not shown on the opening page at the start. */if(S.tab==='pipeline'&&/^(ALL|APPLIED|DECLINED|TERMINAL|TERMINAL_HISTORY|DEAD_POSTINGS)$/.test(S.preset))S.preset='OPEN';LS.set('openDefaultV1',true);switchTab(S.pendingMap?'map':S.tab);
 load();

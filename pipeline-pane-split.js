@@ -1,35 +1,52 @@
-/* Desktop list/map split: device preference, independent of canonical job data. */
+/* Desktop list/map split: device preference, independent of canonical job data.
+   Two arrangements share one handle. Stacked (list over map) splits rows; wide desktops (PE build step 6, PDF p40)
+   put the list, the map and the drawer side by side and the same handle splits columns. Each arrangement keeps its
+   own saved ratio (options.load(axis) / options.save(ratio, axis)). */
 (function(root){
   'use strict';
+  var WIDE='(min-width:2300px) and (min-height:900px)';
+  var DEFAULTS={y:.55,x:1112/1913};   // x: golden table 1112 / (table 1112 + map 801), tokens.css --pe-col-table / --pe-col-map
   function create(options){
-    var view=options.view,handle=options.handle,frame=0,drag=null,preferred=.55;
-    try{var saved=options.load();if(typeof saved==='number'&&isFinite(saved))preferred=Math.max(.25,Math.min(.8,saved));}catch(e){}
-    function active(){return matchMedia('(min-width:981px), (min-width:761px) and (pointer:fine)').matches&&view.classList.contains('on')&&!document.body.classList.contains('map-full');}
-    function geometry(){var table=view.querySelector('#worksplit'),box=view.getBoundingClientRect(),style=getComputedStyle(view);
-      var top=table.getBoundingClientRect().top,total=box.bottom-parseFloat(style.paddingBottom)-top-10;
+    var view=options.view,handle=options.handle,frame=0,drag=null,axis=null,preferred=DEFAULTS.y;
+    function desktop(){return matchMedia('(min-width:981px), (min-width:761px) and (pointer:fine)').matches}
+    function wantAxis(){return desktop()&&matchMedia(WIDE).matches?'x':'y'}
+    function clampSaved(v,a){return typeof v==='number'&&isFinite(v)?Math.max(.2,Math.min(.85,v)):DEFAULTS[a]}
+    function loadAxis(a){var v=null;try{v=options.load(a)}catch(e){}return clampSaved(v,a)}
+    function setAxis(a){if(a===axis)return;axis=a;preferred=loadAxis(a);document.body.classList.toggle('pe-three-col',a==='x');
+      handle.setAttribute('aria-orientation',a==='x'?'vertical':'horizontal');
+      handle.setAttribute('aria-label',a==='x'?'Resize job list and map (side by side)':'Resize job list and map');
+      handle.title=a==='x'?'Drag to resize. Left / right arrow keys adjust; double-click restores the default split.':'Drag to resize. Arrow keys adjust; double-click restores 55% list / 45% map.';}
+    function active(){return desktop()&&view.classList.contains('on')&&!document.body.classList.contains('map-full');}
+    function geometry(){var table=view.querySelector('#worksplit'),tb=table.getBoundingClientRect();
+      if(axis==='x'){var map=view.querySelector('#job-map-card'),mb=map?map.getBoundingClientRect():tb,hw=handle.getBoundingClientRect().width||16;
+        var totalX=Math.max(1,mb.right-tb.left-hw),minX=Math.min(.5,760/totalX),maxX=Math.max(minX,1-480/totalX);   // table >= 760 px, map >= 480 px
+        return {start:tb.left+hw/2,total:totalX,min:Math.max(.2,minX),max:Math.min(.85,maxX)};}
+      var box=view.getBoundingClientRect(),style=getComputedStyle(view);
+      var top=tb.top,total=box.bottom-parseFloat(style.paddingBottom)-top-10;
       var min=.25,max=.8;if(total>=390){min=Math.max(min,160/total);max=Math.min(max,230/total>1?min:1-230/total);}
-      if(max<min){min=.25;max=.8;}return {top:top,total:Math.max(1,total),min:min,max:max};}
-    function apply(){frame=0;if(!active())return;var g=geometry(),ratio=Math.max(g.min,Math.min(g.max,preferred));
+      if(max<min){min=.25;max=.8;}return {start:top,total:Math.max(1,total),min:min,max:max};}
+    function apply(){frame=0;setAxis(wantAxis());if(!active())return;var g=geometry(),ratio=Math.max(g.min,Math.min(g.max,preferred));
       view.style.setProperty('--list-track',ratio+'fr');view.style.setProperty('--map-track',(1-ratio)+'fr');
       var percent=Math.round(ratio*100);handle.setAttribute('aria-valuemin',Math.ceil(g.min*100));handle.setAttribute('aria-valuemax',Math.floor(g.max*100));handle.setAttribute('aria-valuenow',percent);
       handle.setAttribute('aria-valuetext','List '+percent+'%, map '+(100-percent)+'%');handle.dataset.split=percent+'% list / '+(100-percent)+'% map';
       if(options.onResize)options.onResize();}
     function sync(){if(!frame)frame=requestAnimationFrame(apply);}
-    function persist(){try{options.save(preferred);}catch(e){}}
+    function persist(){try{options.save(preferred,axis);}catch(e){}}
     function finish(event,canceled){if(!drag||event&&event.pointerId!==drag.id)return;var id=drag.id;if(canceled)preferred=drag.before;drag=null;
       document.body.classList.remove('pane-resizing');if(handle.hasPointerCapture(id))handle.releasePointerCapture(id);if(!canceled)persist();sync();}
     handle.addEventListener('pointerdown',function(e){if(e.button!==0||!active())return;e.preventDefault();drag={id:e.pointerId,before:preferred};handle.setPointerCapture(e.pointerId);handle.focus({preventScroll:true});document.body.classList.add('pane-resizing');});
-    handle.addEventListener('pointermove',function(e){if(!drag||e.pointerId!==drag.id)return;var g=geometry();preferred=Math.max(g.min,Math.min(g.max,(e.clientY-g.top)/g.total));sync();});
+    handle.addEventListener('pointermove',function(e){if(!drag||e.pointerId!==drag.id)return;var g=geometry(),pos=axis==='x'?e.clientX:e.clientY;preferred=Math.max(g.min,Math.min(g.max,(pos-g.start)/g.total));sync();});
     handle.addEventListener('pointerup',function(e){finish(e,false);});handle.addEventListener('pointercancel',function(e){finish(e,true);});handle.addEventListener('lostpointercapture',function(e){finish(e,true);});
-    handle.addEventListener('dblclick',function(){preferred=.55;persist();sync();});
+    handle.addEventListener('dblclick',function(){preferred=DEFAULTS[axis];persist();sync();});
     handle.addEventListener('keydown',function(e){if(!active())return;var g=geometry(),current=Math.max(g.min,Math.min(g.max,preferred)),step=e.shiftKey ? .05 : .02;
-      if(e.key==='ArrowUp')preferred=Math.max(g.min,current-step);else if(e.key==='ArrowDown')preferred=Math.min(g.max,current+step);else if(e.key==='Home')preferred=g.min;else if(e.key==='End')preferred=g.max;else return;
+      var less=axis==='x'?'ArrowLeft':'ArrowUp',more=axis==='x'?'ArrowRight':'ArrowDown';
+      if(e.key===less)preferred=Math.max(g.min,current-step);else if(e.key===more)preferred=Math.min(g.max,current+step);else if(e.key==='Home')preferred=g.min;else if(e.key==='End')preferred=g.max;else return;
       e.preventDefault();persist();sync();});
     var observer=new ResizeObserver(sync);observer.observe(view);observer.observe(view.querySelector('#worksplit'));
     // Content selections redraw the dashboard; only geometry changes resize the panes.
-    window.addEventListener('resize',sync);sync();return {sync:sync};
+    window.addEventListener('resize',sync);setAxis(wantAxis());sync();return {sync:sync,axis:function(){return axis}};
   }
-  root.PipelinePaneSplit={create:create};
+  root.PipelinePaneSplit={create:create,WIDE:WIDE,DEFAULTS:DEFAULTS};
 })(window);
 
 /* Phase 5 workspace layout foundation.

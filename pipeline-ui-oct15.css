@@ -664,3 +664,32 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
 .st-note { margin: 0 0 8px; font-size: 12px; line-height: 17px; }
 /* COMPANY tier chip (REV-046): full text, wraps, tier in words (L-1). */
 #drawer .pe-chip.co { height: auto; min-height: var(--pe-chip-h); white-space: normal; overflow-wrap: anywhere; line-height: 14px; }
+
+/* 11. PE build step 6 (PDF p40, golden F01/F02): three columns on wide desktops.
+   KPI row full width; below it the job table, the map and the job drawer side by side at the golden proportions
+   (tokens.css --pe-col-table 1112 / --pe-col-map 801 / --pe-col-work 508, 16 px gutters). The list/map handle becomes
+   the 16 px gutter between table and map and splits columns (pipeline-pane-split.js, same query: WIDE).
+   Narrower screens and the phone keep the stacked list-over-map layout unchanged. Presentation only. */
+@media (min-width: 2300px) and (min-height: 900px) {
+  body:not(.map-full) #view-pipeline.on, body:not(.map-full) #view-pipeline.on:has(#drawer.on) {
+    grid-template-columns: minmax(0, var(--list-track, 1112fr)) var(--pe-gutter) minmax(0, var(--map-track, 801fr)) var(--pe-gutter) var(--pe-col-work) !important;
+    grid-template-rows: calc(var(--pe-row-kpi) + 22px) minmax(0, 1fr) !important; column-gap: 0 !important; row-gap: 0 !important; }
+  body:not(.map-full) #view-pipeline.on #queue-head { grid-column: 1 / -1 !important; grid-row: 1 !important; }
+  body:not(.map-full) #view-pipeline.on #worksplit { grid-column: 1 !important; grid-row: 2 !important; }
+  body:not(.map-full) #view-pipeline.on #list-map-divider { grid-column: 2 !important; grid-row: 2 !important; cursor: col-resize;
+    border: 0 !important; background: transparent; }
+  body:not(.map-full) #view-pipeline.on #list-map-divider span { width: 3px; height: 56px; }
+  body:not(.map-full) #view-pipeline.on #list-map-divider:hover span, body:not(.map-full) #view-pipeline.on #list-map-divider:focus-visible span,
+  body.pane-resizing:not(.map-full) #view-pipeline.on #list-map-divider span { width: 3px; height: 84px; }
+  body:not(.map-full) #view-pipeline.on #list-map-divider:hover::after, body:not(.map-full) #view-pipeline.on #list-map-divider:focus-visible::after { right: auto; left: 50%; transform: translateX(-50%); white-space: nowrap; }
+  body:not(.map-full) #view-pipeline.on #job-map-card { grid-column: 3 !important; grid-row: 2 !important; margin-top: 0 !important; }
+  body:not(.map-full) #view-pipeline.on #drawer { grid-column: 5 !important; grid-row: 2 !important; padding-left: 4px !important; padding-right: 4px !important; }
+  /* 508 px column: content 474 px (golden drawer content ~476), so the decision row (132 + 103 + 102 + divider + 92) stays one line. */
+  /* The taller, narrower drawer pushes the decision row below the fold on long jobs; it sticks to the bottom of the
+     drawer's scroll area until its own place scrolls into view, so Pursue / Hold / Research / Decline stay reachable. */
+  /* Long job IDs: the drawer label wraps instead of hiding "LOCKED ON MAP" behind an ellipsis (L-1, no hidden meaning). */
+  body:not(.map-full) #view-pipeline.on #drawer .d-label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 16px; }
+  #drawer .d-label .nb { white-space: nowrap; }
+  body:not(.map-full) #view-pipeline.on #drawer #d-body .wh-decide { position: sticky; bottom: 0; z-index: 2; background: var(--pe-hull);
+    padding: 8px 0 !important; box-shadow: 0 -1px 0 var(--pe-seam); }
+}

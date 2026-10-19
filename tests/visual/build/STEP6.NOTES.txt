@@ -1,0 +1,57 @@
+PE BUILD STEP 6 · REV-049 · three-column desktop layout (PDF p40, golden F01 / F02)
+Branch backup/claude-20261019-0915ET · Claude · 2026-10-19
+
+WHAT
+- Wide desktops (viewport >= 2300 x 900 CSS px; Tim's 2560 x 1440 at 100 %, D-9) now use the p40 composition:
+  KPI row full width; below it the job table | 16 px splitter | map | 16 px gutter | job drawer, all the same height.
+  Columns from tokens.css: --pe-col-table 1112 : --pe-col-map 801 (table share 58 %), --pe-col-work 508, --pe-gutter 16.
+- The list/map handle (#list-map-divider) is the splitter between table and map in this layout: vertical, drag left /
+  right, Left / Right arrow keys (Shift = 5 %), Home / End, double-click restores 58 %. The ratio is saved per device under
+  px.listMapSplitCols, separate from the stacked ratio (px.listMapSplit), so neither layout overwrites the other.
+  Limits: table >= 760 px, map >= 480 px.
+- Table fit: after the usual content fit, TITLE, LOCATION and COMPANY each give the same share of their room above the
+  golden widths (192 / 120 / 120) until the table fits its pane. It refits on every pane resize (splitter, window) until
+  Tim resizes a column by hand; a wider pane gives the room back (3440 px: content widths). Other columns and the column
+  set (D-4: Tim's saved columns) are untouched. Ellipsised names keep the keyboard name tip (BUILD 4).
+- Drawer at 508 px: side padding 4 px (content 474 px; golden content ~476), so the decision row
+  (Pursue 132 · Hold 103 · Research 102 · divider · Decline 92) stays on one line. On long jobs the decision row sticks to the
+  bottom of the drawer body until its own place scrolls into view, so it never hides under the materials footer.
+  The drawer label wraps on long job IDs and keeps "LOCKED ON MAP" together (no ellipsis; L-1 no hidden meaning).
+- Narrower desktops (2048 x 1152, 1707 x 960, 1440 x 900, laptops) and the phone keep the stacked list-over-map layout
+  exactly as before (verified: same grid tracks, horizontal splitter at 55 %, no three-column class).
+- Presentation only. No job data, Writer, scoring, rules or master changes.
+
+MEASURED (2560 x 1440, fixture, ?src=writer)
+  grid columns   1106.8 | 16 | 797.2 | 16 | 508   (golden 1112 | 16 | 801 | 16 | 508; the live rail is 96 px wide vs golden
+                 56 + 12, so the two flexible columns are 5 / 4 px narrower at the same 58 : 42 split)
+  rows           KPI 118 | main 1177 (map canvas now full height; was 525 under the table)
+  table          1104 in a 1105 pane, no horizontal scroll (was 1362 in 1579 before; TITLE 422 -> 268, LOCATION 275 -> 171)
+  drawer         decision row one line at y 1190, inside the drawer body; no clipped text in the drawer
+  page errors    none
+
+FILES
+  pipeline-pane-split.js    one handle, two axes (WIDE query shared with the CSS), per-axis saved ratio and defaults
+  pipeline-ui-oct15.css §11 three-column grid, splitter look, drawer padding, sticky decision row, label wrap
+  pipeline.html             split storage keys per axis; table fit to pane (fitColumnsToPane_ / refitColumnsToPane_);
+                            "LOCKED ON MAP" kept on one line
+  tests/three-col.browser.js  new: geometry, splitter drag / keys / dblclick / storage, table fit and refit, decision row,
+                            label, 3440 give-back, 2048 and 1440 stacked, phone
+  tests/pr70.browser.js     2560 splitter expectations follow the new axis (spec change)
+  tests/visual/build/STEP6_*.png  F01 empty and F02 selected at 2560 x 1440, stacked at 2048 x 1152
+
+TESTS
+  npm test 576 / 576. three-col, map-hud, map-popup, needs-tim, pay-worth, rail, system-panel, workspace-layout browser
+  tests pass. motion / progress / incidents / derived-refresh / scoring-publish / master-load / mobile / map / ui / pr70
+  stop at the same pre-existing lines on main in this sandbox (first-load timeouts), before any layout check.
+
+FOR GROK BOT (rulings asked; Claude's choice in brackets)
+Q6-a Breakpoint: three columns at >= 2300 x 900 CSS px. Below that the table would drop under ~950 px and the golden
+     column set no longer fits. [2300 x 900]
+Q6-b The sticky decision row is not in the golden (F02's drawer fits without scrolling because its job is short).
+     Keep it, or let the row scroll with the drawer body. [keep]
+Q6-c Map in the tall column: the HUD band stays one 44 px row (Q-c, step 5). The canvas is now 1177 px tall, so the
+     golden two-row 84 px band would fit; that is the HUD / motion step. [next step]
+Q6-d Materials footer (Open posting · Copy packet · Draft cover letter) wraps to two rows at 474 px. Not in the golden.
+     [leave; one row needs buttons under 152 px]
+NOT IN THIS STEP: D-3 Δ since last review (needs a stored prior score), the SINCE YOUR LAST REVIEW strip, the pipeline
+  events ticker, the two-row HUD band.

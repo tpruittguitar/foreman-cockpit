@@ -74,17 +74,19 @@ async function main() {
         const divider = page.locator('#list-map-divider');
         await divider.waitFor({state:'visible'});
         await page.waitForTimeout(150);
-        assert.equal(await divider.getAttribute('aria-valuenow'),'55');
+        // PE build step 6: at 2560 x 1440 the list, map and drawer sit side by side; the handle splits columns (default 58 = 1112 / 1913).
+        assert.equal(await divider.getAttribute('aria-orientation'),'vertical');
+        assert.equal(await divider.getAttribute('aria-valuenow'),'58');
         const before = await page.locator('#worksplit').boundingBox();
         const handle = await divider.boundingBox();
         await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);
         await page.mouse.down();
-        await page.mouse.move(handle.x+handle.width/2,handle.y-140,{steps:12});
+        await page.mouse.move(handle.x+handle.width/2-140,handle.y+handle.height/2,{steps:12});
         await page.mouse.up();
         await page.waitForTimeout(200);
-        assert((await page.locator('#worksplit').boundingBox()).height < before.height-100);
-        const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('px.listMapSplit')));
-        assert(saved < .55 && saved > .25);
+        assert((await page.locator('#worksplit').boundingBox()).width < before.width-100);
+        const saved = await page.evaluate(()=>JSON.parse(localStorage.getItem('px.listMapSplitCols')));
+        assert(saved < .5813 && saved > .2);
         await page.screenshot({path:out+'/preview-adjusted-split-2560.png'});
         await page.reload();
         await page.waitForSelector('#grid tbody tr[data-id]');
@@ -92,12 +94,12 @@ async function main() {
         await page.waitForTimeout(200);
         assert.equal(await divider.getAttribute('aria-valuenow'),String(Math.round(saved*100)));
         await divider.focus();
-        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowRight');
         await page.waitForTimeout(100);
         assert.equal(await divider.getAttribute('aria-valuenow'),String(Math.round((saved+.02)*100)));
         await divider.dblclick();
         await page.waitForTimeout(150);
-        assert.equal(await divider.getAttribute('aria-valuenow'),'55');
+        assert.equal(await divider.getAttribute('aria-valuenow'),'58');
         await page.locator('#grid tbody tr[data-id]').first().click();
         await page.mouse.move(700,450);
       }
