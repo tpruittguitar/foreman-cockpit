@@ -59,10 +59,11 @@
   function flexScore(f){var cls=f&&f.class||'UNKNOWN';if(cls==='HIGH_FLEX')return 80;if(cls==='SOFT_FLEX')return 62;if(cls==='NO_FLEX')return 30;if(cls==='STRICT')return 0;return 50}
   function band(s){return s==null?'UNKNOWN':s>=90?'PRIORITY':s>=75?'STRONG':s>=60?'WATCH':s>=40?'WEAK':'NO-GO'}
   /* Culture / company preference. Explicit CULTURE_SCORE evidence wins. Otherwise Tim's Target Companies list
-   * (canonical rules, SECTION=TARGET_COMPANIES) scores the employer: P1 100, P2 90, P3 75, WATCH 60. A named employer
+   * (canonical rules, SECTION=TARGET_COMPANIES) scores the employer: DREAM 100, P1 90, P2 80, P3 70, WATCH 60 (Tim 2026-10-19 02:43 ET,
+   * REV-040: DREAM sits above P1 so a dream company ranks above an otherwise equal job). A named employer
    * that is not on the list, or is PAUSED, scores 40. A recruiter posting with a hidden or confidential client is
    * UNKNOWN, because the real employer may be on the list. */
-  var TARGET_TIER={P1:100,P2:90,P3:75,WATCH:60};
+  var TARGET_TIER={DREAM:100,P1:90,P2:80,P3:70,WATCH:60};
   function companyKey(v){return String(v||'').toLowerCase().replace(/\([^)]*\)/g,' ').replace(/&/g,' and ').replace(/[^a-z0-9]+/g,' ').replace(/\b(inc|llc|corp|corporation|co|ltd|limited|plc|gmbh|the)\b/g,' ').replace(/\s+/g,' ').trim()}
   function targetCompaniesFromRules(text){var m=String(text||'').match(/(?:^|\n)SECTION=TARGET_COMPANIES\s*\n([\s\S]*?)(?=\nSECTION=|\nEND TIM_PIPELINE_RULES_CANONICAL|$)/),out=[];if(!m)return out;m[1].split(/\r?\n/).forEach(function(line){var x=line.match(/^TARGET_COMPANY=(\{.*\})\s*$/);if(!x)return;try{var c=JSON.parse(x[1]);if(c&&c.company)out.push({company:String(c.company),aliases:Array.isArray(c.aliases)?c.aliases.map(String):String(c.aliases||'').split(',').map(function(a){return a.trim()}).filter(Boolean),priority:String(c.priority||'WATCH').toUpperCase()})}catch(e){}});return out}
   function targetMatch(company,list){var k=companyKey(company);if(!k||!list||!list.length)return null;for(var i=0;i<list.length;i++){var keys=[list[i].company].concat(list[i].aliases||[]).map(companyKey).filter(Boolean);for(var j=0;j<keys.length;j++){if(k===keys[j]||k.indexOf(keys[j]+' ')===0)return list[i]}}return null}
