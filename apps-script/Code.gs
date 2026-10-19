@@ -1879,19 +1879,21 @@ var SCORE_OUTPUT_KEYS = ['OVERALL', 'GEO', 'NET_COMP', 'OVERALL_RATING', 'EXPERI
    falls back to a geo point with the same name, the city table, then the state centre). */
 function writerGeocode_(location, P, input, set) {
   var loc = String(location || P.LOCATION || '').trim();
-  if (!loc || (P.LATITUDE && P.LONGITUDE) || /\bremote\b|\/|;|\||\s+or\s+/i.test(loc) || typeof Maps === 'undefined') return null;
+  if (!loc || (P.LATITUDE && P.LONGITUDE) || P.GEOCODE_STATUS || /\bremote\b|\/|;|\||\s+or\s+/i.test(loc) || typeof Maps === 'undefined') return null;
   try {
     var key = 'geo1:' + loc.toLowerCase().replace(/\s+/g, ' ').slice(0, 200), cache = typeof CacheService !== 'undefined' ? CacheService.getScriptCache() : null, hit = cache && cache.get(key), ll = hit ? JSON.parse(hit) : null;
     if (!ll) {
       var res = Maps.newGeocoder().setRegion('us').geocode(loc), top = res && res.status === 'OK' && res.results && res.results[0];
-      if (!top) return null;
-      var us = (top.address_components || []).some(function (c) { return (c.types || []).indexOf('country') >= 0 && c.short_name === 'US'; });
-      if (!us) return null;
+      var us = top && (top.address_components || []).some(function (c) { return (c.types || []).indexOf('country') >= 0 && c.short_name === 'US'; });
+      if (!us) {   // REV-039: a definite miss is recorded once, so the backfill does not ask again; quota or service errors are not recorded
+        if (res && (res.status === 'ZERO_RESULTS' || res.status === 'OK')) { set('GEOCODE_STATUS', 'NOT_FOUND'); set('GEOCODE_ASOF', Utilities.formatDate(new Date(), 'America/New_York', 'yyyy-MM-dd')); }
+        return null;
+      }
       ll = { lat: Math.round(top.geometry.location.lat * 1e5) / 1e5, lon: Math.round(top.geometry.location.lng * 1e5) / 1e5 };
       if (cache) cache.put(key, JSON.stringify(ll), 21600);
     }
     var asof = Utilities.formatDate(new Date(), 'America/New_York', 'yyyy-MM-dd');
-    set('LATITUDE', String(ll.lat)); set('LONGITUDE', String(ll.lon)); set('GEOCODE_SOURCE', 'WRITER_APPS_SCRIPT_MAPS'); set('GEOCODE_ASOF', asof);
+    set('LATITUDE', String(ll.lat)); set('LONGITUDE', String(ll.lon)); set('GEOCODE_SOURCE', 'WRITER_APPS_SCRIPT_MAPS'); set('GEOCODE_STATUS', 'OK'); set('GEOCODE_ASOF', asof);
     input.LATITUDE = String(ll.lat); input.LONGITUDE = String(ll.lon);
     return ll;
   } catch (e) { return null; }
