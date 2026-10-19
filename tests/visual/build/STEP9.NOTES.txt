@@ -1,0 +1,61 @@
+PE BUILD STEP 9 · REV-053 · D-3 / HF-10: score change since Tim's last review
+Branch backup/claude-20261019-1105ET · Claude · 2026-10-19 · Tim 11:0x ET: keep it in the Writer (same on every device)
+
+WHAT
+- A review record is what Tim saw when he last opened (or marked seen) a job: overall score, the 8 part scores (-1 =
+  unknown), the company boost and the published model revision, with the time. It is written on open / Mark seen,
+  only once the published scoring model has loaded (a default-model score is never stored as "what Tim saw").
+- Stored in PIPELINE_EXPLORER_STATE.json under "reviewed" next to the seen marks. Writer merge (StateMerge.gs) and
+  browser merge (pipeline-review.js) follow one rule, tested against each other: union by job id; a real review always
+  beats a baseline; otherwise the larger time wins (a tie keeps the stored one); never removed; malformed records dropped.
+  The browser sends only records changed since the last good send, and re-sends anything the Writer does not hold
+  (covers the time before the Writer deploy and any failed send).
+- Baseline once per device: jobs already seen get a record at their seen time marked bl, so later score changes show
+  without opening every job again. Baselines never count as "your last review" and never replace a real review.
+- Table: SCORE cell adds ▲n / ▼n (glyph carries direction, L-1) when the score moved since the last review; hover shows
+  "+n since you opened it <time> · <cause>". New (never seen) jobs show no mark. SCORE column cap 76 -> 112 px (golden
+  --pe-col-score).
+- Drawer: under the band line, "▲ +n since you last opened it <time> · <cause>" ("since baseline" for baselines,
+  "No change", or "First review of this job"), computed before the open records the new review.
+- Causes, all computed from the two score objects (L-2): parts whose score moved, largest weighted move first (top 2),
+  then a company boost change and a scoring model revision change.
+- Strip under the KPI row (golden row 6, 40 px + 12 gap; desktop; phone later with Track M):
+  SINCE YOUR LAST REVIEW · <time of the last real review before this session> │ Δ n new │ Δ n score changes (▲u ▼d) ·
+  e.g. <largest change's cause> │ ⊗ n write failed │ ◷ n waiting for the Writer. Each non-zero item filters the queue.
+  The time is fixed for the session once the Writer's records are in.
+- Writer: StateMerge.gs merges "reviewed"; writeState_ reports the reviewed count. Needs a Writer deploy (DEPLOY_PR).
+  Until then the old Writer drops "reviewed" harmlessly; each device keeps its records and re-sends after the deploy.
+
+MEASURED (2560 x 1440, fixture, mocked Writer with a published model rev 26)
+  Writer record for V2X-A4CCD49EE686 at s 33 / rev 25, current 40: table "40 ▲7"; strip "Δ 1 score change (▲1 ▼0) · e.g.
+  Degree FLEX 90 → unknown · scoring model rev 25 → 26"; strip item filters the queue to that job; drawer "▲ +7 since you
+  last opened it Oct 18 11:19 · Degree FLEX 90 → unknown · Experience fit 30 → 46 · scoring model rev 25 → 26"; opening
+  sends reviewed{s 40, rev 26, 8 parts} and clears the mark; the strip time stays Oct 18.
+  Baseline: all 21 seen fixture jobs get bl records at their seen time, sent once; reload does not re-baseline.
+  No published model: no records, strip "score changes · waiting for the published scoring model".
+
+FILES
+  pipeline-review.js (new)          records, merge rule, delta + causes, strip summary
+  apps-script/StateMerge.gs, Code.gs  Writer merge of "reviewed"; reviewed count in the write result
+  pipeline.html                     record on open / Mark seen, baseline, sync up (dirty only) / down (merge + re-send),
+                                    score mark, drawer line, strip + filters, SCORE column cap
+  pipeline-ui-oct15.css §12         strip, marks, head row height (--pe-head-h)
+  tests/review-delta.test.js, tests/state-merge-reviewed.test.js, tests/review-delta.browser.js (new)
+  tests/state-write.test.js, tests/compact-score-column.test.js  source patterns follow the new sync / column cap
+  tests/visual/build/STEP9_D3_since_review_2560x1440.png, STEP9_D3_opened_2560x1440.png
+
+TESTS
+  npm test 590 / 590. review-delta, three-col, map-hud, map-popup, rail, workspace-layout, needs-tim, pay-worth,
+  system-panel browser tests pass.
+
+FOR GROK BOT (rulings asked; Claude's choice in brackets)
+Q9-a "Last review" per job = the last time Tim opened it or marked it seen. [yes]
+Q9-b One-time baseline from existing seen marks so changes show from today. [yes]
+Q9-c Strip on the desktop only for now; phone strip with Track M (HF-13). [desktop only]
+Q9-d The golden strip's "185 provisional" item and the right-hand "MAP SHOWS" note are not built. [leave out]
+
+GROK BOT LOOK QA (12:08 ET, head 0b18885): no drift, one nit, applied:
+  Change strip · items were 14 px · now --pe-fs-small (13 px) per tokens · F02 row 6 (strip box and items).
+  Browser test checks the four strip items compute to 13 px. Screens re-rendered.
+  Rulings: Q9-a yes (last open or Mark seen) · Q9-b yes (one-time baseline) · Q9-c yes (desktop only for now) ·
+  Q9-d yes (no "provisional" item, no MAP SHOWS note).

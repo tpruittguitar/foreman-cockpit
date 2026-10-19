@@ -6,10 +6,26 @@
  *  - seen: union by job id, keep the larger timestamp; nothing is ever removed.
  *  - incidents (kind 'event'): union by id, never removed. Only ACTIVE may move, and only to a known status;
  *    an acknowledged incident never changes from incoming data (Tim D-4: per-device recovery does not clear it).
+ *  - reviewed (D-3, REV-053): the score Tim saw when he last opened a job, {s, t, p, b, r, bl}; union by job id; a real
+ *    review (no bl) always beats a baseline (bl), otherwise the larger t wins (a tie keeps the stored record); never
+ *    removed; malformed records (s outside 0..100, no t) are dropped.
+ *    Same rule as pipeline-review.js merge(); tests/state-merge-reviewed.test.js holds both to it.
  *  - no readable stored state: refuse (throw); never treat it as empty.
  * Pure ES5, no I/O. Deployed as a .gs file (apps-script/deploy.sh pushes *.gs); stateMerge.js re-exports it for Node. */
 var STATE_MERGE_KNOWN_STATUS_ = { ACTIVE: 1, ACKNOWLEDGED: 1, ACKNOWLEDGED_UNRESOLVED: 1, RECOVERED: 1 };
 function stateMergeIsObject_(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+function stateMergeNum_(v) { v = Number(v); return isFinite(v) ? v : null; }
+function stateMergeReviewRec_(r) {
+  if (!stateMergeIsObject_(r)) return null;
+  var s = stateMergeNum_(r.s), t = stateMergeNum_(r.t);
+  if (s == null || s < 0 || s > 100 || t == null || t <= 0) return null;
+  var o = { s: Math.round(s), t: Math.round(t) };
+  if (Array.isArray(r.p) && r.p.length === 8) o.p = r.p.map(function (v) { v = stateMergeNum_(v); return v == null || v < 0 ? -1 : Math.max(0, Math.min(100, Math.round(v))); });
+  if (stateMergeNum_(r.b) != null) o.b = Math.max(0, Math.min(30, Math.round(stateMergeNum_(r.b))));
+  if (stateMergeNum_(r.r) != null && stateMergeNum_(r.r) >= 0) o.r = Math.round(stateMergeNum_(r.r));
+  if (r.bl) o.bl = 1;
+  return o;
+}
 function mergeState_(cur, inc) {
   if (!stateMergeIsObject_(cur)) throw new Error('STATE_UNREADABLE: stored state is missing or not an object; refusing to merge');
   inc = stateMergeIsObject_(inc) ? inc : {};
@@ -38,6 +54,11 @@ function mergeState_(cur, inc) {
       out.incidents.incidents[k] = merged;
     }
   });
+  out.reviewed = {};
+  var cr = stateMergeIsObject_(cur.reviewed) ? cur.reviewed : {}, ir = stateMergeIsObject_(inc.reviewed) ? inc.reviewed : {};
+  Object.keys(cr).forEach(function (k) { var c = stateMergeReviewRec_(cr[k]); if (c) out.reviewed[k] = c; });
+  Object.keys(ir).forEach(function (k) { var c = stateMergeReviewRec_(ir[k]), o = out.reviewed[k]; if (!c) return;
+    if (!o || (!c.bl && o.bl) || (!!c.bl === !!o.bl && c.t > o.t)) out.reviewed[k] = c; });
   Object.keys(cur).forEach(function (f) { if (!(f in out) && f !== 'updatedAt') out[f] = cur[f]; });
   out.updatedAt = (typeof inc.updatedAt === 'string' && inc.updatedAt > String(cur.updatedAt || '')) ? inc.updatedAt : (cur.updatedAt || inc.updatedAt || '');
   return out;
