@@ -2754,7 +2754,7 @@ function writeState_(state) {
     var back = f.getBlob().getDataAsString();
     if (back !== next) return { ok: false, error: 'STATE_READBACK_MISMATCH' };
     var m = JSON.parse(next);
-    return { ok: true, seen: Object.keys(m.seen || {}).length, incidents: Object.keys((m.incidents && m.incidents.incidents) || {}).length };
+    return { ok: true, seen: Object.keys(m.seen || {}).length, incidents: Object.keys((m.incidents && m.incidents.incidents) || {}).length, reviewed: Object.keys(m.reviewed || {}).length };
   } finally { lock.releaseLock(); }
 }
 /** Extract the runtime Never-Consider rules from active TIM_PIPELINE_RULES_CANONICAL.

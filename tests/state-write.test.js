@@ -95,9 +95,12 @@ test('lock timeout: nothing written and the client gets ok:false', () => {
 
 test('browser: state sync sends seen and incidents only, records failures, and Needs you shows them', () => {
   const html = fs.readFileSync(path.join(__dirname, '../pipeline.html'), 'utf8');
-  const fn = html.match(/function syncStateUp\(\)\{[^\n]*\}/)[0];
+  const fn = html.match(/function syncStateUp\(\)\{[\s\S]*?\},1500\)\}/)[0];
   assert.ok(fn.indexOf('rulings') < 0, 'rulings are not sent to the state file');
-  assert.match(fn, /gsPost\(\{action:'state',state:\{seen:S\.seen,incidents:/);
+  assert.match(fn, /var body=\{seen:S\.seen,incidents:PipelineIncidents\.forSync\(S\.incidents\)/);
+  assert.match(fn, /gsPost\(\{action:'state',state:body\}\)/);
+  // D-3 (REV-053): only review records changed since the last good send ride along, and only a good send clears them
+  assert.match(fn, /Object\.keys\(S\.reviewDirty\|\|\{\}\)/); assert.match(fn, /if\(j&&j\.ok\)Object\.keys\(sent\)/);
   assert.match(fn, /S\.stateSync=j&&j\.ok\?\{ok:true/);
   assert.ok(fn.indexOf('.catch(function(){})') < 0, 'failures are no longer swallowed');
   const NT = require('../pipeline-needs-tim.js');

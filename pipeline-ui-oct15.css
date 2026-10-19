@@ -86,8 +86,8 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
 
   /* 3. KPI row (golden .kpi): hull tiles, seam border, mono label, 38 px / 650 value, Small caption. */
   /* The queue head now carries the 96 px KPI tiles (golden row 4), so its grid row grows from 66 px. List/map split is unchanged. */
-  body:not(.map-full) #view-pipeline.on, body:not(.map-full) #view-pipeline.on:has(#drawer.on) { grid-template-rows: calc(var(--pe-row-kpi) + 22px) minmax(0, var(--list-track, 55fr)) 10px minmax(0, var(--map-track, 45fr)) !important; }
-  .queue-head, #queue-head { height: auto !important; min-height: calc(var(--pe-row-kpi) + 22px) !important; padding: 11px 14px !important; align-items: center; }
+  body:not(.map-full) #view-pipeline.on, body:not(.map-full) #view-pipeline.on:has(#drawer.on) { grid-template-rows: var(--pe-head-h) minmax(0, var(--list-track, 55fr)) 10px minmax(0, var(--map-track, 45fr)) !important; }
+  .queue-head, #queue-head { height: auto !important; min-height: var(--pe-head-h) !important; padding: 11px 14px !important; align-items: center; }
   #queue-head .decide-strip { gap: var(--pe-gap); flex: 1 1 auto; overflow: visible; }
   #queue-head .decide, .decide { min-height: var(--pe-row-kpi); padding: 11px 16px 9px !important; gap: 3px; border: var(--pe-border) !important; border-radius: var(--pe-radius) !important; background: var(--pe-hull) !important; color: var(--pe-text-primary); box-shadow: none; }
   #queue-head .decide, .queue-head .decide { flex: 1 1 0; min-width: 180px; align-items: flex-start !important; justify-content: flex-start !important; text-align: left; }
@@ -673,7 +673,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
 @media (min-width: 2300px) and (min-height: 900px) {
   body:not(.map-full) #view-pipeline.on, body:not(.map-full) #view-pipeline.on:has(#drawer.on) {
     grid-template-columns: minmax(0, var(--list-track, 1112fr)) var(--pe-gutter) minmax(0, var(--map-track, 801fr)) var(--pe-gutter) var(--pe-col-work) !important;
-    grid-template-rows: calc(var(--pe-row-kpi) + 22px) minmax(0, 1fr) !important; column-gap: 0 !important; row-gap: 0 !important; }
+    grid-template-rows: var(--pe-head-h) minmax(0, 1fr) !important; column-gap: 0 !important; row-gap: 0 !important; }
   body:not(.map-full) #view-pipeline.on #queue-head { grid-column: 1 / -1 !important; grid-row: 1 !important; }
   body:not(.map-full) #view-pipeline.on #worksplit { grid-column: 1 !important; grid-row: 2 !important; }
   body:not(.map-full) #view-pipeline.on #list-map-divider { grid-column: 2 !important; grid-row: 2 !important; cursor: col-resize;
@@ -698,3 +698,25 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   body:not(.map-full) #view-pipeline.on #drawer #d-body .wh-decide { position: sticky; bottom: 0; z-index: 2; background: var(--pe-hull);
     padding: 8px 0 !important; box-shadow: 0 -1px 0 var(--pe-seam); }
 }
+
+/* 12. D-3 / HF-10 (REV-053): "Since your last review" strip under the KPI row (golden .strip, row 6: 40 px, 12 px gap),
+   and the score change mark in the table and the drawer. Glyphs carry direction without colour (▲ / ▼, L-1). */
+@media (min-width: 981px), (min-width: 761px) and (pointer: fine) {
+  :root { --pe-head-h: calc(var(--pe-row-kpi) + 22px + var(--pe-row-strip) + var(--pe-gap)); }
+  #queue-head { flex-direction: column !important; align-items: stretch !important; gap: var(--pe-gap) !important; }
+  #queue-head .since-strip { height: var(--pe-row-strip); flex: none; display: flex; align-items: center; gap: 16px; padding: 0 18px; position: relative;
+    background: var(--pe-hull); border: var(--pe-border); font-size: 14px; white-space: nowrap; overflow: hidden; }
+  #queue-head .since-strip::before { content: ""; position: absolute; left: -1px; top: -1px; bottom: -1px; width: var(--pe-bar-card); background: var(--pe-cyan); }
+  #queue-head .since-strip .ss-lbl { font-family: var(--pe-font-label); font-size: var(--pe-fs-label); letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary); flex: none; }
+  #queue-head .since-strip .ss-i { font-family: var(--pe-font-ui) !important; font-size: 14px !important; letter-spacing: 0 !important; text-transform: none !important; font-weight: 400 !important; color: var(--pe-text-primary); background: none; border: 0; padding: 0; min-height: 0; height: auto; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 4px; text-decoration-thickness: 1px; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #queue-head .since-strip .ss-i + .ss-i::before { content: "│"; color: var(--pe-text-secondary); margin-right: 16px; text-decoration: none; display: inline-block; }
+  #queue-head .since-strip .ss-i.zero { color: var(--pe-text-secondary); text-decoration: none; cursor: default; }
+  #queue-head .since-strip .ss-i.red:not(.zero) { color: var(--pe-red); } #queue-head .since-strip .ss-i.amb:not(.zero) { color: var(--pe-amber); }
+  #queue-head .since-strip .ss-i:focus-visible { outline: 2px solid var(--pe-cyan); outline-offset: 2px; }
+}
+#grid td .sc-d { margin-left: 6px; font-family: var(--pe-font-label); font-size: 11px; letter-spacing: 0; color: var(--pe-text-primary); }
+#grid td .sc-d.down { color: var(--pe-text-secondary); }
+#drawer .ws-delta { font-size: var(--pe-fs-small, 13px); color: var(--pe-text-primary); }
+#drawer .ws-delta.up { color: var(--pe-green); } #drawer .ws-delta.same { color: var(--pe-text-secondary); }
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) { #queue-head .since-strip { display: none; } }   /* Track M: phone strip later */
