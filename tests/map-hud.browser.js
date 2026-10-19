@@ -56,11 +56,11 @@ function check(m,what){
   m.pins.filter(p=>p.disc&&!p.secondary).forEach(p=>{assert.equal(p.disc[1],'0.4',what+': '+p.band+' disc at .4');assert.notEqual(p.disc[0],'none',what+': disc filled')});
   // P5-2: state labels fixed 24 px Muted, clear (8 px) of overlays, arms, pins, the lock and each other, inside the golden margins
   m.states.forEach(t=>{assert.equal(t.fs,24,what+': '+t.t+' is 24 px');assert.equal(t.fill,'rgb(107, 107, 102)',what+': '+t.t+' Muted');
-    assert(t.x>=40-0.5&&t.x+t.w<=m.W-80+0.5&&t.y>=120-6&&t.y+t.h<=m.H-110+6,what+': '+t.t+' inside the golden margins');
+    assert(t.x>=-0.5&&t.x+t.w<=m.W+0.5&&t.y>=-0.5&&t.y+t.h<=m.bandTop+0.5,what+': '+t.t+' inside the open canvas (P5-7: no golden margins)');
     m.overlays.concat(m.arms).forEach(o=>assert(!hit(t,o,7),what+': '+t.t+' clear of '+(o.sel||'a bracket arm')));
     m.pins.forEach(p=>assert(!hit(t,{x:p.rect.x+2,y:p.rect.y+2,w:20,h:20},7),what+': '+t.t+' clear of a pin'));
     if(m.lockR)assert(!hit(t,m.lockR,7),what+': '+t.t+' clear of the lock reticle')});
-  for(let i=0;i<m.states.length;i++)for(let j=i+1;j<m.states.length;j++)assert(!hit(m.states[i],m.states[j],7),what+': state labels apart');
+  for(let i=0;i<m.states.length;i++)for(let j=i+1;j<m.states.length;j++)assert(!hit(m.states[i],m.states[j],7),what+": state labels apart "+JSON.stringify([m.states[i],m.states[j]]));
   assert.equal(m.cross,4,what+': centre cross drawn (Q-e)');
 }
 
@@ -78,8 +78,12 @@ function check(m,what){
     const what=vp.width+'x'+vp.height;
     // filtered view at 100%
     await page.locator('[data-mapseg="visible"]').click();await page.waitForTimeout(900);
+    assert.match(await page.locator('#map-hud-cur').innerText(),/· ZOOM AUTO-FIT \(FILTERED SET\)$/,what+': N-1 filtered auto-fit wording');
+    assert.match(await page.locator('.map-blegend [data-k="TOP"] em').innerText(),/^TOP \d+$/,what+': N-2 filtered legend counts');
+    assert.equal(await page.locator('#mapfilters [data-mapfilter]').count(),2,what+': A-2 map modes are SELECTED / FILTERED only');
     await page.locator('[data-mapaction="reset"]').click({force:true}).catch(()=>{});await page.waitForTimeout(800);
     bbx0=await page.locator('#job-map').boundingBox();
+    assert.match(await page.locator('#map-hud-cur').innerText(),/· ZOOM 100%$/,what+': N-1 after a user zoom the readout is n%');
     let m=await measure(page);check(m,what+' filtered 100%');
     assert(m.pins.length>1,what+': filtered view draws several pins');
     if(vp.width===2560)assert(m.states.length>=5,what+': state labels drawn in the filtered view ('+m.states.length+')');
@@ -95,6 +99,10 @@ function check(m,what){
     await page.waitForTimeout(1600);
     assert.equal(await page.locator('#map-lock.acq').count(),0,what+': lock-on finished');
     assert.equal(await page.locator('#map-lock .ro .cy svg.lk-ic circle').count(),2,what+': ◉ drawn as SVG ring + dot (P5-5)');
+    assert.match(await page.locator('#map-sub').innerText(),/^\d+ PINS? · LOCKED \S+$/,what+": A-1 selected head meta (pins computed)");
+    assert.equal(await page.locator('.map-blegend [data-k="TOP"] em').innerText(),'TOP 10%',what+': N-2 selected legend keeps percentages');
+    assert.match(await page.locator('#map-hud-cur').innerText(),/· ZOOM AUTO-FIT$/,what+': N-1 selected auto-fit wording');
+    const ms=await measure(page);assert(ms.states.length>=1,what+': P5-7 the selected view still labels at least one visible state ('+ms.states.length+')');
     m=await measure(page);check(m,what+' selected '+m.zoom);
     assert(await page.locator("#map-lock .ro").isVisible(),what+': lock reticle shown on the selected job');
     assert.match(await page.locator('#map-lock .ro').innerText(),/LOCK · .+\n\d+\.\d{4}°N \d{3}\.\d{4}°W.*\nRNG \d+ MI · BRG \d{3}° FROM HOME/,'lock readout is computed lat / lon, range and bearing');

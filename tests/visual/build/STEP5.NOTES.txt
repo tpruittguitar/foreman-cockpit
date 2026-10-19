@@ -60,3 +60,30 @@ Q-a..Q-d  As ruled (Q-d: #map-zoom-level aria-label "Reset zoom to 100%"). Q-e: 
 NOTE  The filtered view opens fitted to its pins + HOME (when switching to FILTERED VIEW); the HUD shows the computed zoom %.
 Tests: tests/map-hud.browser.js now also checks P5-1 (disc .4), P5-2 (24 px Muted, clearances, margins), P5-3 (acq on a new lock, not
       on zoom), P5-4 (Huntsville ×2, head meta), P5-5 (SVG ◉), P5-6 (hover popup clear of the readout), Q-d, Q-e.
+
+GROK BOT RE-QA 363b67d (01:12 ET) + RULINGS + MAP-1 (pushed with this note)
+P5-3  Lock-on per B-17 / M-05: r22, r31 and the readout are final from frame 1; only the 4 corner brackets scale 2 -> 1, and brackets + the
+      4 ticks rotate 90° -> 0 together, 240 ms cubic-bezier(.16,1,.3,1); ticks keep r26..r46. Reduced motion: final state, no rotation.
+P5-7  (Ruling 1) state labels: golden margins dropped. Every state whose outline is visible is labelled at its centroid, else at the
+      nearest point inside its visible clipped area (isPointInFill on the state path); dropped only on an 8 px hit with HUD lines,
+      selector, zoom / layers, bracket arms, band, pins r10, lock r46, readout, or another label. Label box = Plex Mono 24 px line box.
+N-1   HUD zoom: "ZOOM AUTO-FIT (FILTERED SET)" in the fitted filtered view, "ZOOM AUTO-FIT" at the selected job's fitted zoom,
+      "ZOOM n%" after any user zoom (+ / − / % / RESET / wheel / pinch).
+N-2   Filtered legend "TOP n · UPPER n · MID n · LOW n · HOLD n" counted from the drawn pins; SELECTED keeps the percentages.
+A-1   Selected head meta "<n> PIN(S) · LOCKED <id>" (n computed; the fixture's first job has 2 pins: TX + Aurora, IL).
+A-2   #mapfilters offers SELECTED / CURRENT VIEW only; a saved Applied / Active / Scout / Ready map mode opens as FILTERED VIEW.
+      ui.browser.js updated as a spec change (those modes, the Cleveland scenario -> Pensacola, popup head / content selectors).
+      NOTE: ui.browser.js stops at a pre-existing line 20 in this sandbox (same on main), so those edits are syntax-checked only.
+MAP-1 Popup = head "CITY, ST [· ≈ STATE]" (+ "×N JOBS"), then every job: company (Inter 600 13), title (Inter 12 Secondary),
+      pay = PipelineTrust.salaryRange ("~" + EST. tag when estimated; PAY UNKNOWN only with no posted pay and no estimate, Tim's
+      SALARY RULE 01:34 ET), per-job city "City, ST" when N > 1 or "… · ADDITIONAL SITE". Wraps, no ellipsis, 11 px floor.
+      Placement: right / left / below / above (gap 24) + 4 corners, clamped in the open canvas, scored lock 1000 / selector-zoom-layers
+      300 / other shown pins 50 / HUD lines 10 / own pin 1e6 (Tim: may cover the HUD text on very short canvases, never the pin or the
+      readout). Too tall on hover -> "+k MORE · CLICK THE PIN FOR ALL N". No leader line.
+      Phone: first tap opens a sheet 12 px from the sides above the bottom bar (moves to the top if it would cover the pin), one OPEN JOB
+      per job; second tap on the pin opens it (×N -> picker); empty-map tap closes. A tapped sheet survives the touch pointerleave.
+      Picker: head "CITY, ST · ×N JOBS", each button company / title / pay / city, min-height 44.
+      R-8 (A-3): pins merged by coordinate (4 dp): Austin / Burnet (TX centroid) and Aurora / Manteno (IL centroid) read ×2.
+Tests: tests/map-popup.browser.js (2560x1440, 1440x900, 390x844 touch; every pin; hover; locked pin; phone sheet, close, Open job).
+      tests/map-hud.browser.js adds P5-3 (rings still), P5-7 (labels in the open canvas, selected view labelled), N-1, N-2, A-1, A-2.
+Screens: STEP5_MAP1_popup_2560x1440.png, STEP5_MAP1_sheet_390x844.png (Huntsville ×2).
