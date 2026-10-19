@@ -90,7 +90,7 @@ function check(m,what){
     // P5-4: Huntsville, AL stands for 2 fixture rows -> ×2; head meta computed as golden F01
     assert.equal((m.pins.find(p=>p.label==='Huntsville, AL')||{}).n,'×2',what+': Huntsville pin reads ×2');
     m.pins.filter(p=>p.label!=='Huntsville, AL').forEach(p=>assert(p.n===''||/^×\d+$/.test(p.n)));
-    assert.match(await page.locator('#map-sub').innerText(),/^\d+ PINS · \d+ PLACES · \d+ REMOTE \(NO PIN\)$/,what+': filtered head meta');
+    assert.match(await page.locator('#map-sub').innerText(),/^\d+ PINS · \d+ PLACES · \d+ REMOTE \(NO PIN\)( · \d+ OUTSIDE VIEW)?$/,what+': filtered head meta'   /* step 7: jobs off the open canvas are counted */);
     assert.equal(await page.locator('#map-zoom-level').getAttribute('aria-label'),'Reset zoom to 100%','Q-d');
     assert.equal(await page.locator('[data-mapseg="visible"]').getAttribute('aria-pressed'),'true');
     // selected job, auto-zoomed, with the lock readout

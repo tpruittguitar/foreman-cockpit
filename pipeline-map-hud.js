@@ -84,7 +84,27 @@
     return { mi: 2 * R * Math.asin(Math.sqrt(h)), brg: (Math.atan2(y, x) / k + 360) % 360 };
   }
 
-  var api = { project: project, unproject: unproject, inConus: inConus, toScreen: toScreen, fromScreen: fromScreen, scaleOf: scaleOf,
+  /* PE build step 7: the filtered-view fit box. pts: [{x, y, n}] in map units, n = jobs at that pin (>= 1).
+     With fewer than minPins pins every pin counts; otherwise the outer `trim` share of jobs is dropped on each side,
+     separately east-west and north-south (job-weighted quantiles), so a few far-off postings do not set the frame.
+     Returns {x0, y0, x1, y1} or null for no pins. HOME is added by the caller. */
+  function fitBox(pts, trim, minPins){
+    pts = (pts || []).filter(function (q) { return isFinite(q.x) && isFinite(q.y); });
+    if (!pts.length) return null;
+    trim = trim == null ? 0.05 : trim; minPins = minPins == null ? 20 : minPins;
+    function all(key, f){ return f(pts.map(function (q) { return q[key]; })); }
+    if (pts.length < minPins || !(trim > 0))
+      return { x0: all('x', function (a) { return Math.min.apply(null, a); }), x1: all('x', function (a) { return Math.max.apply(null, a); }),
+               y0: all('y', function (a) { return Math.min.apply(null, a); }), y1: all('y', function (a) { return Math.max.apply(null, a); }) };
+    var tot = pts.reduce(function (n, q) { return n + Math.max(1, q.n || 1); }, 0);
+    function cut(key, f){ var srt = pts.slice().sort(function (a, b) { return a[key] - b[key]; }), acc = 0;
+      for (var i = 0; i < srt.length; i++) { acc += Math.max(1, srt[i].n || 1); if (acc >= f * tot - 1e-9) return srt[i][key]; } return srt[srt.length - 1][key]; }
+    function low(key){ var srt = pts.slice().sort(function (a, b) { return a[key] - b[key]; }), acc = 0;   // first pin past the lower trim share
+      for (var i = 0; i < srt.length; i++) { acc += Math.max(1, srt[i].n || 1); if (acc > trim * tot + 1e-9) return srt[i][key]; } return srt[srt.length - 1][key]; }
+    return { x0: low('x'), x1: cut('x', 1 - trim), y0: low('y'), y1: cut('y', 1 - trim) };
+  }
+
+  var api = { fitBox: fitBox, project: project, unproject: unproject, inConus: inConus, toScreen: toScreen, fromScreen: fromScreen, scaleOf: scaleOf,
     latText: latText, lonText: lonText, textW: textW, hit: hit, brackets: brackets, graticule: graticule, rangeBearing: rangeBearing, GAP: GAP };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PipelineMapHud = api;
 })(typeof window !== 'undefined' ? window : globalThis);

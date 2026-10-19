@@ -74,3 +74,28 @@ test('range and bearing from HOME: Cleveland, TN to Nashville, TN', () => {
   assert.equal(Math.round(rb.mi), 127);    // golden F02: RNG 127 MI
   assert.equal(Math.round(rb.brg), 304);   // golden F02: BRG 304°
 });
+
+// PE build step 7: filtered-view fit box (job-weighted trim of the outer 5 % on each axis once there are 20+ pins).
+test('fitBox: fewer than 20 pins frames every pin', () => {
+  const H = require('../pipeline-map-hud.js');
+  const pts = [{ x: 10, y: 5, n: 1 }, { x: 900, y: 480, n: 1 }, { x: 400, y: 200, n: 9 }];
+  assert.deepEqual(H.fitBox(pts, 0.05, 20), { x0: 10, x1: 900, y0: 5, y1: 480 });
+  assert.equal(H.fitBox([], 0.05, 20), null);
+});
+test('fitBox: 20+ pins drop far-off postings (up to 5 % of jobs per side); the box stays on the dense core', () => {
+  const H = require('../pipeline-map-hud.js');
+  const core = []; for (let i = 0; i < 30; i++) core.push({ x: 600 + i, y: 200 + i, n: 4 });   // 120 jobs in the core
+  const pts = core.concat([{ x: 40, y: 90, n: 2 }, { x: 930, y: 470, n: 3 }]);                     // 5 far-off jobs (4 %)
+  const b = H.fitBox(pts, 0.05, 20);
+  // the two far-off pins are out; at most the core's edge pin (4 jobs, inside the 5 % share) goes with them, and the
+  // 80 px fit padding keeps it on screen
+  assert(b.x0 >= 600 && b.x0 <= 601 && b.x1 >= 628 && b.x1 <= 629, JSON.stringify(b));
+  assert(b.y0 >= 200 && b.y0 <= 201 && b.y1 >= 228 && b.y1 <= 229, JSON.stringify(b));
+  const all = H.fitBox(pts, 0, 20);   // trim 0 = every pin
+  assert.deepEqual(all, { x0: 40, x1: 930, y0: 90, y1: 470 });
+});
+test('fitBox: an even spread loses at most one pin per side', () => {
+  const H = require('../pipeline-map-hud.js');
+  const pts = []; for (let i = 0; i < 30; i++) pts.push({ x: i * 10, y: i, n: 1 });
+  assert.deepEqual(H.fitBox(pts, 0.05, 20), { x0: 10, x1: 280, y0: 1, y1: 28 });
+});

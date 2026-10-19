@@ -1,0 +1,53 @@
+PE BUILD STEP 7 · REV-050 · the map in the tall column (golden F01 / F02 map panel, Grok Q6-c)
+Branch backup/claude-20261019-1010ET · Claude · 2026-10-19
+
+WHY
+After step 6 the map is 797 x ~1177 px. With no job open it showed "SELECTED JOB · NO JOB SELECTED": an empty national
+map at 100 %, sized by the column width, so the US filled about half the column (Grok 10:03 ET: "looks small").
+Golden F01 shows the map on FILTERED VIEW, fitted to the jobs' pins, with the segmented control on FILTERED.
+
+WHAT
+1. No job open -> filtered view (desktop, all desktop layouts). With no job open and nothing checked, the map shows the
+   filtered view fitted to its pins + HOME (SHOWING · FILTERED VIEW · N JOBS, ZOOM AUTO-FIT (FILTERED SET)).
+   Opening a job returns to Selected job (zoom to the job, lock-on as before); closing it returns to the fitted view.
+   The automatic switch is never saved (px.mapMode keeps Tim's choice). Clicking "Selected job" while nothing is open
+   keeps the empty national map (an explicit choice) until a job opens. Phone unchanged.
+2. Fit frames where the jobs are. PipelineMapHud.fitBox: with 20+ pins it drops the outer 5 % of jobs on each side,
+   east-west and north-south (job-weighted), so a few far-off postings (Seattle, San Diego, Alaska) do not shrink the
+   map to the whole country. HOME is always inside. Under 20 pins every pin is framed, as before.
+3. Nothing hides silently: the head meta adds "· k OUTSIDE VIEW" whenever jobs sit off the open canvas or under the HUD
+   band at the current view (computed on every draw; goes away at 100 % or when the pins are on screen). This also shows
+   on the short stacked map (1440 x 900, fixture: "1 OUTSIDE VIEW"; the fit there is unchanged, only the count is new).
+4. Two-row HUD band (Q6-c), three-column layout only: --pe-map-band-h 84 px; band legend on row 1, RECENTER / RESET on
+   row 2 (golden). Zoom stack, layers, graticule lon row and corner brackets follow the band height; the fit reads the
+   band height from the page (was a fixed 44).
+
+MEASURED (2560 x 1440)
+  fixture (11 jobs, 7 places, < 20 pins): F01 opens FILTERED VIEW at 144 % (was SELECTED, 100 %, no pins)
+  spread test master (122 jobs, 31 places, Seattle / San Diego / Menlo Park / Alaska outliers): fit 241 %, eastern US
+    fills the column, head meta "119 PINS · 31 PLACES · 3 REMOTE (NO PIN) · 4 OUTSIDE VIEW"; 100 % shows all, no count
+  band 84 px; legend row 0..42, actions row 42..84 (bottom 8)
+  page errors none
+
+FILES
+  pipeline.html            mapAutoMode_ (F01 filtered view, not saved; explicit hold), mapFitPoints_ / mapBandH_ /
+                           mapOutsideJobs_, setMapMode_ clears the automatic state
+  pipeline-map-hud.js      fitBox (pure, unit-tested)
+  pipeline-ui-oct15.css §11 84 px band, legend / actions rows
+  tests/map-hud.test.js    fitBox: < 20 pins, far-off trim, even spread
+  tests/three-col.browser.js  band rows, F01 filtered fit, open / close / explicit hold, not saved, spread master trim +
+                           OUTSIDE VIEW, 100 % shows all
+  tests/map-hud.browser.js head meta may end "· k OUTSIDE VIEW" (spec change)
+  tests/visual/build/STEP7_*.png
+
+TESTS
+  npm test 579 / 579. three-col, map-hud, map-popup, rail, workspace-layout, needs-tim, pay-worth, system-panel browser
+  tests pass; the others stop at the same pre-existing first-load lines as on main in this sandbox.
+
+FOR GROK BOT (rulings asked; Claude's choice in brackets)
+Q7-a The automatic filtered view when no job is open also changes the stacked desktop layouts (1440 x 900 etc.), not
+     only three columns. [all desktops: same F01 state everywhere]
+Q7-b Trim share 5 % per side, from 20 pins. [5 % / 20]
+Q7-c FULLSCREEN button on row 2 (golden draws it; Q-c ruled no desktop fullscreen; the MAP tab is the full map). [leave out]
+Q7-d Lat labels at x 8 can sit on a state abbreviation at some zooms (e.g. "40°N" over NE) — pre-existing, not new.
+     [next map pass: drop a lat label that hits a state label]
