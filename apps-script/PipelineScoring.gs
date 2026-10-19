@@ -72,22 +72,48 @@
    only fills or refreshes its own (FLOOR_BASIS WRITER_DERIVED). No figure = no floor status. */
   var FLOOR_HOME=[35.1595,-84.8766],FLOOR_DETOUR=1.25,BAND1=['CA','OR','WA','CT','ME','MA','NH','NJ','NY','PA','RI','VT'],BAND2=['MI','WI','MN'],
     CHI_METRO=['chicago','aurora','naperville','joliet','elgin','waukegan','schaumburg','evanston','arlington heights','bolingbrook','palatine','skokie','des plaines','orland park','oak lawn','tinley park','oak park','wheaton','downers grove','elk grove village','hoffman estates','glenview','lombard','carol stream','crystal lake','mchenry','st. charles','st charles','batavia','oswego','plainfield','romeoville','lisle','woodridge','itasca','bensenville','franklin park','rosemont','northbrook','deerfield','lake forest','libertyville','mundelein','vernon hills','gurnee','buffalo grove','wheeling','mount prospect','rolling meadows','bartlett','west chicago','warrenville','addison','elmhurst','oak brook','burr ridge','bedford park','cicero','berwyn','harvey','south holland','lansing','calumet city','chicago heights','park forest','matteson','frankfort','mokena','new lenox','lockport','lemont','gary','hammond','merrillville','valparaiso','crown point','schererville','portage','east chicago','munster','highland','hobart','chesterton','michigan city','la porte','whiting','griffith','dyer','st. john','cedar lake','lowell'];
-  function floorRule(r){var p=r&&r.payload||{},loc=String(r&&r.LOCATION||p.LOCATION||''),sc=stateCode(loc),city=loc.split(',')[0].toLowerCase().replace(/\s+/g,' ').trim();
-    if(BAND1.indexOf(sc)>=0)return{floor:400000,rule:'BAND1'};
-    if(BAND2.indexOf(sc)>=0||((sc==='IL'||sc==='IN')&&CHI_METRO.indexOf(city)>=0))return{floor:300000,rule:'BAND2'};
-    var mi=num(p.DRIVE_MILES_HOME),how='recorded driving miles';
-    if(mi==null){var pt=point(r);if(pt&&!pt.approx){mi=hav(FLOOR_HOME[0],FLOOR_HOME[1],pt.lat,pt.lon)*FLOOR_DETOUR;how='straight-line x '+FLOOR_DETOUR}}
+  /* Strict state parse for the floor check: upper-case codes only (so " or" / " in" / " me" are words, not states), DC before
+     Washington, then full state names. */
+  var FLOOR_NAMES={alabama:'AL',alaska:'AK',arizona:'AZ',arkansas:'AR',california:'CA',colorado:'CO',connecticut:'CT',delaware:'DE',florida:'FL',georgia:'GA',hawaii:'HI',idaho:'ID',illinois:'IL',indiana:'IN',iowa:'IA',kansas:'KS',kentucky:'KY',louisiana:'LA',maine:'ME',maryland:'MD',massachusetts:'MA',michigan:'MI',minnesota:'MN',mississippi:'MS',missouri:'MO',montana:'MT',nebraska:'NE',nevada:'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND',ohio:'OH',oklahoma:'OK',oregon:'OR',pennsylvania:'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD',tennessee:'TN',texas:'TX',utah:'UT',vermont:'VT',virginia:'VA',washington:'WA','west virginia':'WV',wisconsin:'WI',wyoming:'WY'},
+    NON_US=/\b(united kingdom|england|scotland|wales|ireland|canada|mexico|germany|france|spain|italy|netherlands|belgium|poland|czech|hungary|romania|sweden|norway|denmark|finland|switzerland|austria|india|china|japan|korea|taiwan|singapore|malaysia|vietnam|thailand|philippines|australia|new zealand|brazil|argentina|chile|israel)\b/i;
+  function floorState(t){t=String(t||'');var m=t.match(/,\s*([A-Z]{2})\b/)||t.match(/\b([A-Z]{2})\s*$/)||t.match(/\b([A-Z]{2})\b/);
+    if(/\bwashington\s*,?\s*d\.?\s?c\b|\bD\.?C\.?\b|district of columbia/i.test(t))return 'DC';
+    if(m&&(STATES[m[1]]||m[1]==='DC'))return m[1];var low=t.toLowerCase(),best='',at=-1;
+    for(var k in FLOOR_NAMES){var i=low.search(new RegExp('\\b'+k+'\\b'));if(i>=0&&(k.length>best.length||at<0)){if(!best||k.length>best.length){best=k;at=i}}}
+    return best?FLOOR_NAMES[best]:''}
+  function floorSites(loc){var parts=String(loc||'').split(/\s*[\/;|]\s*|\s+or\s+/).map(function(x){return x.trim()}).filter(Boolean);if(parts.length<2)return [String(loc||'').trim()];
+    var last='';for(var i=parts.length-1;i>=0;i--){var s=floorState(parts[i]);if(s){last=s;break}}
+    return parts.map(function(x){return !floorState(x)&&!/remote|united states|multi-state|nationwide/i.test(x)&&last?x+', '+last:x})}
+  function floorSiteRule(site,r,single){var p=r&&r.payload||{},sc=floorState(site);
+    if(!sc&&NON_US.test(site))return{floor:null,nonUS:true,rule:'NON_US',site:site};
+    if(BAND1.indexOf(sc)>=0)return{floor:400000,rule:'BAND1',site:site};
+    var city=site.split(',')[0].toLowerCase().replace(/\s+/g,' ').trim();
+    if(BAND2.indexOf(sc)>=0||((sc==='IL'||sc==='IN'||!sc)&&(CHI_METRO.indexOf(city)>=0&&sc||/\bchicago/i.test(site))))return{floor:300000,rule:'BAND2',site:site};
+    var mi=single?num(p.DRIVE_MILES_HOME):null,how='recorded driving miles';
+    if(mi==null){var pt=floorPoint(site,single?p:null,sc);if(pt&&!pt.approx){mi=hav(FLOOR_HOME[0],FLOOR_HOME[1],pt.lat,pt.lon)*FLOOR_DETOUR;how='straight-line x '+FLOOR_DETOUR}}
     var fl=sc==='FL'?210000:0;
-    if(mi==null)return fl?{floor:fl,rule:'FL'}:{floor:null,lo:180000,hi:200000,rule:'RING'};
+    if(mi==null)return fl?{floor:fl,rule:'FL',site:site}:{floor:null,lo:180000,hi:200000,rule:'RING',site:site};
     var ring=mi<=150?[180000,'RING_0_150']:mi<=250?[190000,'RING_151_250']:[200000,'RING_251PLUS'];
-    return ring[0]>=fl?{floor:ring[0],rule:ring[1],miles:Math.round(mi),how:how}:{floor:fl,rule:'FL',miles:Math.round(mi),how:how}}
+    return ring[0]>=fl?{floor:ring[0],rule:ring[1],miles:Math.round(mi),how:how,site:site}:{floor:fl,rule:'FL',miles:Math.round(mi),how:how,site:site}}
+  /* Recorded coordinates (one-site rows only), else the built-in city table. No browser geocode cache, so the viewer and the
+     Writer derive the same floor status. */
+  function floorPoint(site,p,sc){var lat=p?num(p.LATITUDE||p.LAT):null,lon=p?num(p.LONGITUDE||p.LON||p.LNG):null;if(lat!=null&&lon!=null)return{lat:lat,lon:lon};
+    var city=String(site||'').toLowerCase().replace(/\s+/g,' ').trim().split(',').slice(0,2).join(',').trim();if(CITY[city])return{lat:CITY[city][0],lon:CITY[city][1]};return null}
+  function floorRule(r){var loc=String(r&&r.LOCATION||(r&&r.payload||{}).LOCATION||''),sites=floorSites(loc);return floorSiteRule(sites[0],r,sites.length<2)}
   function floorStatus(r){var p=r&&r.payload||{},agent=String(p.FLOOR_STATUS||'').trim();
     if(agent&&!/^UNKNOWN$/i.test(agent)&&!/^WRITER_DERIVED/i.test(String(p.FLOOR_BASIS||'')))return{status:agent,derived:false,basis:String(p.FLOOR_BASIS||'')};
     var ev=Evidence.salary(p);if(ev.mid==null)return{status:null,derived:true,basis:'WRITER_DERIVED · no salary figure'};
-    var fr=floorRule(r),k=function(n){return Math.round(n/1000)+'K'},mid=Math.round(ev.mid),src=' · base mid $'+mid.toLocaleString('en-US')+' from '+ev.source,st;
-    if(fr.floor==null)st=mid>=fr.hi?'PASS_ANY_RING_'+k(fr.hi):mid<fr.lo?'BELOW_ANY_RING_'+k(fr.lo):'CHECK_RING_'+k(fr.lo)+'_'+k(fr.hi);
-    else st=(mid>=fr.floor?'PASS_':'BELOW_')+fr.rule+'_'+k(fr.floor);
-    return{status:st,derived:true,basis:'WRITER_DERIVED'+src+(fr.miles!=null?' · ~'+fr.miles+' mi ('+fr.how+')':fr.floor==null?' · location not precise; ring $180k-$200k':'')}}
+    var k=function(n){return Math.round(n/1000)+'K'},mid=Math.round(ev.mid),src=' · base mid $'+mid.toLocaleString('en-US')+' from '+ev.source;
+    var sites=floorSites(String(r&&r.LOCATION||p.LOCATION||'')),one=function(fr){var st;
+      if(fr.nonUS)st='CHECK_NON_US';
+      else if(fr.floor==null)st=mid>=fr.hi?'PASS_ANY_RING_'+k(fr.hi):mid<fr.lo?'BELOW_ANY_RING_'+k(fr.lo):'CHECK_RING_'+k(fr.lo)+'_'+k(fr.hi);
+      else st=(mid>=fr.floor?'PASS_':'BELOW_')+fr.rule+'_'+k(fr.floor);
+      return{st:st,note:fr.nonUS?'outside the US; no floor rule':fr.miles!=null?'~'+fr.miles+' mi ('+fr.how+')':fr.floor==null?'location not precise; ring $180k-$200k':''}};
+    var res=sites.map(function(s){return one(floorSiteRule(s,r,sites.length<2))});
+    if(res.length<2)return{status:res[0].st,derived:true,basis:'WRITER_DERIVED'+src+(res[0].note?' · '+res[0].note:'')};
+    var cls=res.map(function(x){return x.st.split('_')[0]}),same=cls.every(function(c){return c===cls[0]});
+    // Rules COMPENSATION_ESTIMATION: several plausible worksites are not averaged; same outcome at every site = that outcome.
+    return{status:same?res[0].st:'CHECK_MULTI_SITE',derived:true,basis:'WRITER_DERIVED'+src+' · '+sites.map(function(s,i){return s+': '+res[i].st}).join('; ')}}
   function scoreRow(r,cfg){var c=normalize(cfg),parts={experience:experience(r,c),compensation:compensation(r,c),geo:geo(r,c),ats:ats(r,c),title:title(r),culture:culture(r,c),ownership:Policy.isV4(c.flexPolicy)?Policy.ownership(r.payload||{}):explicit(r,['OWNERSHIP_SCORE','COMPANY_OWNERSHIP_SCORE'])},floor=floorStatus(r),assessment=Policy.assess(floor.derived?Object.assign({},r.payload||{},{FLOOR_STATUS:floor.status||''}):(r.payload||{}),parts.experience.score,c.flexPolicy||undefined),sum=0,rawSum=0,avail=0,total=0;parts.experience=Object.assign({},parts.experience,{rawScore:parts.experience.score,adjustedScore:assessment.adjustedFit,flexModifier:assessment.flex.modifier,basis:parts.experience.basis});parts.flex={score:flexScore(assessment.flex),known:assessment.flex.known,basis:assessment.flex.class+' · '+(assessment.flex.modifier>=0?'+':'')+assessment.flex.modifier+' degree-flex modifier'};Object.keys(DEFAULT_WEIGHTS).forEach(function(k){var w=Math.max(0,num(c.weights[k])||0);if(parts[k])parts[k]=Object.assign({},parts[k],{weight:w});total+=w;if(parts[k]&&parts[k].known){sum+=w*parts[k].score;rawSum+=w*(k==='flex'?50:(k==='experience'&&assessment.rawFit!=null?assessment.rawFit:parts[k].score));avail+=w}});var raw=avail?sum/avail:null,rawWithoutFlex=avail?rawSum/avail:null,confidence=total?Math.round(avail/total*100):0,overall=raw==null?null:Math.round(raw*(.7+.3*confidence/100)),overallWithoutFlex=rawWithoutFlex==null?null:Math.round(rawWithoutFlex*(.7+.3*confidence/100));return{floor:floor,overall:overall,overallWithoutFlex:overallWithoutFlex,flexInfluence:overall==null||overallWithoutFlex==null?0:overall-overallWithoutFlex,band:assessment.flex.blocked?'STRICT HOLD':band(overall),assessment:assessment,confidence:confidence,parts:parts,screenGate:parts.ats.gate||'UNKNOWN',weights:c.weights,weightTotal:weightTotal(c),weightsValid:weightsValid(c),modelId:c.modelId,modelVersion:c.modelVersion,scoreFormula:'weighted mean of known component scores with confidence penalty; FLEX is a separate weighted input',ratingBasis:'Derived viewer model; raw content fit and degree FLEX are separate adjustable weighted inputs; canonical master unchanged'} }
 
   function fingerprint(cfg){var c=normalize(cfg||{}),p=c.flexPolicy||{};return JSON.stringify({modelId:c.modelId,modelVersion:c.modelVersion,publishedRevision:c.publishedRevision||0,weights:c.weights,salary:c.salary,geo:c.geo,keywords:c.resumeKeywords,flex:p,targets:c.targetCompanies});}

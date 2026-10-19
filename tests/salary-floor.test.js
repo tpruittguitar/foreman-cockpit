@@ -74,3 +74,24 @@ test('data discovery (W9): SALARY is not a default research field when the row a
   assert.match(src, /hasPay=row\.payload&&PipelineEvidence\.salary\(row\.payload\)\.mid!=null/);
   assert.match(src, /\(hasPay\?\['SOURCE_URL','FLEX'\]:\['SALARY','SOURCE_URL','FLEX'\]\)/);
 });
+
+test('floor parse: DC is not Washington state, Greater Chicago is Band 2, " or " is a word, multi-site and non-US rows', () => {
+  const st = (loc, pay) => S.floorStatus({ LOCATION: loc, payload: { SALARY_BASE_POSTED: pay } }).status;
+  assert.equal(st('Washington DC-Baltimore Area', 155000), 'BELOW_ANY_RING_180K');        // not BAND1 via "Washington"
+  assert.equal(st('Greater Chicago Area', 310000), 'PASS_BAND2_300K');
+  assert.equal(st('Kennesaw or Buckhead (Atlanta), GA', 182500), 'CHECK_RING_180K_200K'); // " or" is not Oregon
+  assert.equal(st('Hillsboro, OR / Phoenix, AZ', 210830), 'CHECK_MULTI_SITE');            // sites disagree: not averaged
+  assert.equal(st('Hillsboro, OR / Phoenix, AZ', 410000), 'PASS_BAND1_400K');             // same outcome at every site
+  assert.equal(st('Farmington Hills, MI / Berea, KY', 175000), 'BELOW_BAND2_300K');
+  assert.equal(st('Cardiff, Wales, United Kingdom', 110000), 'CHECK_NON_US');
+  assert.equal(st('Massachusetts, United States (Remote)', 325000), 'BELOW_BAND1_400K');
+  const P = require('../pipeline-policy.js');
+  ['CHECK_MULTI_SITE', 'CHECK_NON_US'].forEach(f => assert.notEqual(P.assess({ FLOOR_STATUS: f, TITLE_RULE_STATUS: 'PASS' }, 90).decision, 'PAY_OR_TITLE_HOLD'));
+});
+
+test('floor check ignores the browser geocode cache, so viewer and Writer agree', () => {
+  const store = { 'px.geoCache': JSON.stringify({ 'memphis, tn': { lat: 35.15, lon: -90.05, state: 'TN' } }) };
+  global.localStorage = { getItem: k => store[k] || null };
+  try { assert.equal(S.floorStatus({ LOCATION: 'Memphis, TN', payload: { SALARY_BASE_POSTED: 185000 } }).status, 'CHECK_RING_180K_200K'); }
+  finally { delete global.localStorage; }
+});
