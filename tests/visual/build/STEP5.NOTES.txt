@@ -1,0 +1,89 @@
+PE BUILD STEP 5 · map rebuild toward the golden F01 / F02 map panel · rev4 BUILD 1-2 · REV-031 (REV-030 was taken) · Claude · 2026-10-19
+
+WHAT (desktop; JS adds .pe-map under desktop.css's media query, the phone map is unchanged)
+- Panel head 44 px: "◎ JOB LOCATION MAP · <MODE>" mono 13 uppercase; #map-sub on the right as the meta line.
+- HUD top left: SHOWING line (cyan for SELECTED JOB) · CURSOR lat / lon (inverse projection, CONUS only) · ZOOM n% · map status.
+- SELECTED JOB | FILTERED VIEW · N segmented control, top right (N = rows in the current view). Other map modes stay in the
+  layers panel, restyled to the tokens (11 px floor, active filter cyan).
+- Graticule: 1° minor / 5° major lines under the states (1 px at every zoom), edge labels in screen space.
+- States: fill .55, stroke --pe-map-state-stroke; state labels Secondary, Muted (#6B6B66, T-5) only once they render >= 24 px,
+  hidden when they would render under 11 px (L-1); Alaska / Hawaii captions likewise.
+- Pins: band glyph (▲ ◆ ● ▽ ⊘ —) on a 40% disc in the band colour over a hull disc; additional locations dashed ring; HOME ◇.
+- Lock on the selected job: golden reticle (r22, dashed r31, 4 ticks, 4 corner brackets) + readout "◉ LOCK · <id>",
+  lat / lon 4 dp, "RNG n MI · BRG nnn° FROM HOME" (great circle, HOME = Cleveland, TN), "NEAREST GEO PT <basis> · <geo score>".
+  The readout takes the first spot right / left / above that is inside the open canvas and clear of the overlays; on a short
+  canvas it drops the NEAREST GEO line (the drawer shows it) before giving up. The pin popup gives way to the readout.
+- HUD band 44 px at the bottom: band legend (glyph + label) left, RECENTER / RESET right.
+- Zoom stack + layers on the right above the band; on a canvas <= 520 px tall (e.g. 1440x900) they form one row above the band.
+BUILD 1  pipeline-map-hud.js graticule(): lat labels at x 8, lon labels one row 16 px above the band, starting at x >= 48 and
+         not over the Alaska / Hawaii insets; any label within 8 px of another label, a bracket arm or an overlay is dropped
+         (lat labels go first on the lon row). Steps adapt to zoom (lon >= 120 px apart, lat >= 32 px).
+BUILD 2  brackets(): four brackets (inset 10, arm 34, stroke 2, Secondary, 8.0:1 on the hull) frame the open canvas between the
+         head and the band; every overlay is laid out clear of the arms.
+TESTS    tests/map-hud.test.js (projection = pipeline-map.js, labels, BUILD 1 spacing incl. the golden 33°N / 089°W case,
+         BUILD 2 geometry, range / bearing = golden RNG 127 / BRG 304 for Nashville). tests/map-hud.browser.js (live app,
+         2560x1440 + 1440x900, filtered 100% and selected zoomed: BUILD 1 + BUILD 2 + 3:1 + no map text < 11 px + uppercase HUD
+         + pin glyphs + computed lock readout + cursor readout + layers panel 11 px floor; no page errors).
+SCREENS  STEP5_selected_2560x1440.png · STEP5_filtered_2560x1440.png · STEP5_selected_1440x900.png (fixture, bands minN 5).
+
+FOR GROK BOT (rulings asked; Claude's choice in brackets)
+Q-a Layout: the map stays under the table (live layout); the golden middle-column layout is not part of this step. [keep]
+Q-b The golden SHOWING line ends "· Esc = filtered view", but Esc today only closes the drawer; the map stays on SELECTED JOB.
+    I left that clause out. Rule: (1) keep it out, or (2) make Esc also switch the map to FILTERED VIEW (behaviour change). [1]
+Q-c HUD band is one 44 px row (golden 84 px, two rows): the live canvas is ~470 px tall at 2560x1440. No FULLSCREEN button on
+    desktop: Expand is phone-only today and desktop has the MAP tab. [keep]
+Q-d Zoom stack is + / n% / − (+ layers); no ◈ / FIT: the n% button already resets to 100%. [keep]
+Q-e No map-centre crosshair (golden cross at W/2, H/2). [leave out]
+KNOWN  The old ui.browser.js / map.browser.js stop at pre-existing lines (20 / 20) in this sandbox, same as on main, before their
+       map steps; the map interactions were smoke-tested by hand script (zoom +, wheel, pan, reset, pin click opens the job and
+       locks, recenter, layers) with no page errors.
+
+GROK BOT LOOK 00:50 ET · P5-1..P5-6 + rulings (pushed with this note)
+P5-1  Pins are the golden core(): 40% disc r10 in the band colour straight on the map + core shape (TOP / UPPER / MID filled, void
+      1.5 px stroke; LOW ▽ / NONE ○ void fill, band 1.6 px stroke; HOLD ⊘ void circle + slash). Hull disc removed. Under the lock the
+      Primary hover ring is dropped (.lock-on .focused). Additional locations: dashed disc outline.
+P5-2  State labels drawn in screen space (svg.map-slbl inside the canvas, under the pins): fixed 24 px Plex Mono 400 Muted #6B6B66 at
+      every zoom; dropped within 8 px of a HUD line, the selector, the zoom stack / layers, a bracket arm, the band, any pin (r10),
+      the lock reticle (r46) or its readout, or another label; golden margins >= 120 px below the canvas top, >= 110 px above the
+      bottom, x 40 .. W-80. The zoom-scaled SVG labels and the AK / HI captions are hidden on desktop.
+      Effect: at 1440x900 the canvas is ~236 px tall, so the 120 / 110 margins leave no room and no state label shows there.
+P5-3  Lock-on on each new lock only (key = job id + pin): ring r22, ticks and the 4 corner brackets scale 2.4 -> 1, opacity .95 -> 1,
+      760 ms cubic-bezier(.16,1,.3,1); then the dashed r31 ring and the readout fade in (240 ms). Re-render, pan and zoom do not
+      restart it (the lock HTML is only rewritten when it changes). None under prefers-reduced-motion.
+P5-4  ×N at (x+12, y-7), 11 px Plex Mono Secondary with a hull halo, on any pin standing for more than one job (fixture: Huntsville ×2).
+      Filtered view head meta "N PINS · N PLACES · N REMOTE (NO PIN)", computed from the drawn pins.
+P5-5  ◉ in "◉ LOCK" drawn as inline SVG (ring r5 1.4 px + dot r2, cyan).
+P5-6  Hover or focus on the locked pin opens the normal popup, placed at the first of right / left / below / above that is 6 px clear
+      of the readout; leaving restores the resting lock (readout only). MAP-1 popup content spec still to come.
+Q-a..Q-d  As ruled (Q-d: #map-zoom-level aria-label "Reset zoom to 100%"). Q-e: centre cross drawn (4 strokes 4..12 px off the
+      open-canvas centre, 1 px Secondary at .35, under the pins and the lock).
+NOTE  The filtered view opens fitted to its pins + HOME (when switching to FILTERED VIEW); the HUD shows the computed zoom %.
+Tests: tests/map-hud.browser.js now also checks P5-1 (disc .4), P5-2 (24 px Muted, clearances, margins), P5-3 (acq on a new lock, not
+      on zoom), P5-4 (Huntsville ×2, head meta), P5-5 (SVG ◉), P5-6 (hover popup clear of the readout), Q-d, Q-e.
+
+GROK BOT RE-QA 363b67d (01:12 ET) + RULINGS + MAP-1 (pushed with this note)
+P5-3  Lock-on per B-17 / M-05: r22, r31 and the readout are final from frame 1; only the 4 corner brackets scale 2 -> 1, and brackets + the
+      4 ticks rotate 90° -> 0 together, 240 ms cubic-bezier(.16,1,.3,1); ticks keep r26..r46. Reduced motion: final state, no rotation.
+P5-7  (Ruling 1) state labels: golden margins dropped. Every state whose outline is visible is labelled at its centroid, else at the
+      nearest point inside its visible clipped area (isPointInFill on the state path); dropped only on an 8 px hit with HUD lines,
+      selector, zoom / layers, bracket arms, band, pins r10, lock r46, readout, or another label. Label box = Plex Mono 24 px line box.
+N-1   HUD zoom: "ZOOM AUTO-FIT (FILTERED SET)" in the fitted filtered view, "ZOOM AUTO-FIT" at the selected job's fitted zoom,
+      "ZOOM n%" after any user zoom (+ / − / % / RESET / wheel / pinch).
+N-2   Filtered legend "TOP n · UPPER n · MID n · LOW n · HOLD n" counted from the drawn pins; SELECTED keeps the percentages.
+A-1   Selected head meta "<n> PIN(S) · LOCKED <id>" (n computed; the fixture's first job has 2 pins: TX + Aurora, IL).
+A-2   #mapfilters offers SELECTED / CURRENT VIEW only; a saved Applied / Active / Scout / Ready map mode opens as FILTERED VIEW.
+      ui.browser.js updated as a spec change (those modes, the Cleveland scenario -> Pensacola, popup head / content selectors).
+      NOTE: ui.browser.js stops at a pre-existing line 20 in this sandbox (same on main), so those edits are syntax-checked only.
+MAP-1 Popup = head "CITY, ST [· ≈ STATE]" (+ "×N JOBS"), then every job: company (Inter 600 13), title (Inter 12 Secondary),
+      pay = PipelineTrust.salaryRange ("~" + EST. tag when estimated; PAY UNKNOWN only with no posted pay and no estimate, Tim's
+      SALARY RULE 01:34 ET), per-job city "City, ST" when N > 1 or "… · ADDITIONAL SITE". Wraps, no ellipsis, 11 px floor.
+      Placement: right / left / below / above (gap 24) + 4 corners, clamped in the open canvas, scored lock 1000 / selector-zoom-layers
+      300 / other shown pins 50 / HUD lines 10 / own pin 1e6 (Tim: may cover the HUD text on very short canvases, never the pin or the
+      readout). Too tall on hover -> "+k MORE · CLICK THE PIN FOR ALL N". No leader line.
+      Phone: first tap opens a sheet 12 px from the sides above the bottom bar (moves to the top if it would cover the pin), one OPEN JOB
+      per job; second tap on the pin opens it (×N -> picker); empty-map tap closes. A tapped sheet survives the touch pointerleave.
+      Picker: head "CITY, ST · ×N JOBS", each button company / title / pay / city, min-height 44.
+      R-8 (A-3): pins merged by coordinate (4 dp): Austin / Burnet (TX centroid) and Aurora / Manteno (IL centroid) read ×2.
+Tests: tests/map-popup.browser.js (2560x1440, 1440x900, 390x844 touch; every pin; hover; locked pin; phone sheet, close, Open job).
+      tests/map-hud.browser.js adds P5-3 (rings still), P5-7 (labels in the open canvas, selected view labelled), N-1, N-2, A-1, A-2.
+Screens: STEP5_MAP1_popup_2560x1440.png, STEP5_MAP1_sheet_390x844.png (Huntsville ×2).
