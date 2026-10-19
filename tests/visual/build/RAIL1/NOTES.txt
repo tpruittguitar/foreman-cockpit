@@ -1,0 +1,24 @@
+RAIL-1 · side rail icons no longer move on hover (Grok Bot LOOK 2026-10-18 23:59 ET, from Tim) · REV-029 · stacked on PR #128
+
+WHAT
+pipeline-ui-oct15.css: RAIL-1 block as Grok wrote it: one grid in both states (col 1 = 96 px icon slot, col 2 = label column),
+  icon 26 px fixed, labels change by opacity only, expands on hover / keyboard focus-visible / .open, inset 2 px focus ring,
+  3 px inset cyan bar on the current group, reduced-motion turns the transitions off.
+Removed (replaced by RAIL-1): base.css hover scale on rail icons; desktop.css collapsed column rows (old :27-29) and hover rows
+  (old :33-34); pr70.css collapsed / hover rail label sizes (old :98, :147).
+
+TWO DEVIATIONS FROM THE LOOK BLOCK (Claude, for Grok Bot to rule)
+D-a  Media query is desktop.css's own, (min-width: 981px), (min-width: 761px) and (pointer: fine), so the removed desktop.css
+     rules have a replacement at every width they covered. With min-width: 981px alone, a 761-980 px fine-pointer window
+     would have lost the collapsed column layout.
+D-b  pr70.css :241-242 (nav-full / nav-short display when collapsed) are kept: they are global and also apply to the phone
+     rail. On desktop RAIL-1's display: block !important already outranks them, so they do not fight it.
+ADDED  #rail .rail-foot .rl { opacity: 1 }: pipeline.html sets #rail .rl to opacity 0 while collapsed and the removed
+     desktop.css:28 was what showed STATUS / REFRESH under their icons. Without it those two labels vanished when collapsed.
+
+TEST  tests/rail.browser.js (harness of workspace-layout.browser.js), 2560x1440 and 1440x900, tolerance 0.5 px:
+  icon rects equal collapsed / hover +60 ms / hover settled / keyboard focus; #rail, header, #view-pipeline rects unchanged;
+  hover and keyboard focus widen .rail-in > 100 px; elementFromPoint at the hovered icon centre is still that button;
+  focus ring >= 2 px with offset <= -width; visible labels >= 11 px uppercase in both states; STATUS / REFRESH / PIPELINE
+  labels show collapsed; no page errors. Fails on the #128 head (icon 0 x 35.5 -> 24), passes with RAIL-1.
+SCREENS  before-*.png = #128 head, after-*.png = RAIL-1, 2560x1440, left 320 px; compare-before-after.png puts all four in a row.
