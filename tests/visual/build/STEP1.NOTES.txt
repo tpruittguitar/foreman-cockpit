@@ -1,0 +1,29 @@
+BUILD STEP 1 · REV-024 · Oct 15 look in the live shell: header, KPI row, job table · 2026-10-18 21:30 ET · Claude
+Baseline: tests/visual/golden/F02_2560x1440.png (REV-019, Grok Bot PASS 20:05 ET). Screens: STEP1_before / STEP1_after (2560 x 1440,
+local fixture tests/fixtures/master.sample.txt, scripted Writer, first row selected).
+WHAT CHANGED (presentation only; no JS, no data path, no Writer call changed)
+ - pipeline.html links tokens.css first and pipeline-ui-oct15.css last.
+ - pipeline-ui-oct15.css §1 maps the legacy variables (--bg --line --text --dim --faint --mono --sans --forge-* --px-*) to tokens, so every
+   older stylesheet now draws in the token palette and Inter / IBM Plex Mono. --faint -> Secondary (V-11: no Muted under 24 px).
+ - §2 header (desktop): void bar, seam rule, mono brand 16 px, crumb 12 px Secondary, search 38 px with #6B6B66 outline, Writer badge as the
+   single status pill, status cells as mono status text, header controls as mono text controls. Brand subtitle hidden (golden has none).
+ - sub-tabs: mono 12 px Secondary; current tab Cyan with a 3 px rule.
+ - §3 KPI tiles: hull, seam border, mono 12 px label, 38 px / 650 value (V-12), 13 px caption shown, cyan border + glow when active.
+   Queue-head grid row 66 px -> 118 px to hold 96 px tiles; the list/map split ratios are unchanged.
+ - §4 table: 36 px mono header 11 px; 32 px Inter 14 px rows on #0B0B0B / #070707 (tokens --pe-row-a / -b); lock-on row Raised with cyan
+   rules, 6 px cyan bar and 1 px cyan outline (also the focus indicator for that row); score 16 px / 650; status words plain text;
+   row checkboxes are #6B6B66 outline squares, cyan when ticked.
+GROK BOT QA ON #125 (21:33 ET, head 63685ad) — all four applied, STEP1_after re-rendered:
+ 1 Rail labels: uppercase IBM Plex Mono 11 px (--pe-fs-min), --pe-label-tracking, Secondary; current group Cyan with a 3 px inset bar
+   (overrides the white gradient in pipeline-ui-workspace.css). Covers Pipeline / Intake / System / Settings / Status / Refresh.
+ 2 Writer pill: .writer-identity is the one-row 38 px pill (#6B6B66 outline); badge borderless inside; countdown inline as
+   "· REFRESH 0:59", mono 12 px Secondary; the stacked line and its track bar are hidden. Red outline + tint when the badge is critical.
+   The System panel countdown (inside #writer-panel) is untouched.
+ 3 LAYOUT: it is the pane-split toolbar docked in the header; its CSS is injected at runtime (pipeline-pane-split.js injectCss), which
+   is why border:0 lost. Overridden with id + !important for rest, hover and edit state (edit = Cyan "DONE", no box).
+ 4 KPI tiles: .decide-viz / .mini-spark / .mini-share hidden; tiles show label, value, caption only.
+ Test change: tests/progress.browser.js reads the countdown with textContent (DOM words) because innerText now reflects the CSS
+ uppercase; same words asserted. It then fails at line 79 exactly as on main.
+NOT IN THIS STEP (next PRs): KPI set/order and full-width KPI row (step 2 with the F02 table+drawer layout), band colours on scores
+ (needs the runtime percentile cut-points), drawer, map, opening state (step 3), the 5 BUILD items (step 4). Phone layout unchanged except
+ the shared palette/fonts.
