@@ -36,18 +36,25 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   header #search { height: 38px; border: 1px solid var(--pe-outline) !important; border-radius: 0; background-color: var(--pe-hull) !important; color: var(--pe-text-primary); font-family: var(--pe-font-ui); font-size: var(--pe-fs-small); box-shadow: none; }
   header #search::placeholder { color: var(--pe-text-secondary); opacity: 1; }
   header #search:focus { border-color: var(--pe-cyan) !important; box-shadow: var(--pe-glow); outline: 0; }
-  /* Writer badge = the single status pill (golden .status-pill). */
-  header .writer-badge { flex-direction: row !important; align-items: center !important; gap: 8px !important; height: 38px; min-height: 38px; padding: 0 12px 0 11px !important; border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: transparent !important; font-family: var(--pe-font-label); }
+  /* Writer pill (golden .status-pill): ONE row, 38 px, #6B6B66 outline. The pill box is .writer-identity, holding the badge
+     ("WRITER IDLE") and the countdown as inline mono text ("· REFRESH 0:42"). The stacked countdown line and its track bar
+     are gone (Grok Bot QA #125 item 2). The System panel (#writer-panel) still opens from the badge. */
+  header .writer-identity { display: flex !important; flex-direction: row; align-items: center; gap: 8px; height: 38px; padding: 0 12px 0 11px;
+    border: 1px solid var(--pe-outline); border-radius: 0; background: transparent; white-space: nowrap; }
+  header .writer-identity:has(.writer-badge.critical) { border-color: var(--pe-red); background: var(--pe-tint-red); }
+  header .writer-badge { flex-direction: row !important; align-items: center !important; gap: 8px !important; height: 36px; min-height: 0 !important; padding: 0 !important;
+    border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; font-family: var(--pe-font-label); }
   header .writer-badge small, header .writer-badge b { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-crumb) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; line-height: 1 !important; }
   header .writer-badge small { color: var(--pe-text-secondary) !important; }
   header .writer-badge b { color: var(--pe-text-primary) !important; }
   header .writer-badge.ok b { color: var(--pe-green) !important; }
   header .writer-badge.warn b { color: var(--pe-amber) !important; }
-  header .writer-badge.critical { border-color: var(--pe-red) !important; background: var(--pe-tint-red) !important; }
   header .writer-badge.critical b { color: var(--pe-red) !important; }
-  header .writer-countdown, header .writer-countdown span { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: var(--pe-btn-tracking); color: var(--pe-text-secondary); }
-  header .writer-countdown-track { background: var(--pe-raised); }
-  header .writer-countdown-track > i { background: var(--pe-text-secondary); }
+  header .writer-identity > .writer-countdown { display: flex; align-items: center; min-width: 0 !important; padding: 0 !important; margin: 0; }
+  header .writer-identity > .writer-countdown > span { display: inline !important; margin: 0 !important; font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-crumb) !important;
+    letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary) !important; line-height: 1; }
+  header .writer-identity > .writer-countdown > span::before { content: "· "; }
+  header .writer-identity > .writer-countdown > .writer-countdown-track { display: none !important; }
   /* Status cells = the mono status text right of the pill (golden .hdr-meta). */
   header .hcell { flex-direction: row !important; align-items: center !important; gap: 6px !important; min-height: 38px; padding: 0 0 0 14px !important; border-left: 0 !important; }
   header .hcell small, header .hcell b { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-crumb) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; line-height: 1 !important; }
@@ -58,6 +65,20 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
     font-family: var(--pe-font-label); font-size: var(--pe-fs-crumb); font-weight: 400; letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary) !important; }
   header #compare-open:hover, header #density-toggle:hover, header #refresh:hover, header #settings:hover, header #bell:hover { color: var(--pe-text-primary) !important; }
   header #bell { color: var(--pe-text-secondary); }
+  /* LAYOUT control (pane-split toolbar, docked in the header; its CSS is injected at runtime by pipeline-pane-split.js, so these
+     rules carry the id and !important). Borderless mono text like every other header control, in every state (QA #125 item 3). */
+  header #workspace-layout-toolbar.ws-docked button, body.workspace-layout-edit header #workspace-layout-toolbar.ws-docked button,
+  body.workspace-layout-edit header #workspace-layout-toolbar.ws-docked [data-ws-toggle] {
+    min-height: var(--pe-target-desktop-min) !important; padding: 0 6px !important; border: 0 !important; border-radius: var(--pe-radius) !important; background: transparent !important; box-shadow: none !important; opacity: 1 !important;
+    font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-crumb) !important; font-weight: 400; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  header #workspace-layout-toolbar.ws-docked button:hover { color: var(--pe-text-primary) !important; }
+  body.workspace-layout-edit header #workspace-layout-toolbar.ws-docked [data-ws-toggle] { color: var(--pe-cyan) !important; }   /* edit mode: Cyan + the word changes to DONE */
+
+  /* Rail (golden .rail-item): labels uppercase mono 11 px Secondary, current item Cyan with a 3 px bar (Tim ruling: uppercase rail labels; QA #125 item 1). */
+  #rail .rail-group > button, #rail .rail-foot button { color: var(--pe-text-secondary) !important; background: transparent !important; }
+  #rail .rail-group.cur > button { color: var(--pe-cyan) !important; background: transparent !important; border-left-color: var(--pe-cyan) !important; box-shadow: inset var(--pe-bar-card) 0 0 var(--pe-cyan) !important; }
+  #rail .rl, #rail:not(.open) .rl, #rail:hover .rl, #rail.open .rl { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; font-weight: 400 !important;
+    letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase !important; line-height: 14px !important; color: inherit !important; }
 
   /* Sub-tabs (golden .subtabs): mono, Secondary; current tab Cyan with a 3 px rule. */
   .st-row [role=tab] { font-family: var(--pe-font-label); font-size: var(--pe-fs-tab); letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary); background: transparent !important; border: 0 !important; border-radius: 0; position: relative; }
@@ -80,9 +101,8 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   .decide .delta { font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-small) !important; color: var(--pe-text-secondary) !important; }
   .queue-head .decide .delta { display: block !important; white-space: nowrap; }   /* golden .k-cap: the caption line shows */
   .decide .delta.up { color: var(--pe-green) !important; }
-  .decide .decide-viz { color: var(--pe-text-secondary); }
-  .decide .mini-share { background: var(--pe-raised); height: 3px; }
-  .decide .mini-share > i { background: var(--pe-text-secondary); }
+  /* Golden .kpi = label, value, caption only (QA #125 item 4): no sparkline, no share bar. */
+  .decide .decide-viz, .decide .mini-share, .decide .mini-spark { display: none !important; }
   #queue-head .qh-title { font-family: var(--pe-font-label); font-size: 13px; font-weight: 400; letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-primary); }
   #queue-head .qh-title .mono { color: var(--pe-text-secondary); }
 

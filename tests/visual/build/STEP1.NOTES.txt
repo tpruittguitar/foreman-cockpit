@@ -13,6 +13,17 @@ WHAT CHANGED (presentation only; no JS, no data path, no Writer call changed)
  - §4 table: 36 px mono header 11 px; 32 px Inter 14 px rows on #0B0B0B / #070707 (tokens --pe-row-a / -b); lock-on row Raised with cyan
    rules, 6 px cyan bar and 1 px cyan outline (also the focus indicator for that row); score 16 px / 650; status words plain text;
    row checkboxes are #6B6B66 outline squares, cyan when ticked.
+GROK BOT QA ON #125 (21:33 ET, head 63685ad) — all four applied, STEP1_after re-rendered:
+ 1 Rail labels: uppercase IBM Plex Mono 11 px (--pe-fs-min), --pe-label-tracking, Secondary; current group Cyan with a 3 px inset bar
+   (overrides the white gradient in pipeline-ui-workspace.css). Covers Pipeline / Intake / System / Settings / Status / Refresh.
+ 2 Writer pill: .writer-identity is the one-row 38 px pill (#6B6B66 outline); badge borderless inside; countdown inline as
+   "· REFRESH 0:59", mono 12 px Secondary; the stacked line and its track bar are hidden. Red outline + tint when the badge is critical.
+   The System panel countdown (inside #writer-panel) is untouched.
+ 3 LAYOUT: it is the pane-split toolbar docked in the header; its CSS is injected at runtime (pipeline-pane-split.js injectCss), which
+   is why border:0 lost. Overridden with id + !important for rest, hover and edit state (edit = Cyan "DONE", no box).
+ 4 KPI tiles: .decide-viz / .mini-spark / .mini-share hidden; tiles show label, value, caption only.
+ Test change: tests/progress.browser.js reads the countdown with textContent (DOM words) because innerText now reflects the CSS
+ uppercase; same words asserted. It then fails at line 79 exactly as on main.
 NOT IN THIS STEP (next PRs): KPI set/order and full-width KPI row (step 2 with the F02 table+drawer layout), band colours on scores
  (needs the runtime percentile cut-points), drawer, map, opening state (step 3), the 5 BUILD items (step 4). Phone layout unchanged except
  the shared palette/fonts.
