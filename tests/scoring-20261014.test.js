@@ -14,7 +14,9 @@ test('compensation curve: 0 at floor, 50 at target, 100 at ceiling',()=>{
   assert.equal(f(150000),0);assert.equal(f(160000),0);assert.equal(f(190000),25);
   assert.equal(f(220000),50);assert.equal(f(270000),75);assert.equal(f(320000),100);assert.equal(f(500000),100);
   const r=S.scoreRow({COMPANY:'X',TITLE:'Director',LOCATION:'Chattanooga, TN',payload:{SALARY_BASE_LOW:'200000',SALARY_BASE_HIGH:'240000'}},S.defaults());
-  assert.equal(r.parts.compensation.score,50);
+  // PAY WORTH (Tim 2026-10-19 02:17 ET) replaces the salary curve in the compensation slot: $220k vs $180k needed at geo 100.
+  assert.equal(r.parts.compensation.score,S.payWorth({LOCATION:'Chattanooga, TN',payload:{SALARY_BASE_LOW:'200000',SALARY_BASE_HIGH:'240000'}},S.defaults()).score);
+  assert.equal(r.parts.compensation.score,99);assert.match(r.parts.compensation.basis,/^PAY_WORTH 99 · .*need \$180k/);
 });
 
 test('culture reads the Target Companies list from canonical rules',()=>{

@@ -87,7 +87,7 @@ var PipelinePolicy = (function () {
   function assess(p,raw,cfg) {
     var f=flex(p,cfg),adjusted=raw==null?null:Math.max(0,Math.min(100,raw+f.modifier));
     var pay=String(p.FLOOR_STATUS||'').toUpperCase(),title=String(p.TITLE_RULE_STATUS||p.TITLE_STATUS||'').toUpperCase();
-    var fail=/BELOW|FAIL/.test(pay)||/FAIL|BELOW/.test(title),clear=/CLEAR|PASS/.test(pay)&&/CLEAR|PASS/.test(title);
+    var fail=/BELOW|FAIL/.test(pay)||/FAIL|BELOW/.test(title),clear=/^(CLEAR|PASS)/.test(pay)&&/^(CLEAR|PASS)/.test(title);
     var decision=f.blocked?'STRICT_HOLD':fail?'PAY_OR_TITLE_HOLD':adjusted==null||!f.known?'NEEDS_EVIDENCE':f.class==='NO_FLEX'&&adjusted<80?'LOW_ADJUSTED_FIT':!clear?'CHECK_PAY_AND_TITLE':'PURSUE_CANDIDATE';
     var own=isV4(f.policy)?ownership(p):null;
     if(own&&own.known&&own.form==='NOT_OWNERSHIP'&&!f.blocked)decision='OWNERSHIP_HOLD';

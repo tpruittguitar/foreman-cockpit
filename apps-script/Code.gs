@@ -1,4 +1,4 @@
-if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');var ReceiptIndexStore=require('./ReceiptIndexStore.gs');}
+if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineEvidence=require('../pipeline-evidence');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');var ReceiptIndexStore=require('./ReceiptIndexStore.gs');}
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -1419,13 +1419,14 @@ function applyDataDiscoveryRequest_(req) {
     for (var i=0;i<paras.length;i++) {
       var t=paras[i]; if (!/^\d+ \| /.test(t)) continue;
       var c=t.split(' | '); if (c.length < FIXED_N + 1) continue;
-      rows[c[1].trim()] = { primaryId:c[1].trim(), company:c[2].trim(), title:c[3].trim(), bucket:c[4].trim(), req:c[7].trim(), location:c[8].trim() };
+      rows[c[1].trim()] = { primaryId:c[1].trim(), company:c[2].trim(), title:c[3].trim(), bucket:c[4].trim(), req:c[7].trim(), location:c[8].trim(), payload:parsePayload(c.slice(FIXED_N).join(' | ')).payload };
     }
     var f=findOrCreate_(DISCOVERY_REQUESTS_NAME,'text',''), out=[], accepted=0, now=new Date().toISOString();
     for (var j=0;j<list.length;j++) {
       var x=list[j]||{}, pid=String(x.primaryId||x.PRIMARY_ID||'').trim(), row=rows[pid];
       if (!row) { out.push({ok:false,primaryId:pid,error:'PRIMARY_ID not found in current master'}); continue; }
-      var requested=Array.isArray(x.fields)?x.fields.map(function(v){return String(v||'').trim().toUpperCase()}).filter(Boolean):['SALARY','SOURCE_URL','FLEX'];
+      var hasPay=row.payload&&PipelineEvidence.salary(row.payload).mid!=null;   // SALARY RULE W9: an estimate is a figure
+      var requested=Array.isArray(x.fields)?x.fields.map(function(v){return String(v||'').trim().toUpperCase()}).filter(Boolean):(hasPay?['SOURCE_URL','FLEX']:['SALARY','SOURCE_URL','FLEX']);
       requested=requested.filter(function(v,n,a){return a.indexOf(v)===n&&['SALARY','SOURCE_URL','FLEX','DEGREE','REMOTE_HYBRID','REQ_ID','POSTING_DATE'].indexOf(v)>=0});
       if (!requested.length) { out.push({ok:false,primaryId:pid,error:'no supported missing fields requested'}); continue; }
       var rid=String(x.requestId||'').trim()||('DD-'+now.replace(/[-:.TZ]/g,'')+'-'+pid.slice(-8));
@@ -1847,6 +1848,7 @@ function deriveWriterScores_(fixed, P, set, policy) {
   if(!policy._SCORING_MODEL)return {ok:false,error:'SCORING_MODEL_UNAVAILABLE: '+(policy._SCORING_ERROR||'read the published model before scoring')};
   var input={};Object.keys(P).forEach(function(k){if(SCORE_OUTPUT_KEYS.indexOf(k)<0&&['FLEX_MODIFIER','ADJUSTED_FIT','PURSUIT_STATUS'].indexOf(k)<0)input[k]=P[k];});
   var config=Object.assign({},policy._SCORING_MODEL,{flexPolicy:policy,targetCompanies:policy._TARGET_COMPANIES||[]});
+  writerGeocode_(fixed[8],P,input,set);   // PAY WORTH: one-time city lookup so the geo map score uses the real city
   var score=PipelineScoring.scoreRow({COMPANY:fixed[2],TITLE:fixed[3],LOCATION:fixed[8],payload:input},config);
   function value(k,v){set(k,v==null?'UNKNOWN':String(v));}
   value('OVERALL',score.overall);value('OVERALL_RATING',score.overall);
@@ -1856,6 +1858,8 @@ function deriveWriterScores_(fixed, P, set, policy) {
   value('RATING_CONFIDENCE',score.confidence);value('FLEX_RATING_IMPACT',score.flexInfluence);
   value('FLEX_CLASS',score.assessment.flex.class);value('FLEX_MODIFIER',score.assessment.flex.modifier);
   value('ADJUSTED_FIT',score.assessment.adjustedFit);value('PURSUIT_STATUS',score.assessment.decision);
+  if(score.floor&&score.floor.derived&&(score.floor.status||/^WRITER_DERIVED/i.test(String(P.FLOOR_BASIS||'')))){value('FLOOR_STATUS',score.floor.status);set('FLOOR_BASIS',score.floor.basis);}   // SALARY RULE W2 / PAY WORTH
+  if(score.payWorth&&score.payWorth.score!=null){value('PAY_WORTH',score.payWorth.score);set('PAY_WORTH_BASIS',score.payWorth.basis);}else if(P.PAY_WORTH!==undefined){value('PAY_WORTH',null);set('PAY_WORTH_BASIS',score.payWorth?score.payWorth.basis:'no salary figure');}
   value('SCORING_MODEL_REF',score.modelId+' '+score.modelVersion+' rev'+(config.publishedRevision||0));
   value('RULES_POLICY_VERSION',PipelinePolicy.V4);value('OWNERSHIP_POLICY_VERSION','OWNERSHIP_20261007');
   return {ok:true};
@@ -1868,7 +1872,30 @@ var ENRICH_DENY = ['DECLINE_REASON_CODE', 'DECLINE_REASON_CODE_PRIOR', 'DECLINE_
 /** Calculated outputs are Writer-owned. Under V4, evidence writes calculate and store them with
  * model/policy provenance; legacy policies retain the prior viewer-derived contract. Agents
  * submit raw fit, requirement text, salary, location and ownership evidence, never outputs. */
-var SCORE_OUTPUT_KEYS = ['OVERALL', 'GEO', 'NET_COMP', 'OVERALL_RATING', 'EXPERIENCE_FIT', 'GEO_SCORE', 'NET_COMP_SCORE', 'RATING_CONFIDENCE', 'FLEX_RATING_IMPACT'];
+var SCORE_OUTPUT_KEYS = ['OVERALL', 'GEO', 'NET_COMP', 'OVERALL_RATING', 'EXPERIENCE_FIT', 'GEO_SCORE', 'NET_COMP_SCORE', 'RATING_CONFIDENCE', 'FLEX_RATING_IMPACT', 'PAY_WORTH', 'PAY_WORTH_BASIS'];
+/* PAY WORTH (Tim 2026-10-19 02:17 ET): the geo map score needs the job's real city. The Writer looks a one-site, non-remote US
+   location up once with Apps Script's built-in Maps geocoder and records LATITUDE / LONGITUDE (GEOCODE_SOURCE, GEOCODE_ASOF), so the
+   viewer and the Writer score the same point. Recorded coordinates are never replaced. A failed lookup changes nothing (the score
+   falls back to a geo point with the same name, the city table, then the state centre). */
+function writerGeocode_(location, P, input, set) {
+  var loc = String(location || P.LOCATION || '').trim();
+  if (!loc || (P.LATITUDE && P.LONGITUDE) || /\bremote\b|\/|;|\||\s+or\s+/i.test(loc) || typeof Maps === 'undefined') return null;
+  try {
+    var key = 'geo1:' + loc.toLowerCase().replace(/\s+/g, ' ').slice(0, 200), cache = typeof CacheService !== 'undefined' ? CacheService.getScriptCache() : null, hit = cache && cache.get(key), ll = hit ? JSON.parse(hit) : null;
+    if (!ll) {
+      var res = Maps.newGeocoder().setRegion('us').geocode(loc), top = res && res.status === 'OK' && res.results && res.results[0];
+      if (!top) return null;
+      var us = (top.address_components || []).some(function (c) { return (c.types || []).indexOf('country') >= 0 && c.short_name === 'US'; });
+      if (!us) return null;
+      ll = { lat: Math.round(top.geometry.location.lat * 1e5) / 1e5, lon: Math.round(top.geometry.location.lng * 1e5) / 1e5 };
+      if (cache) cache.put(key, JSON.stringify(ll), 21600);
+    }
+    var asof = Utilities.formatDate(new Date(), 'America/New_York', 'yyyy-MM-dd');
+    set('LATITUDE', String(ll.lat)); set('LONGITUDE', String(ll.lon)); set('GEOCODE_SOURCE', 'WRITER_APPS_SCRIPT_MAPS'); set('GEOCODE_ASOF', asof);
+    input.LATITUDE = String(ll.lat); input.LONGITUDE = String(ll.lon);
+    return ll;
+  } catch (e) { return null; }
+}
 function scoreOutputKeys_(keys) { return (keys || []).map(function (k) { return String(k).trim().toUpperCase(); }).filter(function (k) { return SCORE_OUTPUT_KEYS.indexOf(k) >= 0; }); }
 function scoreOutputError_(found) { return 'SCORE_OUTPUT_FIELD: ' + found.join(', ') + ' ' + (found.length === 1 ? 'is a calculated score' : 'are calculated scores') + '. The Writer and shared scorer derive scores from the published scoring model; submit the evidence fields instead (FLEX_CLASS or degree evidence, SCOPE_FIT_RAW, salary evidence, location, link). An agent-specific opinion may go under its own prefix (CLAUDE_*, GROK_*).'; }
 function isEnrichDenied_(k) { k = String(k).trim().toUpperCase(); return /^TIM_/.test(k) || ENRICH_DENY.indexOf(k) >= 0; }
@@ -2228,7 +2255,7 @@ function classifyNeverConsider(rec, R) {
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
 }
 /* ================= pure functions: intake planning ================= */
-var INTAKE_FACT_KEYS = ['PAY_POSTED', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
+var INTAKE_FACT_KEYS = ['PAY_POSTED', 'SALARY_BASE_POSTED', 'SALARY_BASE_EST', 'SALARY_BASIS', 'SALARY_CONF', 'SALARY_SOURCE', 'SALARY_ASOF', 'SALARY_NOTE', 'SALARY_BASE_LOW', 'SALARY_BASE_HIGH', 'SALARY_MIDPOINT', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
   ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });

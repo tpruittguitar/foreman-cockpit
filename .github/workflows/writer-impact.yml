@@ -1,0 +1,21 @@
+# Read-only impact report for Writer / shared scoring changes (Tim 2026-10-19: "Report how many live rows change before deploy").
+# Scores the live master with main's modules and this PR's modules and prints what changes as check annotations. Writes nothing.
+name: writer-impact
+on:
+  pull_request:
+    paths: [ 'apps-script/**', 'pipeline-scoring.js', 'pipeline-policy.js', 'pipeline-evidence.js', 'tools/salary-floor-impact.js', '.github/workflows/writer-impact.yml' ]
+  workflow_dispatch:
+jobs:
+  impact:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: main's modules
+        run: |
+          mkdir -p "$RUNNER_TEMP/old"
+          for f in pipeline-scoring.js pipeline-policy.js pipeline-evidence.js; do git show origin/main:$f > "$RUNNER_TEMP/old/$f"; done
+      - name: impact on the live master
+        run: node tools/salary-floor-impact.js --old "$RUNNER_TEMP/old" --out "$RUNNER_TEMP/impact.json"

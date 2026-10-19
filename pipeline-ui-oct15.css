@@ -657,3 +657,8 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #writer-panel .build-row { grid-template-columns: minmax(0, 1fr); }
   #writer-panel .sys-x { min-width: var(--pe-target-phone, 44px); min-height: var(--pe-target-phone, 44px); }
 }
+
+/* PAY WORTH chip (Tim 2026-10-19 02:17 ET): full text, wraps, never ellipsis (L-1); state also in words ("PAY HOLD ·"). */
+#drawer .pe-chip.pw { height: auto; min-height: var(--pe-chip-h); white-space: normal; overflow-wrap: anywhere; line-height: 14px; text-align: left; }
+#drawer .pw-line { color: var(--pe-text-secondary); }
+.st-note { margin: 0 0 8px; font-size: 12px; line-height: 17px; }
