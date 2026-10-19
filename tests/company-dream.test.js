@@ -1,4 +1,4 @@
-// REV-040 company preference (Tim 2026-10-19 02:43 ET): DREAM tier above P1 on Companies Priority; Shield AI matched on a normalised
+// REV-046 company preference (Tim 2026-10-19 02:43 ET): DREAM tier above P1 on Companies Priority; Shield AI matched on a normalised
 // name; priority raises rank only and never overrides a pay hold, FLEX, scope or a hard no.
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('fs'), path = require('path');
 const S = require('../pipeline-scoring'), P = require('../pipeline-policy'), T = require('../pipeline-target-companies');

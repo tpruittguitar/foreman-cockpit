@@ -60,7 +60,7 @@
   function band(s){return s==null?'UNKNOWN':s>=90?'PRIORITY':s>=75?'STRONG':s>=60?'WATCH':s>=40?'WEAK':'NO-GO'}
   /* Culture / company preference. Explicit CULTURE_SCORE evidence wins. Otherwise Tim's Target Companies list
    * (canonical rules, SECTION=TARGET_COMPANIES) scores the employer: DREAM 100, P1 90, P2 80, P3 70, WATCH 60 (Tim 2026-10-19 02:43 ET,
-   * REV-040: DREAM sits above P1 so a dream company ranks above an otherwise equal job). A named employer
+   * REV-046: DREAM sits above P1 so a dream company ranks above an otherwise equal job). A named employer
    * that is not on the list, or is PAUSED, scores 40. A recruiter posting with a hidden or confidential client is
    * UNKNOWN, because the real employer may be on the list. */
   var TARGET_TIER={DREAM:100,P1:90,P2:80,P3:70,WATCH:60};

@@ -1309,7 +1309,7 @@ function bindNextStep_(r){var button=document.querySelector('[data-next-job-step
 /* PAY WORTH (Tim 2026-10-19 02:17 ET): pay scored against what the place needs on Tim's geo map. Estimated pay counts the same as posted. */
 function payWorthText_(sc){var pw=sc&&sc.payWorth,b=pw&&pw.best;if(!pw)return '';if(!b)return 'PAY_WORTH · outside the US';return 'PAY_WORTH '+pw.score+' · '+(b.geo!=null?b.area+' score '+b.geo:b.area+' · geo map not loaded')+' · needs $'+Math.round(b.need/1000)+'k'}
 function payWorthChip_(sc){var t=payWorthText_(sc),pw=sc&&sc.payWorth;if(!t)return '';var hold=/^BELOW/.test(pw.status),k=hold?'red':/^PASS/.test(pw.status)?'ok':'amb';return '<span class="pe-chip pw '+k+'" data-pay-worth="'+esc(pw.score==null?'':pw.score)+'" title="'+esc(pw.basis)+'">'+(hold?'PAY HOLD · ':'')+esc(t)+'</span>'}
-/* COMPANY tier chip (Tim 2026-10-19 02:43 ET, REV-040): the target-company tier in words, e.g. "COMPANY DREAM · Shield AI". It raises rank only;
+/* COMPANY tier chip (Tim 2026-10-19 02:43 ET, REV-046): the target-company tier in words, e.g. "COMPANY DREAM · Shield AI". It raises rank only;
    it never changes a pay hold, FLEX, scope or a hard no. */
 function companyChip_(sc){var c=sc&&sc.parts&&sc.parts.culture,m=c&&String(c.basis||'').match(/^Target company (DREAM|P1|P2|P3|WATCH|PAUSED) · (.+)$/);if(!m)return '';return '<span class="pe-chip co '+(m[1]==='DREAM'?'cy':'local')+'" data-company-tier="'+m[1]+'" title="'+esc('Company preference '+m[1]+' · culture score '+c.score+' · raises rank only; never changes a pay hold, FLEX, scope or a hard no')+'">COMPANY '+m[1]+' · '+esc(m[2])+'</span>'}
 function payWorthLine_(sc){var t=payWorthText_(sc);return t?' <span class="pw-line" title="'+esc(sc.payWorth.basis)+'">· '+esc(t)+'</span>':''}
