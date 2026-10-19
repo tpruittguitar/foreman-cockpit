@@ -29,8 +29,12 @@
       return { key: k, name: NAME[k], weight: total ? Math.round(w / total * 100) : 0, known: !!p.known, score: p.known ? p.score : null, points: tenths[i] / 10 };
     });
     var knownPct = rows.reduce(function(a, r){ return a + (r.known ? r.weight : 0); }, 0);
-    var sum = Math.round(rows.reduce(function(a, r){ return a + r.points; }, 0) * 10) / 10;
-    return { rows: rows, knownPct: knownPct, sum: sum, coverage: coverage, factor: factor, overall: sc.overall,
+    var parts10 = Math.round(rows.reduce(function(a, r){ return a + r.points; }, 0) * 10) / 10;
+    // REV-046 company boost: its own line after the weighted parts, so the total still reads to the ring.
+    var cb = sc.companyBoost || {}, boost = +cb.points || 0;
+    if (boost) rows.push({ key: 'boost', name: 'Company boost · ' + cb.tier, weight: null, known: true, score: null, points: boost, boost: true });
+    var sum = Math.round((parts10 + boost) * 10) / 10;
+    return { rows: rows, knownPct: knownPct, partsSum: parts10, boost: boost, sum: sum, coverage: coverage, factor: factor, overall: sc.overall,
       allShared: rows.every(function(r){ return r.weight >= 0; }) };
   }
 
