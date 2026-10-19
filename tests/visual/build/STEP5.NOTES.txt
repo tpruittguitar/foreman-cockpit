@@ -1,4 +1,4 @@
-PE BUILD STEP 5 · map rebuild toward the golden F01 / F02 map panel · rev4 BUILD 1-2 · REV-030 · Claude · 2026-10-19
+PE BUILD STEP 5 · map rebuild toward the golden F01 / F02 map panel · rev4 BUILD 1-2 · REV-031 (REV-030 was taken) · Claude · 2026-10-19
 
 WHAT (desktop; JS adds .pe-map under desktop.css's media query, the phone map is unchanged)
 - Panel head 44 px: "◎ JOB LOCATION MAP · <MODE>" mono 13 uppercase; #map-sub on the right as the meta line.
