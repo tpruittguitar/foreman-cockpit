@@ -21,12 +21,12 @@ const JOB='V2X-A4CCD49EE686';
     if(opts.ls)await page.addInitScript(ls=>{Object.keys(ls).forEach(k=>localStorage.setItem(k,ls[k]))},opts.ls);
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{sha:'x'}}));
     await page.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));
-    const W={old:!!opts.oldWriter,refuse:opts.refuse||0};   // old Writer (before REV-053): answers ok with no "reviewed" count and keeps nothing
+    const W={old:!!opts.oldWriter,refuse:opts.refuse||0,stateFail:opts.stateFail||0,stateReads:0};   // old Writer (before REV-053): answers ok with no "reviewed" count and keeps nothing
     await page.route('**/writer*',async r=>{const q=r.request();if(q.method()==='POST'){let b={};try{b=JSON.parse(q.postData()||'{}')}catch(e){}posts.push(b);
         if(b.action==='state'&&W.refuse>0){W.refuse--;return r.fulfill({json:{ok:false,error:'Writer busy (test)'}})}
         return r.fulfill({json:W.old||b.action!=='state'?{ok:true}:{ok:true,seen:Object.keys((b.state||{}).seen||{}).length,incidents:0,reviewed:Object.keys((b.state||{}).reviewed||{}).length}})}
       if(opts.stateDelay&&new URL(q.url()).searchParams.get('action')==='state')await new Promise(x=>setTimeout(x,opts.stateDelay));
-      const a=new URL(q.url()).searchParams.get('action');
+      const a=new URL(q.url()).searchParams.get('action');if(a==='state'){W.stateReads++;if(W.stateFail>0){W.stateFail--;return r.abort('failed')}}
       return r.fulfill({json:a==='master'?{ok:true,id:'m',text:opts.master||fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:
         a==='scoring'?(opts.model===false?{ok:true,exists:false}:{ok:true,exists:true,model:{publishedRevision:26,modelVersion:'test'}}):
         a==='state'?{ok:true,state:opts.state||{seen:{},reviewed:{}}}:{ok:true}})});
@@ -120,6 +120,19 @@ const JOB='V2X-A4CCD49EE686';
     const sent=sentReviewed(posts.slice(before));assert(sent.length===1&&Object.keys(sent[0]).length===local,'Send now posts every record at once: '+sent.map(r=>Object.keys(r).length));
     assert.equal(await page.locator('#writer-panel').isHidden(),false,'the panel stays open');
     assert.deepEqual(errors,[]);await ctx.close();}
+
+  // 9. REV-058: the state read fails twice (dropped request): it is tried again until it succeeds, then the baseline runs and is sent;
+  //    while it waits, System says the state read failed and is retrying
+  {const {ctx,page,errors,posts,W}=await open({stateFail:2});
+    await page.evaluate(()=>document.getElementById('writer-badge').click());await page.waitForTimeout(300);
+    const row1=await page.evaluate(()=>{const r=[...document.querySelectorAll('#writer-panel *')].find(e=>/^review records$/i.test((e.textContent||'').trim()));return r&&r.parentElement.textContent});
+    assert.match(row1||'',/baseline not run: waiting for the Writer state \(state read failed .* retrying\)/,'System shows the failed state read: '+row1);
+    await page.waitForTimeout(12000);
+    assert(W.stateReads>=3,'state read tried again: '+W.stateReads);
+    const local=await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('px.reviewed')||'{}')).length);assert(local>0,'baseline made after the state read succeeded');
+    assert(sentReviewed(posts).some(r=>Object.keys(r).length===local),'and sent');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('px.reviewBaselineV2')),'true');
+    errors.splice(0,errors.length,...errors.filter(e=>!/Failed to fetch|Load failed/i.test(e)));assert.deepEqual(errors,[]);await ctx.close();}
 
   // 3. no published model: nothing recorded
   {const {ctx,page,errors,posts}=await open({model:false});
