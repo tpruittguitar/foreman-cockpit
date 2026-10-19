@@ -21,15 +21,18 @@ const JOB='V2X-A4CCD49EE686';
     if(opts.ls)await page.addInitScript(ls=>{Object.keys(ls).forEach(k=>localStorage.setItem(k,ls[k]))},opts.ls);
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{sha:'x'}}));
     await page.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));
-    const W={old:!!opts.oldWriter,refuse:opts.refuse||0,stateFail:opts.stateFail||0,stateReads:0};   // old Writer (before REV-053): answers ok with no "reviewed" count and keeps nothing
+    const W={old:!!opts.oldWriter,refuse:opts.refuse||0,stateFail:opts.stateFail||0,stateReads:0,inFlight:0,maxInFlight:0,store:opts.keepState?{seen:{},reviewed:{}}:null,lie:opts.lie||0};   // old Writer (before REV-053): answers ok with no "reviewed" count and keeps nothing
     await page.route('**/writer*',async r=>{const q=r.request();if(q.method()==='POST'){let b={};try{b=JSON.parse(q.postData()||'{}')}catch(e){}posts.push(b);
+        if(b.action==='state'&&opts.postDelay){W.inFlight++;W.maxInFlight=Math.max(W.maxInFlight,W.inFlight);await new Promise(x=>setTimeout(x,opts.postDelay));W.inFlight--}
+        if(b.action==='state'&&W.store){Object.assign(W.store.reviewed,(b.state||{}).reviewed||{});Object.assign(W.store.seen,(b.state||{}).seen||{});
+          if(W.lie>0){W.lie--;return r.fulfill({json:{ok:false,error:'Lock timeout: another process was holding the lock for too long.'}})}}
         if(b.action==='state'&&W.refuse>0){W.refuse--;return r.fulfill({json:{ok:false,error:'Writer busy (test)'}})}
         return r.fulfill({json:W.old||b.action!=='state'?{ok:true}:{ok:true,seen:Object.keys((b.state||{}).seen||{}).length,incidents:0,reviewed:Object.keys((b.state||{}).reviewed||{}).length}})}
       if(opts.stateDelay&&new URL(q.url()).searchParams.get('action')==='state')await new Promise(x=>setTimeout(x,opts.stateDelay));
       const a=new URL(q.url()).searchParams.get('action');if(a==='state'){W.stateReads++;if(W.stateFail>0){W.stateFail--;return r.abort('failed')}}
       return r.fulfill({json:a==='master'?{ok:true,id:'m',text:opts.master||fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:
         a==='scoring'?(opts.model===false?{ok:true,exists:false}:{ok:true,exists:true,model:{publishedRevision:26,modelVersion:'test'}}):
-        a==='state'?{ok:true,state:opts.state||{seen:{},reviewed:{}}}:{ok:true}})});
+        a==='state'?{ok:true,state:W.store?JSON.parse(JSON.stringify(W.store)):opts.state||{seen:{},reviewed:{}}}:{ok:true}})});
     await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(2500);
     return {ctx,page,errors,posts,W};
   }
@@ -140,6 +143,30 @@ const JOB='V2X-A4CCD49EE686';
     const line=await page.locator('.inc-history-page .review-line').innerText();
     assert.match(line,/^Review records · \d+ on this device \(\d+ baseline\) · 0 waiting to send · baseline \d+ made/,'Incident History line: '+line);
     assert.equal(await page.locator('.inc-history-page .review-line [data-review-send]').count(),1,'Send now is there too');
+    assert.deepEqual(errors,[]);await ctx.close();}
+
+  // 11. REV-060: a slow Writer (2.5 s per write) and a big baseline in pieces of 50: never two state writes at once from this device,
+  //     a job opened mid-send rides the next write, and every record still goes exactly once
+  {const lines=fixture.split('\n'),tpl=lines.find(l=>/\| READY_TO_PURSUE \|/.test(l)),extra=[];for(let i=0;i<130;i++)extra.push(tpl.replace(/^\d+ \| V2X-[0-9A-F]+/,(900+i)+' | V2X-'+String(900+i).padStart(12,'0')));
+    const big=lines.slice(0,lines.indexOf(tpl)).concat(extra,lines.slice(lines.indexOf(tpl))).join('\n');
+    const {ctx,page,errors,posts,W}=await open({ls:{'px.reviewChunk':'50'},master:big,postDelay:2500});
+    await page.locator('#grid tbody tr[data-id]').nth(3).click();await page.waitForTimeout(20000);
+    assert.equal(W.maxInFlight,1,'one state write at a time: '+W.maxInFlight);
+    const local=await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('px.reviewed')||'{}')).length);
+    const ids=sentReviewed(posts).flatMap(r=>Object.keys(r).filter(k=>r[k].bl));assert.equal(new Set(ids).size,ids.length,'no baseline record sent twice');
+    assert(new Set(sentReviewed(posts).flatMap(r=>Object.keys(r))).size>=local,'every record sent: '+local);
+    assert.deepEqual(errors,[]);await ctx.close();}
+
+  // 12. REV-060: the Writer keeps a piece but the answer is a lock timeout: the phone reads the Writer back, sees the records
+  //     there, stops counting them as waiting, and does not send them again; System shows ✓ checked the Writer
+  {const {ctx,page,errors,posts,W}=await open({keepState:true,lie:1});await page.waitForTimeout(4000);
+    const local=await page.evaluate(()=>Object.keys(JSON.parse(localStorage.getItem('px.reviewed')||'{}')).length);assert(local>0);
+    assert.equal(Object.keys(W.store.reviewed).length,local,'the Writer kept them');
+    assert.equal(sentReviewed(posts).filter(r=>Object.keys(r).length).length,1,'sent once, not again after the lock-timeout answer');
+    await page.evaluate(()=>document.getElementById('writer-badge').click());await page.waitForTimeout(400);
+    const row=await page.evaluate(()=>{const r=[...document.querySelectorAll('#writer-panel *')].find(e=>/^review records$/i.test((e.textContent||'').trim()));return r&&r.parentElement.textContent});
+    assert.match(row||'',/ 0 waiting to send /,'System row: '+row);assert.match(row,/✓ checked the Writer .* · \d+ already there · Writer holds \d+/,'System row: '+row);
+    const n=posts.length;await page.waitForTimeout(6000);assert.equal(sentReviewed(posts.slice(n)).filter(r=>Object.keys(r).length).length,0,'no resend after the 5 s retry time');
     assert.deepEqual(errors,[]);await ctx.close();}
 
   // 3. no published model: nothing recorded
