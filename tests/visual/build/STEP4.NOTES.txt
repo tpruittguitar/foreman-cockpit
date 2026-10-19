@@ -1,4 +1,4 @@
-BUILD STEP 4 · REV-027 · F01 opening / no-job state, full-width KPI row (D-5), BUILD 3-5 · 2026-10-18 23:30 ET · Claude
+BUILD STEP 4 · REV-028 · F01 opening / no-job state, full-width KPI row (D-5), BUILD 3-5 · 2026-10-18 23:30 ET · Claude
 Starts from main f7a5073 (step 3 live). Screens (2560 x 1440, local fixture, min-N 5 for the screenshots only):
  STEP4_F01_empty_bands_on   drawer closed (Esc): the F01 panel.   STEP4_F02_selected_bands_on   a job open.
  STEP4_name_tip_keyboard    BUILD 4: a long title (fixture copy with a lengthened title, screenshot only) reached with ↓ ↑.
