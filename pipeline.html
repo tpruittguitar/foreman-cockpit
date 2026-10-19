@@ -1756,7 +1756,10 @@ function renderMapHud_(){
   // Lock reticle + readout on the selected job's pin
   var lk=$('map-lock'),fp=S.mapMode==='selected'&&mapView.focusPin!=null?(mapView.found||[])[mapView.focusPin]:null,r=S.focus&&rowById(S.focus);
   var pinsR=(mapView.found||[]).map(function(p){var t=H.toScreen(v,projectUS_(+p.lat,+p.lon,stateCodeFromText_(p.label)));return {x:t.x-10,y:t.y-10,w:20,h:20}}),lockR=[];
-  function done_(){card.classList.toggle('lock-on',!lk.hidden);mapStateLabels_(v,bandOver,avoid.concat(pinsR,lockR))}
+  // Q7-d (Grok 10:43 ET): a latitude label never sits on a state name. State names are placed first (they avoid the HUD,
+  // pins and the lock); any lat label that overlaps a placed name is dropped. Lon labels and lines are unchanged.
+  function done_(){card.classList.toggle('lock-on',!lk.hidden);var names=mapStateLabels_(v,bandOver,avoid.concat(pinsR,lockR))||[],lat=g.lat.filter(function(q){return !names.some(function(z){return H.hit(q,z,2)})});
+    if(lat.length!==g.lat.length)$('map-grat').innerHTML=lat.concat(g.lon).map(function(r){return '<text x="'+r.x.toFixed(1)+'" y="'+r.baseline.toFixed(1)+'">'+r.text+'</text>'}).join('')}
   if(!lk){done_();return}if(!fp||!r||!isFinite(fp.lat)||!isFinite(fp.lon)){lk.hidden=true;lk._lock=null;done_();return}
   var q=H.toScreen(v,projectUS_(+fp.lat,+fp.lon,stateCodeFromText_(fp.label)));if(q.x<0||q.x>v.W||q.y<0||q.y>v.H-bandOver){lk.hidden=true;done_();return}
   var rb=H.rangeBearing(MAP_HOME,{lat:+fp.lat,lon:+fp.lon}),sc=scoreFor_(r)||{},geo=sc.parts&&sc.parts.geo,near=geo&&/nearest/i.test(String(geo.basis||''))?String(geo.basis).replace(/^.*nearest\s*/i,'').toUpperCase()+(geo.score!=null?' · '+Math.round(geo.score):''):'',flip=q.x>v.W-320;
@@ -1794,7 +1797,7 @@ function mapStateLabels_(v,bandOver,avoid){var box=$('job-map'),H=PipelineMapHud
     for(var k=0;k<cands.length;k++){var pt=cands[k],r={x:pt.x-w/2-1,y:pt.y+5-25,w:w+2,h:33};if(!fits(r)||!inside(st,pt.x,pt.y))continue;
       placed.push(r);out.push('<text x="'+pt.x.toFixed(1)+'" y="'+(pt.y+5).toFixed(1)+'" text-anchor="middle">'+st+'</text>');break}});
   var cx=v.W/2,cy=openH/2,cross='<g class="ccross">'+[[cx-12,cy,cx-4,cy],[cx+4,cy,cx+12,cy],[cx,cy-12,cx,cy-4],[cx,cy+4,cx,cy+12]].map(function(l){return '<line x1="'+l[0]+'" y1="'+l[1]+'" x2="'+l[2]+'" y2="'+l[3]+'"/>'}).join('')+'</g>';
-  lay.innerHTML=cross+out.join('')}
+  lay.innerHTML=cross+out.join('');return placed}
 function mapCursorText_(e){var c=$('map-hud-cur'),box=$('job-map'),v=mapHudView_();if(!c||!v||typeof PipelineMapHud==='undefined')return;var H=PipelineMapHud,t='CURSOR —';
   if(e){var b=box.getBoundingClientRect(),q=H.fromScreen(v,e.clientX-b.left,e.clientY-b.top),ll=H.unproject(q.x,q.y);if(H.inConus(ll))t='CURSOR '+H.latText(ll.lat,2)+' '+H.lonText(ll.lon,2)}
   c.textContent=t+' · '+mapZoomText_()}
