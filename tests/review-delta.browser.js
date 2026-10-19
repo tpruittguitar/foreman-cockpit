@@ -134,6 +134,14 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(await page.evaluate(()=>localStorage.getItem('px.reviewBaselineV2')),'true');
     errors.splice(0,errors.length,...errors.filter(e=>!/Failed to fetch|Load failed/i.test(e)));assert.deepEqual(errors,[]);await ctx.close();}
 
+  // 10. REV-059: the review-records line also shows at the top of Incident History (phone)
+  {const {ctx,page,errors}=await open({});await page.setViewportSize({width:390,height:844});await page.waitForTimeout(500);
+    await page.evaluate(()=>document.querySelector('[data-go="incident-history"]').click());await page.waitForTimeout(600);
+    const line=await page.locator('.inc-history-page .review-line').innerText();
+    assert.match(line,/^Review records · \d+ on this device \(\d+ baseline\) · 0 waiting to send · baseline \d+ made/,'Incident History line: '+line);
+    assert.equal(await page.locator('.inc-history-page .review-line [data-review-send]').count(),1,'Send now is there too');
+    assert.deepEqual(errors,[]);await ctx.close();}
+
   // 3. no published model: nothing recorded
   {const {ctx,page,errors,posts}=await open({model:false});
     assert.match(await strip(page),/waiting for the published scoring model/);
