@@ -687,6 +687,11 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   /* 508 px column: content 474 px (golden drawer content ~476), so the decision row (132 + 103 + 102 + divider + 92) stays one line. */
   /* The taller, narrower drawer pushes the decision row below the fold on long jobs; it sticks to the bottom of the
      drawer's scroll area until its own place scrolls into view, so Pursue / Hold / Research / Decline stay reachable. */
+  /* Step 7 (Q6-c): the map in the tall column gets the golden two-row HUD band (84 px): band legend on the first row,
+     RECENTER / RESET on the second. Zoom stack, layers, graticule and brackets follow --pe-map-band-h. */
+  body:not(.map-full) #view-pipeline.on #job-map-card.pe-map { --pe-map-band-h: 84px; }
+  body:not(.map-full) #view-pipeline.on #job-map-card.pe-map .map-blegend { bottom: 42px !important; height: 42px !important; }
+  body:not(.map-full) #view-pipeline.on #job-map-card.pe-map .map-actions { bottom: 8px !important; }
   /* Long job IDs: the drawer label wraps instead of hiding "LOCKED ON MAP" behind an ellipsis (L-1, no hidden meaning). */
   body:not(.map-full) #view-pipeline.on #drawer .d-label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 16px; }
   #drawer .d-label .nb { white-space: nowrap; }

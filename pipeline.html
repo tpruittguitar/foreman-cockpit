@@ -1729,6 +1729,9 @@ function mapGratLines_(){if(typeof PipelineMapHud==='undefined')return '';var g=
 function mapHudView_(){var box=$('job-map');return box&&box.clientWidth&&box.clientHeight?{W:box.clientWidth,H:box.clientHeight,cx:mapView.x,cy:mapView.y,zoom:mapView.zoom}:null}
 function mapRelRect_(el,box){if(!el||el.hidden||!el.offsetParent)return null;var a=el.getBoundingClientRect(),b=box.getBoundingClientRect();if(!a.width||!a.height)return null;return {x:a.left-b.left,y:a.top-b.top,w:a.width,h:a.height}}
 function mapModeLabel_(){var b=document.querySelector('#mapfilters [data-mapfilter="'+S.mapMode+'"]');return S.mapMode==='selected'?'Selected job':S.mapMode==='visible'?'Filtered view':(b&&(b.dataset.label||b.textContent)||S.mapMode)}
+/* Jobs whose pin is off the open canvas (outside the box or under the HUD band) at the current view. Computed per draw. */
+function mapOutsideJobs_(found,v){var band=mapBandH_(),seen={},n=0;(found||[]).forEach(function(p){if(p.home&&!(p.rowIds||[]).length)return;var q=mapScreenPoint_(pinPoint_(p));
+    if(q.x>=0&&q.x<=v.W&&q.y>=0&&q.y<=v.H-band)return;(p.rowIds||[]).forEach(function(id){if(!seen[id]){seen[id]=1;n++}})});return n}
 function renderMapHud_(){
   var card=$('job-map-card'),box=$('job-map'),v=mapHudView_();if(!card||!box||!v||typeof PipelineMapHud==='undefined')return;var H=PipelineMapHud,desk=mapDesktop_();
   card.classList.toggle('pe-map',desk);if(!desk)return;
@@ -1739,7 +1742,7 @@ function renderMapHud_(){
   var lgCnt={};(mapView.found||[]).forEach(function(p){if(p.home&&!(p.rowIds||[]).length)return;var bd=mapPinBand_(p);lgCnt[bd]=(lgCnt[bd]||0)+1});   // N-2: counts from the drawn pins
   card.querySelectorAll('.map-blegend [data-k] em').forEach(function(em){var k=em.parentNode.getAttribute('data-k');em.textContent=S.mapMode==='visible'?k+' '+(lgCnt[k]||0):(typeof PipelineBands!=='undefined'&&k!=='HOLD'?PipelineBands.LABEL[k]:k)});
   if(S.mapMode==='visible'){var sub=$('map-sub'),fd=(mapView.found||[]),rowsV=mapRows_(),pinned={},places=0;fd.forEach(function(p){if(p.home||p.type==='home')return;places++;(p.rowIds||[]).forEach(function(id){pinned[id]=1})});
-    var nP=rowsV.filter(function(x){return pinned[x.id]}).length;if(sub&&fd.length)sub.textContent=nP+' PINS · '+places+' PLACES · '+(rowsV.length-nP)+' REMOTE (NO PIN)'}
+    var nP=rowsV.filter(function(x){return pinned[x.id]}).length,out=mapOutsideJobs_(fd,v);if(sub&&fd.length)sub.textContent=nP+' PINS · '+places+' PLACES · '+(rowsV.length-nP)+' REMOTE (NO PIN)'+(out?' · '+out+' OUTSIDE VIEW':'')}
   var L=box.offsetLeft,T=box.offsetTop,band=card.querySelector('.map-band'),bandOver=band&&band.offsetParent?Math.max(0,Math.min(v.H,T+v.H-band.offsetTop)):0;
   ['map-grat','map-frame'].forEach(function(id){var e=$(id);if(!e)return;e.style.left=L+'px';e.style.top=T+'px';e.setAttribute('width',v.W);e.setAttribute('height',v.H);e.setAttribute('viewBox','0 0 '+v.W+' '+v.H)});
   var br=H.brackets(v.W,v.H,bandOver),arms=br.reduce(function(a,b){return a.concat(b.arms)},[]);
@@ -1843,8 +1846,15 @@ function mapPopupPlace_(label,x,y,box,p,active,tap){var W=box.clientWidth,Hh=box
   label.classList.toggle('scroll',!!best&&h>bandTop-2*pad);label.style.left=best.r.x+'px';label.style.top=best.r.y+'px'}
 /* P5-1: golden pin = 40% disc r10 in the band colour on the map + core shape (TOP / UPPER / MID filled with a void stroke;
    LOW and NONE void fill, band stroke; HOLD void circle + slash). Shape carries the band; colour is never the only cue. */
-function mapFitFound_(found){var box=$('job-map');if(!box||!box.clientWidth)return;var pts=found.map(pinPoint_).concat([projectUS_(MAP_HOME.lat,MAP_HOME.lon,'TN')]);
-  var xs=pts.map(function(q){return q.x}),ys=pts.map(function(q){return q.y}),x0=Math.min.apply(null,xs),x1=Math.max.apply(null,xs),y0=Math.min.apply(null,ys),y1=Math.max.apply(null,ys),s=Math.min(box.clientWidth/960,box.clientHeight/510),PAD=80,band=44;
+/* PE build step 7: the filtered fit frames where the jobs are (PipelineMapHud.fitBox): with 20+ pins it drops the outer
+   5 % of jobs on each side, east-west and north-south, so a few far-off postings do not shrink the map to the whole
+   country. HOME is always inside. The HUD counts the jobs left outside the view ("k OUTSIDE VIEW"); 100 % shows all. */
+var MAP_FIT_TRIM=.05,MAP_FIT_MIN_PINS=20;
+function mapFitPoints_(found){var pts=[];found.forEach(function(p){if(p.home&&!(p.rowIds||[]).length)return;var q=pinPoint_(p);pts.push({x:q.x,y:q.y,n:Math.max(1,(p.rowIds||[]).length)})});
+  var b=PipelineMapHud.fitBox(pts,MAP_FIT_TRIM,MAP_FIT_MIN_PINS);return b?[{x:b.x0,y:b.y0},{x:b.x1,y:b.y1}]:[]}
+function mapBandH_(){var card=$('job-map-card'),band=card&&card.classList.contains('pe-map')&&card.querySelector('.map-band');return band&&band.offsetParent?band.offsetHeight:44}
+function mapFitFound_(found){var box=$('job-map');if(!box||!box.clientWidth)return;var pts=mapFitPoints_(found).concat([projectUS_(MAP_HOME.lat,MAP_HOME.lon,'TN')]);
+  var xs=pts.map(function(q){return q.x}),ys=pts.map(function(q){return q.y}),x0=Math.min.apply(null,xs),x1=Math.max.apply(null,xs),y0=Math.min.apply(null,ys),y1=Math.max.apply(null,ys),s=Math.min(box.clientWidth/960,box.clientHeight/510),PAD=80,band=mapBandH_();
   var zoom=Math.max(1,Math.min(MAP_MAX_ZOOM,(box.clientWidth-2*PAD)/Math.max((x1-x0)*s,1e-6),(box.clientHeight-band-2*PAD)/Math.max((y1-y0)*s,1e-6)));
   mapView.userZoomed=false;animateMap_({zoom:zoom,x:(x0+x1)/2,y:(y0+y1)/2+band/2/(s*zoom)},520)}   // NOTE (Grok): the filtered view opens fitted to its pins + HOME
 function mapPinSvg_(band,home){var c='currentColor',core;
@@ -1883,7 +1893,7 @@ function zoomMap_(zoom,clientX,clientY){var box=$('job-map');if(!box)return;mapV
 function nearestMapPin_(clientX,clientY){var box=$('job-map');if(!box)return null;var b=box.getBoundingClientRect(),x=clientX-b.left,y=clientY-b.top,best=null,distance=phoneLayout()?20:15;mapView.found.forEach(function(p,i){var q=mapScreenPoint_(projectUS_(+p.lat,+p.lon,stateCodeFromText_(p.label))),d=Math.hypot(q.x-x,q.y-y);if(d<distance){distance=d;best=i}});return best}
 function mapSnapshot_(){return {mode:S.mapMode,zoom:mapView.targetZoom||mapView.zoom,x:mapView.x,y:mapView.y,preset:S.preset,search:S.search,filters:JSON.parse(JSON.stringify(S.filters)),sort:S.sort&&Object.assign({},S.sort),chartFilter:S.chartFilter,scroll:$('gridwrap').scrollTop}}
 function closeMapPicker_(){var picker=$('map-job-picker');if(picker)picker.remove()}
-function setMapMode_(mode){closeMapPicker_();if(mode==='visible'&&S.mapMode!=='visible')mapView.fitPending=true;if(mode==='selected'&&S.mapMode!=='selected')mapView.overview=mapSnapshot_();mapView.returnView=null;S.mapMode=mode;LS.set('mapMode',mode);renderDashboard()}
+function setMapMode_(mode){closeMapPicker_();S.mapAutoFiltered=false;S.mapSelectedHeld=mode==='selected'&&!S.focus&&!checkedRows_().length;if(mode==='visible'&&S.mapMode!=='visible')mapView.fitPending=true;if(mode==='selected'&&S.mapMode!=='selected')mapView.overview=mapSnapshot_();mapView.returnView=null;S.mapMode=mode;LS.set('mapMode',mode);renderDashboard()}
 function selectMapRow_(id){var r=rowById(id);if(!r||!allowedInView_(r,S.preset))return;closeMapPicker_();mapView.rowFocusZoom=S.mapSelZoom||6;mapView.focus=null;if(!mapView.returnView)mapView.returnView=S.mapMode==='selected'?(mapView.overview||Object.assign(mapSnapshot_(),{mode:'visible',zoom:1,x:480,y:255})):mapSnapshot_();
   if(!filteredRows().some(function(row){return row.id===id})){S.preset='ALL';S.search='';S.filters={};S.chartFilter=null;pushHash();renderPresets()}
   S.mapMode='selected';LS.set('mapMode','selected');openRow(id);var tr=Array.from($('grid').querySelectorAll('tbody tr[data-id]')).filter(function(el){return el.dataset.id===id})[0];if(tr){var wrap=$('gridwrap'),b=tr.getBoundingClientRect(),w=wrap.getBoundingClientRect(),top=$('grid').querySelector('thead').getBoundingClientRect().bottom;if(b.top<top)wrap.scrollTop-=top-b.top;else if(b.bottom>w.bottom)wrap.scrollTop+=b.bottom-w.bottom;tr.setAttribute('tabindex','-1');tr.focus({preventScroll:true})}
@@ -1955,8 +1965,14 @@ function mapRows_(mode){mode=mode||S.mapMode;if(mode==='visible')return filtered
 function visibleMapLocations_(){
   var out=[],seen={};mapRows_().forEach(function(r){mapLocationsForRow_(r).forEach(function(x){var k=x.label.toLowerCase();if(seen[k]){if(seen[k].rowIds.indexOf(r.id)<0)seen[k].rowIds.push(r.id)}else{seen[k]=x;out.push(x)}})});return out;
 }
+/* PE build step 7 (golden F01): on the desktop, with no job open and nothing checked, "Selected job" has nothing to show,
+   so the map shows the filtered view fitted to its pins. Not saved: opening a job returns to Selected job. Clicking
+   "Selected job" while nothing is open keeps the empty national map (Tim's explicit choice) until a job opens. */
+function mapAutoMode_(){if(!mapDesktop_())return;var none=!S.focus&&!checkedRows_().length;
+  if(!none){S.mapSelectedHeld=false;if(S.mapAutoFiltered){S.mapAutoFiltered=false;if(S.mapMode==='visible'){mapView.overview=mapSnapshot_();S.mapMode='selected'}}return}
+  if(S.mapMode==='selected'&&!S.mapSelectedHeld){S.mapMode='visible';S.mapAutoFiltered=true;mapView.fitPending=true;mapView.focus=null}}
 function renderJobMap(){
-  var box=$('job-map'),sub=$('map-sub'),stat=$('map-loc-status');if(!box)return;
+  var box=$('job-map'),sub=$('map-sub'),stat=$('map-loc-status');if(!box)return;mapAutoMode_();
   bindMapWheel_();var request=++mapView.request;
   var r=S.focus?rowById(S.focus):null,nChecked=S.mapMode==='selected'?checkedRows_().length:0,multi=nChecked>0,locs=S.mapMode==='selected'&&!multi?mapLocationsForRow_(r):visibleMapLocations_();
   if(S.mapMode==='selected'&&!r&&!multi){mapView.found=[];mapView.active=null;box.innerHTML=mapBaseSvg_('');applyMapView_();sub.textContent='Select a job to place its location';stat.textContent='';return}
