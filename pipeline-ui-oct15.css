@@ -129,6 +129,10 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #grid td .bpill { border: 0 !important; background: transparent !important; padding: 0; font-family: var(--pe-font-ui); font-size: var(--pe-fs-body); text-transform: none; letter-spacing: 0; color: var(--pe-text-primary); }
   /* No outline on the lock-on row (golden .sel outline 0); keyboard focus keeps the tokens.css :focus-visible ring (Grok Bot QA #126). */
   #grid tbody tr.focus:not(:focus-visible) { outline: 0; }
+  /* S-4 (Grok Bot, step 3): keyboard focus ring inset so the sticky NEW / TITLE cells and neighbour rows never cover it. */
+  #grid tbody tr:focus-visible { outline: var(--pe-focus-ring) !important; outline-offset: -2px !important; }
+  /* The header rule is drawn inside the th (inset shadow) so the sticky header no longer covers the lock-on row's top edge. */
+  #grid thead th { border-bottom: 0 !important; box-shadow: inset 0 -1px 0 var(--pe-seam) !important; }
   /* Row checkbox: outline square (V-10), cyan when ticked; no white block. */
   #grid .row-select { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; margin: 0; vertical-align: middle; border: 1px solid var(--pe-outline); border-radius: 0; background: transparent; cursor: pointer; }
   #grid .row-select:checked { background: var(--pe-cyan); border-color: var(--pe-cyan); box-shadow: inset 0 0 0 2px var(--pe-hull); }
@@ -256,4 +260,44 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .wh-decide::after { content: ""; order: 4; width: 1px; background: var(--pe-seam); margin: 0 6px; }
   #drawer .wh-decide [data-decide-key="3"] { order: 5; width: 92px; margin-left: auto; padding: 0 8px !important; color: var(--pe-text-secondary) !important; }
   #drawer .wh-decide button:hover { background: var(--pe-plate) !important; }
+
+  /* 7. Drawer Overview, D-1 order (Grok Bot step 3): score block -> WHY -> top evidence -> score breakdown -> Tim decision row
+        -> receipt -> Decision details (form, collapsed unless a decision is being prepared) -> key details -> provenance / AI. */
+  #drawer #d-body .ov-top { display: flex; flex-direction: column; gap: 0; margin-bottom: 12px; }
+  #drawer #d-body .ws-score { order: 0; margin: 4px 0 4px; }
+  #drawer .ws-score-info .ok { color: var(--pe-green); } #drawer .ws-score-info .amb { color: var(--pe-amber); }
+  #drawer .sec-label { display: flex; justify-content: space-between; margin-top: 18px; font-family: var(--pe-font-label); font-size: var(--pe-fs-th); letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary); }
+  #drawer .sec-label.tight { margin-top: 11px; }
+  #drawer .sec-label .bd-sum { color: var(--pe-text-primary); }
+  #drawer .why { font-family: var(--pe-font-ui); font-size: var(--pe-fs-why) !important; line-height: 21px !important; margin-top: 8px; color: var(--pe-text-primary); }
+  #drawer .why-link { text-transform: none !important; letter-spacing: 0 !important; border: 0 !important; background: transparent !important; padding: 0 !important; min-height: 0; font: inherit; color: var(--pe-cyan) !important; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  #drawer #d-body .ck-ev { margin-top: 7px; }
+  #drawer #d-body .ck-ev h3 { display: none; }   /* golden: the evidence rows follow WHY without their own label */
+  #drawer .bd { margin-top: 5px; }
+  #drawer .bd-row { display: grid; grid-template-columns: 150px 44px 1fr 56px; column-gap: 8px; align-items: center; height: 23px; font-size: var(--pe-fs-small); }
+  #drawer .bd-row .nm { color: var(--pe-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #drawer .bd-row .w { color: var(--pe-text-secondary); text-align: right; }
+  #drawer .bd-row .bar { position: relative; height: 8px; background: var(--pe-raised); }
+  #drawer .bd-row .bar i { display: block; height: 8px; }
+  #drawer .bd-row .p { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #drawer .bd-row.unk .nm { color: var(--pe-text-secondary); } #drawer .bd-row.unk .nm::before { content: "? "; }
+  #drawer .bd-row.unk .bar { background: transparent; border: 1px dashed var(--pe-outline); }
+  #drawer .bd-row.unk .p { color: var(--pe-text-secondary); font-weight: 400; font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: .06em; }
+  #drawer .bd-foot { margin-top: 1px; font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: .1em; line-height: 16px; color: var(--pe-text-secondary); }
+  #drawer #d-body .wh-decide { margin-top: 6px !important; }
+  /* Receipt (golden C-09): Plate, 3 px bar; waiting tint .16 -> Plate at 70 %. */
+  #drawer .receipts { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
+  #drawer .receipt { position: relative; display: flex; gap: 10px; padding: 7px 12px 7px 15px; background: var(--pe-plate); font-size: var(--pe-fs-small); line-height: 19px; }
+  #drawer .receipt::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--pe-bar-card); background: var(--pe-text-secondary); }
+  #drawer .receipt .msg { flex: 1; color: var(--pe-text-primary); }
+  #drawer .receipt .k { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: var(--pe-btn-tracking); white-space: nowrap; }
+  #drawer .receipt.wait { background: linear-gradient(90deg, var(--pe-tint-wait-start), var(--pe-plate) 70%); }
+  #drawer .receipt.wait::before { background: var(--pe-amber); } #drawer .receipt.wait .k { color: var(--pe-amber); }
+  #drawer .receipt.ok::before { background: var(--pe-green); } #drawer .receipt.ok .k { color: var(--pe-green); }
+  #drawer .receipt.fail::before { background: var(--pe-red); } #drawer .receipt.fail .k { color: var(--pe-red); }
+  /* Decision details (the existing form, unchanged) and the other collapsed cards. */
+  #drawer details.detail-card > summary { cursor: pointer; list-style: none; }
+  #drawer details.detail-card > summary::-webkit-details-marker { display: none; }
+  #drawer details.detail-card > summary::after { content: " ▸"; } #drawer details.detail-card[open] > summary::after { content: " ▾"; }
+  #drawer .ck-kd-only { display: block !important; margin-top: 12px; }
 }
