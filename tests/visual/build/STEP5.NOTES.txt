@@ -37,3 +37,26 @@ Q-e No map-centre crosshair (golden cross at W/2, H/2). [leave out]
 KNOWN  The old ui.browser.js / map.browser.js stop at pre-existing lines (20 / 20) in this sandbox, same as on main, before their
        map steps; the map interactions were smoke-tested by hand script (zoom +, wheel, pan, reset, pin click opens the job and
        locks, recenter, layers) with no page errors.
+
+GROK BOT LOOK 00:50 ET · P5-1..P5-6 + rulings (pushed with this note)
+P5-1  Pins are the golden core(): 40% disc r10 in the band colour straight on the map + core shape (TOP / UPPER / MID filled, void
+      1.5 px stroke; LOW ▽ / NONE ○ void fill, band 1.6 px stroke; HOLD ⊘ void circle + slash). Hull disc removed. Under the lock the
+      Primary hover ring is dropped (.lock-on .focused). Additional locations: dashed disc outline.
+P5-2  State labels drawn in screen space (svg.map-slbl inside the canvas, under the pins): fixed 24 px Plex Mono 400 Muted #6B6B66 at
+      every zoom; dropped within 8 px of a HUD line, the selector, the zoom stack / layers, a bracket arm, the band, any pin (r10),
+      the lock reticle (r46) or its readout, or another label; golden margins >= 120 px below the canvas top, >= 110 px above the
+      bottom, x 40 .. W-80. The zoom-scaled SVG labels and the AK / HI captions are hidden on desktop.
+      Effect: at 1440x900 the canvas is ~236 px tall, so the 120 / 110 margins leave no room and no state label shows there.
+P5-3  Lock-on on each new lock only (key = job id + pin): ring r22, ticks and the 4 corner brackets scale 2.4 -> 1, opacity .95 -> 1,
+      760 ms cubic-bezier(.16,1,.3,1); then the dashed r31 ring and the readout fade in (240 ms). Re-render, pan and zoom do not
+      restart it (the lock HTML is only rewritten when it changes). None under prefers-reduced-motion.
+P5-4  ×N at (x+12, y-7), 11 px Plex Mono Secondary with a hull halo, on any pin standing for more than one job (fixture: Huntsville ×2).
+      Filtered view head meta "N PINS · N PLACES · N REMOTE (NO PIN)", computed from the drawn pins.
+P5-5  ◉ in "◉ LOCK" drawn as inline SVG (ring r5 1.4 px + dot r2, cyan).
+P5-6  Hover or focus on the locked pin opens the normal popup, placed at the first of right / left / below / above that is 6 px clear
+      of the readout; leaving restores the resting lock (readout only). MAP-1 popup content spec still to come.
+Q-a..Q-d  As ruled (Q-d: #map-zoom-level aria-label "Reset zoom to 100%"). Q-e: centre cross drawn (4 strokes 4..12 px off the
+      open-canvas centre, 1 px Secondary at .35, under the pins and the lock).
+NOTE  The filtered view opens fitted to its pins + HOME (when switching to FILTERED VIEW); the HUD shows the computed zoom %.
+Tests: tests/map-hud.browser.js now also checks P5-1 (disc .4), P5-2 (24 px Muted, clearances, margins), P5-3 (acq on a new lock, not
+      on zoom), P5-4 (Huntsville ×2, head meta), P5-5 (SVG ◉), P5-6 (hover popup clear of the readout), Q-d, Q-e.
