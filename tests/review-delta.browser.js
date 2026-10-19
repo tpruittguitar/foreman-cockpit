@@ -39,6 +39,8 @@ const JOB='V2X-A4CCD49EE686';
     const m=await mark(page,JOB);assert(m,'delta mark on the job');assert.equal(m.text,'▲'+(score-33),'mark = current score − recorded score');
     assert.match(m.title,new RegExp('^\\+'+(score-33)+' since you opened it .* · scoring model rev 25 → 26$'),'mark title names the cause: '+m.title);
     await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/review-delta-before-2560.png'});
+    const fs=await page.evaluate(()=>[...document.querySelectorAll('#queue-head .since-strip .ss-i')].map(e=>getComputedStyle(e).fontSize));
+    assert(fs.length===4&&fs.every(x=>x==='13px'),'strip items at --pe-fs-small 13 px: '+fs);
     let st=await strip(page);assert.match(st,/^Since your last review · /i);assert.doesNotMatch(st,/none recorded/i,'the Writer record is the last review');assert.match(st,/Δ 1 score change \(▲1 ▼0\)/,'strip counts the change: '+st);
     await page.locator('#queue-head [data-since="changed"]').click();await page.waitForTimeout(800);
     const ids=await page.locator('#grid tbody tr[data-id]').evaluateAll(t=>t.map(x=>x.dataset.id));assert.deepEqual(ids,[JOB],'strip item filters the queue');

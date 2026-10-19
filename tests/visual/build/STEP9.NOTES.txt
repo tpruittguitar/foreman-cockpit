@@ -53,3 +53,9 @@ Q9-a "Last review" per job = the last time Tim opened it or marked it seen. [yes
 Q9-b One-time baseline from existing seen marks so changes show from today. [yes]
 Q9-c Strip on the desktop only for now; phone strip with Track M (HF-13). [desktop only]
 Q9-d The golden strip's "185 provisional" item and the right-hand "MAP SHOWS" note are not built. [leave out]
+
+GROK BOT LOOK QA (12:08 ET, head 0b18885): no drift, one nit, applied:
+  Change strip · items were 14 px · now --pe-fs-small (13 px) per tokens · F02 row 6 (strip box and items).
+  Browser test checks the four strip items compute to 13 px. Screens re-rendered.
+  Rulings: Q9-a yes (last open or Mark seen) · Q9-b yes (one-time baseline) · Q9-c yes (desktop only for now) ·
+  Q9-d yes (no "provisional" item, no MAP SHOWS note).
