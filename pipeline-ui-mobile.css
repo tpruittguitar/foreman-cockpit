@@ -124,7 +124,7 @@
   #drawer .wh-top{padding:9px 10px 3px!important;gap:6px!important}
   #drawer .wh-title h2,#drawer #d-title{font-size:18px!important;line-height:1.08!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .ws-meta{font-size:10.8px!important;line-height:1.18!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .ws-ring{width:62px!important;height:62px!important}.ws-ring:before{inset:5px!important}.ws-ring b{font-size:18px!important}.ws-ring small{font-size:8px!important}
+  .ws-ring{width:62px!important;height:62px!important}.ws-ring:before{inset:5px!important}.ws-ring b{font-size:18px!important}.ws-ring small{font-size:var(--pe-fs-min,11px)!important}
   #drawer .wh-chips{padding:1px 10px 5px!important;gap:3px!important}.wh-chips .bpill,.wh-chips .chip{font-size:8.6px!important;padding:1px 4px!important;max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #detail-tabs{margin:0 6px!important}#detail-tabs button{min-height:38px!important;padding:0 10px!important;font-size:10px!important}
   #drawer #d-body{padding:8px 10px!important}.detail-card{padding:7px!important}.ck-kd li,.ck-checks li,.ck-sum p,.ck-next p{font-size:11.2px!important;line-height:1.28!important}
