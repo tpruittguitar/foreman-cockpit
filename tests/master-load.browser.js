@@ -41,7 +41,10 @@ async function go(page,tab){const rail=page.locator('#rail');if(await rail.isVis
   assert.equal(s.freshness,'live');assert.equal(s.alertVisible,false);assert.match(s.readout,/Connected/);assert.doesNotMatch(s.readout,/STALE/);
   await go(s.page,'pipeline');await s.page.waitForTimeout(200);
   assert.ok(s.gets.includes('master'));assert.ok(!s.gets.includes('HYDRATE_PARAM'),'the oversized hydrated read is never requested');assert.ok(s.gets.includes('archive')&&s.gets.includes('document_text')&&s.gets.includes('migration_status'));
-  assert.equal(s.errors.length,0,s.errors.join('\n'));const liveCache=await s.page.evaluate(()=>localStorage.getItem('px.cache'));await s.page.close();
+  assert.equal(s.errors.length,0,s.errors.join('\n'));await s.page.waitForTimeout(300);
+  // REV-093: the last full view is kept in IndexedDB (localStorage holds none of it)
+  const liveCache=await s.page.evaluate(()=>new Promise((ok,no)=>{const q=indexedDB.open('pipeline-explorer',1);q.onsuccess=()=>{const g=q.result.transaction('kv').objectStore('kv').get('master');g.onsuccess=()=>ok(g.result?JSON.stringify(g.result):null);g.onerror=no};q.onerror=no}));
+  assert.ok(liveCache&&JSON.parse(liveCache).text.length>1000,'the full view is cached in IndexedDB');assert.equal(await s.page.evaluate(()=>localStorage.getItem('px.cache')),null,'nothing cached in localStorage');await s.page.close();
   // one transient HTML 404 on the master: retried after 3 s and recovered; LIVE, no warning, no write
   s=await scenario('master 404 once (retried)',{master:'html-once'});
   assert.equal(s.freshness,'live');assert.equal(s.alertVisible,false);assert.match(s.readout,/Connected/);
@@ -54,6 +57,9 @@ async function go(page,tab){const rail=page.locator('#rail');if(await rail.isVis
   await s.page.locator('#grid tbody tr[data-id]').first().click();await s.page.locator('#edit-note').fill('test note');await s.page.locator('#save-decision').click();await s.page.waitForTimeout(400);
   assert.equal(s.posts.length,0,'no write while stale');assert.match(await s.page.locator('#edit-status').innerText(),/disabled|not loaded|Writes/i);
   await s.page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/master-load-stale.png'});
+  // REV-093: the copy seeded in localStorage (an older build's) was moved to IndexedDB and removed from localStorage
+  assert.equal(await s.page.evaluate(()=>localStorage.getItem('px.cache')),null,'old localStorage copy moved out');
+  assert.equal(await s.page.evaluate(()=>new Promise(ok=>{const q=indexedDB.open('pipeline-explorer',1);q.onsuccess=()=>{const g=q.result.transaction('kv').objectStore('kv').get('master');g.onsuccess=()=>ok(!!(g.result&&g.result.text))}})),true,'and is in IndexedDB');
   assert.equal(s.errors.length,0,s.errors.join('\n'));await s.page.close();
   // master fails, no cache: NONE, no rows, no writes
   s=await scenario('master error + no cache',{master:{ok:false,error:'bad key'}});

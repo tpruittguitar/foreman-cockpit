@@ -446,6 +446,18 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 var $=function(id){return document.getElementById(id)};
 var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')};
 var LS={get:function(k,d){try{var v=localStorage.getItem('px.'+k);return v?JSON.parse(v):d}catch(e){return d}},set:function(k,v){try{localStorage.setItem('px.'+k,JSON.stringify(v))}catch(e){}}};
+/* REV-093 (Grok Bot 02:07 ET): the last full master view (the Writer-path fallback copy, 8.2 MB on the live site) filled
+   localStorage to 9.6 MB, next to the browser's ~10 MB per-site limit, so small saves (seen marks, geocode cache) were at risk.
+   It now lives in IndexedDB. A copy still in localStorage is moved once: written to IndexedDB, read back, and only then
+   removed from localStorage. Without IndexedDB (some private windows) the fallback copy is not kept, and reads still find an
+   unmoved localStorage copy. */
+var IDB_=(function(){var dbP=null;function db(){if(!dbP)dbP=new Promise(function(ok,no){try{var q=indexedDB.open('pipeline-explorer',1);q.onupgradeneeded=function(){q.result.createObjectStore('kv')};q.onsuccess=function(){ok(q.result)};q.onerror=function(){no(q.error)};q.onblocked=function(){no(new Error('blocked'))}}catch(e){no(e)}});return dbP}
+  function tx(mode,f){return db().then(function(d){return new Promise(function(ok,no){var t=d.transaction('kv',mode),s=t.objectStore('kv'),r=f(s);t.oncomplete=function(){ok(r&&r.result)};t.onerror=t.onabort=function(){no(t.error)}})})}
+  return {get:function(k){return tx('readonly',function(s){return s.get(k)})},set:function(k,v){return tx('readwrite',function(s){return v==null?s.delete(k):s.put(v,k)})}}})();
+var MASTER_CACHE_=(function(){var moved=Promise.resolve().then(function(){var raw=null;try{raw=localStorage.getItem('px.cache')}catch(e){}if(!raw||raw==='null')return;
+    var v=JSON.parse(raw);return IDB_.set('master',v).then(function(){return IDB_.get('master')}).then(function(back){if(back&&back.text===v.text){try{localStorage.removeItem('px.cache')}catch(e){}}})}).catch(function(){});
+  return {read:function(){return moved.then(function(){return IDB_.get('master')}).then(function(v){return v||LS.get('cache',null)},function(){return LS.get('cache',null)})},
+    write:function(v){moved.then(function(){return IDB_.set('master',v)}).catch(function(){})},moved:moved}})();
 
 var FIXED=['INV','PRIMARY_ID','COMPANY','TITLE','BUCKET','DISPOSITION','TAGS','REQ','LOCATION','SCOUT_ACTION'];
 var COMPUTED=['NEW','TIM_RULING','SECTION','MISMATCH','COMP_MID','CELLS','AGE','LINK','OVERALL_RATING','EXPERIENCE_FIT','NET_COMP_SCORE','GEO_SCORE','ATS_MATCH_SCORE','TITLE_SCORE','CULTURE_SCORE','OWNERSHIP_SCORE','SCREEN_GATE','RATING_CONFIDENCE','FLEX_CLASS','FLEX_MODIFIER','FLEX_RATING_IMPACT','RAW_FIT','ADJUSTED_FIT','PURSUIT_STATUS'];
@@ -745,15 +757,22 @@ var Source={
  * the structured runtime skipped them until 2026-10-14, so every device scored with its own local draft. */
 function loadScoringGovernance_(){
   if(!hasWriter())return;
-  loadCanonicalScoring_().then(function(){if(S.rows&&S.rows.length&&S.tab!=='scoring')render()});
-  gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;scoreCache={fp:"",rows:{}};if(S.tab==='rules')renderRules();else if(S.rows&&S.rows.length)render()}}).catch(function(){});
+  loadCanonicalScoring_().then(function(){if(S.rows&&S.rows.length&&S.tab!=='scoring'&&changed())render()});
+  gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules();else if(S.rows&&S.rows.length&&changed())render()}}).catch(function(){});
+  /* REV-093 (perf, Grok 00:26 ET live load): the published model and the FLEX rules arrive after the first paint. Each used to empty the score cache and
+     redraw everything (re-scoring every row and rebuilding the table: two extra 2-3 s main-thread blocks on the live site),
+     even when they matched what was already in use. The cache is keyed by the scoring fingerprint (model + rules), so it now
+     redraws only when that fingerprint changes. */
+  /* compared against the fingerprint of the last full render (S.renderFp_, set in render()), so a model that lands before the
+     rows causes no extra redraw and one that matches what is on screen causes none either */
+  function changed(){return S.renderFp_==null||scoringFp_()!==S.renderFp_}
 }
 function loadCanonicalScoring_(){
   if(!hasWriter())return Promise.resolve(null);
   return gsGet('scoring').then(function(j){
     if(!j||!j.ok||!j.exists){S.scoringCanonical=null;S.scoringCanonicalMeta=j||null;return j}
     S.scoringCanonical=PipelineScoring.normalize(j.model||{});S.scoringCanonicalMeta=j;
-    if(!LS.get('scoringLocalEdited',false)){S.scoring=S.scoringCanonical;LS.set('scoring',S.scoring);scoreCache={fp:"",rows:{}}}
+    if(!LS.get('scoringLocalEdited',false)){S.scoring=S.scoringCanonical;LS.set('scoring',S.scoring)}   /* REV-093: scoreFor_ drops the cache itself when the fingerprint changes */
     if(S.master&&typeof maybeBaselineReviews_==='function')maybeBaselineReviews_();   /* REV-055: baseline once the published model is in */
     if(S.tab==='scoring')renderScoring();
     renderWriterStatus_();
@@ -850,7 +869,11 @@ function loadStructuredRuntime_(q){
     var meta={id:j.id||'structured-runtime',fetchedAt:j.fetchedAt||new Date().toISOString(),modifiedTime:j.modifiedTime||'',bytes:j.text.length,source:j.source||'structured-runtime',structuredApi:base,rows:j.rows||0,total:j.total||j.rows||0,structured:j.structuredMeta||{}};
     S.load={freshness:'LIVE',error:'',startedAt:meta.fetchedAt,text:j.text,fromCache:false,meta:meta,archive:{state:'NOT_APPLICABLE'},evidence:{state:'NOT_APPLICABLE'}};
     S.connection.state='Connected structured runtime';S.connection.lastRead=meta.fetchedAt;S.connection.error='';
-    apply(j.text,meta,false);renderLoadAlert_();renderReadout();
+    /* REV-093 (perf): every page load re-imports the Writer master in the background and then reads the runtime again. The
+       view text is built only from the job rows, so an unchanged runtime gives the same text byte for byte: then the parse,
+       re-score and full redraw (2-3 s of main thread on the live site) are skipped and only the freshness stamps move. */
+    if(S.master&&S.text===j.text){S.meta=Object.assign(meta,{fromCache:false});S.structuredSame=(S.structuredSame||0)+1;renderLoadAlert_();renderReadout()}
+    else apply(j.text,meta,false);renderLoadAlert_();renderReadout();
     S.structuredBase=base;
     if(S.cfg.key&&!S.structuredSyncing&&Date.now()-(S.structuredSyncedAt||0)>60000){S.structuredSyncing=true;importStructuredFromWriter_(base).then(function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now();if(seq===S.loadSeq)load()},function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now()})}
     return S.load;
@@ -898,7 +921,7 @@ function loadWriter_(){
   if(hasWriter()){syncStateDown();loadScoringGovernance_();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
   var seq=S.loadSeq=(S.loadSeq||0)+1,lastText=null;S.loadRetry=null;
   // Three separate reads merged in the browser (PipelineLoader); the canonical master alone decides freshness.
-  return PipelineLoader.load({get:gsGet,onRetry:function(r){if(seq!==S.loadSeq)return;S.loadRetry=r;if(r.action==='master'||!S.master||(S.load&&S.load.freshness==='LOADING'))readout('<b>fetching…</b> retry '+r.attempt+' of '+r.of+' ('+esc(r.action)+': '+esc(r.reason)+')');else renderReadout()},cache:{read:function(){return LS.get('cache',null)},write:function(v){LS.set('cache',v)}},onUpdate:function(v){
+  return PipelineLoader.load({get:gsGet,onRetry:function(r){if(seq!==S.loadSeq)return;S.loadRetry=r;if(r.action==='master'||!S.master||(S.load&&S.load.freshness==='LOADING'))readout('<b>fetching…</b> retry '+r.attempt+' of '+r.of+' ('+esc(r.action)+': '+esc(r.reason)+')');else renderReadout()},cache:{read:MASTER_CACHE_.read,write:MASTER_CACHE_.write},onUpdate:function(v){
     if(seq!==S.loadSeq)return;
     S.load=v;
     if(v.freshness==='LIVE'){S.connection.state='Connected';S.connection.lastRead=v.meta.fetchedAt||new Date().toISOString();S.connection.error=''}
@@ -1000,7 +1023,12 @@ function renderEmptyDrawer_(){var el=$('d-empty'),d=$('drawer');if(!el||!d||d.cl
 function bandsLine_(){var st=scoringStamp_(),lr=S.connection&&S.connection.lastRead,d=lr?new Date(lr):null,hm=d&&!isNaN(d)?('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2):null;return PipelineBands.summary(bands_(),st&&st.revision,hm)}
 // Drawer location chip (QA #126 S-3): the geocoded city when the cache has it, else the label's city with any source tag
 // ("ATS", "JD says", "LinkedIn" ...) removed. The full LOCATION string stays in the chip title.
-function chipCity_(label){var key=String(label||'').toLowerCase().trim(),c=(LS.get('geoCache',{})||{})[key];if(c&&c.city)return c.city;
+/* REV-093 (perf): one in-memory geocode cache. Each lookup used to parse the whole stored cache (65 KB on the live site) and
+   write its own copy back; about 190 lookups run in parallel on a map draw, so the last write won and the rest were lost,
+   and every load asked the geocoder again. Writes now go to the shared object and are stored once after a short pause. */
+var GEO_={c:null,t:0};function geoCache_(){if(!GEO_.c)GEO_.c=LS.get('geoCache',{})||{};return GEO_.c}
+function geoCacheSave_(){clearTimeout(GEO_.t);GEO_.t=setTimeout(function(){LS.set('geoCache',geoCache_())},400)}
+function chipCity_(label){var key=String(label||'').toLowerCase().trim(),c=geoCache_()[key];if(c&&c.city)return c.city;
   return String(label||'').split(',')[0].replace(/^\s*(?:ATS|JD(?:\s+says)?|LinkedIn|Indeed|ZipRecruiter|Glassdoor|posting|posted|job\s+page)\b[:\s-]*/i,'').trim()}
 function bandOf_(r){var b=bands_();return (b&&r&&b.byId[r.id])||{band:'NONE',rankNo:null}}
 /* REV-063 (v1.5.2 B-1 / B-2, V-19): score text on screen names the percentile band only. The old score label from band()
@@ -1120,7 +1148,7 @@ function syncStateUp(delay){if(!hasWriter())return;clearTimeout(syncTimer);syncT
     gsPost({action:'state',state:body}).then(function(j){S.stateSending=false;if(nSent)S.reviewSend={at:Date.now(),sent:nSent,ok:keep(j),kept:j&&j.reviewed,error:keep(j)?'':(j&&j.ok?'Writer did not confirm review records (older Writer?)':(j&&(j.error||'refused'))||'no response')};
       if(keep(j)){Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.reviewRetry=0;if(Object.keys(S.reviewDirty).length)S.stateSendAgain=true}else{reviewRetry_(j);if(nSent)syncStateDown()}if(S.stateSendAgain){S.stateSendAgain=false;syncStateUp(300)}if(typeof renderWriterStatus_==='function'&&!S.renderingWriter_)renderWriterStatus_();S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){S.stateSending=false;reviewRetry_(null);if(nSent)syncStateDown();if(S.stateSendAgain){S.stateSendAgain=false;syncStateUp(1500)}S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},delay==null?1500:delay)}
 /* ---------- column model ---------- */
-var ROWS_FIRST_=120,ROWS_CHUNK_=200;   /* REV-088: phone table rows built in the first pass / per idle chunk (120 = the rows the auto-fit reads) */
+var ROWS_FIRST_=120,ROWS_CHUNK_=200;   /* REV-088 / REV-093: table rows built in the first pass / per idle chunk (120 = the rows the auto-fit reads) */
 var COLS=[],COLTYPE={},ENUM_COLS_=['BUCKET','DISPOSITION','SECTION','NEW','MISMATCH','TIM_RULING','FLEX','NOTIFICATION_SOURCE','SALARY_CONF','SALARY_BASIS','DECLINE_REASON_CODE','FLOOR_STATUS','OVERALL_RATING','SCREEN_GATE'];
 function buildColumnModel(){
   var m=S.master;COLS=FIXED.slice(0,9).concat(COMPUTED).concat(['SCOUT_ACTION']).concat(m.payloadKeys.filter(function(k){return COMPUTED.indexOf(k)<0}));
@@ -1268,7 +1296,7 @@ function renderReadout(){renderWriterStatus_();renderHeaderStatus_();
 
 }
 function render(){
-  if(!S.master)return;attentionCache={};renderReadout();renderDashboard();
+  if(!S.master)return;S.renderFp_=scoringFp_();attentionCache={};renderReadout();renderDashboard();
   $('presets').querySelectorAll('.chip').forEach(function(el){el.classList.toggle('on',el.getAttribute('data-p')===S.preset)});
   var fchips='';Object.keys(S.filters).forEach(function(c){var f=S.filters[c],d=f.type==='enum'?(f.values||[]).join('|'):f.type==='text'?[f.contains&&'~'+f.contains,f.not&&'!'+f.not].filter(Boolean).join(' '):f.type==='date'?[f.from,f.to].filter(Boolean).join('→'):[f.min,f.max].filter(Boolean).join('–');fchips+='<span class="chip on" data-c="'+esc(c)+'">'+esc(c)+' <span class="mono">'+esc(d.slice(0,40))+'</span><span class="x">✕</span></span>'});
   if(S.chartFilter)fchips+='<span class="chip on" id="chart-filter-chip">CHART · '+esc(S.chartFilter.label)+' <span class="x">✕</span></span>';
@@ -1279,9 +1307,10 @@ function render(){
   $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
   var cols=visibleCols(),nSt=stickyN_();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<nSt?'sticky ':'')+(c==='NEW'?'c-new ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(c==='LOCATION'?'c-loc ':'')+(c==='COMPANY'?'c-co ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
-  /* REV-088 (perf): on the phone the first ROWS_FIRST_ rows are built now and the rest in idle-time chunks (same rows, same
-     order, same markup); the first screen paints without waiting for all of them. Desktop builds every row at once, as before. */
-  var seq=S.renderSeq_=(S.renderSeq_||0)+1,cut=phoneLayout()&&rows.length>ROWS_FIRST_+ROWS_CHUNK_?ROWS_FIRST_:rows.length;
+  /* REV-088 (perf): the first ROWS_FIRST_ rows are built now and the rest in idle-time chunks (same rows, same order, same
+     markup); the first screen paints without waiting for all of them. REV-093: desktop too (live: laying out all ~1,200 rows
+     at once was most of the 3.3 s first block). */
+  var seq=S.renderSeq_=(S.renderSeq_||0)+1,cut=rows.length>ROWS_FIRST_+ROWS_CHUNK_?ROWS_FIRST_:rows.length;
   var tb='';for(var ri=0;ri<cut;ri++)tb+=rowHtml_(rows[ri],cols);S.renderKey_=cols.join('|');S.renderPending_=cut<rows.length;
   $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
   /* REV-088 (perf): fixSticky runs once at the end, from applyColumnWidths, after the <col> widths are set */
@@ -1922,11 +1951,14 @@ function stateFallback_(label){
 }
 function geocodePlace_(loc){
   if(loc.lat!=null&&loc.lon!=null)return Promise.resolve(loc);
-  var key=String(loc.label||'').toLowerCase().trim(),cache=LS.get('geoCache',{}),cached=cache[key],sc=stateCodeFromText_(loc.label),city=String(loc.label||'').split(',')[0].trim();
+  var key=String(loc.label||'').toLowerCase().trim(),cache=geoCache_(),cached=cache[key],sc=stateCodeFromText_(loc.label),city=String(loc.label||'').split(',')[0].trim();
   /* A cached city result is usable only when it agrees with the row's state. This prevents an old ambiguous-city hit (for example Kingston, NY) from moving Kingston, GA to the wrong map region. */
   if(cached&&cached.lat!=null&&cached.lon!=null&&(!sc||(cached.state&&String(cached.state).toUpperCase()===sc)))return Promise.resolve(Object.assign({},loc,cached));
-  if(cached&&sc){delete cache[key];LS.set('geoCache',cache)}
-  if(GEO_CITY_OVERRIDES[key]){var o=GEO_CITY_OVERRIDES[key],hit={lat:o[0],lon:o[1],state:sc,approx:false,source:'local city cache'};cache[key]=hit;LS.set('geoCache',cache);return Promise.resolve(Object.assign({},loc,hit))}
+  /* REV-093 (perf): a place the geocoder could not resolve used to be asked again on every map draw (about 190 requests per
+     load on the live site). The miss is remembered for 7 days; the state fallback is used meanwhile, as before. */
+  if(cached&&cached.miss&&Date.now()-cached.miss<7*864e5&&(cached.sc||'')===(sc||'')){var fb0=stateFallback_(loc.label);return Promise.resolve(Object.assign({},loc,fb0||{}))}
+  if(cached&&sc&&!cached.miss){delete cache[key];geoCacheSave_()}
+  if(GEO_CITY_OVERRIDES[key]){var o=GEO_CITY_OVERRIDES[key],hit={lat:o[0],lon:o[1],state:sc,approx:false,source:'local city cache'};cache[key]=hit;geoCacheSave_();return Promise.resolve(Object.assign({},loc,hit))}
   if(!city||city.length<2){var fb=stateFallback_(loc.label);return Promise.resolve(Object.assign({},loc,fb||{}))}
   var url='https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=10&language=en&format=json&countryCode=US';
   return fetch(url,{cache:'force-cache'}).then(function(r){if(!r.ok)throw new Error('geocode '+r.status);return r.json()}).then(function(j){
@@ -1934,8 +1966,8 @@ function geocodePlace_(loc){
     for(var i=0;i<rs.length;i++){if(!want||String(rs[i].admin1||'').toLowerCase()===want.toLowerCase()){hit=rs[i];break}}
     if(!hit)hit=rs[0];
     if(!hit)throw new Error('no geocode');
-    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,city:String(hit.name||''),approx:false,source:'city geocode'};cache[key]=val;LS.set('geoCache',cache);return Object.assign({},loc,val);
-  }).catch(function(){var fb=stateFallback_(loc.label);return Object.assign({},loc,fb||{})});
+    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,city:String(hit.name||''),approx:false,source:'city geocode'};cache[key]=val;geoCacheSave_();return Object.assign({},loc,val);
+  }).catch(function(e){if(e&&/no geocode/.test(e.message||'')){cache[key]={miss:Date.now(),sc:sc||''};geoCacheSave_()}var fb=stateFallback_(loc.label);return Object.assign({},loc,fb||{})});
 }
 function projectUS_(lat,lon,state){return PipelineMap.project(lat,lon,state)}
 /* Step 5 map rebuild (golden F01 / F02 map panel, rev4 BUILD 1-2). Geometry in pipeline-map-hud.js; this part only draws it.
@@ -2011,7 +2043,14 @@ function mapStateLabels_(v,bandOver,avoid){var box=$('job-map'),H=PipelineMapHud
   if(!base._st){var byName={};Object.keys(US_STATE_NAMES).forEach(function(k){byName[US_STATE_NAMES[k]]=k});base._st={};
     base.querySelectorAll('path.map-outline').forEach(function(el){var t=el.querySelector('title'),k=t&&byName[t.textContent];if(k){try{base._st[k]={el:el,bb:el.getBBox()}}catch(e){}}})}
   var openH=v.H-bandOver,bandR={x:0,y:openH,w:v.W,h:bandOver},placed=[],out=[],DP=typeof DOMPoint==='function';
-  function fits(r){return r.x>=0&&r.y>=0&&r.x+r.w<=v.W&&r.y+r.h<=openH&&!H.hit(r,bandR,8)&&!avoid.some(function(z){return H.hit(r,z,8)})&&!placed.some(function(z){return H.hit(r,z,8)})}
+  /* REV-093 (perf): the avoid list holds every pin (about 1,200 live), so each candidate spot tested all of them (1.9 M checks
+     per map redraw on the live site). The rects are indexed by 64 px cell (grown by the 8 px gap); a spot is tested only
+     against the rects in its cells. Same H.hit test, same result. */
+  var CELL=64,grid={},stamp=new Int32Array(avoid.length),tick=0;
+  avoid.forEach(function(z,i){if(!z)return;for(var cx=Math.floor((z.x-8)/CELL),cx1=Math.floor((z.x+z.w+8)/CELL);cx<=cx1;cx++)for(var cy=Math.floor((z.y-8)/CELL),cy1=Math.floor((z.y+z.h+8)/CELL);cy<=cy1;cy++){var k=cx+','+cy;(grid[k]||(grid[k]=[])).push(i)}});
+  function avoidHit(r){tick++;for(var cx=Math.floor(r.x/CELL),cx1=Math.floor((r.x+r.w)/CELL);cx<=cx1;cx++)for(var cy=Math.floor(r.y/CELL),cy1=Math.floor((r.y+r.h)/CELL);cy<=cy1;cy++){var l=grid[cx+','+cy];if(!l)continue;
+    for(var j=0;j<l.length;j++){var i=l[j];if(stamp[i]===tick)continue;stamp[i]=tick;if(H.hit(r,avoid[i],8))return true}}return false}
+  function fits(r){return r.x>=0&&r.y>=0&&r.x+r.w<=v.W&&r.y+r.h<=openH&&!H.hit(r,bandR,8)&&!avoidHit(r)&&!placed.some(function(z){return H.hit(r,z,8)})}
   function inside(st,x,y){if(!DP)return true;var q=H.fromScreen(v,x,y);try{return base._st[st].el.isPointInFill(new DOMPoint(q.x,q.y))}catch(e){return true}}
   Object.keys(base._st).filter(function(st){return MAP_LABEL_SKIP.indexOf(st)<0}).forEach(function(st){var S0=base._st[st],bb=S0.bb,a=H.toScreen(v,{x:bb.x,y:bb.y}),b=H.toScreen(v,{x:bb.x+bb.width,y:bb.y+bb.height});
     var x0=Math.max(0,a.x),y0=Math.max(0,a.y),x1=Math.min(v.W,b.x),y1=Math.min(openH,b.y);if(x1<=x0||y1<=y0)return;   // outline not visible
@@ -2857,7 +2896,7 @@ function renderSettings(){var v=$('view-settings');v.innerHTML='<div class="pane
  '<div class="panel"><h3>Receipts</h3><div class="row"><button id="cfg-receipts">Load receipts from Drive</button></div><pre id="cfg-rc" class="mono" style="white-space:pre-wrap;font-size:11.1px;color:var(--dim)"></pre></div>';
  $('cfg-test').onclick=function(){var u=$('cfg-url').value.trim(),k=$('cfg-key').value.trim();var old=S.cfg;S.cfg={url:u,key:k};$('cfg-msg').textContent='testing…';gsGet('ping').then(function(j){$('cfg-msg').textContent=j.ok?'OK · script answers · master '+(j.master||'').slice(0,12)+'…':'script says: '+(j.error||'not ok');S.cfg=old;S.connection.state=j.ok?'Connected':'Read failed';S.connection.error=j.ok?'':j.error||'Rejected'}).catch(function(e){$('cfg-msg').textContent='no answer: '+e.message;S.cfg=old;S.connection.state='Unreachable';S.connection.error=e.message})};
  $('cfg-save').onclick=function(){S.cfg={url:$('cfg-url').value.trim(),key:$('cfg-key').value.trim()};LS.set('cfg',S.cfg);renderSettings();load();loadWriterStatus_(true)};
- $('cfg-clear').onclick=function(){S.cfg={url:'',key:''};LS.set('cfg',S.cfg);S.writerStatus=null;renderWriterStatus_();LS.set('cache',null);S.master=null;S.rows=[];S.text='';S.focus=null;S.docs=null;S.canonicalRules=null;S.runs=[];$('drawer').classList.remove('on');$('d-body').innerHTML='';document.querySelectorAll('.view').forEach(function(v){if(!['view-pipeline','view-settings'].includes(v.id))v.innerHTML=''});$('readout').textContent='Protected master · not connected';S.connection={state:'Not configured',error:'',lastRead:null};$('dash').innerHTML='';$('grid').querySelector('tbody').innerHTML='';renderSettings()};
+ $('cfg-clear').onclick=function(){S.cfg={url:'',key:''};LS.set('cfg',S.cfg);S.writerStatus=null;renderWriterStatus_();LS.set('cache',null);MASTER_CACHE_.write(null);S.master=null;S.rows=[];S.text='';S.focus=null;S.docs=null;S.canonicalRules=null;S.runs=[];$('drawer').classList.remove('on');$('d-body').innerHTML='';document.querySelectorAll('.view').forEach(function(v){if(!['view-pipeline','view-settings'].includes(v.id))v.innerHTML=''});$('readout').textContent='Protected master · not connected';S.connection={state:'Not configured',error:'',lastRead:null};$('dash').innerHTML='';$('grid').querySelector('tbody').innerHTML='';renderSettings()};
  $('cfg-structured-import').onclick=function(){var msg=$('cfg-structured-msg');if(!hasWriter()){msg.textContent='writer not configured';return}msg.textContent='seeding structured runtime…';fetch('/api/structured/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(r){return r.json().then(function(j){if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('HTTP '+r.status));return j})}).then(function(j){msg.textContent='seeded structured runtime · '+(j.jobs||0)+' jobs; stored='+(j.stored===true?'true':'false');if(j.stored!==true){msg.textContent+=' · KV not updated; live Writer read still works on this device'};if(new URLSearchParams(location.search).get('src')==='structured')load()}).catch(function(e){msg.textContent='structured seed failed: '+e.message})};
  $('cfg-receipts').onclick=function(){if(!hasWriter()){$('cfg-rc').textContent='writer not configured';return}gsGet('receipts').then(function(j){$('cfg-rc').textContent=j.ok?(j.text||'(no receipts yet)'):(j.error||'error')}).catch(function(e){$('cfg-rc').textContent=e.message})};
 }
