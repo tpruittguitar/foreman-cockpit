@@ -46,7 +46,36 @@
     // Content selections redraw the dashboard; only geometry changes resize the panes.
     window.addEventListener('resize',sync);setAxis(wantAxis());sync();return {sync:sync,axis:function(){return axis}};
   }
-  root.PipelinePaneSplit={create:create,WIDE:WIDE,DEFAULTS:DEFAULTS};
+  /* REV-077 (Tim 21:26 ET): the map / drawer gutter on wide desktops sets the drawer width in px (--work-track).
+     Default the golden --pe-col-work (508); range 480 px (decision row still fits on one line) up to what keeps the map
+     >= 480 px and the table >= 760 px. Saved per device; double-click restores the default; arrows +/-16 px (Shift 48). */
+  var WORK_DEFAULT=508,WORK_MIN=480;
+  function createWork(options){
+    var view=options.view,handle=options.handle,frame=0,drag=null,preferred=null;
+    function wide(){return matchMedia('(min-width:981px), (min-width:761px) and (pointer:fine)').matches&&matchMedia(WIDE).matches}
+    function active(){return wide()&&view.classList.contains('on')&&!document.body.classList.contains('map-full');}
+    function saved(){var v=null;try{v=options.load()}catch(e){}return typeof v==='number'&&isFinite(v)&&v>0?v:WORK_DEFAULT}
+    function range(){var vb=view.getBoundingClientRect(),cs=getComputedStyle(view),inner=vb.width-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight),gut=2*(handle.getBoundingClientRect().width||16);
+      return {min:WORK_MIN,max:Math.max(WORK_MIN,Math.floor(inner-gut-760-480))};}
+    function apply(){frame=0;if(!active())return;var g=range(),w=Math.round(Math.max(g.min,Math.min(g.max,preferred==null?saved():preferred)));
+      view.style.setProperty('--work-track',w+'px');handle.setAttribute('aria-valuemin',g.min);handle.setAttribute('aria-valuemax',g.max);handle.setAttribute('aria-valuenow',w);
+      handle.setAttribute('aria-valuetext','Job drawer '+w+' px');handle.dataset.split='drawer '+w+' px';if(options.onResize)options.onResize();}
+    function sync(){if(!frame)frame=requestAnimationFrame(apply);}
+    function persist(){try{options.save(preferred)}catch(e){}}
+    function clampNow(v){var g=range();return Math.max(g.min,Math.min(g.max,v));}
+    function finish(event,canceled){if(!drag||event&&event.pointerId!==drag.id)return;var id=drag.id;if(canceled)preferred=drag.before;drag=null;
+      document.body.classList.remove('pane-resizing');if(handle.hasPointerCapture(id))handle.releasePointerCapture(id);if(!canceled)persist();sync();}
+    handle.addEventListener('pointerdown',function(e){if(e.button!==0||!active())return;e.preventDefault();preferred=preferred==null?saved():preferred;drag={id:e.pointerId,before:preferred,x:e.clientX,w:clampNow(preferred)};
+      handle.setPointerCapture(e.pointerId);handle.focus({preventScroll:true});document.body.classList.add('pane-resizing');});
+    handle.addEventListener('pointermove',function(e){if(!drag||e.pointerId!==drag.id)return;preferred=clampNow(drag.w-(e.clientX-drag.x));sync();});   // drag left widens the drawer
+    handle.addEventListener('pointerup',function(e){finish(e,false);});handle.addEventListener('pointercancel',function(e){finish(e,true);});handle.addEventListener('lostpointercapture',function(e){finish(e,true);});
+    handle.addEventListener('dblclick',function(){preferred=WORK_DEFAULT;persist();sync();});
+    handle.addEventListener('keydown',function(e){if(!active())return;var cur=clampNow(preferred==null?saved():preferred),step=e.shiftKey?48:16;
+      if(e.key==='ArrowLeft')preferred=clampNow(cur+step);else if(e.key==='ArrowRight')preferred=clampNow(cur-step);else if(e.key==='Home')preferred=range().max;else if(e.key==='End')preferred=WORK_MIN;else return;
+      e.preventDefault();persist();sync();});
+    new ResizeObserver(sync).observe(view);window.addEventListener('resize',sync);sync();return {sync:sync};
+  }
+  root.PipelinePaneSplit={create:create,createWork:createWork,WIDE:WIDE,DEFAULTS:DEFAULTS,WORK_DEFAULT:WORK_DEFAULT,WORK_MIN:WORK_MIN};
 })(window);
 
 /* Phase 5 workspace layout foundation.
