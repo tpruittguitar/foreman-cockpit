@@ -50,7 +50,7 @@
   --pe-text-min: 11px; --pe-kpi-value: 38px; --pe-kpi-weight: 650; --pe-kpi-line: 1.05;
   --pe-pill-h: 32px; --pe-pill-bar: 3px; --pe-pill-gap: 12px; --pe-pill-collapse-bp: 2200px; --pe-pill-fs: 12px; --pe-pill-tracking: .08em;
   --pe-col-score: 112px; --pe-col-company: 140px; --pe-map-canvas-h: 1024px;
-  --pe-nt-watch-row-h: 34px; --pe-target-phone: 44px; --pe-target-decision-phone: 52px;
+  --pe-nt-watch-row-h: 34px; --pe-target-phone: 44px; --pe-target-decision-phone: 52px; --pe-ring-phone: 88px;   /* REV-071 phone drawer ring (v1.5 p42 B) */
   --pe-pill-change: var(--pe-motion-fast);
   --pe-chip-h: 20px; --pe-dec-h: 50px; --pe-dec-fs: var(--pe-fs-btn);   /* LOOK-3: golden .decide 50 px, .dbtn 16 px */
   --pe-weight-bar: rgba(56, 225, 214, 0.6);   /* weight bars: Cyan at .6 (v1.5.1 tokens §4; Grok Bot pages) */

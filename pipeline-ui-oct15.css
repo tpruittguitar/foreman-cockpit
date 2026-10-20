@@ -764,3 +764,58 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #grid th.pin-r, #grid td.pin-r { position: sticky; right: 0; z-index: 2; box-shadow: -1px 0 0 var(--pe-seam); }
   #grid th.pin-r { z-index: 4; }
 }
+
+/* Track M step 5 (REV-071, Grok Bot 20:21 ET: phone drawer vs v1.5 p42 B, first four items). Same look as the desktop drawer
+   (golden F02 + V-rulings), phone sizes: 11 px floor, 44 / 52 px targets (V-17), tokens only. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  /* P-1 ring: the desktop SVG ring at --pe-ring-phone, value inside, band line to the right (p42: ring left, band + text right) */
+  #drawer .ws-score { order: 2; display: flex; align-items: center; gap: 14px; margin: 10px 0 8px; }
+  #drawer .ws-ring { --ring: var(--pe-text-secondary); position: relative; flex: none; width: var(--pe-ring-phone) !important; height: var(--pe-ring-phone) !important;
+    background: none !important; border-radius: 0 !important; order: 0 !important; }
+  #drawer .ws-ring::before { display: none !important; }
+  #drawer .ws-ring svg { --pct: inherit; position: absolute; inset: 0; width: var(--pe-ring-phone); height: var(--pe-ring-phone); }
+  #drawer .ws-ring .trk { fill: none; stroke: var(--pe-raised); stroke-width: 8; }
+  #drawer .ws-ring .arc { --pct: inherit; fill: none; stroke: var(--ring); stroke-width: 8; stroke-dasharray: calc(var(--pct) * 3.3929px) 400px; transform: rotate(-90deg); transform-origin: 62px 62px; }
+  #drawer .ws-ring .tk line { stroke: var(--pe-gridline); stroke-width: 2; }
+  #drawer .ws-ring b { position: absolute !important; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--pe-font-ui) !important;
+    font-size: var(--pe-fs-drawer-title) !important; font-weight: var(--pe-fw-heavy) !important; color: var(--ring) !important; }
+  #drawer .ws-ring.band-none b, #drawer .ws-ring.band-hold b, #drawer .ws-ring.band-off b { color: var(--pe-text-primary) !important; }
+  #drawer .ws-score-info { font-family: var(--pe-font-ui); font-size: var(--pe-fs-small); line-height: 20px; color: var(--pe-text-secondary); min-width: 0; }
+  #drawer .ws-score-info .band { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: var(--pe-label-tracking); text-transform: uppercase; }
+
+  /* P-2 decision row: pinned to the bottom of the drawer while it scrolls (p42 B action bar); Pursue · Hold · Research │ Decline,
+     52 px targets, key hints hidden (no keyboard on the phone); V-01 Decline Secondary, V-02 Hold amber */
+  #drawer .wh-decide { position: sticky; bottom: 0; z-index: 3; display: flex !important; flex-wrap: nowrap; gap: 6px; align-items: stretch;
+    margin: 0 -10px; padding: 8px 10px; background: var(--pe-hull) !important; border: 0 !important; box-shadow: 0 -1px 0 var(--pe-seam); }
+  #drawer .wh-decide legend { display: none; }
+  #drawer .wh-decide button { flex: 1 1 0; height: var(--pe-target-decision-phone) !important; min-height: var(--pe-target-decision-phone) !important; min-width: 0 !important;
+    padding: 0 6px !important; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap;
+    border: 1px solid var(--pe-outline) !important; border-radius: 0 !important; background: var(--pe-hull) !important; box-shadow: none !important;
+    font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-small) !important; font-weight: 400 !important; letter-spacing: 0 !important; text-transform: none !important; color: var(--pe-text-primary) !important; }
+  #drawer .wh-decide button sub { display: none; }
+  #drawer .wh-decide [data-decide-key="1"] { order: 1; border-color: var(--pe-green) !important; background: var(--pe-raised) !important; color: var(--pe-green) !important; font-weight: 600 !important; }
+  #drawer .wh-decide [data-decide-key="2"] { order: 2; border-color: var(--pe-amber) !important; color: var(--pe-amber) !important; font-weight: 600 !important; }
+  #drawer .wh-decide [data-decide-key="4"] { order: 3; }
+  #drawer .wh-decide::after { content: ""; order: 4; flex: none; width: 1px; background: var(--pe-seam); margin: 0 2px; }
+  #drawer .wh-decide [data-decide-key="3"] { order: 5; color: var(--pe-text-secondary) !important; }
+
+  /* P-3 evidence lines: Plate rows with the 3 px state bar and glyph, as desktop (golden .reason); text 13 px, word 11 px */
+  #drawer .ck-checks { display: flex; flex-direction: column; gap: 5px; margin: 7px 0 0 !important; padding: 0 !important; }
+  #drawer .ck-checks li { position: relative; min-height: var(--pe-target-phone); display: flex; align-items: center; gap: 6px; margin: 0 !important; padding: 0 10px 0 32px !important;
+    background: var(--pe-plate) !important; border: 0 !important; border-left: var(--pe-bar-card) solid var(--pe-text-secondary) !important; border-radius: 0 !important;
+    font-family: var(--pe-font-ui); font-size: var(--pe-fs-small) !important; line-height: 1.3 !important; color: var(--pe-text-primary) !important; }
+  #drawer .ck-checks li::before { left: 11px !important; top: 50% !important; transform: translateY(-50%); font: 600 var(--pe-fs-small)/1 var(--pe-font-ui) !important; }
+  #drawer .ck-checks li.ok { border-left-color: var(--pe-green) !important; } #drawer .ck-checks li.ok::before { color: var(--pe-green) !important; }
+  #drawer .ck-checks li.bad { border-left-color: var(--pe-red) !important; } #drawer .ck-checks li.bad::before { color: var(--pe-red) !important; }
+  #drawer .ck-checks li.unk::before { content: "?" !important; color: var(--pe-text-secondary) !important; }
+  #drawer .ck-checks li.soft { border-left-color: var(--pe-amber) !important; } #drawer .ck-checks li.soft::before { content: "≈" !important; color: var(--pe-amber) !important; }
+  #drawer .ck-checks li small { margin-left: auto; font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; letter-spacing: var(--pe-btn-tracking); text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  #drawer .ck-checks li.ok small { color: var(--pe-green) !important; } #drawer .ck-checks li.bad small { color: var(--pe-red) !important; } #drawer .ck-checks li.soft small { color: var(--pe-amber) !important; }
+
+  /* P-4 materials: no longer a sticky bar over the drawer (it covered the ring and the next lines); it sits after the drawer body,
+     three 44 px buttons in one row, 11 px words; Draft cover letter keeps its disabled state */
+  #drawer .wh-actions { position: static !important; box-shadow: none !important; z-index: auto !important; padding: 10px 0 12px !important; gap: 6px !important;
+    border-top: 1px solid var(--pe-seam) !important; }
+  #drawer .wh-actions legend { font-family: var(--pe-font-label); font-size: var(--pe-fs-min); letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary); }
+  #drawer .wh-actions button { min-height: var(--pe-target-phone) !important; font-size: var(--pe-fs-min) !important; letter-spacing: .04em !important; padding: 0 6px !important; }
+}
