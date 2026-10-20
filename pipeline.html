@@ -757,15 +757,15 @@ var Source={
  * the structured runtime skipped them until 2026-10-14, so every device scored with its own local draft. */
 function loadScoringGovernance_(){
   if(!hasWriter())return;
+  loadCanonicalScoring_().then(function(){if(S.rows&&S.rows.length&&S.tab!=='scoring'&&changed())render()});
+  gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules();else if(S.rows&&S.rows.length&&changed())render()}}).catch(function(){});
   /* REV-093 (perf, Grok 00:26 ET live load): the published model and the FLEX rules arrive after the first paint. Each used to empty the score cache and
      redraw everything (re-scoring every row and rebuilding the table: two extra 2-3 s main-thread blocks on the live site),
      even when they matched what was already in use. The cache is keyed by the scoring fingerprint (model + rules), so it now
      redraws only when that fingerprint changes. */
   /* compared against the fingerprint of the last full render (S.renderFp_, set in render()), so a model that lands before the
      rows causes no extra redraw and one that matches what is on screen causes none either */
-  var changed=function(){return S.renderFp_==null||scoringFp_()!==S.renderFp_};
-  loadCanonicalScoring_().then(function(){if(S.rows&&S.rows.length&&S.tab!=='scoring'&&changed())render()});
-  gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules();else if(S.rows&&S.rows.length&&changed())render()}}).catch(function(){});
+  function changed(){return S.renderFp_==null||scoringFp_()!==S.renderFp_}
 }
 function loadCanonicalScoring_(){
   if(!hasWriter())return Promise.resolve(null);
