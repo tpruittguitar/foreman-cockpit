@@ -976,13 +976,23 @@ function rulingState(r){
   return {s:label[status]||status.replace(/_/g,' '),ru:ru};
 }
 
-function buildScoringCfg_(){var cfg=S.scoring||PipelineScoring.defaults();var text=S.canonicalRules&&S.canonicalRules.text;if(text&&typeof PipelineRules!=='undefined'&&PipelineRules.flexPolicy)cfg=Object.assign({},cfg,{flexPolicy:PipelineRules.flexPolicy(text),publishedRevision:(S.scoringCanonicalMeta&&(S.scoringCanonicalMeta.publishedRevision||S.scoringCanonicalMeta.revision))||cfg.publishedRevision||0});/* Target Companies live in the canonical rules, never in the published model; they feed the culture component. */if(text)cfg=Object.assign({},cfg,{targetCompanies:PipelineScoring.targetCompaniesFromRules(text)});return cfg}
+function buildScoringCfg_(){var cfg=S.scoring||PipelineScoring.defaults();var text=scoringRulesText_();if(text&&typeof PipelineRules!=='undefined'&&PipelineRules.flexPolicy)cfg=Object.assign({},cfg,{flexPolicy:PipelineRules.flexPolicy(text),publishedRevision:scoringRev_()||cfg.publishedRevision||0});/* Target Companies live in the canonical rules, never in the published model; they feed the culture component. */if(text)cfg=Object.assign({},cfg,{targetCompanies:PipelineScoring.targetCompaniesFromRules(text)});return cfg}
 /* Memoized: the config parses the full canonical rules text, and scoreFor_ runs for every row and column on every
  * render, so rebuilding it per call froze the page once the default view began loading the rules (2026-10-14). */
 var scoringCfgMemo_={scoring:null,text:null,rev:null,cfg:null,fp:''};
-function scoringCfg_(){var text=S.canonicalRules&&S.canonicalRules.text||null,rev=S.scoringCanonicalMeta&&(S.scoringCanonicalMeta.publishedRevision||S.scoringCanonicalMeta.revision)||0,m=scoringCfgMemo_;
+/* REV-098 (perf, live: scoreRow ran 4,629 times for 1,183 rows during load). The scoring fingerprint includes the canonical
+   rules and the published revision, which arrive from the Writer seconds after the first paint, so every row was scored again
+   when they landed. The last ones received are kept on this device (px.scoringSeedV1) and used until the live ones arrive: an
+   unchanged model + rules then keep the same fingerprint and nothing is re-scored; a changed one still re-scores once.
+   Only the score inputs use the kept copy; S.canonicalRules / S.scoringCanonicalMeta stay the live answers. */
+var SCORING_SEED_=LS.get('scoringSeedV1',null);
+function scoringRulesText_(){return S.canonicalRules&&S.canonicalRules.text||(SCORING_SEED_&&SCORING_SEED_.text)||null}
+function scoringRev_(){var m=S.scoringCanonicalMeta;return m&&(m.publishedRevision||m.revision)||(!m&&SCORING_SEED_&&SCORING_SEED_.rev)||0}
+function saveScoringSeed_(){var text=S.canonicalRules&&S.canonicalRules.text||null,m=S.scoringCanonicalMeta,rev=m&&(m.publishedRevision||m.revision)||0;
+  if(!text||!m||text.length>400000)return;if(SCORING_SEED_&&SCORING_SEED_.text===text&&SCORING_SEED_.rev===rev)return;SCORING_SEED_={text:text,rev:rev};LS.set('scoringSeedV1',SCORING_SEED_)}
+function scoringCfg_(){var text=scoringRulesText_(),rev=scoringRev_(),m=scoringCfgMemo_;
   if(m.cfg&&scoreCache.fp!==''&&m.scoring===S.scoring&&m.text===text&&m.rev===rev)return m.cfg;
-  var cfg=buildScoringCfg_();scoringCfgMemo_={scoring:S.scoring,text:text,rev:rev,cfg:cfg,fp:PipelineScoring.fingerprint(cfg)};return cfg}
+  var cfg=buildScoringCfg_();scoringCfgMemo_={scoring:S.scoring,text:text,rev:rev,cfg:cfg,fp:PipelineScoring.fingerprint(cfg)};saveScoringSeed_();return cfg}
 function scoringFp_(){scoringCfg_();return scoringCfgMemo_.fp}
 function scoreFor_(r){if(!r)return null;var cfg=scoringCfg_(),fp=scoringCfgMemo_.fp;if(scoreCache.fp!==fp)scoreCache={fp:fp,rows:{}};if(scoreCache.rows[r.id])return scoreCache.rows[r.id];return scoreCache.rows[r.id]=PipelineScoring.scoreRow(r,cfg)}
 // Percentile bands (display only; pipeline-bands.js). Population = open jobs that are not applied/terminal. Quantiles and minN come from tokens.css.
