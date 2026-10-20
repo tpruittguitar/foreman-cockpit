@@ -691,7 +691,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
    Narrower screens and the phone keep the stacked list-over-map layout unchanged. Presentation only. */
 @media (min-width: 2300px) and (min-height: 900px) {
   body:not(.map-full) #view-pipeline.on, body:not(.map-full) #view-pipeline.on:has(#drawer.on) {
-    grid-template-columns: minmax(0, var(--list-track, 1112fr)) var(--pe-gutter) minmax(0, var(--map-track, 801fr)) var(--pe-gutter) var(--pe-col-work) !important;
+    grid-template-columns: minmax(0, var(--list-track, 1112fr)) var(--pe-gutter) minmax(0, var(--map-track, 801fr)) var(--pe-gutter) var(--work-track, var(--pe-col-work)) !important;
     grid-template-rows: var(--pe-head-h) minmax(0, 1fr) !important; column-gap: 0 !important; row-gap: 0 !important; }
   body:not(.map-full) #view-pipeline.on #queue-head { grid-column: 1 / -1 !important; grid-row: 1 !important; }
   body:not(.map-full) #view-pipeline.on #worksplit { grid-column: 1 !important; grid-row: 2 !important; }
@@ -887,4 +887,22 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
     border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; font: inherit !important; letter-spacing: 0 !important;
     text-transform: none !important; color: var(--pe-cyan) !important; text-decoration: underline; text-underline-offset: 3px; }
   #drawer #d-body .why-link::before { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: var(--pe-target-phone); transform: translateY(-50%); }
+}
+
+/* REV-077 (Tim 21:26 ET). Wide desktops (three columns): (a) a second handle in the map / drawer gutter resizes the job drawer
+   (pipeline-pane-split.js createWork; same look and readout as the list / map handle); (b) the decision row stays on one line.
+   Its four buttons have fixed golden widths that fill the 474 px content exactly, so a classic (Windows) scrollbar in the drawer
+   pushed Decline to a second line. The buttons now shrink a little instead of wrapping (centred text does not move). */
+#map-drawer-divider { display: none; }
+@media (min-width: 2300px) and (min-height: 900px) {
+  body:not(.map-full) #view-pipeline.on #map-drawer-divider { display: flex; align-items: center; justify-content: center; position: relative; grid-column: 4 !important; grid-row: 2 !important;
+    cursor: col-resize; touch-action: none; outline: none; z-index: 8; }
+  body:not(.map-full) #view-pipeline.on #map-drawer-divider span { width: 3px; height: 56px; background: var(--pe-text-secondary); border-radius: 2px; pointer-events: none; }
+  body:not(.map-full) #view-pipeline.on #map-drawer-divider:hover span, body:not(.map-full) #view-pipeline.on #map-drawer-divider:focus-visible span,
+  body.pane-resizing:not(.map-full) #view-pipeline.on #map-drawer-divider:focus span { height: 84px; background: var(--pe-green); }
+  body:not(.map-full) #view-pipeline.on #map-drawer-divider:hover::after, body:not(.map-full) #view-pipeline.on #map-drawer-divider:focus-visible::after {
+    content: attr(data-split); position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); white-space: nowrap; padding: 5px 8px; pointer-events: none;
+    background: var(--pe-hull); border: var(--pe-border); font-family: var(--pe-font-label); font-size: var(--pe-fs-label); color: var(--pe-text-primary); }
+  body:not(.map-full) #view-pipeline.on #drawer .wh-decide { flex-wrap: nowrap !important; }
+  body:not(.map-full) #view-pipeline.on #drawer .wh-decide button { flex: 0 1 auto; padding: 0 8px !important; }
 }

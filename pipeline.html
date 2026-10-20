@@ -385,6 +385,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
       <section id="gridpane"><div id="gridwrap"><table id="grid"><thead></thead><tbody></tbody></table></div></section>
     </div>
     <div id="list-map-divider" role="separator" tabindex="0" aria-label="Resize job list and map" aria-orientation="horizontal" aria-controls="gridpane job-map-card" aria-valuemin="25" aria-valuemax="80" aria-valuenow="55" title="Drag to resize. Arrow keys adjust; double-click restores 55% list / 45% map."><span aria-hidden="true"></span></div>
+    <div id="map-drawer-divider" role="separator" tabindex="0" aria-label="Resize map and job drawer" aria-orientation="vertical" aria-controls="job-map-card drawer" title="Drag to resize the job drawer. Left / right arrow keys adjust; double-click restores the default width."><span aria-hidden="true"></span></div>
     <aside id="drawer" aria-label="Job Workspace"><div class="dh"><div class="wh-top"><div class="wh-title"><h2 id="d-title">Select a job</h2><div class="sub" id="d-sub">Details and Tim controls appear here.</div></div><button id="d-close" aria-label="Close job">✕</button></div></div><div id="detail-tabs"></div><div class="db" id="d-body"></div><div id="d-empty" class="d-empty" aria-live="polite"></div></aside><div id="row-tip" class="row-tip" role="tooltip" hidden></div>
   </div>
   <div class="view" id="view-intake"></div>
@@ -2815,6 +2816,7 @@ function pushHash(){var o={t:S.tab,p:S.preset,s:S.sort,f:S.filters};if(S.focus)o
 function readHash(){try{if(location.hash.length>1){var o=JSON.parse(decodeURIComponent(location.hash.slice(1)));if(o.t&&$('view-'+o.t))S.tab=o.t;if(o.p&&PRESETS[o.p])S.preset=o.p;if(o.s)S.sort=o.s;if(o.f)S.filters=o.f;if(o.j)S.pendingFocus=String(o.j);if(o.m)S.pendingMap=true}}catch(e){}}
 window.addEventListener('resize',function(){if(S.master){render();refitColumnsToPane_()}});
 PipelineMotion.inviteDivider($('list-map-divider'),LS.get('listMapSplit',null)!==null);
+var workSplit_=PipelinePaneSplit.createWork({view:$('view-pipeline'),handle:$('map-drawer-divider'),load:function(){return LS.get('mapDrawerWidth',null)},save:function(w){LS.set('mapDrawerWidth',w)},onResize:function(){refitColumnsToPane_();fitRows_();applyMapView_()}});   // REV-077
 var paneSplit_=PipelinePaneSplit.create({view:$('view-pipeline'),handle:$('list-map-divider'),load:function(axis){return LS.get(axis==='x'?'listMapSplitCols':'listMapSplit',null)},save:function(ratio,axis){LS.set(axis==='x'?'listMapSplitCols':'listMapSplit',ratio)},onResize:function(){refitColumnsToPane_();fitRows_();applyMapView_()}});
 loadBuildInfo_();loadWriterStatus_();
 S.tab='pipeline';readHash();/* Tim 2026-10-18: applied, rejected and dead jobs are not shown on the opening page at the start. */if(S.tab==='pipeline'&&/^(ALL|APPLIED|DECLINED|TERMINAL|TERMINAL_HISTORY|DEAD_POSTINGS)$/.test(S.preset))S.preset='OPEN';LS.set('openDefaultV1',true);switchTab(S.pendingMap?'map':S.tab);
