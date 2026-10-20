@@ -29,7 +29,7 @@ const JOB='V2X-A4CCD49EE686';
       return r.fulfill({json:a==='master'?{ok:true,id:'m',text:opts.master||fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:
         a==='scoring'?(opts.model===false?{ok:true,exists:false}:{ok:true,exists:true,model:{publishedRevision:26,modelVersion:'test'}}):
         a==='state'?{ok:true,state:W.store?JSON.parse(JSON.stringify(W.store)):opts.state||{seen:{},reviewed:{}}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(2500);
+    await page.goto(base+'/pipeline.html?src=writer'+(opts.hash||''));await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(2500);
     return {ctx,page,errors,posts,W};
   }
   const tok=(page,v)=>page.evaluate(v=>{const d=document.createElement('i');d.style.color='var('+v+')';document.body.appendChild(d);const c=getComputedStyle(d).color;d.remove();return c},v);
@@ -48,14 +48,24 @@ const JOB='V2X-A4CCD49EE686';
       const at=(x,y)=>{const e=document.elementFromPoint(x,y);return e?(d.contains(e)?'drawer':bb.contains(e)?'bottombar':(e.closest('header')?'header':e.tagName)):null};
       return {on:d.classList.contains('on'),sheet:document.getElementById('drawer').classList.contains('pe-sheet'),pos:getComputedStyle(d).position,top:r.top,bottom:r.bottom,w:r.width,bbTop:b.top,bbH:b.height,
         topHit:at(innerWidth/2,60),midHit:at(innerWidth/2,innerHeight/2),bbHit:at(innerWidth/2,b.top+b.height/2),dec:dec&&dec.getBoundingClientRect().toJSON(),ring:ring&&ring.getBoundingClientRect().toJSON(),hs:history.state,hl:history.length,scrollTop:d.scrollTop,ih:innerHeight}});
-    // load: the phone previews the top job below the queue (shown, not opened): no sheet, the queue stays usable
-    let s0=await st();assert.equal(s0.sheet,false,t+'load-time preview is not a sheet');assert.notEqual(s0.pos,'fixed');
+    // REV-094 (Tim 02:16 ET): the phone opens on the pipeline list: no job shown, no sheet, the queue at the top of the screen
+    let s0=await st();assert.equal(s0.on,false,t+'no job open on load');assert.equal(s0.sheet,false,t+'no sheet on load');
+    const q0=await page.evaluate(()=>{const tr=document.querySelector('#grid tbody tr[data-id]'),r=tr.getBoundingClientRect();return {top:r.top,bottom:r.bottom,ih:innerHeight,sy:scrollY,hash:location.hash}});
+    assert(q0.top>0&&q0.bottom<q0.ih,t+'first queue row on screen: '+JSON.stringify(q0));assert.equal(q0.sy,0,t+'page not scrolled');assert.doesNotMatch(decodeURIComponent(q0.hash),/"j":/,t+'no job in the URL');
     const hl0=s0.hl;
     // REV-087 (Tim 23:35 ET, iPhone): simulate a 47 px status-bar inset; on open the header row starts below it, sheet at the top
     await page.addStyleTag({content:':root{--pe-safe-top:47px !important}'});
     await page.locator('#grid tbody tr[data-id]').nth(1).tap();await page.waitForTimeout(1000);
     const top=await page.evaluate(()=>({head:document.querySelector('#drawer .d-head').getBoundingClientRect().top,back:document.getElementById('d-back').getBoundingClientRect().top,title:document.getElementById('d-title').getBoundingClientRect().top,st:document.getElementById('drawer').scrollTop,wy:scrollY,vv:visualViewport?visualViewport.offsetTop:0}));
     assert(top.head>=47&&top.back>=47&&top.title>=47,t+'header row below the safe-area inset on open: '+JSON.stringify(top));
+    // REV-094: at rest after open the sheet is at its top (no pull needed) and stays there
+    await page.waitForTimeout(600);{const r=await page.evaluate(()=>({st:document.getElementById('drawer').scrollTop,head:document.querySelector('#drawer .d-head').getBoundingClientRect().top,y:scrollY}));
+      assert.equal(r.st,0,t+'sheet scrollTop 0 at rest');assert(r.head>=47,t+'header visible at rest: '+r.head);assert.equal(r.y,0,t+'page not scrolled')}
+    // REV-094: scroll the sheet down, then open another job (map pin / keys path: openRow while the sheet is open): it opens at its top
+    {await page.evaluate(()=>{document.getElementById('drawer').scrollTop=600});const other=await page.evaluate(()=>document.querySelectorAll('#grid tbody tr[data-id]')[3].dataset.id);
+      await page.evaluate(id=>{const tr=document.querySelector('#grid tbody tr[data-id="'+id+'"]');tr.click()},other);await page.waitForTimeout(700);
+      const r=await page.evaluate(()=>({st:document.getElementById('drawer').scrollTop,head:document.querySelector('#drawer .d-head').getBoundingClientRect().top}));
+      assert.equal(r.st,0,t+'next job opens at its top: '+JSON.stringify(r));assert(r.head>=47,t+'next job header visible')}
     // REV-089: the page cannot scroll under the sheet; System records what the device reported
     assert.deepEqual(await page.evaluate(()=>[document.documentElement.style.overflow,document.body.style.overflow]),['hidden','hidden'],t+'page scroll locked while the sheet is open');
     const dg=await page.evaluate(()=>{const e=document.createElement('div');return null});assert.equal(top.st,0,t+'sheet opens scrolled to the top');assert.equal(top.wy,0);assert.equal(top.vv,0);
@@ -79,5 +89,10 @@ const JOB='V2X-A4CCD49EE686';
   {const {ctx,page,errors}=await open({master:big});const hl0=await page.evaluate(()=>history.length);await page.locator('#grid tbody tr[data-id]').first().click();await page.waitForTimeout(900);
     const d=await page.evaluate(()=>({sheet:document.getElementById('drawer').classList.contains('pe-sheet'),pos:getComputedStyle(document.getElementById('drawer')).position,hl:history.length}));
     assert.equal(d.sheet,false,'desktop: no sheet');assert.notEqual(d.pos,'fixed','desktop drawer not fixed');assert.equal(d.hl,hl0,'desktop: no history entry');assert.deepEqual(errors,[]);await ctx.close();}
+  // REV-094: a launch URL that names a job (the last open one) still starts on the list on the phone
+  {const id=fixture.split('\n').find(l=>/^\d+ \| V2X-[0-9A-F]+ \|/.test(l)).split(' | ')[1].trim();
+    const {ctx,page,errors}=await open({phone:[390,844],hash:'#'+encodeURIComponent(JSON.stringify({t:'pipeline',j:id}))});
+    const r=await page.evaluate(()=>({on:document.getElementById('drawer').classList.contains('on'),sheet:document.getElementById('drawer').classList.contains('pe-sheet')}));
+    assert.deepEqual(r,{on:false,sheet:false},'phone launch with a job in the URL opens on the list');assert.deepEqual(errors,[]);await ctx.close()}
   await browser.close();server.close();console.log('phone-sheet.browser.js: OK');
 })().catch(e=>{console.error(e);process.exit(1)});

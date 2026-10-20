@@ -119,7 +119,9 @@ const JOB='V2X-A4CCD49EE686';
     if(w===390)await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-drawer-390x844.png'});
     await page.locator('#d-back').tap();await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>document.getElementById('drawer').classList.contains('on')),false,t+'‹ Queue closes the drawer');
     // an APPLIED job keeps a compact card: no "Current state" row, 11 px labels, next step as a 44 px inline link
-    await page.evaluate(id=>{location.hash='#'+encodeURIComponent(JSON.stringify({t:'pipeline',j:id}))},'V2X-E48592F5CB73');await page.reload();
+    // REV-094: the phone ignores a job in the launch URL, so the APPLIED view is opened and the job tapped
+    await page.evaluate(()=>{const c=document.querySelector('#presets .chip[data-p="APPLIED"]');c.click()});await page.waitForTimeout(1500);
+    await page.locator('#grid tbody tr[data-id="V2X-E48592F5CB73"]').scrollIntoViewIfNeeded();await page.locator('#grid tbody tr[data-id="V2X-E48592F5CB73"]').tap();
     await page.waitForSelector('#drawer.on .decision-essentials');await page.waitForTimeout(1500);
     const ap=await page.evaluate(()=>{const s=document.querySelector('#drawer .decision-essentials'),cs=e=>getComputedStyle(e),b=s.querySelector('.next-job-step'),st=s.querySelector('.ds-state');
       return {shown:!!s.offsetParent,state:!!st.offsetParent,labels:[...s.querySelectorAll('b')].filter(e=>e.offsetParent).map(e=>cs(e).fontSize),btn:{h:b.getBoundingClientRect().height,bg:cs(b).backgroundColor,bw:cs(b).borderTopWidth,fs:cs(b).fontSize,t:b.innerText.trim()},h:s.getBoundingClientRect().height}});
