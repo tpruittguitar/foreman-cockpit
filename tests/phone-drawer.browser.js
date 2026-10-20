@@ -1,4 +1,5 @@
-/* REV-072 (Track M step 6; Grok Bot 20:35 ET, p42 items 1-4): header row, ‹ Queue, title token, one meta line, ring clear of the decision row.
+/* REV-073 (Track M step 7; Grok Bot 20:54 ET, p42 item 5): state card dropped when quiet, compact otherwise; pay right after the place.
+   REV-072 (Track M step 6; Grok Bot 20:35 ET, p42 items 1-4): header row, ‹ Queue, title token, one meta line, ring clear of the decision row.
    REV-071 (Track M step 5; Grok Bot 20:21 ET, phone drawer vs v1.5 p42 B): ring (SVG, --pe-ring-phone 88 px, value 26 px,
    band text right), decision row pinned to the drawer bottom (52 px, no key hints, Pursue · Hold · Research │ Decline),
    evidence rows (44 px, 3 px state bar, glyph, 11 px word), materials after the drawer body (44 px, >= 11 px). 390 / 402.
@@ -67,8 +68,23 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(r.hd.chips,false,t+'chips row dropped');
     assert(r.clear.ringBottom<=r.clear.decTop,t+'ring clear of the decision row: '+JSON.stringify(r.clear));assert(r.clear.scoreBottom<=r.clear.decTop,t+'score block clear: '+JSON.stringify(r.clear));
     assert(parseFloat(r.qv)>=11,t+'.qh-view >= 11 px: '+r.qv);
+    // REV-073 (p42 item 5): with nothing to verify, block or follow up, the state card is gone on the phone; meta has pay right after the place.
+    const de=await page.evaluate(()=>{const s=document.querySelector('#drawer .decision-essentials');return {quiet:s.classList.contains('de-quiet'),shown:!!s.offsetParent,meta:document.getElementById('d-meta').innerText}});
+    assert.equal(de.quiet,true,t+'first job has a quiet state card');assert.equal(de.shown,false,t+'quiet state card hidden on the phone');
+    assert.match(de.meta,/^[^·]+ · [^·]+ · (~?\$|Pay unknown)/,t+'pay right after the place: '+de.meta);
     if(w===390)await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-drawer-390x844.png'});
     await page.locator('#d-back').tap();await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>document.getElementById('drawer').classList.contains('on')),false,t+'‹ Queue closes the drawer');
+    // an APPLIED job keeps a compact card: no "Current state" row, 11 px labels, next step as a 44 px inline link
+    await page.evaluate(id=>{location.hash='#'+encodeURIComponent(JSON.stringify({t:'pipeline',j:id}))},'V2X-E48592F5CB73');await page.reload();
+    await page.waitForSelector('#drawer.on .decision-essentials');await page.waitForTimeout(1500);
+    const ap=await page.evaluate(()=>{const s=document.querySelector('#drawer .decision-essentials'),cs=e=>getComputedStyle(e),b=s.querySelector('.next-job-step'),st=s.querySelector('.ds-state');
+      return {shown:!!s.offsetParent,state:!!st.offsetParent,labels:[...s.querySelectorAll('b')].filter(e=>e.offsetParent).map(e=>cs(e).fontSize),btn:{h:b.getBoundingClientRect().height,bg:cs(b).backgroundColor,bw:cs(b).borderTopWidth,fs:cs(b).fontSize,t:b.innerText.trim()},h:s.getBoundingClientRect().height}});
+    assert.match(await page.locator('#drawer .d-label:not(.empty)').innerText(),/V2X-E48592F5CB73 · /,t+'APPLIED job open');
+    if(w===390){await page.evaluate(()=>document.querySelector('#drawer .d-head').scrollIntoView({block:'start'}));await page.waitForTimeout(300);
+      await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-drawer-applied-390x844.png'});}
+    assert.equal(ap.shown,true,t+'APPLIED job shows the state card');assert.equal(ap.state,false,t+'no Current state row on the phone (bucket is in the header)');
+    ap.labels.forEach(f=>assert.equal(f,'11px',t+'card labels 11 px'));assert(ap.btn.h>=44,t+'next step target >= 44 px');assert.equal(ap.btn.bw,'0px',t+'next step is an inline link');assert.equal(ap.btn.fs,'13px');
+    assert(ap.h<=120,t+'compact card: '+JSON.stringify(ap));
     assert.deepEqual(errors,[]);await ctx.close();}
   // desktop drawer unchanged: decision row static, ring 124 px
   {const {ctx,page,errors}=await open({master:big});await page.locator('#grid tbody tr[data-id]').first().click();await page.waitForTimeout(900);
