@@ -2,6 +2,36 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-20-A: terminal rows keep moving to the archive (REV-117)
+
+Trigger: Tim 2026-10-20 18:26 ET: "Dead and closed and no longer available can be a separate file right? ... the system needs to verify against it in several scenarios."
+
+### Found (FACT, live Writer reads 2026-10-20 ~18:35 ET)
+
+- `V2_TERMINAL_ARCHIVE.txt` has been live since the Oct 5 cutover (`MIG-20261005020622`, `CUTOVER_COMPLETE`) and holds 522 rows. Intake and upsert dedupe already check it, rulings on archived rows fail closed, and `restore_archived` exists.
+- Nothing moved rows into it after the cutover. The master went from 306 rows / 668 KB to **1,923 rows / 4.7 MB**, and a master GET took 4.6 s.
+- 343 terminal rows (716 KB) sit in the master: 194 REJECTED_BY_EMPLOYER, 91 DECLINED_BY_TIM, 30 DUPLICATE, 26 CLOSED_DEAD and 2 INVALID_DISCOVERY. INVALID_DISCOVERY is not an archive bucket and stays put.
+
+### Changed
+
+1. `apps-script/Code.gs`: new write action `archive_sweep`.
+   - It covers rows in a terminal bucket (`ARCHIVE_BUCKETS`) whose `STATE_UPDATED_AT` is older than `minAgeDays` (default 7, floor 3) and whose PRIMARY_ID is unique. At most 150 rows per execution.
+   - `op=plan` is read-only.
+   - `op=apply` first appends the rows to the archive, with their companion narrative merged back so archived rows stay self-contained, and reads the archive back. Only then does it make one master write, which goes through the normal durable-intent and independent-verification path. Section headings that lost rows show their new count, and COUNTS/END are recomputed.
+   - A row is never missing from both files. If the master save fails, the row reads as live, and the next sweep removes it without appending a second copy.
+   - `archive_sweep` is not allowed inside a batch.
+2. `apps-script/WriterTransactions.gs`: a write intent may remove rows only when the request is `archive_sweep` and names those rows (`ARCHIVE_MOVE` items). Every other removal still throws `TRANSACTION_DELETE_FORBIDDEN`.
+3. `parseArchive_` in both the Writer and `pipeline-loader.js`: a `RESTORED|pid|inv|` marker now hides only the archive lines written before it, so a restored row that closes again is visible again after the next sweep. A key archived twice keeps its newest line.
+4. Tests: `tests/archive-sweep.test.js` (6) and the governed write-action list in `tests/automation.test.js`.
+
+### Not changed
+
+Which buckets are archived, dedupe, the fail-closed rulings on archived rows, `restore_archived`, and the app's archive loading. No row moves until Tim (or Claude, with Tim's go) runs `op=apply` after this Writer build is deployed.
+
+### Verified
+
+`node --test tests/archive-sweep.test.js tests/automation.test.js` pass. Full `npm test`: 606 tests, 606 pass.
+
 ## Batch 2026-10-19-F — structured runtime read path stops exceeding the Cloudflare CPU limit (REV-075)
 
 Trigger: Tim's 2026-10-19 21:10 ET screenshot — CRITICAL `FETCH FAILED · NO DATA`, "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON", first failure 21:07 ET, no cached copy.

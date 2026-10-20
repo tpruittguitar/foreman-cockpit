@@ -21,8 +21,12 @@ var WriterTransactions = (function () {
   }
   function intent(before, after, request, now, hash, masterId, build) {
     var b = rows(before), a = rows(after), ids = requestIds(request), items = [];
+    // REV-117: archive_sweep names the rows it moves to V2_TERMINAL_ARCHIVE; every other removal is still forbidden.
+    var moves = (request && request.action === 'archive_sweep' && request.archiveMove) || {};
     Object.keys(b).forEach(function (pid) {
-      if (!a[pid]) throw new Error('TRANSACTION_DELETE_FORBIDDEN: ' + pid);
+      if (a[pid]) return;
+      if (!moves[pid]) throw new Error('TRANSACTION_DELETE_FORBIDDEN: ' + pid);
+      items.push({ pid: pid, op: 'ARCHIVE_MOVE', b: hash(b[pid]), a: '' });
     });
     Object.keys(a).forEach(function (pid) {
       if (a[pid] !== b[pid]) items.push({ pid: pid, op: b[pid] ? 'REPLACE' : 'INSERT', b: b[pid] ? hash(b[pid]) : '', a: hash(a[pid]) });
