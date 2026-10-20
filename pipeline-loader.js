@@ -196,12 +196,14 @@
 
     return masterP.then(function (m) {
       if (!m.ok) {
-        var c = null; try { c = cache.read(); } catch (e) { c = null; }
+        /* REV-093: the cache may answer now or later (IndexedDB); either way the failure path waits for it */
+        return Promise.resolve().then(function () { return cache.read(); }).catch(function () { return null; }).then(function (c) {
         var usable = c && typeof c.text === 'string' && c.text;
         var failed = { freshness: usable ? 'STALE' : 'NONE', error: m.error, startedAt: startedAt, failedAt: new Date().toISOString(), text: usable ? c.text : '', meta: usable ? (c.meta || {}) : {}, fromCache: !!usable,
           archive: { state: 'NOT_LOADED' }, evidence: { state: 'NOT_LOADED' } };
         onUpdate(failed);
         return failed;
+        });
       }
       var j = m.j, base = { id: j.id, fetchedAt: j.fetchedAt, modifiedTime: j.modifiedTime || '', canonicalBytes: j.text.length, masterAttempts: j.readAttempts || 1 };
       var view = { freshness: 'LIVE', error: '', startedAt: startedAt, text: j.text, fromCache: false, meta: base, archive: { state: 'PENDING' }, evidence: { state: 'PENDING' } };
