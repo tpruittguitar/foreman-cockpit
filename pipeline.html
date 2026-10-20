@@ -789,15 +789,29 @@ function setText_(id,text){var e=$(id);if(e)e.textContent=text}
 function reloadAfterWrite_(){if(S.structuredBase&&S.cfg.key)return importStructuredFromWriter_(S.structuredBase).then(function(){S.structuredSyncedAt=Date.now();return load()},function(){return load()});return load()}
 function importStructuredFromWriter_(base){
   if(!S.rows||!S.rows.length)readout('<b>seeding structured runtime.</b> importing current Writer master');
-  return fetch(base+'/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(r){return r.json().then(function(j){if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('structured import HTTP '+r.status));return j})});
+  return fetchJsonRetry_(base+'/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(x){var r=x.r,j=x.j;if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('structured import HTTP '+r.status));return j});
 }
 
+/* REV-074: a Cloudflare platform error (503 "Worker exceeded resource limits", 502, 522) is an HTML page.
+ * r.json() on it reported "Unexpected token '<'". Read text, name the real failure, retry 5xx/non-JSON twice. */
+function fetchJsonRetry_(url,opts,attempt){
+  attempt=attempt||0;
+  return fetch(url,opts).then(function(r){return r.text().then(function(t){
+    var j=null;try{j=JSON.parse(t)}catch(e){}
+    if(j)return{r:r,j:j};
+    var m=/<title>([^<]{1,120})<\/title>/i.exec(t||''),why='HTTP '+r.status+(m?' · '+m[1].replace(/\s*\|.*$/,'').trim():' · response was not JSON');
+    var err=new Error(why);err.retryable=r.status>=500||!m;throw err;
+  })}).catch(function(e){
+    if(attempt>=2||e.retryable===false)throw e;
+    return new Promise(function(res){setTimeout(res,attempt?1500:600)}).then(function(){return fetchJsonRetry_(url,opts,attempt+1)});
+  });
+}
 function structuredTextFromPagedJobs_(base,seq){
   var limit=250,all=[],total=null,fetchedAt=new Date().toISOString(),snapshotMeta=null;
   function page(offset){
     if(seq!==S.loadSeq)return Promise.resolve(null);
     readout('<b>fetching structured runtime.</b> rows '+offset+'-'+(offset+limit));
-    return fetch(base+'/jobs?limit='+limit+'&offset='+offset,{cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error((j&&j.error)||('structured jobs HTTP '+r.status));return j})}).then(function(j){
+    return fetchJsonRetry_(base+'/jobs?limit='+limit+'&offset='+offset,{cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(x){var r=x.r,j=x.j;if(!r.ok)throw new Error((j&&j.error)||('structured jobs HTTP '+r.status));return j}).then(function(j){
       if(!j||j.ok!==true||!Array.isArray(j.jobs))throw new Error((j&&j.error)||'structured jobs page failed');
       if(total==null)total=+j.total||0;if(!snapshotMeta)snapshotMeta=j.meta||{};all=all.concat(j.jobs);
       return all.length<total?page(all.length):all;
@@ -841,6 +855,9 @@ function loadStructuredRuntime_(q){
     return S.load;
   }).catch(function(e){
     if(seq!==S.loadSeq)return null;
+    /* REV-074: the stored copy is a speed path, not the authority. When it cannot be read, read the canonical
+     * master straight from the Writer (the ?src=writer path) instead of stopping on FETCH FAILED. */
+    if(hasWriter()&&q.get('noFallback')!=='1'){S.structuredFallback={at:new Date().toISOString(),reason:e.message};readout('<b>stored copy unavailable</b> ('+esc(e.message)+') · reading the master from the Writer');return loadWriter_()}
     S.load={freshness:'NONE',error:e.message,startedAt:new Date().toISOString(),failedAt:new Date().toISOString(),text:'',meta:{source:'structured-runtime',structuredApi:base},fromCache:false,archive:{state:'NOT_LOADED'},evidence:{state:'NOT_LOADED'}};
     S.connection.state='STRUCTURED RUNTIME FAILED';S.connection.error=e.message;renderLoadAlert_();readout('<span class="bad">STRUCTURED RUNTIME FETCH FAILED</span> '+esc(e.message));
     return S.load;
@@ -871,6 +888,9 @@ function load(fromCache){
   var q=new URLSearchParams(location.search);var src=q.get('src');
   if(src==='local')return loadLocalSqlite_(q);
   if(src==='structured'||!src)return loadStructuredRuntime_(q);
+  return loadWriter_();
+}
+function loadWriter_(){
   readout('<b>fetching…</b>');
   if(!hasWriter()){S.connection.state='Not configured';readout('Protected master · configure your writer to connect');switchTab('settings');return}
   S.connection.state='Checking';S.connection.error='';S.load={freshness:'LOADING',archive:{state:'PENDING'},evidence:{state:'PENDING'}};renderLoadAlert_();

@@ -31,18 +31,70 @@ function snapshotStore(env) {
   return env && env.PIPELINE_SNAPSHOT_KV ? env.PIPELINE_SNAPSHOT_KV : null;
 }
 
-async function readSnapshot(env) {
+/* REV-074 (2026-10-19): the snapshot is stored as a small head plus 250-job shards.
+ * Until REV-074 every request (health, counts, each 250-row page, even the import) read and JSON.parsed the
+ * whole multi-megabyte snapshot. At 1,872 jobs that exceeded the Cloudflare Worker CPU limit and Cloudflare
+ * answered 503 "Worker exceeded resource limits" as an HTML page (Pipeline Explorer: "Unexpected token '<'").
+ * Now reads parse only the small head, and aligned page reads return the stored shard text with no parse. */
+const SHARD_SIZE = 250;
+const HEAD_KEY = 'snapshot/v2/head';
+function shardKey(gen, i) { return 'snapshot/v2/' + gen + '/' + i; }
+
+async function readHead(env) {
   const store = snapshotStore(env);
   if (!store) return null;
-  const raw = await store.get(SNAPSHOT_KEY);
+  const raw = await store.get(HEAD_KEY);
   return raw ? JSON.parse(raw) : null;
+}
+
+async function readShardText(env, head, i) {
+  const raw = await snapshotStore(env).get(shardKey(head.gen, i));
+  if (raw == null) throw new Error('SNAPSHOT_SHARD_MISSING_' + i);
+  return raw;
+}
+
+async function readAllJobs(env, head) {
+  let jobs = [];
+  for (let i = 0; i < head.shards; i++) jobs = jobs.concat(JSON.parse(await readShardText(env, head, i)));
+  return jobs;
 }
 
 async function saveSnapshot(env, snapshot) {
   const store = snapshotStore(env);
   if (!store) return false;
-  await store.put(SNAPSHOT_KEY, JSON.stringify(snapshot));
+  const jobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
+  const previous = await readHead(env).catch(() => null);
+  const gen = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const shards = Math.ceil(jobs.length / SHARD_SIZE);
+  for (let i = 0; i < shards; i++) await store.put(shardKey(gen, i), JSON.stringify(jobs.slice(i * SHARD_SIZE, (i + 1) * SHARD_SIZE)));
+  const head = { gen, shardSize: SHARD_SIZE, shards, total: jobs.length, meta: snapshot.meta || {}, counts: snapshot.counts || {}, ok: snapshot.ok !== false };
+  await store.put(HEAD_KEY, JSON.stringify(head));   /* head last: readers switch generations in one step */
+  if (previous && previous.gen && previous.gen !== gen) {
+    for (let i = 0; i < (previous.shards || 0); i++) { try { await store.delete(shardKey(previous.gen, i)); } catch {} }
+  }
+  try { await store.delete(SNAPSHOT_KEY); } catch {}   /* retire the single-blob v1 copy so a rollback re-imports instead of serving it stale */
   return true;
+}
+
+function jobsPageResponse(head, rawJobs, limit, offset) {
+  const tail = ',"meta":' + JSON.stringify(head.meta || {}) + ',"source":"snapshot"}';
+  return new Response('{"ok":true,"service":"structured-runtime","limit":' + limit + ',"offset":' + offset + ',"total":' + head.total + ',"jobs":' + rawJobs + tail, { status: 200, headers: JSON_HEADERS });
+}
+
+async function snapshotJobsPage(env, head, limit, offset) {
+  const end = Math.min(head.total, offset + limit);
+  if (offset >= end) return jobsPageResponse(head, '[]', limit, offset);
+  const first = Math.floor(offset / head.shardSize), last = Math.floor((end - 1) / head.shardSize);
+  const aligned = offset % head.shardSize === 0 && (end % head.shardSize === 0 || end === head.total);
+  if (aligned) {
+    const parts = [];
+    for (let i = first; i <= last; i++) { const t = (await readShardText(env, head, i)).trim(); if (t.length > 2) parts.push(t.slice(1, -1)); }
+    return jobsPageResponse(head, '[' + parts.join(',') + ']', limit, offset);
+  }
+  let jobs = [];
+  for (let i = first; i <= last; i++) jobs = jobs.concat(JSON.parse(await readShardText(env, head, i)));
+  const start = offset - first * head.shardSize;
+  return jobsPageResponse(head, JSON.stringify(jobs.slice(start, start + (end - offset))), limit, offset);
 }
 
 function route(req) {
@@ -51,7 +103,7 @@ function route(req) {
   return { url, path };
 }
 
-function publicHealth(snapshot) {
+function publicHealth(snapshot) {   /* snapshot = head */
   const meta = snapshot && snapshot.meta ? snapshot.meta : {};
   return {
     ok: true,
@@ -63,7 +115,7 @@ function publicHealth(snapshot) {
     auth: snapshot ? 'none_for_snapshot_reads' : 'writer_key_for_live_fallback',
     reason: snapshot ? 'Structured snapshot is loaded.' : 'Structured endpoint is reachable; no structured snapshot has been loaded yet.',
     snapshot: snapshot ? {
-      jobs: Array.isArray(snapshot.jobs) ? snapshot.jobs.length : 0,
+      jobs: snapshot.total || 0,
       generatedAt: meta.generatedAt || '',
       source: meta.source || '',
       writerFetchedAt: meta.writerFetchedAt || '',
@@ -137,9 +189,9 @@ export async function onRequest(context) {
   const { url, path } = route(req);
   if (!['GET', 'POST'].includes(req.method)) return response({ ok: false, error: 'Method not allowed' }, 405);
 
-  let snapshot = null;
+  let snapshot = null;   /* the small head only; job shards are read per request */
   try {
-    snapshot = await readSnapshot(context.env);
+    snapshot = await readHead(context.env);
   } catch (e) {
     snapshot = null;
   }
@@ -147,7 +199,7 @@ export async function onRequest(context) {
   if (path === '/' || path === '/health') return response(publicHealth(snapshot));
 
   async function currentSnapshot() {
-    if (snapshot) return snapshot;
+    if (snapshot) return { meta: snapshot.meta, counts: snapshot.counts, jobs: await readAllJobs(context.env, snapshot) };
     if (!(await writerKeyOk(req, url))) throw Object.assign(new Error('WRITER_KEY_REQUIRED'), { locked: true });
     const master = await readWriterMaster(req, url);
     const built = parseMasterText(master.text);
@@ -188,20 +240,31 @@ export async function onRequest(context) {
   }
 
   if (path === '/counts') {
+    if (snapshot) return response({ ok: true, service: 'structured-runtime', counts: snapshot.counts || {}, meta: snapshot.meta || {}, source: 'snapshot' });
     let current;
     try { current = await currentSnapshot(); } catch (e) { if (e && e.locked) return locked(snapshot); throw e; }
     return response({ ok: true, service: 'structured-runtime', counts: current.counts || {}, meta: current.meta || {}, source: snapshot ? 'snapshot' : 'writer-live' });
   }
 
   if (path === '/jobs') {
-    let current;
-    try { current = await currentSnapshot(); } catch (e) { if (e && e.locked) return locked(snapshot); throw e; }
     const { limit, offset } = normalizeLimitOffset(url);
-    const jobs = Array.isArray(current.jobs) ? current.jobs : [];
-    return response({ ok: true, service: 'structured-runtime', limit, offset, total: jobs.length, jobs: jobs.slice(offset, offset + limit), meta: current.meta || {}, source: snapshot ? 'snapshot' : 'writer-live' });
+    if (snapshot) return snapshotJobsPage(context.env, snapshot, limit, offset);
+    /* No snapshot: say so (the Explorer then imports once) rather than parse the live master on every page. */
+    return response({ ok: false, service: 'structured-runtime', error: 'STRUCTURED_SNAPSHOT_NOT_LOADED', detail: 'No structured snapshot is stored; POST /api/structured/admin/import-from-writer first.' }, 409);
   }
 
   const jobMatch = path.match(/^\/jobs\/([^/]+)$/);
+  if (jobMatch && snapshot) {
+    const id = decodeURIComponent(jobMatch[1]);
+    const needle = JSON.stringify(id);
+    for (let i = 0; i < snapshot.shards; i++) {
+      const raw = await readShardText(context.env, snapshot, i);
+      if (raw.indexOf(needle) < 0) continue;
+      const job = JSON.parse(raw).find(j => String(j.PRIMARY_ID || j.id || '') === id);
+      if (job) return response({ ok: true, service: 'structured-runtime', job, meta: snapshot.meta || {}, source: 'snapshot' });
+    }
+    return response({ ok: false, error: 'JOB_NOT_FOUND', id }, 404);
+  }
   if (jobMatch) {
     let current;
     try { current = await currentSnapshot(); } catch (e) { if (e && e.locked) return locked(snapshot); throw e; }
