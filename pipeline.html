@@ -1135,7 +1135,7 @@ function syncStateUp(delay){if(!hasWriter())return;clearTimeout(syncTimer);syncT
     gsPost({action:'state',state:body}).then(function(j){S.stateSending=false;if(nSent)S.reviewSend={at:Date.now(),sent:nSent,ok:keep(j),kept:j&&j.reviewed,error:keep(j)?'':(j&&j.ok?'Writer did not confirm review records (older Writer?)':(j&&(j.error||'refused'))||'no response')};
       if(keep(j)){Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.reviewRetry=0;if(Object.keys(S.reviewDirty).length)S.stateSendAgain=true}else{reviewRetry_(j);if(nSent)syncStateDown()}if(S.stateSendAgain){S.stateSendAgain=false;syncStateUp(300)}if(typeof renderWriterStatus_==='function'&&!S.renderingWriter_)renderWriterStatus_();S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){S.stateSending=false;reviewRetry_(null);if(nSent)syncStateDown();if(S.stateSendAgain){S.stateSendAgain=false;syncStateUp(1500)}S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},delay==null?1500:delay)}
 /* ---------- column model ---------- */
-var ROWS_FIRST_=120,ROWS_CHUNK_=200;   /* REV-088: phone table rows built in the first pass / per idle chunk (120 = the rows the auto-fit reads) */
+var ROWS_FIRST_=120,ROWS_CHUNK_=200;   /* REV-088 / REV-093: table rows built in the first pass / per idle chunk (120 = the rows the auto-fit reads) */
 var COLS=[],COLTYPE={},ENUM_COLS_=['BUCKET','DISPOSITION','SECTION','NEW','MISMATCH','TIM_RULING','FLEX','NOTIFICATION_SOURCE','SALARY_CONF','SALARY_BASIS','DECLINE_REASON_CODE','FLOOR_STATUS','OVERALL_RATING','SCREEN_GATE'];
 function buildColumnModel(){
   var m=S.master;COLS=FIXED.slice(0,9).concat(COMPUTED).concat(['SCOUT_ACTION']).concat(m.payloadKeys.filter(function(k){return COMPUTED.indexOf(k)<0}));
@@ -1294,9 +1294,10 @@ function render(){
   $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
   var cols=visibleCols(),nSt=stickyN_();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<nSt?'sticky ':'')+(c==='NEW'?'c-new ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(c==='LOCATION'?'c-loc ':'')+(c==='COMPANY'?'c-co ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
-  /* REV-088 (perf): on the phone the first ROWS_FIRST_ rows are built now and the rest in idle-time chunks (same rows, same
-     order, same markup); the first screen paints without waiting for all of them. Desktop builds every row at once, as before. */
-  var seq=S.renderSeq_=(S.renderSeq_||0)+1,cut=phoneLayout()&&rows.length>ROWS_FIRST_+ROWS_CHUNK_?ROWS_FIRST_:rows.length;
+  /* REV-088 (perf): the first ROWS_FIRST_ rows are built now and the rest in idle-time chunks (same rows, same order, same
+     markup); the first screen paints without waiting for all of them. REV-093: desktop too (live: laying out all ~1,200 rows
+     at once was most of the 3.3 s first block). */
+  var seq=S.renderSeq_=(S.renderSeq_||0)+1,cut=rows.length>ROWS_FIRST_+ROWS_CHUNK_?ROWS_FIRST_:rows.length;
   var tb='';for(var ri=0;ri<cut;ri++)tb+=rowHtml_(rows[ri],cols);S.renderKey_=cols.join('|');S.renderPending_=cut<rows.length;
   $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
   /* REV-088 (perf): fixSticky runs once at the end, from applyColumnWidths, after the <col> widths are set */
