@@ -908,3 +908,25 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   body:not(.map-full) #view-pipeline.on #drawer .wh-decide { flex-wrap: nowrap !important; }
   body:not(.map-full) #view-pipeline.on #drawer .wh-decide button { flex: 0 1 auto; padding: 0 8px !important; }
 }
+
+/* Track M step 10 (REV-080, Grok Bot 22:01 ET: p42 item 12). Phone score breakdown: the desktop rows (golden .bd), fitted to
+   the phone width. Name takes the free width (ellipsis), weight 36 px, bar 56 px, points 60 px (fits UNKNOWN); 28 px rows; text --pe-fs-small,
+   labels and footer mono 11 px. The section label wraps its "Σ … KNOWN = … → …" sum under the title on the phone. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #drawer #d-body .sec-label:has(.bd-sum) { flex-wrap: wrap; row-gap: 2px; }
+  #drawer #d-body .sec-label .bd-sum { color: var(--pe-text-primary) !important; white-space: nowrap; }
+  #drawer #d-body .bd { display: block; margin-top: 6px; }
+  #drawer #d-body .bd-row { display: grid !important; grid-template-columns: minmax(0, 1fr) 36px 56px 60px; column-gap: 8px; align-items: center;
+    height: 28px; min-height: 28px; font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-small) !important; }
+  #drawer #d-body .bd-row > span { display: block; min-width: 0; font-size: inherit !important; }
+  #drawer #d-body .bd-row .nm { color: var(--pe-text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #drawer #d-body .bd-row .w { color: var(--pe-text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+  #drawer #d-body .bd-row .bdb { position: relative; height: 8px; padding: 0; border: 0; background: var(--pe-raised); }
+  #drawer #d-body .bd-row .bdb i { display: block; height: 8px; margin: 0; }
+  #drawer #d-body .bd-row .p { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pe-text-primary); }
+  #drawer #d-body .bd-row.unk .nm { color: var(--pe-text-secondary); }
+  #drawer #d-body .bd-row.unk .nm::before { content: "? "; }   /* unknown is marked by text, not by colour alone (L-1), as on desktop */
+  #drawer #d-body .bd-row.unk .bdb { background: transparent; border: 1px dashed var(--pe-outline); }
+  #drawer #d-body .bd-row.unk .p { color: var(--pe-text-secondary); font-weight: 400; font-family: var(--pe-font-label); font-size: var(--pe-fs-min) !important; letter-spacing: .06em; }
+  #drawer #d-body .bd-foot { margin-top: 4px; font-family: var(--pe-font-label); font-size: var(--pe-fs-min) !important; letter-spacing: .08em; line-height: 16px; color: var(--pe-text-secondary); overflow-wrap: anywhere; }
+}
