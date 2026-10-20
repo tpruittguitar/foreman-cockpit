@@ -1,4 +1,5 @@
-/* REV-074 (Track M step 8; Grok Bot 21:12 ET, p42 item 6): tabs as one 44 px scrolling underline row, 11 px mono, active in view.
+/* REV-076 (Track M step 9; Grok Bot 21:22 ET, p42 item 11): Why label 11 px mono, Fit & Score an inline Cyan link.
+   REV-074 (Track M step 8; Grok Bot 21:12 ET, p42 item 6): tabs as one 44 px scrolling underline row, 11 px mono, active in view.
    REV-073 (Track M step 7; Grok Bot 20:54 ET, p42 item 5): state card dropped when quiet, compact otherwise; pay right after the place.
    REV-072 (Track M step 6; Grok Bot 20:35 ET, p42 items 1-4): header row, ‹ Queue, title token, one meta line, ring clear of the decision row.
    REV-071 (Track M step 5; Grok Bot 20:21 ET, phone drawer vs v1.5 p42 B): ring (SVG, --pe-ring-phone 88 px, value 26 px,
@@ -79,6 +80,14 @@ const JOB='V2X-A4CCD49EE686';
     await page.locator('#detail-tabs button[data-dtab="history"]').tap();await page.waitForTimeout(500);
     const hv=await page.evaluate(()=>{const dt=document.getElementById('detail-tabs'),a=dt.querySelector('button.on'),r=dt.getBoundingClientRect(),b=a.getBoundingClientRect();return {t:a.dataset.dtab,inView:b.left>=r.left-1&&b.right<=r.right+1}});
     assert.equal(hv.t,'history');assert(hv.inView,t+'active tab scrolled into view');
+    await page.locator('#detail-tabs button[data-dtab="overview"]').tap();await page.waitForTimeout(500);
+    // REV-076 (p42 item 11): Why label mono 11 px, "Fit & Score ›" an inline Cyan link (no box, no capitals, 44 px touch), opens Fit & Score.
+    const wy=await page.evaluate(()=>{const d=document.getElementById('d-body'),cs=e=>getComputedStyle(e),l=d.querySelector('.why-link'),lab=[...d.querySelectorAll('.sec-label')].find(e=>/^why$/i.test(e.innerText.trim())),w=d.querySelector('.why');
+      const lr=l.getClientRects()[0];return {lab:lab&&{fs:cs(lab).fontSize,ff:cs(lab).fontFamily,c:cs(lab).color},link:{d:cs(l).display,bw:cs(l).borderTopWidth,bg:cs(l).backgroundColor,tt:cs(l).textTransform,c:cs(l).color,td:cs(l).textDecorationLine,fs:cs(l).fontSize,wfs:cs(w).fontSize,h:parseFloat(getComputedStyle(l,'::before').height),t:l.innerText}}});
+    assert(wy.lab,t+'Why label');assert.equal(wy.lab.fs,'11px',t+'Why label 11 px');assert.equal(wy.lab.c,await tok(page,'--pe-text-secondary'));
+    assert.match(wy.link.d,/^inline/,t+'Fit & Score link inline');assert.equal(wy.link.bw,'0px',t+'no box');assert.equal(wy.link.bg,'rgba(0, 0, 0, 0)');assert.equal(wy.link.tt,'none',t+'no capitals');
+    assert.equal(wy.link.c,await tok(page,'--pe-cyan'),t+'link Cyan');assert.equal(wy.link.td,'underline');assert.equal(wy.link.fs,wy.link.wfs,t+'link at the text size');assert(wy.link.h>=44,t+'link touch >= 44 px: '+wy.link.h);
+    await page.locator('#d-body .why-link').tap();await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>document.querySelector('#detail-tabs button.on').dataset.dtab),'fit',t+'link opens Fit & Score');
     await page.locator('#detail-tabs button[data-dtab="overview"]').tap();await page.waitForTimeout(500);
     // REV-073 (p42 item 5): with nothing to verify, block or follow up, the state card is gone on the phone; meta has pay right after the place.
     const de=await page.evaluate(()=>{const s=document.querySelector('#drawer .decision-essentials');return {quiet:s.classList.contains('de-quiet'),shown:!!s.offsetParent,meta:document.getElementById('d-meta').innerText}});

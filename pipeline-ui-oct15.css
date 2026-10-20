@@ -876,4 +876,15 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
     letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
   #drawer #detail-tabs button.on { color: var(--pe-cyan) !important; }
   #drawer #detail-tabs button.on::after { content: ""; position: absolute; left: -6px; right: -6px; bottom: 0; height: 2px; background: var(--pe-cyan); }
+/* Track M step 9 (REV-076, Grok Bot 21:22 ET: p42 item 11). Phone "Why": the desktop look. Section label mono 11 px Secondary,
+   summary at --pe-fs-why, "Fit & Score ›" an inline Cyan underlined link inside the text (no box, no capitals). Its touch area
+   is a 44 px tall invisible ::before around the link, so the line does not move. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #drawer #d-body .sec-label { display: flex; justify-content: space-between; margin-top: 16px !important; font-family: var(--pe-font-label) !important;
+    font-size: var(--pe-fs-min) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  #drawer #d-body .why { font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-why) !important; line-height: 1.4 !important; margin-top: 6px !important; color: var(--pe-text-primary) !important; }
+  #drawer #d-body .why-link { position: relative; display: inline-block !important; vertical-align: baseline; min-height: 0 !important; height: auto !important; width: auto !important; margin: 0 !important; padding: 0 !important;
+    border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; font: inherit !important; letter-spacing: 0 !important;
+    text-transform: none !important; color: var(--pe-cyan) !important; text-decoration: underline; text-underline-offset: 3px; }
+  #drawer #d-body .why-link::before { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: var(--pe-target-phone); transform: translateY(-50%); }
 }
