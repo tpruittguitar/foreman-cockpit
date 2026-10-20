@@ -1139,13 +1139,16 @@ function phoneLayout(){return PHONE_MQ_.matches}
 function fitRows_(){var w=$('gridwrap'),g=$('grid'),root=document.documentElement;if(!w||!g)return;if(phoneLayout()||document.body.dataset.density==='comfortable'){root.style.removeProperty('--row-h');root.style.removeProperty('--row-font');return}
   var head=g.querySelector('thead'),avail=w.clientHeight-(head?head.offsetHeight:32);if(avail<=0)return;var r19=avail/19,r16=Math.floor(avail/16),h=r19>=27?Math.min(60,Math.floor(r19)):r16>=23?Math.min(27,r16):Math.max(20,Math.floor(avail/15));
   if(root.style.getPropertyValue('--row-h')!==h+'px'){root.style.setProperty('--row-h',h+'px');root.style.setProperty('--row-font',(h>=30?14:h>=27?13:h>=25?12.5:h>=21?12:11.5)+'px')}}
-var PHONE_REQ_=['TITLE','COMPANY','LOCATION','OVERALL_RATING'],PHONE_DEF_W_={COMPANY:80,LOCATION:80,OVERALL_RATING:72},PHONE_MIN_W_={TITLE:80,COMPANY:56,LOCATION:56,OVERALL_RATING:72},PHONE_TITLE_DEF_MIN_=110;
+var PHONE_REQ_=['TITLE','COMPANY','LOCATION','OVERALL_RATING'],PHONE_DEF_W_={COMPANY:80,LOCATION:80,OVERALL_RATING:72},PHONE_MIN_W_={TITLE:80,COMPANY:56,LOCATION:56,OVERALL_RATING:72,NEW:30},PHONE_TITLE_DEF_MIN_=110,PHONE_NEW_W_=30;
+/* REV-092 (Grok Bot QA of 152f9f5): on the phone NEW (row checkbox + new / pin / changed marks) is a 30 px lead column, and NEW · TITLE ·
+   COMPANY · LOCATION are all sticky (desktop keeps NEW · TITLE, or its first two), so sideways scroll never moves any of the four */
+function stickyN_(){return phoneLayout()?4:2}
 function visibleCols(){var phone=phoneLayout();var set=phone?S.cols.phone:S.cols.desktop;var v=set.filter(function(c){return COLS.indexOf(c)>=0});
   /* REV-069: on the phone SCORE is the right-hand column (pinned there by CSS .pin-r); the saved column order is unchanged */
   if(phone&&v.indexOf('OVERALL_RATING')>=0){v.splice(v.indexOf('OVERALL_RATING'),1);v.push('OVERALL_RATING')}
   /* REV-090 (Tim 00:36 ET): the phone queue always starts TITLE · COMPANY · LOCATION and ends with SCORE (pinned right); the saved
      set cannot hide these four; any other columns sit between LOCATION and SCORE in the sideways-scroll area */
-  if(phone){var rest=v.filter(function(c){return PHONE_REQ_.indexOf(c)<0});v=['TITLE','COMPANY','LOCATION'].concat(rest,['OVERALL_RATING'])}return v}
+  if(phone){var rest=v.filter(function(c){return PHONE_REQ_.indexOf(c)<0&&c!=='NEW'});v=['NEW','TITLE','COMPANY','LOCATION'].concat(rest,['OVERALL_RATING'])}return v}
 /* ---------- presets ---------- */
 function validHttpUrl_(v){return /^https?:\/\/[^\s]+$/i.test(String(v||'').trim())}
 function researchGaps_(r){var p=r.payload||{},g=[];if(PipelineTrust.salary(p)==='UNKNOWN')g.push('salary');if(!PipelinePolicy.links(r).preferred)g.push('posting link');if(!hasResolvedFlex_(r))g.push('FLEX');return g}
@@ -1273,7 +1276,7 @@ function render(){
   if($('clearf'))$('clearf').onclick=function(){S.chartFilter=null;S.filters={};pushHash();render()};
   var rows=filteredRows();
   $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
-  var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(c==='LOCATION'?'c-loc ':'')+(c==='COMPANY'?'c-co ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
+  var cols=visibleCols(),nSt=stickyN_();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<nSt?'sticky ':'')+(c==='NEW'?'c-new ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(c==='LOCATION'?'c-loc ':'')+(c==='COMPANY'?'c-co ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
   /* REV-088 (perf): on the phone the first ROWS_FIRST_ rows are built now and the rest in idle-time chunks (same rows, same
      order, same markup); the first screen paints without waiting for all of them. Desktop builds every row at once, as before. */
@@ -1291,7 +1294,7 @@ function render(){
   if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();if(S.tab==='columns')renderColumns();if(S.tab==='scoring')renderScoring();document.querySelectorAll('[data-chart-filter]').forEach(function(el){el.setAttribute('aria-pressed',S.chartFilter&&JSON.parse(el.dataset.chartFilter).label===S.chartFilter.label?'true':'false')});
 }
 /* REV-088 (perf): one table row's HTML (the cell code moved out of render() unchanged, so render and renderLight_ share it) */
-function rowHtml_(r,cols){
+function rowHtml_(r,cols){var nSt=stickyN_();
     var cls=(attentionFor_(r).strong?'priority-hot ':'')+(S.seen[r.id]?'seen ':'')+(S.focus===r.id?'focus':'');
     return '<tr data-id="'+esc(r.id)+'" class="'+cls+'">'+cols.map(function(c,i){var v=val(r,c),extra='';
       if(c==='NEW'){var changed=isChanged(r);v='<input type="checkbox" class="row-select" data-id="'+esc(r.id)+'" '+(S.checked[r.id]?'checked':'')+' onclick="event.stopPropagation()"> '+(S.pins[r.id]?'<span class="pin on">★</span> ':'')+(isNew(r)?'<span class="g new">◆</span>':'')+(changed?'<span class="changed">CHANGED</span>':'')}
@@ -1310,10 +1313,10 @@ function rowHtml_(r,cols){
       if(c==='FLEX'){var fi=PipelineTrust.flexInfo(r.payload);v=fi.text?'<span title="'+esc(fi.label)+'">'+(fi.approx?'<span class="approx">~</span>':'')+esc(fi.text)+'</span>':''}
       if(c==='IDENTITY_CONFIDENCE'){var ic=(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN').toUpperCase();v+='<span class="conf '+esc(ic)+'">'+esc(ic)+'</span>'}
       var mono=/^(INV|PRIMARY_ID|REQ|DATE_|SALARY_|COMP_|APP_DATE|FLEX_ASOF|CELLS)/.test(c)?' mono':'';
-      return '<td class="'+(i<2?'sticky':'')+(c==='OVERALL_RATING'?' pin-r':'')+(c==='LOCATION'?' c-loc':'')+(c==='COMPANY'?' c-co':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>';
+      return '<td class="'+(i<nSt?'sticky':'')+(c==='NEW'?' c-new':'')+(c==='OVERALL_RATING'?' pin-r':'')+(c==='LOCATION'?' c-loc':'')+(c==='COMPANY'?' c-co':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>';
 }
 /* REV-088: row click and checkbox handlers (moved out of render() unchanged) */
-function bindRow_(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!$('drawer').classList.contains('pe-sheet'))setTimeout(function(){if($('drawer').classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}};var cb=tr.querySelector('.row-select');if(cb)cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets();mapSelectionChanged_()}}
+function bindRow_(tr){tr.onclick=function(e){/* REV-092: on the phone the whole 30 px NEW cell is the checkbox's tap target */if(phoneLayout()&&e.target&&!e.target.classList.contains('row-select')&&e.target.closest&&e.target.closest('td.c-new')){var cb0=tr.querySelector('.row-select');if(cb0){cb0.checked=!cb0.checked;S.checked[cb0.getAttribute('data-id')]=cb0.checked;renderPresets();mapSelectionChanged_()}return}if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!$('drawer').classList.contains('pe-sheet'))setTimeout(function(){if($('drawer').classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}};var cb=tr.querySelector('.row-select');if(cb)cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets();mapSelectionChanged_()}}
 /* REV-088 (perf, Tim 23:35 ET "the phone feels very slow"): opening or closing a job used to rebuild every table row (890 at
    1,872 jobs). When the visible list (same rows, same order, same columns) is unchanged, only the rows named in ids are
    rebuilt and the focus mark moved; the readout and dashboard redraw as before. Any other change takes the full render(). */
@@ -1694,7 +1697,7 @@ function autoFitRenderedColumns_(){
   var ctx=document.createElement('canvas').getContext('2d');if(!ctx)return;
   var rows=Array.from(grid.querySelectorAll('tbody tr')).slice(0,120),widths=columnWidths(),phone=phoneLayout();
   cols.forEach(function(c,i){
-    if(c==='NEW'||c==='LINK'){widths[c]=44;return}
+    if(c==='NEW'||c==='LINK'){widths[c]=phone&&c==='NEW'?PHONE_NEW_W_:44;return}
     var th=head[i],computed=getComputedStyle(th);
     ctx.font=computed.font||computed.fontSize+' '+computed.fontFamily;
     var width=ctx.measureText(c==='OVERALL_RATING'?'SCORE':c.replace(/_/g,' ')).width+34;
@@ -1728,14 +1731,14 @@ function phoneUserW_(){if(!S.phoneColW)S.phoneColW=LS.get('phoneColWidthsV1',{})
 function phoneAvail_(){var wrap=$('gridwrap');return wrap&&wrap.clientWidth||0}
 function phoneFour_(avail,u){u=u||phoneUserW_();var w={},custom=['COMPANY','LOCATION','OVERALL_RATING'].some(function(c){return u[c]>0});
   ['COMPANY','LOCATION','OVERALL_RATING'].forEach(function(c){w[c]=Math.max(PHONE_MIN_W_[c],Math.round(u[c]>0?u[c]:PHONE_DEF_W_[c]))});
-  var tmin=custom?PHONE_MIN_W_.TITLE:PHONE_TITLE_DEF_MIN_,need=tmin-(avail-w.COMPANY-w.LOCATION-w.OVERALL_RATING);
+  var tmin=custom?PHONE_MIN_W_.TITLE:PHONE_TITLE_DEF_MIN_,need=tmin-(avail-PHONE_NEW_W_-w.COMPANY-w.LOCATION-w.OVERALL_RATING);
   ['LOCATION','COMPANY','OVERALL_RATING'].forEach(function(c){if(need>0){var take=Math.min(need,w[c]-PHONE_MIN_W_[c]);w[c]-=take;need-=take}});
-  w.TITLE=Math.max(PHONE_MIN_W_.TITLE,avail-w.COMPANY-w.LOCATION-w.OVERALL_RATING);return w}
+  w.NEW=PHONE_NEW_W_;w.TITLE=Math.max(PHONE_MIN_W_.TITLE,avail-PHONE_NEW_W_-w.COMPANY-w.LOCATION-w.OVERALL_RATING);return w}
 function fitPhoneColumns_(cols,widths){var wrap=$('gridwrap'),avail=wrap&&wrap.clientWidth;
   /* the pane settles after the first fit (map split, landscape): refit whenever its width changes */
   if(wrap&&!S.phoneFitRO&&typeof ResizeObserver==='function'){var lastW=avail;S.phoneFitRO=new ResizeObserver(function(){var nw=wrap.clientWidth;if(nw&&nw!==lastW){lastW=nw;refitColumnsToPane_()}});S.phoneFitRO.observe(wrap)}
   if(!avail||PHONE_REQ_.some(function(c){return cols.indexOf(c)<0}))return false;
-  var f=phoneFour_(avail);PHONE_REQ_.forEach(function(c){widths[c]=f[c]});return true}
+  var f=phoneFour_(avail);PHONE_REQ_.concat(['NEW']).forEach(function(c){widths[c]=f[c]});return true}
 function fitColumnsToPane_(cols,widths){
   if(phoneLayout()&&S.colNatural)return fitPhoneColumns_(cols,widths);
   if(!document.body.classList.contains('pe-three-col')||phoneLayout()||!S.colNatural)return false;
@@ -1758,7 +1761,7 @@ function persistColumnWidths(){/* Manual sizing stays authoritative in this sess
 function columnMin(c){if(phoneLayout()&&PHONE_MIN_W_[c])return PHONE_MIN_W_[c];return c==='NEW'||c==='LINK'?44:60}
 function columnWidth(c){var phone=phoneLayout(),defaults={NEW:phone?44:95,COMPANY:phone?140:180,TITLE:phone?240:285,LINK:48,AGE:64,BUCKET:170,TIM_RULING:155,DISPOSITION:210,LOCATION:185};return Math.max(columnMin(c),Math.min(1200,Number(columnWidths()[c])||defaults[c]||150))}
 function applyColumnWidths(){var grid=$('grid'),cols=visibleCols(),cg=grid.querySelector('colgroup');if(!cg){cg=document.createElement('colgroup');grid.prepend(cg)}cg.innerHTML=cols.map(function(c){return '<col style="width:'+columnWidth(c)+'px">'}).join('');grid.style.width=cols.reduce(function(n,c){return n+columnWidth(c)},0)+'px';grid.querySelectorAll('thead th').forEach(function(th){var h=th.querySelector('.resize-handle');if(h)h.setAttribute('aria-valuenow',columnWidth(th.getAttribute('data-c')))});fixSticky()}
-function enableColumnResize(){$('grid').querySelectorAll('thead th').forEach(function(th){var c=th.getAttribute('data-c');if(!c||th.querySelector('.resize-handle'))return;var h=document.createElement('span');h.className='resize-handle';h.tabIndex=0;h.setAttribute('role','separator');h.setAttribute('aria-orientation','vertical');h.setAttribute('aria-label','Resize '+c+' column');h.setAttribute('aria-valuemin',columnMin(c));h.setAttribute('aria-valuemax','1200');h.setAttribute('aria-valuenow',columnWidth(c));th.appendChild(h);
+function enableColumnResize(){$('grid').querySelectorAll('thead th').forEach(function(th){var c=th.getAttribute('data-c');if(!c||th.querySelector('.resize-handle')||(phoneLayout()&&c==='NEW'))return;var h=document.createElement('span');h.className='resize-handle';h.tabIndex=0;h.setAttribute('role','separator');h.setAttribute('aria-orientation','vertical');h.setAttribute('aria-label','Resize '+c+' column');h.setAttribute('aria-valuemin',columnMin(c));h.setAttribute('aria-valuemax','1200');h.setAttribute('aria-valuenow',columnWidth(c));th.appendChild(h);
   h.onclick=function(e){e.stopPropagation()};h.onkeydown=function(e){if(e.key!=='ArrowLeft'&&e.key!=='ArrowRight')return;e.preventDefault();e.stopPropagation();S.colNatural=null;columnWidths()[c]=Math.max(columnMin(c),Math.min(1200,columnWidth(c)+(e.key==='ArrowRight'?10:-10)));applyColumnWidths();persistColumnWidths()};
   h.onpointerdown=function(e){if(e.button!==0)return;e.preventDefault();e.stopPropagation();closePop();var x=e.clientX,w=columnWidth(c);h.setPointerCapture(e.pointerId);document.body.classList.add('resizing');S.colNatural=null;h.onpointermove=function(ev){columnWidths()[c]=Math.max(columnMin(c),Math.min(1200,w+ev.clientX-x));applyColumnWidths()};function done(){h.onpointermove=null;document.body.classList.remove('resizing');persistColumnWidths()}h.onpointerup=done;h.onpointercancel=done;h.onlostpointercapture=done};
   if(phoneLayout()&&PHONE_REQ_.indexOf(c)>=0)phoneResize_(th,h,c);
@@ -1772,7 +1775,7 @@ function phoneResize_(th,h,c){var lastTap=0,tapTimer=0;h.classList.add('ph-edge'
     try{h.setPointerCapture(e.pointerId)}catch(x){}
     h.onpointermove=function(ev){var dx=ev.clientX-x0;if(!moved&&Math.abs(dx)<6)return;moved=true;document.body.classList.add('resizing');var u=JSON.parse(JSON.stringify(u0)),f=f0;
       ['COMPANY','LOCATION','OVERALL_RATING'].forEach(function(k){if(!(u[k]>0))u[k]=f[k]});
-      var maxFor=function(k){return avail-PHONE_MIN_W_.TITLE-['COMPANY','LOCATION','OVERALL_RATING'].filter(function(q){return q!==k}).reduce(function(s,q){return s+u[q]},0)};
+      var maxFor=function(k){return avail-PHONE_NEW_W_-PHONE_MIN_W_.TITLE-['COMPANY','LOCATION','OVERALL_RATING'].filter(function(q){return q!==k}).reduce(function(s,q){return s+u[q]},0)};
       if(c==='TITLE'){var d=dx;['COMPANY','LOCATION'].forEach(function(k){var nv=Math.max(PHONE_MIN_W_[k],Math.min(maxFor(k),u[k]-d));d-=u[k]-nv;u[k]=nv})}
       else{var nv=(c==='OVERALL_RATING'?f[c]-dx:f[c]+dx);u[c]=Math.max(PHONE_MIN_W_[c],Math.min(maxFor(c),Math.round(nv)))}
       S.phoneColW=u;S.colNatural=null;var f2=phoneFour_(avail,u),cw=columnWidths();PHONE_REQ_.forEach(function(k){cw[k]=f2[k]});applyColumnWidths()};

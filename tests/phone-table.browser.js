@@ -36,7 +36,7 @@ const JOB='V2X-A4CCD49EE686';
   }
   const measure=page=>page.evaluate(()=>{const wrap=document.getElementById('gridwrap'),wr=wrap.getBoundingClientRect(),g=document.getElementById('grid');
     const th=g.querySelector('thead th[data-c="OVERALL_RATING"]'),tds=[...g.querySelectorAll('tbody tr[data-id]')].slice(0,6).map(tr=>tr.querySelector('td.pin-r'));
-    const tt=g.querySelector('thead th[data-c="TITLE"]'),tn=g.querySelector('thead th[data-c="NEW"]'),title=g.querySelector('tbody tr[data-id] td:nth-child(1)');
+    const tt=g.querySelector('thead th[data-c="TITLE"]'),tn=g.querySelector('thead th[data-c="NEW"]'),title=g.querySelector('tbody tr[data-id] td:nth-child(2)');
     const box=e=>{const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width}};
     const tl=g.querySelector('thead th[data-c="LOCATION"]'),ths=[...g.querySelectorAll('thead th[data-c]')].map(e=>e.dataset.c),lc=g.querySelector('tbody tr[data-id] td.c-loc'),lcs=lc&&getComputedStyle(lc),mono=getComputedStyle(document.querySelector('#grid thead th')).fontFamily;
     return {wrap:{l:wr.left,r:wr.right,w:wrap.clientWidth,sw:wrap.scrollWidth,sl:wrap.scrollLeft},th:box(th),tds:tds.map(box),title:box(tt),nw:tn?box(tn):null,ell:getComputedStyle(title).textOverflow,pos:getComputedStyle(th).position,
@@ -48,14 +48,14 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(m.pos,'sticky','SCORE pinned on the phone');
     inside(m.th,'SCORE header');m.tds.forEach((b,i)=>inside(b,'score row '+i));
     assert(Math.abs(m.th.r-m.wrap.l-m.wrap.w)<=1.5,w+'x'+h+': SCORE sits at the right edge ('+(m.th.r-m.wrap.l)+' of '+m.wrap.w+')');
-    // REV-090 (Tim 00:36 ET): the four required columns TITLE · COMPANY · LOCATION · SCORE are fully in view (tests/phone-columns.browser.js has the rest)
-    assert.deepEqual(m.order.slice(0,3),['TITLE','COMPANY','LOCATION'],w+'x'+h+' order: '+m.order);assert.equal(m.order[m.order.length-1],'OVERALL_RATING');
+    // REV-090 (Tim 00:36 ET) / REV-092: NEW lead column, then the four required columns TITLE · COMPANY · LOCATION · SCORE are fully in view (tests/phone-columns.browser.js has the rest)
+    assert.deepEqual(m.order.slice(0,4),['NEW','TITLE','COMPANY','LOCATION'],w+'x'+h+' order: '+m.order);assert.equal(m.order[m.order.length-1],'OVERALL_RATING');
     assert(m.title.w>=110||w>500,'TITLE >= 110 px by default: '+m.title.w);assert.equal(m.lcell.fs,'11px');assert.equal(m.lcell.ell,'ellipsis');
     assert.equal(m.ell,'ellipsis','long titles end in an ellipsis');
     // REV-070 (N-10): every header and cell text in the phone table is at least 11 px
     const small=await page.evaluate(()=>{const out=[];document.querySelectorAll('#grid thead th, #grid tbody tr[data-id] td, #grid tbody tr[data-id] td *').forEach(e=>{if(!e.textContent.trim())return;const fs=parseFloat(getComputedStyle(e).fontSize);if(fs>0&&fs<11)out.push((e.dataset.c||e.className||e.tagName)+' '+fs)});['::before','::after'].forEach(p=>document.querySelectorAll('#grid thead th').forEach(e=>{const c=getComputedStyle(e,p).content;if(c&&c!=='none'&&c!=='""'){const fs=parseFloat(getComputedStyle(e,p).fontSize);if(fs<11)out.push(e.dataset.c+p+' '+fs)}}));return out.slice(0,8)});
     const clipped=await page.$$eval('#grid thead th',ts=>ts.filter(t=>t.scrollWidth>t.clientWidth+1).map(t=>t.dataset.c+' '+t.clientWidth+'/'+t.scrollWidth));
-    assert.deepEqual(clipped,[],w+'x'+h+' header labels and sort marks fit their columns');
+    assert.deepEqual(clipped,[],w+'x'+h+' header labels and sort marks fit their columns: '+clipped);
     assert.deepEqual(small,[],w+'x'+h+' text under 11 px: '+JSON.stringify(small));
     // scroll the table all the way: SCORE stays in the same place
     await page.evaluate(()=>{const wr=document.getElementById('gridwrap');wr.scrollLeft=wr.scrollWidth});await page.waitForTimeout(200);
