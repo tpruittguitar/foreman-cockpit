@@ -1001,3 +1001,14 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #grid thead th .resize-handle.ph-edge { width: var(--pe-target-phone) !important; right: 0 !important; left: auto !important; border: 0 !important; touch-action: none; z-index: 6; }
   #grid thead th .resize-handle.ph-edge.ph-edge-l { left: 0 !important; right: auto !important; }
 }
+
+/* REV-092 (Grok Bot QA of 152f9f5): phone NEW lead column, 30 px (so TITLE 110 · COMPANY 80 · LOCATION 80 · SCORE 72 fit the 372 px pane at 390), sticky at the left with TITLE · COMPANY · LOCATION. The checkbox
+   sits on top and the new / pin / changed marks stack under it; the whole cell toggles the checkbox (pipeline.html bindRow_). */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #grid th.c-new, #grid td.c-new { padding: 2px 0 !important; text-align: center; white-space: normal !important; overflow: hidden; text-overflow: clip !important; }
+  #grid td.c-new { line-height: 1.1; font-size: var(--pe-fs-min); }
+  #grid td.c-new .row-select { display: block; margin: 0 auto 1px; }
+  #grid th.c-new { font-size: 0; padding: 0 !important; letter-spacing: 0 !important; }
+  #grid th.c-new .fx { display: none; }
+  #grid th.c-new::before { content: "◆"; font-size: var(--pe-fs-min) !important; letter-spacing: 0 !important; color: var(--pe-text-secondary); }
+}
