@@ -109,3 +109,12 @@ master well under Google's 1,024,000-character limit for a Google Doc without cr
 
 The earlier ~596K projection counted evidence URLs, `FLEX_BASIS`, `SALARY_BASIS` and application evidence as movable. Gate 5
 keeps those inline, which gives 670K.
+
+## Ongoing sweep (REV-117, 2026-10-20)
+
+The Oct 5 cutover archived terminal rows once. `archive_sweep` (POST `{"action":"archive_sweep","op":"plan"|"apply","minAgeDays":7,"maxRows":150}`) keeps doing it for rows that close later.
+
+- The archive append and its readback happen before the master write. The master write's intent permits removing exactly the swept rows, and the next execution verifies it independently.
+- Archived lines carry their companion narrative inline.
+- `restore_archived` works as before. A `RESTORED` marker hides only the archive lines written before it, so a later sweep can archive the same row again.
+

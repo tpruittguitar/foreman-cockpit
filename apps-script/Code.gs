@@ -175,7 +175,7 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived', 'archive_sweep'];
 function dispatchWrite_(req) {
   req = req || {};
   if(req.automation){var alignmentError=automationEnvelopeError_(req,automationAlignmentRead_());if(alignmentError)return {ok:false,mode:'PAUSED_CONFLICT',error:alignmentError};}
@@ -197,6 +197,7 @@ function dispatchWrite_(req) {
   if (a === 'freeze_writer') return setFreeze_(req, true);
   if (a === 'unfreeze_writer') return setFreeze_(req, false);
   if (a === 'restore_archived') return restoreArchived_(req);
+  if (a === 'archive_sweep') return archiveSweep_(req);
   if (a === 'correct_receipts') return correctReceipts_(req);
   if (a === 'reconcile_intake_receipt') return reconcileIntakeReceipt_(req);
   if (a === 'install_automation') { var ir = installAutomation(); return { ok:true, action:'install_automation', result:ir || null, installedAt:new Date().toISOString() }; }
@@ -208,7 +209,7 @@ function dispatchWrite_(req) {
     var malformed = [];
     list.forEach(function (sub, ix) {
       var err = !sub || typeof sub !== 'object' ? 'request must be a JSON object'
-        : sub.action === 'batch' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
+        : sub.action === 'batch' || sub.action === 'archive_sweep' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
         : requestShapeError_(sub);
       if (err) malformed.push({ index: ix, ok: false, error: err });
     });
@@ -984,13 +985,15 @@ function resolveEvidence_(recs, pid, ref) {
   return out;
 }
 function nextEvidenceVersion_(recs, pid) { var m = 0; recs.forEach(function (r) { if (r.pid === pid && r.v > m) m = r.v; }); return m + 1; }
+/* A RESTORED marker hides the archive lines written before it (REV-117: a restored row that closes again is swept back in
+   below the marker and is visible again). A key archived twice keeps its newest line. */
 function parseArchive_(text) {
-  var rows = [], restored = {};
+  var rows = [], at = {};
   String(text || '').split('\n').forEach(function (l) {
-    if (/^\d+ \| /.test(l)) rows.push(l);
-    else { var m = l.match(/^RESTORED\|([^|]+)\|(\d+)\|/); if (m) restored[m[1] + '#' + m[2]] = true; }
+    if (/^\d+ \| /.test(l)) { var k = rowKey_(l); if (at[k] !== undefined) rows[at[k]] = null; at[k] = rows.length; rows.push(l); }
+    else { var m = l.match(/^RESTORED\|([^|]+)\|(\d+)\|/); if (m && at[m[1] + '#' + m[2]] !== undefined) { rows[at[m[1] + '#' + m[2]]] = null; delete at[m[1] + '#' + m[2]]; } }
   });
-  return rows.filter(function (l) { var c = l.split(' | '); return !restored[c[1].trim() + '#' + c[0]]; });
+  return rows.filter(function (l) { return l !== null; });
 }
 function rowKey_(line) { var c = String(line).split(' | '); return c[1].trim() + '#' + c[0]; }
 /** Pure: the hydrated view = live rows with their evidence merged back + archived rows (read-only) under their bucket headings. */
@@ -1297,6 +1300,96 @@ function restoreArchived_(req) {
     var receipt = { RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: rid, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', TARGET_CANONICAL_ID: pid, CHANGES: ['RESTORED_FROM_ARCHIVE'], READBACK_VERIFIED: 'PENDING', TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: 'PENDING_VERIFICATION', EXECUTED_AT: at, ACTOR: String(req.actor || 'TIM') };
     var writeId = stageVerification_('RESTORE', [{ pid: pid, op: 'INSERT', after: line }], [receipt], counts, at);
     return { ok: true, verification: 'PENDING', writeId: writeId, primaryId: pid, receipt: receipt };
+  } finally { lock.releaseLock(); }
+}
+
+/* ================= archive sweep (REV-117, Tim 2026-10-20 18:26 ET) =================
+ * The Oct 5 cutover moved terminal rows to V2_TERMINAL_ARCHIVE once; rows that closed after it stayed in the master (343 rows,
+ * 716 KB of 4.7 MB on Oct 20). archive_sweep keeps moving them: terminal bucket (ARCHIVE_BUCKETS), unchanged for minAgeDays
+ * (STATE_UPDATED_AT; default 7, floor 3), unique PRIMARY_ID, evidence chain resolvable. The archive line is the row with its
+ * companion narrative merged back (self-contained, like the Oct 5 rows); restore_archived re-externalizes it.
+ * Order: archive append + readback FIRST, then one master write whose durable intent permits exactly these deletions, then the
+ * normal independent verification. A row is never in neither file; a row in both reads as the master copy (hydrate, dedupe)
+ * and the next sweep finishes it without appending again. op=plan is read-only. */
+var SWEEP_MIN_AGE_DAYS_DEFAULT = 7, SWEEP_MIN_AGE_DAYS_FLOOR = 3, SWEEP_MAX_ROWS = 150;
+function archiveLineFor_(line, recs) {
+  var r = rowParts_(line), ref = evidenceRefOf_(line); if (!ref) return line;
+  var f = resolveEvidence_(recs, r.fixed[1].trim(), ref); if (!f) return null;
+  var O = r.O.filter(function (k) { return k !== 'EVIDENCE_REF'; }), P = {};
+  O.forEach(function (k) { P[k] = r.P[k]; });
+  Object.keys(f).forEach(function (k) { if (P[k] === undefined) { P[k] = f[k]; O.push(k); } });
+  return r.fixed.join(' | ') + ' | ' + buildPayload(r.lead, P, O);
+}
+/** Pure: the rows that move now. */
+function planArchiveSweep_(masterLines, archiveRows, recs, opts) {
+  opts = opts || {};
+  var now = opts.now || Date.now(), minAge = Math.max(SWEEP_MIN_AGE_DAYS_FLOOR, +opts.minAgeDays || SWEEP_MIN_AGE_DAYS_DEFAULT);
+  var max = Math.max(1, Math.min(SWEEP_MAX_ROWS, +opts.maxRows || SWEEP_MAX_ROWS)), byPid = rowsByPid_(masterLines), inArchive = {};
+  archiveRows.forEach(function (l) { inArchive[rowKey_(l)] = l; });
+  var moves = [], skipped = { young: 0, ambiguous: 0, unresolvedEvidence: 0, overLimit: 0 }, eligible = 0, buckets = {};
+  masterLines.forEach(function (l) {
+    var r = rowParts_(l); if (!r) return;
+    var b = r.fixed[4].trim(); if (ARCHIVE_BUCKETS.indexOf(b) < 0) return;
+    var pid = r.fixed[1].trim();
+    if ((byPid[pid] || []).length !== 1) { skipped.ambiguous++; return; }
+    var t = Date.parse(String(r.P.STATE_UPDATED_AT || '')); if (!isNaN(t) && now - t < minAge * 864e5) { skipped.young++; return; }
+    var line = archiveLineFor_(l, recs); if (line === null) { skipped.unresolvedEvidence++; return; }
+    eligible++;
+    if (moves.length >= max) { skipped.overLimit++; return; }
+    buckets[b] = (buckets[b] || 0) + 1;
+    moves.push({ pid: pid, key: rowKey_(l), bucket: b, from: l, archived: line, already: inArchive[rowKey_(l)] === line });
+  });
+  return { moves: moves, eligible: eligible, skipped: skipped, buckets: buckets, minAgeDays: minAge, maxRows: max };
+}
+/** Pure: the master without the moved rows; section headings that lost rows show their new physical count. */
+function masterWithoutRows_(lines, keys) {
+  var out = [], heads = [], touched = {};
+  lines.forEach(function (l) {
+    if (rowParts_(l) && keys[rowKey_(l)]) { if (heads.length) touched[heads[heads.length - 1]] = true; return; }
+    if (/^=== [A-Z_]+ \(\d+\) ===$/.test(l)) heads.push(out.length);
+    out.push(l);
+  });
+  heads.forEach(function (h, i) {
+    if (!touched[h]) return;
+    var end = i + 1 < heads.length ? heads[i + 1] : out.length, n = 0;
+    for (var j = h + 1; j < end; j++) if (/^\d+ \| /.test(out[j])) n++;
+    out[h] = out[h].replace(/\(\d+\)/, '(' + n + ')');
+  });
+  var counts = recomputeCountsLine(out), endLine = recomputeEndLine(out);
+  return out.map(function (l) { return /^COUNTS:/.test(l) ? counts : (endLine && /^END V2_CURRENT_POPULATION_MASTER/.test(l) ? endLine : l); });
+}
+function archiveSweep_(req) {
+  req = req || {}; var op = String(req.op || 'plan');
+  if (op !== 'plan' && op !== 'apply') return { ok: false, error: 'archive_sweep op must be plan | apply' };
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    DOC_ACCESS_ = [];
+    var st = readMigrationState_(); if (!st || st.mode !== 'LIVE' || st.status !== 'CUTOVER_COMPLETE') return { ok: false, error: 'no live archive' };
+    var M = openMaster_(), snapshot = M.lines.slice();
+    if (op === 'apply') { var fence = writeFence_(snapshot); if (fence) return fence; }
+    var af = DriveApp.getFileById(st.archiveId), archText = af.getBlob().getDataAsString();
+    var recs = parseCompanion_(DriveApp.getFileById(st.companionId).getBlob().getDataAsString());
+    var plan = planArchiveSweep_(snapshot, parseArchive_(archText), recs, { minAgeDays: req.minAgeDays, maxRows: req.maxRows });
+    var summary = { eligible: plan.eligible, planned: plan.moves.length, buckets: plan.buckets, skipped: plan.skipped, minAgeDays: plan.minAgeDays, maxRows: plan.maxRows,
+      bytes: plan.moves.reduce(function (n, m) { return n + m.from.length + 1; }, 0), masterBytes: snapshot.join('\n').length + 1 };
+    if (op === 'plan') return { ok: true, op: 'plan', summary: summary, sample: plan.moves.slice(0, 15).map(function (m) { return { primaryId: m.pid, bucket: m.bucket }; }) };
+    if (!plan.moves.length) return { ok: true, op: 'apply', moved: 0, summary: summary };
+    var at = new Date().toISOString(), rid = String(req.requestId || '') || ('ARCHIVE-SWEEP-' + at.replace(/[^0-9]/g, '').slice(0, 14));
+    var add = plan.moves.filter(function (m) { return !m.already; }).map(function (m) { return m.archived; });
+    if (add.length) {
+      var next = archText.replace(/\n*$/, '\n') + 'SWEEP|' + rid + '|' + at + '|' + add.length + '\n' + add.join('\n') + '\n';
+      af.setContent(next);
+      if (af.getBlob().getDataAsString() !== next) return { ok: false, mode: 'ARCHIVE_READBACK_FAILED', error: 'archive append did not read back; the master was not touched' };
+    }
+    var keys = {}, allow = {}; plan.moves.forEach(function (m) { keys[m.key] = true; allow[m.pid] = true; });
+    var all = masterWithoutRows_(snapshot, keys);
+    WRITE_CONTEXT_ = { action: 'archive_sweep', requestId: rid, archiveMove: allow };
+    saveMasterLines_(all, snapshot);
+    var pids = plan.moves.map(function (m) { return m.pid; });
+    var receipt = { RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: rid, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', TARGET_CANONICAL_ID: pids.length === 1 ? pids[0] : 'MULTIPLE (' + pids.length + ')',
+      PRIMARY_IDS: pids, CHANGES: ['ARCHIVED_TERMINAL'], ARCHIVE_FILE_ID: st.archiveId, ARCHIVE_APPENDED: add.length, READBACK_VERIFIED: 'PENDING', TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: 'PENDING_VERIFICATION', EXECUTED_AT: at };
+    var writeId = stageVerification_('ARCHIVE_SWEEP', [], [receipt], countsLineOf_(all), at);
+    return { ok: true, op: 'apply', verification: 'PENDING', writeId: writeId, requestId: rid, moved: pids.length, archiveAppended: add.length, summary: summary };
   } finally { lock.releaseLock(); }
 }
 
@@ -2789,4 +2882,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

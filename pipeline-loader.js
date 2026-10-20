@@ -55,13 +55,14 @@
     var out = {}; chain.forEach(function (r) { Object.keys(r.f || {}).forEach(function (k) { out[k] = r.f[k]; }); });
     return out;
   }
+  /* Same rule as the Writer (REV-117): a RESTORED marker hides the lines written before it; a key archived twice keeps its newest line. */
   function parseArchive_(text) {
-    var rows = [], restored = {};
+    var rows = [], at = {};
     String(text || '').split('\n').forEach(function (l) {
-      if (/^\d+ \| /.test(l)) rows.push(l);
-      else { var m = l.match(/^RESTORED\|([^|]+)\|(\d+)\|/); if (m) restored[m[1] + '#' + m[2]] = true; }
+      if (/^\d+ \| /.test(l)) { var k = rowKey_(l); if (at[k] !== undefined) rows[at[k]] = null; at[k] = rows.length; rows.push(l); }
+      else { var m = l.match(/^RESTORED\|([^|]+)\|(\d+)\|/); if (m && at[m[1] + '#' + m[2]] !== undefined) { rows[at[m[1] + '#' + m[2]]] = null; delete at[m[1] + '#' + m[2]]; } }
     });
-    return rows.filter(function (l) { var c = l.split(' | '); return !restored[c[1].trim() + '#' + c[0]]; });
+    return rows.filter(function (l) { return l !== null; });
   }
   function rowKey_(line) { var c = String(line).split(' | '); return c[1].trim() + '#' + c[0]; }
   function hydrateLines_(masterLines, archiveRows, recs) {
