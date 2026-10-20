@@ -155,6 +155,7 @@ function doGet(e) {
     if (a === 'submit') { var body; try { body = JSON.parse(p.payload || ''); } catch (x) { return out_({ ok: false, error: 'payload must be URL-encoded JSON: ' + x.message }); } return out_(dispatchWrite_(body)); }
     if (a === 'automation') return out_(automationStatus_());
     if (a === 'writer_status') return out_(writerStatus_());
+    if (a === 'held_emails') return out_(heldEmails_());
     if (a === 'queue_stats') return out_(queueStatsAction_(p.hours));
     if (a === 'row_readback') return out_(rowReadback_({ primaryIds: String(p.ids || '').split(','), requestId: p.requestId || '' }));
     if (a === 'process_queue') return out_(processWriterQueue());
@@ -175,7 +176,7 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived', 'archive_sweep'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived', 'archive_sweep', 'resolve_held_email'];
 function dispatchWrite_(req) {
   req = req || {};
   if(req.automation){var alignmentError=automationEnvelopeError_(req,automationAlignmentRead_());if(alignmentError)return {ok:false,mode:'PAUSED_CONFLICT',error:alignmentError};}
@@ -198,6 +199,7 @@ function dispatchWrite_(req) {
   if (a === 'unfreeze_writer') return setFreeze_(req, false);
   if (a === 'restore_archived') return restoreArchived_(req);
   if (a === 'archive_sweep') return archiveSweep_(req);
+  if (a === 'resolve_held_email') return resolveHeldEmail_(req);
   if (a === 'correct_receipts') return correctReceipts_(req);
   if (a === 'reconcile_intake_receipt') return reconcileIntakeReceipt_(req);
   if (a === 'install_automation') { var ir = installAutomation(); return { ok:true, action:'install_automation', result:ir || null, installedAt:new Date().toISOString() }; }
@@ -209,7 +211,7 @@ function dispatchWrite_(req) {
     var malformed = [];
     list.forEach(function (sub, ix) {
       var err = !sub || typeof sub !== 'object' ? 'request must be a JSON object'
-        : sub.action === 'batch' || sub.action === 'archive_sweep' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
+        : sub.action === 'batch' || sub.action === 'archive_sweep' || sub.action === 'resolve_held_email' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
         : requestShapeError_(sub);
       if (err) malformed.push({ index: ix, ok: false, error: err });
     });
@@ -1555,7 +1557,7 @@ function planUpsertBatch_(lines, archived, events, ctx) {
     var plan = planUpsertApplication(work.concat(archived || []), raw, ctx);
     if (plan.ok && plan.mode === 'UPDATE' && plan.index >= work.length) plan = { ok: false, mode: 'HOLD', error: 'ARCHIVED_MATCH: the email matches archived terminal row ' + plan.primaryId + '; POST restore_archived first, then resend with TARGET_PRIMARY_ID', upsertKey: plan.upsertKey };
     var r = { index: i, ok: !!plan.ok, mode: plan.mode, primaryId: plan.primaryId || '', matchedBy: plan.matchedBy || '', upsertKey: plan.upsertKey || '', requestId: (raw.requestId || plan.upsertKey || '') };
-    if (!plan.ok) { r.error = plan.error; r.possibleMatches = plan.possibleMatches || []; results.push(r); return; }
+    if (!plan.ok) { r.error = plan.error; r.possibleMatches = plan.possibleMatches || []; if (plan.mode === 'HOLD') { r.holdPlan = plan; } results.push(r); return; }
     if (plan.mode === 'UPDATE') { work[plan.index] = plan.after; touched[plan.primaryId] = true; }
     else if (plan.mode === 'CREATE') {
       var endIdx = -1; for (var e = work.length - 1; e >= 0; e--) if (/^END V2_CURRENT_POPULATION_MASTER/.test(work[e])) { endIdx = e; break; }
@@ -1568,6 +1570,59 @@ function planUpsertBatch_(lines, archived, events, ctx) {
     counts: { events: events.length, created: results.filter(function (r) { return r.ok && r.mode === 'CREATE'; }).length, updated: results.filter(function (r) { return r.ok && r.mode === 'UPDATE'; }).length,
       alreadyRecorded: results.filter(function (r) { return r.mode === 'ALREADY_APPLIED'; }).length, held: results.filter(function (r) { return !r.ok; }).length, written: written.length } };
 }
+/* ================= held emails (REV-122, Tim 2026-10-20 19:43 ET) =================
+ * Every upsert_application HOLD (near match to a role Tim marked Applied, ambiguous identity, archived match) is kept in
+ * PIPELINE_HELD_EMAILS.json so it shows in Needs Tim with one tap: Same role (attach to the chosen row) or Different role
+ * (create its own row). Keyed by the email's upsert key, so a resent email never adds a second hold. */
+var HELD_EMAILS_NAME = 'PIPELINE_HELD_EMAILS.json', HELD_KEEP_RESOLVED = 200;
+function readHeld_() { try { var o = JSON.parse(findOrCreate_(HELD_EMAILS_NAME, 'text', '{"holds":[]}').getBlob().getDataAsString() || '{}'); o.holds = o.holds || []; return o; } catch (e) { return { holds: [], error: 'unreadable: ' + e.message }; } }
+function writeHeld_(o) {
+  var open = o.holds.filter(function (h) { return h.status !== 'RESOLVED'; }), done = o.holds.filter(function (h) { return h.status === 'RESOLVED'; }).slice(-HELD_KEEP_RESOLVED);
+  findOrCreate_(HELD_EMAILS_NAME, 'text', '{"holds":[]}').setContent(JSON.stringify({ updatedAt: new Date().toISOString(), holds: open.concat(done) }));
+}
+/** Pure: the hold record for one held upsert. */
+function heldRecord_(ev, plan, at) {
+  var e = {}; Object.keys(ev || {}).forEach(function (k) { if (k !== 'key' && k !== 'TARGET_PRIMARY_ID' && k !== 'CREATE_NEW') e[k] = ev[k]; });
+  var key = plan.upsertKey || ('UK-' + hashHex(JSON.stringify(e)).slice(0, 16));
+  var kind = plan.holdKind || (/^ARCHIVED_MATCH/.test(plan.error || '') ? 'ARCHIVED_MATCH' : 'OTHER');
+  var cands = plan.candidates || (plan.primaryId ? [{ primaryId: plan.primaryId, archived: kind === 'ARCHIVED_MATCH' }] : []);
+  return { id: 'HOLD-' + key, upsertKey: key, kind: kind, status: 'OPEN', at: at, reason: plan.error || '', company: e.COMPANY || '', title: e.TITLE || '', state: e.STATE || e.state || '', eventDate: e.EVENT_DATE || '', evidence: e.EVIDENCE || '', candidates: cands, event: e };
+}
+function recordHolds_(pairs) {
+  if (!pairs.length) return;
+  try {
+    var o = readHeld_(); if (o.error) return;
+    var at = new Date().toISOString();
+    pairs.forEach(function (x) { var h = heldRecord_(x.ev, x.plan, at); if (!o.holds.some(function (y) { return y.id === h.id; })) o.holds.push(h); });
+    writeHeld_(o);
+  } catch (e) {}
+}
+/** GET held_emails: open holds for Needs Tim (read-only). */
+function heldEmails_() { var o = readHeld_(); var open = o.holds.filter(function (h) { return h.status !== 'RESOLVED'; }); return { ok: !o.error, error: o.error || '', count: open.length, holds: open }; }
+/** POST resolve_held_email {holdId, choice: SAME|DIFFERENT, primaryId}: replays the held email once, then closes the hold. */
+function resolveHeldEmail_(req) {
+  req = req || {}; var choice = String(req.choice || '').toUpperCase(), id = String(req.holdId || '');
+  if (['SAME', 'DIFFERENT'].indexOf(choice) < 0) return { ok: false, mode: 'REJECTED_SCHEMA', error: 'choice must be SAME or DIFFERENT' };
+  var o = readHeld_(), h = o.holds.filter(function (x) { return x.id === id; })[0];
+  if (!h) return { ok: false, error: 'no held email ' + id };
+  if (h.status === 'RESOLVED') return { ok: true, mode: 'ALREADY_RESOLVED', hold: h };
+  var ev = JSON.parse(JSON.stringify(h.event)); ev.actor = ev.actor || 'EMAIL_UPSERT'; ev.requestId = h.upsertKey;
+  if (choice === 'SAME') {
+    var pid = String(req.primaryId || (h.candidates.length === 1 ? h.candidates[0].primaryId : '')).trim();
+    if (!pid || !h.candidates.some(function (c) { return c.primaryId === pid; })) return { ok: false, error: 'primaryId must be one of the held candidates' };
+    if (archivedPid_(pid)) {   // one master write per execution: restore now, attach on the next tap
+      var rs = restoreArchived_({ primaryId: pid, requestId: 'RESTORE-' + h.id });
+      if (!rs.ok) return rs;
+      h.status = 'RESTORED_AWAITING_ATTACH'; h.restoredAt = new Date().toISOString(); writeHeld_(o);
+      return { ok: true, mode: 'RESTORED', next: 'tap Same role again to attach the email', restore: rs };
+    }
+    ev.TARGET_PRIMARY_ID = pid;
+  } else ev.CREATE_NEW = true;
+  var res = applyUpsertToMaster_(ev);
+  if (res.ok) { h.status = 'RESOLVED'; h.choice = choice; h.resolvedAt = new Date().toISOString(); h.result = { mode: res.mode, primaryId: res.primaryId || '', writeId: res.writeId || '' }; writeHeld_(o); }
+  return Object.assign({ holdId: h.id, choice: choice }, res);
+}
+
 /** Live wrapper: one lock, one fence check, one master save, one verification record for every touched row. */
 function applyUpsertBatchToMaster_(req) {
   var events = (req.events || []).map(function (ev) { return ev && typeof ev === 'object' ? JSON.parse(JSON.stringify(ev)) : ev; });
@@ -1587,6 +1642,7 @@ function applyUpsertBatchToMaster_(req) {
       return { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: r.requestId, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: ev.COMPANY || '', TITLE: ev.TITLE || '', STATE: ev.STATE || ev.state || '', MODE: r.mode, TARGET_FILE_ID: MASTER_ID, EXECUTED_AT: now, COMPLETION_STATUS: r.mode === 'HOLD' ? 'HOLD' : 'FAILED', REASON: r.error, POSSIBLE_MATCHES: r.possibleMatches || [], BATCH_INDEX: r.index };
     });
     heldReceipts.forEach(function (rc) { try { appendReceipt_(rc); } catch (e) {} });
+    recordHolds_(plan.results.filter(function (r) { return r.holdPlan; }).map(function (r) { var hp = r.holdPlan; delete r.holdPlan; return { ev: events[r.index] || {}, plan: hp }; }));
     var out = { ok: true, mode: 'UPSERT_BATCH', results: plan.results, processed: plan.counts.events, counts: plan.counts };
     if (!plan.counts.written) { out.verification = 'NOT_APPLICABLE'; return out; }
     if (masterModified_() !== modBefore) return { ok: false, mode: 'RETRY', error: 'master changed during request; retry', results: [] };
@@ -1636,6 +1692,7 @@ function applyUpsertToMaster_(ev) {
     if (plan.ok && plan.mode === 'UPDATE') plan.after = externalizeEvidence_(routing, snapshot[plan.index], plan.after, 'UPSERT:' + (plan.upsertKey || ''), now);
     if (plan.ok && plan.mode === 'CREATE') plan.newLine = externalizeEvidence_(routing, '', plan.newLine, 'UPSERT:' + (plan.upsertKey || ''), now);
     var base = { RECEIPT: 'UPSERT_RECEIPT', REQUEST_ID: (ev && ev.requestId) || plan.upsertKey || '', EXECUTED_BY: 'Authorized State Writer (runs as Tim)', COMPANY: (ev && ev.COMPANY) || '', TITLE: (ev && ev.TITLE) || '', STATE: (ev && (ev.STATE || ev.state)) || '', MODE: plan.mode, TARGET_FILE_ID: MASTER_ID, MASTER_MODIFIED_BEFORE: modBefore, EXECUTED_AT: now, FLEX_POLICY_SOURCE: flexPolicy._SOURCE || 'UNKNOWN', FLEX_POLICY_WARNING: flexPolicy._WARNING || '' };
+    if (!plan.ok && plan.mode === 'HOLD') recordHolds_([{ ev: ev, plan: plan }]);
     if (!plan.ok) { base.COMPLETION_STATUS = plan.mode === 'HOLD' ? 'HOLD' : 'FAILED'; base.REASON = plan.error; base.POSSIBLE_MATCHES = plan.possibleMatches || []; try { appendReceipt_(base); } catch (e) {} return { ok: false, mode: plan.mode, error: plan.error, possibleMatches: plan.possibleMatches || [], receipt: base }; }
     if (plan.mode === 'ALREADY_APPLIED') { base.COMPLETION_STATUS = 'NO_CHANGE_REQUIRED'; base.PRIMARY_ID = plan.primaryId; return { ok: true, mode: plan.mode, primaryId: plan.primaryId, receipt: base }; }
     if (masterModified_() !== modBefore) return { ok: false, mode: 'RETRY', error: 'master changed during request; retry' };
@@ -1834,6 +1891,13 @@ function identityConflicts_(lines, lineIndex, after, ruling, archiveRows) {
   var hit = m.rows.map(function (r) { return r.id; }).filter(function (id) { return id !== self && !rec[id]; });
   return hit.length ? 'IDENTITY_COLLISION: corrected identity matches ' + hit.join(', ') + ' by ' + m.by + ' (reconcile it as DISTINCT or resolve the duplicate first)' : '';
 }
+/* REV-122: an APPLIED ruling that carries an email upsert key came from the mailbox; anything else is Tim's own ruling. */
+function isEmailRuling_(ruling) { return !!(ruling && ruling.fields && ruling.fields.UPSERT_KEY); }
+/** Tim marked it applied himself and no email has confirmed it yet (rows from before REV-122 carry the TIM_APPLIED_ tag). */
+function timRuledApplied_(P, tags) {
+  if (P.APP_CONFIRMATION) return P.APP_CONFIRMATION === 'TIM_RULING';
+  return (tags || []).some(function (t) { return /^TIM_APPLIED_/.test(t); }) || /^Tim direct statement/.test(String(P.APP_STATUS_EVIDENCE || ''));
+}
 function mutateRow(line, ruling, flexPolicy) {
   var cells = line.split(' | ');
   if (cells.length < FIXED_N + 1) return { ok: false, error: 'row has fewer than 10 cells' };
@@ -1870,9 +1934,15 @@ function mutateRow(line, ruling, flexPolicy) {
     set('REOPEN_TRIGGER', 'Tim explicitly overrides.');
     set('TIM_DISPOSITION', 'TIM_PASS_' + d + '_EXPLORER');
     tags.push('TIM_DECLINE_' + d); changes.push('BUCKET', 'DISPOSITION', 'DECLINE_REASON_CODE', 'DECLINE_REASON_TEXT', 'REOPEN_TRIGGER', 'TIM_DISPOSITION');
+  } else if (kind === 'APPLIED' && fixed[4] === 'APPLIED' && isEmailRuling_(ruling) && timRuledApplied_(P, tags)) {
+    // REV-122 (Tim 2026-10-20 19:39-19:43 ET): Tim's Applied is true on its own. A later email upgrades the SAME row to
+    // email-confirmed and sits next to Tim's statement; it never replaces it or adds a second decision.
+    set('APP_CONFIRMATION', 'EMAIL'); set('APP_EMAIL_EVIDENCE', evidence); set('APP_EMAIL_DATE', evDate);
+    tags.push('APPLIED_EMAIL_CONFIRMED_' + evDate); changes.push('APP_CONFIRMATION', 'APP_EMAIL_EVIDENCE', 'APP_EMAIL_DATE');
   } else if (kind === 'APPLIED') {
     if (fixed[4] === 'REJECTED_BY_EMPLOYER' && !ruling.force) return { ok: false, error: 'row is REJECTED_BY_EMPLOYER; APPLIED would regress it (send force:true only with new-application evidence)' };
     fixed[4] = 'APPLIED'; fixed[5] = 'RESOLVED/APPLIED_CONFIRMED';
+    set('APP_CONFIRMATION', isEmailRuling_(ruling) ? 'EMAIL' : 'TIM_RULING'); changes.push('APP_CONFIRMATION');
     set('APP_DATE', evDate); set('APP_STATUS_EVIDENCE', evidence || ('Tim direct statement via Pipeline Explorer ' + d + (note ? ': ' + note : '')));
     set('ANTI_RESURRECTION', 'YES'); set('TIM_RULING', 'APPLIED'); tags.push((evidence ? 'APPLIED_' : 'TIM_APPLIED_') + evDate);
     changes.push('BUCKET', 'DISPOSITION', 'APP_DATE', 'APP_STATUS_EVIDENCE', 'ANTI_RESURRECTION');
@@ -2095,12 +2165,18 @@ function planUpsertApplication(lines, ev, ctx) {
   if (!company || !title) return { ok: false, mode: 'INVALID', error: 'COMPANY and TITLE are required (or TARGET_PRIMARY_ID)' };
   var idx = indexExisting(lines);
   var m = matchExisting({ COMPANY: company, TITLE: title, LOCATION: ev.LOCATION || '', REQ_ID: ev.REQ_ID || '', SOURCE_URL: ev.SOURCE_URL || '' }, idx);
-  if (m.kind === 'ambiguous') return { ok: false, mode: 'HOLD', error: 'identity ambiguous (' + m.by + '); resend with TARGET_PRIMARY_ID', possibleMatches: m.rows.map(function (r) { return r.id + ' [' + r.bucket + '] ' + r.location; }) };
+  if (m.kind === 'ambiguous' && ev.CREATE_NEW !== true) return { ok: false, mode: 'HOLD', holdKind: 'AMBIGUOUS', error: 'identity ambiguous (' + m.by + '); resend with TARGET_PRIMARY_ID', possibleMatches: m.rows.map(function (r) { return r.id + ' [' + r.bucket + '] ' + r.location; }), candidates: m.rows.map(function (r) { return { primaryId: r.id, title: r.title, location: r.location, bucket: r.bucket }; }), upsertKey: upsertKey };
   if (m.kind === 'exact') {
     var row = m.rows[0], li = -1;
     for (var j = 0; j < lines.length; j++) if (/^\d+ \| /.test(lines[j]) && lines[j].split(' | ')[1].trim() === row.id) { if (li >= 0) return { ok: false, mode: 'HOLD', error: 'PRIMARY_ID ' + row.id + ' is not unique (fail closed)' }; li = j; }
     var mu = mutateRow(lines[li], ruling, ctx.flexPolicy); if (!mu.ok) return { ok: false, mode: 'HOLD', error: mu.error };
     return { ok: true, mode: 'UPDATE', index: li, primaryId: row.id, matchedBy: m.by, after: mu.after, mutation: mu, upsertKey: upsertKey };
+  }
+  // REV-122: an APPLIED email that matches no row exactly but names an employer Tim already marked Applied (no email yet)
+  // is held for Tim ("Same role / Different role") instead of creating a second row. CREATE_NEW is Tim's "Different role".
+  if (state === 'APPLIED' && ev.CREATE_NEW !== true) {
+    var near = idx.filter(function (r) { return r.ne === normEmployer(company) && r.bucket === 'APPLIED' && r.timRuled; });
+    if (near.length) return { ok: false, mode: 'HOLD', holdKind: 'NEAR_TIM_RULED', error: 'NEAR_MATCH_TIM_RULED: Tim already marked ' + near.length + ' ' + company + ' role(s) Applied; same role or a different one?', candidates: near.map(function (r) { return { primaryId: r.id, title: r.title, location: r.location, bucket: r.bucket }; }), possibleMatches: near.map(function (r) { return r.id + ' [' + r.bucket + '] ' + r.title + ' / ' + r.location; }), upsertKey: upsertKey };
   }
   var eventUrl=PipelinePolicy.links(ev).preferred;if(!eventUrl)return {ok:false,mode:'HOLD',error:'SOURCE_URL_REQUIRED: provide the initiating posting or email click-through URL for a new row'};
   var maxInv = 0, seen = {}; idx.forEach(function (r) { if (r.inv > maxInv) maxInv = r.inv; seen[r.id] = true; });
@@ -2198,7 +2274,7 @@ function indexExisting(lines) {
     // Every URL field the Writer reads or writes on a row takes part in dedupe; SOURCE is the legacy reader (22 live rows).
     var urls = urlsIn(c[7]).concat(urlsIn(pp.payload.SOURCE || ''), urlsIn(pp.payload.SOURCE_URL || ''), urlsIn(pp.payload.INITIATING_URL || ''), urlsIn(pp.payload.COMPANY_SOURCE_URL || ''), urlsIn(pp.payload.INTAKE_SOURCE_URL || ''));
     var atsText = [c[7], pp.payload.SOURCE, pp.payload.SOURCE_URL, pp.payload.INITIATING_URL, pp.payload.COMPANY_SOURCE_URL, pp.payload.INTAKE_SOURCE_URL].join(' ');
-    rows.push({ inv: parseInt(c[0], 10), id: c[1].trim(), company: c[2], title: c[3], bucket: c[4], location: c[8], reqTokens: reqTokens(c[7]), reqCores: reqTokens(c[7]).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), atsIds: atsJobIds(atsText), urls: urls, ne: normEmployer(c[2]), nt: normTitle(c[3]), nl: normLocation(c[8]), intakeKey: pp.payload.INTAKE_KEY || '' });
+    rows.push({ timRuled: c[4] === 'APPLIED' && timRuledApplied_(pp.payload, c[6] === '-' ? [] : c[6].split(';').map(function (x) { return x.trim(); })), inv: parseInt(c[0], 10), id: c[1].trim(), company: c[2], title: c[3], bucket: c[4], location: c[8], reqTokens: reqTokens(c[7]), reqCores: reqTokens(c[7]).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), atsIds: atsJobIds(atsText), urls: urls, ne: normEmployer(c[2]), nt: normTitle(c[3]), nl: normLocation(c[8]), intakeKey: pp.payload.INTAKE_KEY || '' });
   }
   return rows;
 }
@@ -2882,4 +2958,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
