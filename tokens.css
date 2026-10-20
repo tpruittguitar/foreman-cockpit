@@ -84,6 +84,7 @@
   --pe-fs-score-row: 16px;    /* score in row */
   --pe-fs-btn: 16px;          /* drawer decision buttons */
   --pe-fs-drawer-title: 26px; /* drawer job title */
+  --pe-fs-drawer-title-phone: 22px; /* REV-072 phone drawer job title (v1.5 p42 B) */
   --pe-fs-kpi: var(--pe-kpi-value);  /* V-12 (Grok Bot): 38 px / 650 / line-height 1.05 */
   --pe-fs-ring: 42px;         /* opportunity ring value */
   --pe-fw-heavy: 650;

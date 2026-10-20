@@ -115,7 +115,7 @@
   .map-target-label strong{font-size:8.7px!important;line-height:1.05!important}.map-target-label span,.map-target-label small{font-size:7.4px!important;line-height:1.05!important}
 
   .qh-title{padding-top:5px!important}.qh-title:before{font-size:14px!important}.qh-title .mono{font-size:12px!important}
-  .qh-tools{padding-top:4px!important}.qh-view{min-height:34px!important;max-width:118px!important;font-size:10.5px!important;padding:0 7px!important}
+  .qh-tools{padding-top:4px!important}.qh-view{min-height:34px!important;max-width:118px!important;font-size:var(--pe-fs-min,11px)!important;padding:0 7px!important}
   #worksplit{height:min(40vh,285px)!important;min-height:185px!important}
   #grid th{height:26px!important;min-height:26px!important;padding:2px 5px!important;font-size:var(--pe-fs-min,11px)!important;letter-spacing:.5px!important}
   #grid td,body:not([data-density=comfortable]) #grid td{height:30px!important;min-height:30px!important;padding:3px 5px!important;font-size:var(--pe-fs-min,11px)!important;line-height:1.15!important}
