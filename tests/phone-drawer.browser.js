@@ -1,4 +1,5 @@
-/* REV-071 (Track M step 5; Grok Bot 20:21 ET, phone drawer vs v1.5 p42 B): ring (SVG, --pe-ring-phone 88 px, value 26 px,
+/* REV-072 (Track M step 6; Grok Bot 20:35 ET, p42 items 1-4): header row, ‹ Queue, title token, one meta line, ring clear of the decision row.
+   REV-071 (Track M step 5; Grok Bot 20:21 ET, phone drawer vs v1.5 p42 B): ring (SVG, --pe-ring-phone 88 px, value 26 px,
    band text right), decision row pinned to the drawer bottom (52 px, no key hints, Pursue · Hold · Research │ Decline),
    evidence rows (44 px, 3 px state bar, glyph, 11 px word), materials after the drawer body (44 px, >= 11 px). 390 / 402.
    Run: node tests/phone-drawer.browser.js */
@@ -46,7 +47,10 @@ const JOB='V2X-A4CCD49EE686';
         dec:{pos:cs(dec).position,bottom:cs(dec).bottom,btn:[...dec.querySelectorAll('button')].filter(b=>b.offsetParent).sort((a,b2)=>bx(a).left-bx(b2).left).map(b=>({t:b.innerText.trim(),h:bx(b).height,fs:cs(b).fontSize})),sub:[...dec.querySelectorAll('sub')].some(s=>s.offsetParent),fits:bx(dec).right<=bx(d).right+0.5},
         ev:[...ev.querySelectorAll('li')].map(li=>({c:li.className,h:bx(li).height,bar:cs(li).borderLeftWidth,glyph:getComputedStyle(li,'::before').content,sfs:li.querySelector('small')?cs(li.querySelector('small')).fontSize:null})),
         acts:{pos:cs(acts).position,after:bx(acts).top>=bx(body).bottom-1,btn:[...acts.querySelectorAll('button')].map(b=>({h:bx(b).height,fs:cs(b).fontSize}))},
-        under:[].concat(under(q('.ws-score')),under(dec),under(ev),under(acts))}});
+        under:[].concat(under(q('.ws-score')),under(dec),under(ev),under(acts),under(q('.d-head')),under(q('.wh-top'))),
+        hd:{h:bx(q('.d-head')).height,back:q('#d-back')&&q('#d-back').offsetParent?q('#d-back').innerText.trim():null,backH:bx(q('#d-back')).height,label:q('.d-label').innerText,lfs:cs(q('.d-label')).fontSize,
+          lines:Math.round(bx(q('.d-label')).height/parseFloat(cs(q('.d-label')).lineHeight)),title:cs(q('#d-title')).fontSize,meta:{fs:cs(q('#d-meta')).fontSize,h:bx(q('#d-meta')).height,t:q('#d-meta').innerText},chips:!!q('.wh-chips').offsetParent},
+        clear:{ringBottom:bx(ring).bottom,decTop:bx(dec).top,scoreBottom:bx(q('.ws-score')).bottom},qv:cs(document.getElementById('qh-view')).fontSize}});
     const t=w+'x'+h+': ';
     assert.equal(r.ring.w,88,t+'ring 88 px (--pe-ring-phone)');assert(r.ring.svg,t+'SVG ring');assert.equal(r.ring.fs,'26px',t+'ring value 26 px');assert(r.ring.info,t+'band text to the right of the ring');
     assert.equal(r.dec.pos,'sticky',t+'decision row pinned');assert.equal(r.dec.bottom,'0px');assert(r.dec.fits,t+'decision row inside the drawer');
@@ -55,7 +59,16 @@ const JOB='V2X-A4CCD49EE686';
     assert(r.ev.length===5,'five evidence lines');r.ev.forEach(e=>{assert(e.h>=44,t+'evidence row >= 44 px');assert.equal(e.bar,'3px');assert.match(e.glyph,/^"[✓✕?≈]"$/,t+'state glyph: '+JSON.stringify(r.ev));assert.equal(e.sfs,'11px')});
     assert.equal(r.acts.pos,'static',t+'materials not sticky');assert(r.acts.after,t+'materials after the drawer body');r.acts.btn.forEach(b=>{assert(b.h>=44,t+'materials target >= 44 px');assert(parseFloat(b.fs)>=11)});
     assert.deepEqual(r.under,[],t+'no text under 11 px in ring / decisions / evidence / materials');
+    // REV-072 (p42 items 1-4): one 44 px header row with "‹ Queue", 11 px label with the bucket word and no JOB DRAWER / LOCKED ON MAP;
+    // 22 px title; one 11 px meta line carrying pay; chips row gone; the ring is fully clear of the pinned decision row on first open.
+    assert.equal(r.hd.h,44,t+'header row 44 px');assert.equal(r.hd.back,'‹ Queue',t+'back control');assert(r.hd.backH>=44,t+'back target >= 44 px');
+    assert.equal(r.hd.lfs,'11px',t+'label 11 px');assert(!/JOB DRAWER|LOCKED ON MAP/.test(r.hd.label),t+'label: '+r.hd.label);assert.match(r.hd.label,/^◉ V2X-[0-9A-F]+ · [A-Z ]+$/,t+'label: '+r.hd.label);
+    assert.equal(r.hd.title,'22px',t+'title --pe-fs-drawer-title-phone');assert.equal(r.hd.meta.fs,'11px');assert(r.hd.meta.h<=16,t+'meta is one line: '+JSON.stringify(r.hd.meta));assert.match(r.hd.meta.t,/\$|Pay unknown/,t+'meta carries pay');
+    assert.equal(r.hd.chips,false,t+'chips row dropped');
+    assert(r.clear.ringBottom<=r.clear.decTop,t+'ring clear of the decision row: '+JSON.stringify(r.clear));assert(r.clear.scoreBottom<=r.clear.decTop,t+'score block clear: '+JSON.stringify(r.clear));
+    assert(parseFloat(r.qv)>=11,t+'.qh-view >= 11 px: '+r.qv);
     if(w===390)await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-drawer-390x844.png'});
+    await page.locator('#d-back').tap();await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>document.getElementById('drawer').classList.contains('on')),false,t+'‹ Queue closes the drawer');
     assert.deepEqual(errors,[]);await ctx.close();}
   // desktop drawer unchanged: decision row static, ring 124 px
   {const {ctx,page,errors}=await open({master:big});await page.locator('#grid tbody tr[data-id]').first().click();await page.waitForTimeout(900);
