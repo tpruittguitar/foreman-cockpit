@@ -47,7 +47,7 @@ const JOB='V2X-A4CCD49EE686';
     const st=()=>page.evaluate(()=>{const d=document.getElementById('drawer'),bb=document.getElementById('bottombar'),r=d.getBoundingClientRect(),b=bb.getBoundingClientRect(),dec=d.querySelector('.wh-decide'),ring=d.querySelector('.ws-ring');
       const at=(x,y)=>{const e=document.elementFromPoint(x,y);return e?(d.contains(e)?'drawer':bb.contains(e)?'bottombar':(e.closest('header')?'header':e.tagName)):null};
       return {on:d.classList.contains('on'),sheet:document.getElementById('drawer').classList.contains('pe-sheet'),pos:getComputedStyle(d).position,top:r.top,bottom:r.bottom,w:r.width,bbTop:b.top,bbH:b.height,
-        topHit:at(innerWidth/2,12),midHit:at(innerWidth/2,innerHeight/2),bbHit:at(innerWidth/2,b.top+b.height/2),dec:dec&&dec.getBoundingClientRect().toJSON(),ring:ring&&ring.getBoundingClientRect().toJSON(),hs:history.state,hl:history.length,scrollTop:d.scrollTop,ih:innerHeight}});
+        topHit:at(innerWidth/2,60),midHit:at(innerWidth/2,innerHeight/2),bbHit:at(innerWidth/2,b.top+b.height/2),dec:dec&&dec.getBoundingClientRect().toJSON(),ring:ring&&ring.getBoundingClientRect().toJSON(),hs:history.state,hl:history.length,scrollTop:d.scrollTop,ih:innerHeight}});
     // load: the phone previews the top job below the queue (shown, not opened): no sheet, the queue stays usable
     let s0=await st();assert.equal(s0.sheet,false,t+'load-time preview is not a sheet');assert.notEqual(s0.pos,'fixed');
     const hl0=s0.hl;
@@ -55,9 +55,12 @@ const JOB='V2X-A4CCD49EE686';
     await page.addStyleTag({content:':root{--pe-safe-top:47px !important}'});
     await page.locator('#grid tbody tr[data-id]').nth(1).tap();await page.waitForTimeout(1000);
     const top=await page.evaluate(()=>({head:document.querySelector('#drawer .d-head').getBoundingClientRect().top,back:document.getElementById('d-back').getBoundingClientRect().top,title:document.getElementById('d-title').getBoundingClientRect().top,st:document.getElementById('drawer').scrollTop,wy:scrollY,vv:visualViewport?visualViewport.offsetTop:0}));
-    assert(top.head>=47&&top.back>=47&&top.title>=47,t+'header row below the safe-area inset on open: '+JSON.stringify(top));assert.equal(top.st,0,t+'sheet opens scrolled to the top');assert.equal(top.wy,0);assert.equal(top.vv,0);
+    assert(top.head>=47&&top.back>=47&&top.title>=47,t+'header row below the safe-area inset on open: '+JSON.stringify(top));
+    // REV-089: the page cannot scroll under the sheet; System records what the device reported
+    assert.deepEqual(await page.evaluate(()=>[document.documentElement.style.overflow,document.body.style.overflow]),['hidden','hidden'],t+'page scroll locked while the sheet is open');
+    const dg=await page.evaluate(()=>{const e=document.createElement('div');return null});assert.equal(top.st,0,t+'sheet opens scrolled to the top');assert.equal(top.wy,0);assert.equal(top.vv,0);
     let s=await st();
-    assert(s.on&&s.sheet,t+'open job is a sheet');assert.equal(s.pos,'fixed',t+'sheet is fixed');assert.equal(s.top,0,t+'sheet starts at the top (its padding holds the inset)');assert.equal(s.w,w,t+'full width');
+    assert(s.on&&s.sheet,t+'open job is a sheet');assert.equal(s.pos,'fixed',t+'sheet is fixed');assert.equal(s.top,47,t+'sheet starts at the safe-area inset (REV-089: top = env(safe-area-inset-top))');assert.equal(s.w,w,t+'full width');
     assert(Math.abs(s.bottom-s.bbTop)<=1,t+'sheet ends at the bottom nav: '+s.bottom+' vs '+s.bbTop);assert.equal(s.topHit,'drawer',t+'sheet covers the page header');assert.equal(s.midHit,'drawer');assert.equal(s.bbHit,'bottombar',t+'bottom nav still visible and tappable');
     assert(s.dec.bottom<=s.bottom+1&&s.dec.bottom>=s.bottom-12,t+'decision row pinned at the sheet bottom: '+JSON.stringify([s.dec.bottom,s.bottom]));
     assert(s.ring.bottom<=s.dec.top,t+'ring clear of the decision row');assert.equal(s.hl,hl0+1,t+'opening adds one history entry');assert.deepEqual(s.hs,{peSheet:1});
@@ -68,7 +71,8 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(await page.evaluate(()=>location.pathname),'/pipeline.html',t+'Back stays on the page');
     // reopen, then ‹ Queue closes and removes the history entry again
     await page.locator('#grid tbody tr[data-id]').first().tap();await page.waitForTimeout(1000);s=await st();assert(s.sheet,t+'reopened');assert.equal(s.scrollTop,0,t+'reopened at the top');
-    await page.locator('#d-back').tap();await page.waitForTimeout(700);s=await st();assert(!s.on&&!s.sheet,t+'‹ Queue closes the sheet');assert.notDeepEqual(s.hs,{peSheet:1},t+'history entry consumed');
+    await page.locator('#d-back').tap();await page.waitForTimeout(700);s=await st();assert(!s.on&&!s.sheet,t+'‹ Queue closes the sheet');
+    assert.deepEqual(await page.evaluate(()=>[document.documentElement.style.overflow,document.body.style.overflow]),['',''],t+'page scroll restored on close');assert.notDeepEqual(s.hs,{peSheet:1},t+'history entry consumed');
     if(w===390){await page.locator('#grid tbody tr[data-id]').first().tap();await page.waitForTimeout(1200);await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-sheet-390x844.png'});}
     assert.deepEqual(errors,[]);await ctx.close();}
   // desktop: the drawer stays in the layout (no sheet)
