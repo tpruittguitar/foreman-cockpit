@@ -2936,6 +2936,11 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv
   function sync(){var want=phoneLayout()&&d.classList.contains('on')&&!d.dataset.auto;   /* the load-time preview of the top job (data-auto) stays in the page */
     if(want===open)return;   /* REV-088: class changes inside the open sheet no longer re-measure the bottom nav (resize does) */open=want;d.classList.toggle('pe-sheet',want);   /* REV-088 (perf): on the drawer, so the switch restyles the sheet only (a body class restyled the whole 890-row page) */
     var de=document.documentElement;de.style.overflow=want?'hidden':'';document.body.style.overflow=want?'hidden':'';   /* REV-089: the page cannot scroll under the sheet */
+    /* REV-097 (Tim 02:59 ET, iPhone: top still hidden, pull shows it, springs back). The sheet's parent #view-pipeline is a
+       clipping scroll box (overflow hidden/auto) that starts below the page header and tabs; iOS WebKit clips a fixed child to
+       it, so the sheet's top sat outside the clip. While the sheet is open no ancestor clips it. Inline styles, so only these
+       elements restyle (REV-088 perf). */
+    for(var an=d.parentElement;an&&an!==document.body;an=an.parentElement){if(want){if(an.dataset.peOv==null)an.dataset.peOv=an.style.getPropertyValue('overflow')+'|'+an.style.getPropertyPriority('overflow');an.style.setProperty('overflow','visible','important')}else if(an.dataset.peOv!=null){var pv=an.dataset.peOv.split('|');if(pv[0])an.style.setProperty('overflow',pv[0],pv[1]);else an.style.removeProperty('overflow');delete an.dataset.peOv}}
     if(want){if(!fitted)fit();requestAnimationFrame(function(){if(d.scrollTop)d.scrollTop=0;if(window.scrollY)window.scrollTo(0,0);requestAnimationFrame(diag)});try{if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}catch(e){}}
     else{try{if(history.state&&history.state.peSheet)history.back()}catch(e){}}}
   new MutationObserver(sync).observe(d,{attributes:true,attributeFilter:['class','data-auto']});window.addEventListener('resize',function(){fitted=false;sync();if(open)fit()});

@@ -66,6 +66,9 @@ const JOB='V2X-A4CCD49EE686';
       await page.evaluate(id=>{const tr=document.querySelector('#grid tbody tr[data-id="'+id+'"]');tr.click()},other);await page.waitForTimeout(700);
       const r=await page.evaluate(()=>({st:document.getElementById('drawer').scrollTop,head:document.querySelector('#drawer .d-head').getBoundingClientRect().top}));
       assert.equal(r.st,0,t+'next job opens at its top: '+JSON.stringify(r));assert(r.head>=47,t+'next job header visible')}
+    // REV-097: no ancestor of the open sheet clips it (iOS WebKit clipped the fixed sheet to #view-pipeline's scroll box)
+    {const anc=await page.evaluate(()=>{const out=[];for(let e=document.getElementById('drawer').parentElement;e&&e!==document.body;e=e.parentElement){const s=getComputedStyle(e);out.push({id:e.id||e.tagName,ov:s.overflowX+'/'+s.overflowY,tf:s.transform,fl:s.filter,ct:s.contain,wc:s.willChange})}return out});
+     anc.forEach(a=>{assert.equal(a.ov,'visible/visible',t+a.id+' does not clip the sheet: '+JSON.stringify(a));assert.equal(a.tf,'none');assert.equal(a.fl,'none');assert.equal(a.ct,'none')})}
     // REV-089: the page cannot scroll under the sheet; System records what the device reported
     assert.deepEqual(await page.evaluate(()=>[document.documentElement.style.overflow,document.body.style.overflow]),['hidden','hidden'],t+'page scroll locked while the sheet is open');
     const dg=await page.evaluate(()=>{const e=document.createElement('div');return null});assert.equal(top.st,0,t+'sheet opens scrolled to the top');assert.equal(top.wy,0);assert.equal(top.vv,0);
@@ -81,7 +84,7 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(await page.evaluate(()=>location.pathname),'/pipeline.html',t+'Back stays on the page');
     // reopen, then ‹ Queue closes and removes the history entry again
     await page.locator('#grid tbody tr[data-id]').first().tap();await page.waitForTimeout(1000);s=await st();assert(s.sheet,t+'reopened');assert.equal(s.scrollTop,0,t+'reopened at the top');
-    await page.locator('#d-back').tap();await page.waitForTimeout(700);s=await st();assert(!s.on&&!s.sheet,t+'‹ Queue closes the sheet');
+    await page.locator('#d-back').tap();await page.waitForTimeout(700);s=await st();assert(!s.on&&!s.sheet,t+'‹ Queue closes the sheet');assert.notEqual(await page.evaluate(()=>getComputedStyle(document.getElementById('view-pipeline')).overflowY),'visible',t+'the list scroll box is restored on close');
     assert.deepEqual(await page.evaluate(()=>[document.documentElement.style.overflow,document.body.style.overflow]),['',''],t+'page scroll restored on close');assert.notDeepEqual(s.hs,{peSheet:1},t+'history entry consumed');
     if(w===390){await page.locator('#grid tbody tr[data-id]').first().tap();await page.waitForTimeout(1200);await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-sheet-390x844.png'});}
     assert.deepEqual(errors,[]);await ctx.close();}
