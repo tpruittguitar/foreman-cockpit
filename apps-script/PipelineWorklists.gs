@@ -13,10 +13,10 @@
   var ACTIVE = ['SCOUT_INTAKE', 'DISCOVERY_LEAD', 'TIM_DECISION_REQUIRED', 'BLOCKED', 'MANUAL_RESEARCH', 'READY_TO_PURSUE'];
   var STRATEGIC_MARK_KEYS = ['ANALYSIS_BY', 'ANALYSIS_ASOF', 'ANALYSIS_ACTOR', 'STRATEGIC_ASOF'];
   var DEGREE_FROM_ALERT_RE = /\b(alert|email|snippet)\b|^(unknown|not available|n\/a)/i;
-  var LIMIT = 40, ATTEMPT_COOLDOWN_DAYS = 3, LIVENESS_RECHECK_DAYS = 7, DAY = 86400000;
+  var LIMIT = 80, ATTEMPT_COOLDOWN_DAYS = 3, LIVENESS_RECHECK_DAYS = 7, DAY = 86400000;
   var LANES = {
-    FORGE_ENRICH_STRATEGIC: 'Active-bucket rows with no fit score the Explorer can read (SCOPE_FIT_RAW, GROK_SCOPE_FIT_RAW and the other FIT_KEYS) and no ANALYSIS_BY/ANALYSIS_ASOF/STRATEGIC_ASOF. Newest first. Rows with STRATEGIC_ATTEMPT_ASOF in the last 3 days go last.',
-    FORGE_ENRICH_FEASIBILITY: 'Active-bucket rows with no salary the Explorer can read (posted, estimate, midpoint or low/high) or no posting-based degree evidence (DEGREE_REQ absent and DEGREE_TEXT absent or taken from an alert). Strategically analyzed rows first, then newest. Rows with FEASIBILITY_ATTEMPT_ASOF in the last 3 days go last.',
+    FORGE_ENRICH_STRATEGIC: 'Active-bucket rows with no fit score the Explorer can read (SCOPE_FIT_RAW, GROK_SCOPE_FIT_RAW and the other FIT_KEYS) and no ANALYSIS_BY/ANALYSIS_ASOF/STRATEGIC_ASOF. Priority first (Shield AI, then Director-level and up US manufacturing / operations / quality roles; Memphis last), then newest. Rows with STRATEGIC_ATTEMPT_ASOF in the last 3 days go last.',
+    FORGE_ENRICH_FEASIBILITY: 'Active-bucket rows with no salary the Explorer can read (posted, estimate, midpoint or low/high) or no posting-based degree evidence (DEGREE_REQ absent and DEGREE_TEXT absent or taken from an alert). Priority first (Shield AI, then Director-level and up US manufacturing / operations / quality roles; Memphis last), then newest, then strategically analyzed. Rows with FEASIBILITY_ATTEMPT_ASOF in the last 3 days go last.',
     FORGE_POSTING_VALIDATION: 'SCOUT_INTAKE rows whose LIVENESS is missing or UNVERIFIED, or UNCONFIRMED with LIVENESS_ASOF older than 7 days. Rows with a Workday, Greenhouse, Lever, Ashby, Oracle HCM (CX site), SmartRecruiters or BambooHR URL are left to the Writer ATS checker unless its ATS_CHECK_RESULT is not LIVE/CLOSED (blocked, error, title mismatch, not on public board). Newest first. Rows with LIVENESS_ATTEMPT_ASOF in the last 3 days go last.'
   };
 
@@ -62,13 +62,30 @@
     if (!degreeKnown(r)) n.push('DEGREE');
     return n;
   }
+  /* REV-106 (Tim 11:10 ET, Oct 20): the enrichment backlog clears newest-first with priority rows ahead: tier 0 Shield AI,
+     tier 1 Director-level and up US manufacturing / operations / quality roles, tier 2 the rest, tier 3 Memphis (Tim: a strong
+     negative; the published model already scores it 10 of 100 on geography). */
+  var SENIOR_RE = /\b(director|head of|vice president|vp|svp|evp|chief|general manager|plant manager|site (leader|lead|director)|senior manager)\b/i;
+  var FUNCTION_RE = /\b(manufactur\w*|operations?|ops|quality|production|plant|assembly|industrial|supply chain|launch)\b/i;
+  var NON_US_RE = /\b(canada|mexico|uk|united kingdom|germany|india|china|japan|korea|ireland|netherlands|poland|brazil|singapore|australia|france|italy|spain|israel|ontario|quebec|british columbia)\b/i;
+  function tier(r) {
+    var co = String(r.COMPANY || ''), title = String(r.TITLE || ''), loc = String(r.LOCATION || '');
+    if (/memphis/i.test(loc)) return 3;
+    if (/shield\s*ai/i.test(co)) return 0;
+    if (SENIOR_RE.test(title) && FUNCTION_RE.test(title) && !NON_US_RE.test(loc)) return 1;
+    return 2;
+  }
   function byRecency(a, b) { return recency(b) - recency(a) || b.INV_NUM - a.INV_NUM; }
   function ordered(list, attemptKey, now, first) {
     return list.slice().sort(function (a, b) {
       var ca = recent(a, attemptKey, ATTEMPT_COOLDOWN_DAYS, now) ? 1 : 0, cb = recent(b, attemptKey, ATTEMPT_COOLDOWN_DAYS, now) ? 1 : 0;
       if (ca !== cb) return ca - cb;
+      var ta = tier(a), tb = tier(b);
+      if (ta !== tb) return ta - tb;
+      var rc = byRecency(a, b);
+      if (rc) return rc;
       if (first) { var fa = first(a) ? 0 : 1, fb = first(b) ? 0 : 1; if (fa !== fb) return fa - fb; }
-      return byRecency(a, b);
+      return 0;
     });
   }
   function build(text, opts) {
@@ -105,7 +122,7 @@
       'COLUMNS=N. PRIMARY_ID | COMPANY | TITLE | LOCATION | REQ | BUCKET | URL' + (lane === 'FORGE_ENRICH_FEASIBILITY' ? ' | NEED' : lane === 'FORGE_POSTING_VALIDATION' ? ' | LIVENESS' : ''),
       ''].concat(shown.map(function (r, i) { return line(r, i, lane); })).concat(['', 'END WORKLIST']).join('\n') + '\n';
   }
-  return { build: build, render: render, parseRows: parseRows, parsePayload: parsePayload, LANES: Object.keys(LANES), LIMIT: LIMIT };
+  return { build: build, render: render, parseRows: parseRows, parsePayload: parsePayload, tier: tier, LANES: Object.keys(LANES), LIMIT: LIMIT };
 });
 
 /* ================= Apps Script glue ================= */
