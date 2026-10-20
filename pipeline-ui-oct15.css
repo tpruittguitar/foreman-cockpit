@@ -756,3 +756,11 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #queue-head .since-strip .ss-i.red:not(.zero) { color: var(--pe-red, #ff4d3d); } #queue-head .since-strip .ss-i.amb:not(.zero) { color: var(--pe-amber, #f2b33d); }
   #queue-head .since-strip .ss-i:focus-visible { outline: 2px solid var(--pe-cyan, #38e1d6); outline-offset: -2px; }
 }
+
+/* Track M step 3 (REV-069, Grok Bot 19:55 ET): on the phone SCORE stays visible at the right edge without sideways scroll.
+   The SCORE column (.pin-r) sticks to the right of the table pane; TITLE shrinks first (fitPhoneColumns_ in pipeline.html)
+   and keeps its ellipsis; the other columns scroll through the window between TITLE and SCORE. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #grid th.pin-r, #grid td.pin-r { position: sticky; right: 0; z-index: 2; box-shadow: -1px 0 0 var(--pe-seam); }
+  #grid th.pin-r { z-index: 4; }
+}

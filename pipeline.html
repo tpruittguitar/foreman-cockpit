@@ -1111,7 +1111,9 @@ function phoneLayout(){return window.innerWidth<=760||(window.innerWidth<=980&&w
 function fitRows_(){var w=$('gridwrap'),g=$('grid'),root=document.documentElement;if(!w||!g)return;if(phoneLayout()||document.body.dataset.density==='comfortable'){root.style.removeProperty('--row-h');root.style.removeProperty('--row-font');return}
   var head=g.querySelector('thead'),avail=w.clientHeight-(head?head.offsetHeight:32);if(avail<=0)return;var r19=avail/19,r16=Math.floor(avail/16),h=r19>=27?Math.min(60,Math.floor(r19)):r16>=23?Math.min(27,r16):Math.max(20,Math.floor(avail/15));
   if(root.style.getPropertyValue('--row-h')!==h+'px'){root.style.setProperty('--row-h',h+'px');root.style.setProperty('--row-font',(h>=30?14:h>=27?13:h>=25?12.5:h>=21?12:11.5)+'px')}}
-function visibleCols(){var phone=phoneLayout();var set=phone?S.cols.phone:S.cols.desktop;return set.filter(function(c){return COLS.indexOf(c)>=0})}
+function visibleCols(){var phone=phoneLayout();var set=phone?S.cols.phone:S.cols.desktop;var v=set.filter(function(c){return COLS.indexOf(c)>=0});
+  /* REV-069: on the phone SCORE is the right-hand column (pinned there by CSS .pin-r); the saved column order is unchanged */
+  if(phone&&v.indexOf('OVERALL_RATING')>=0){v.splice(v.indexOf('OVERALL_RATING'),1);v.push('OVERALL_RATING')}return v}
 /* ---------- presets ---------- */
 function validHttpUrl_(v){return /^https?:\/\/[^\s]+$/i.test(String(v||'').trim())}
 function researchGaps_(r){var p=r.payload||{},g=[];if(PipelineTrust.salary(p)==='UNKNOWN')g.push('salary');if(!PipelinePolicy.links(r).preferred)g.push('posting link');if(!hasResolvedFlex_(r))g.push('FLEX');return g}
@@ -1239,7 +1241,7 @@ function render(){
   if($('clearf'))$('clearf').onclick=function(){S.chartFilter=null;S.filters={};pushHash();render()};
   var rows=filteredRows();
   $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
-  var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
+  var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
   var tb='';rows.forEach(function(r){
     var cls=(attentionFor_(r).strong?'priority-hot ':'')+(S.seen[r.id]?'seen ':'')+(S.focus===r.id?'focus':'');
@@ -1260,7 +1262,7 @@ function render(){
       if(c==='FLEX'){var fi=PipelineTrust.flexInfo(r.payload);v=fi.text?'<span title="'+esc(fi.label)+'">'+(fi.approx?'<span class="approx">~</span>':'')+esc(fi.text)+'</span>':''}
       if(c==='IDENTITY_CONFIDENCE'){var ic=(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN').toUpperCase();v+='<span class="conf '+esc(ic)+'">'+esc(ic)+'</span>'}
       var mono=/^(INV|PRIMARY_ID|REQ|DATE_|SALARY_|COMP_|APP_DATE|FLEX_ASOF|CELLS)/.test(c)?' mono':'';
-      return '<td class="'+(i<2?'sticky':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>'});
+      return '<td class="'+(i<2?'sticky':'')+(c==='OVERALL_RATING'?' pin-r':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>'});
   $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
   fixSticky();
   $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
@@ -1654,7 +1656,18 @@ function autoFitRenderedColumns_(){
    above its golden width (192 / 120 / 120), until the table fits its pane; ellipsised names keep the keyboard name tip (BUILD 4).
    Other columns, Tim's column set and manual resizes are untouched. Stacked layout: no change. */
 var PANE_FIT_FLOOR_={TITLE:192,LOCATION:120,COMPANY:120};
+/* Track M step 3 (REV-069, Grok Bot 19:55 ET): on the phone SCORE is pinned to the right edge (CSS .pin-r) and TITLE shrinks
+   first, so NEW + TITLE + SCORE fit the pane with a PHONE_PEEK_ px window between them; the other columns scroll through
+   that window. TITLE never goes under PHONE_TITLE_MIN_ px and never grows past its content width. */
+var PHONE_PEEK_=96,PHONE_TITLE_MIN_=140;
+function fitPhoneColumns_(cols,widths){var wrap=$('gridwrap'),avail=wrap&&wrap.clientWidth;
+  /* the pane settles after the first fit (map split, landscape): refit whenever its width changes */
+  if(wrap&&!S.phoneFitRO&&typeof ResizeObserver==='function'){var lastW=avail;S.phoneFitRO=new ResizeObserver(function(){var nw=wrap.clientWidth;if(nw&&nw!==lastW){lastW=nw;refitColumnsToPane_()}});S.phoneFitRO.observe(wrap)}if(!avail||cols.indexOf('TITLE')<0||cols.indexOf('OVERALL_RATING')<0)return false;
+  if(S.colNatural&&S.colNatural.TITLE)widths.TITLE=S.colNatural.TITLE;
+  var fixed=(Number(widths.NEW)||columnWidth('NEW'))+(Number(widths.OVERALL_RATING)||columnWidth('OVERALL_RATING')),room=avail-fixed-PHONE_PEEK_,nat=Number(widths.TITLE)||columnWidth('TITLE');
+  widths.TITLE=Math.max(PHONE_TITLE_MIN_,Math.min(nat,Math.floor(room)));return true}
 function fitColumnsToPane_(cols,widths){
+  if(phoneLayout()&&S.colNatural)return fitPhoneColumns_(cols,widths);
   if(!document.body.classList.contains('pe-three-col')||phoneLayout()||!S.colNatural)return false;
   var wrap=$('gridwrap'),avail=wrap&&wrap.clientWidth;if(!avail)return false;
   Object.keys(S.colNatural).forEach(function(c){widths[c]=S.colNatural[c]});   // refit from the content widths, so a wider pane gives the room back
@@ -2775,7 +2788,7 @@ document.addEventListener('click',function(e){var p=$('qv-panel');if(p&&!p.hidde
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv-panel');if(p&&!p.hidden)toggleView_(false);document.body.classList.remove('search-open')}});$('search').oninput=function(){S.search=this.value;if(S.tab!=='pipeline')switchTab('pipeline');render()};
 function pushHash(){var o={t:S.tab,p:S.preset,s:S.sort,f:S.filters};if(S.focus)o.j=S.focus;if(S.mapFull)o.m=1;renderCrumb_();try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(o)))}catch(e){}}
 function readHash(){try{if(location.hash.length>1){var o=JSON.parse(decodeURIComponent(location.hash.slice(1)));if(o.t&&$('view-'+o.t))S.tab=o.t;if(o.p&&PRESETS[o.p])S.preset=o.p;if(o.s)S.sort=o.s;if(o.f)S.filters=o.f;if(o.j)S.pendingFocus=String(o.j);if(o.m)S.pendingMap=true}}catch(e){}}
-window.addEventListener('resize',function(){if(S.master)render()});
+window.addEventListener('resize',function(){if(S.master){render();refitColumnsToPane_()}});
 PipelineMotion.inviteDivider($('list-map-divider'),LS.get('listMapSplit',null)!==null);
 var paneSplit_=PipelinePaneSplit.create({view:$('view-pipeline'),handle:$('list-map-divider'),load:function(axis){return LS.get(axis==='x'?'listMapSplitCols':'listMapSplit',null)},save:function(ratio,axis){LS.set(axis==='x'?'listMapSplitCols':'listMapSplit',ratio)},onResize:function(){refitColumnsToPane_();fitRows_();applyMapView_()}});
 loadBuildInfo_();loadWriterStatus_();
