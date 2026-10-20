@@ -909,6 +909,29 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   body:not(.map-full) #view-pipeline.on #drawer .wh-decide button { flex: 0 1 auto; padding: 0 8px !important; }
 }
 
+/* Track M step 13 (REV-083, Tim 22:58 ET chose option A: p42 item 15). Phone job sheet: while a job is open the drawer is a
+   full-screen sheet over the page header, the banner and the view tabs (p42: the job detail fills the phone). The bottom nav
+   stays visible below it (the sheet ends at --pe-sheet-bottom, measured from #bottombar). The sheet scrolls itself, so the
+   pinned decision row sits at the sheet's bottom edge. "‹ Queue" and the phone Back button close it (pipeline.html REV-083). */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  body.pe-sheet #drawer.on { position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: var(--pe-sheet-bottom, 0px) !important;
+    width: auto !important; height: auto !important; max-height: none !important; margin: 0 !important; z-index: 80 !important;
+    overflow-y: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    padding: env(safe-area-inset-top) 0 0 !important; border: 0 !important; border-radius: 0 !important; background: var(--pe-hull) !important;
+    transform: none !important; will-change: auto !important; }   /* a transform would make the fixed decision row scroll with the sheet */
+  /* The decision row sits inside the Overview top block (.ov-top), so position: sticky let go once that block scrolled away.
+     In the sheet the block's box is dropped (display: contents) and the row is placed last in the Overview (order), so it stays
+     pinned to the sheet's bottom edge through the whole Overview, as in p42. */
+  body.pe-sheet #drawer.on #d-body:has(.ov-top) { display: flex !important; flex-direction: column !important; }
+  body.pe-sheet #drawer.on #d-body .ov-top { display: contents !important; }
+  body.pe-sheet #drawer.on #d-body .ov-top > :not(.wh-decide) { order: 0 !important; }   /* keep source order (the ring block has order 2 elsewhere) */
+  body.pe-sheet #drawer.on #d-body .wh-decide { order: 99; position: sticky !important; bottom: 0 !important; z-index: 3 !important; background: var(--pe-hull) !important; }
+  /* The drawer is a flex column; with the sheet's fixed height its rows would shrink to fit (the header went to 0 px). They keep
+     their own height and the sheet scrolls. */
+  body.pe-sheet #drawer.on > *, body.pe-sheet #drawer.on > .dh > * { flex-shrink: 0 !important; }
+  body.pe-sheet #pop { z-index: 82; }
+}
+
 /* Track M step 10 (REV-080, Grok Bot 22:01 ET: p42 item 12). Phone score breakdown: the desktop rows (golden .bd), fitted to
    the phone width. Name takes the free width (ellipsis), weight 36 px, bar 56 px, points 60 px (fits UNKNOWN); 28 px rows; text --pe-fs-small,
    labels and footer mono 11 px. The section label wraps its "Σ … KNOWN = … → …" sum under the title on the phone. */
