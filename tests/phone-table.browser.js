@@ -48,6 +48,11 @@ const JOB='V2X-A4CCD49EE686';
     assert(m.title.w>=140,'TITLE never under 140 px: '+m.title.w);
     assert(m.nw.w+m.title.w+m.th.w+96<=m.wrap.w+1.5,w+'x'+h+' NEW + TITLE + SCORE leave the 96 px window: '+JSON.stringify([m.nw.w,m.title.w,m.th.w,m.wrap.w]));
     assert.equal(m.ell,'ellipsis','long titles end in an ellipsis');
+    // REV-070 (N-10): every header and cell text in the phone table is at least 11 px
+    const small=await page.evaluate(()=>{const out=[];document.querySelectorAll('#grid thead th, #grid tbody tr[data-id] td, #grid tbody tr[data-id] td *').forEach(e=>{if(!e.textContent.trim())return;const fs=parseFloat(getComputedStyle(e).fontSize);if(fs>0&&fs<11)out.push((e.dataset.c||e.className||e.tagName)+' '+fs)});['::before','::after'].forEach(p=>document.querySelectorAll('#grid thead th').forEach(e=>{const c=getComputedStyle(e,p).content;if(c&&c!=='none'&&c!=='""'){const fs=parseFloat(getComputedStyle(e,p).fontSize);if(fs<11)out.push(e.dataset.c+p+' '+fs)}}));return out.slice(0,8)});
+    const clipped=await page.$$eval('#grid thead th',ts=>ts.filter(t=>t.scrollWidth>t.clientWidth+1).map(t=>t.dataset.c+' '+t.clientWidth+'/'+t.scrollWidth));
+    assert.deepEqual(clipped,[],w+'x'+h+' header labels and sort marks fit their columns');
+    assert.deepEqual(small,[],w+'x'+h+' text under 11 px: '+JSON.stringify(small));
     // scroll the table all the way: SCORE stays in the same place
     await page.evaluate(()=>{const wr=document.getElementById('gridwrap');wr.scrollLeft=wr.scrollWidth});await page.waitForTimeout(200);
     const m2=await measure(page);assert(m2.wrap.sl>0,'the other columns still scroll');

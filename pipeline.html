@@ -1659,11 +1659,13 @@ var PANE_FIT_FLOOR_={TITLE:192,LOCATION:120,COMPANY:120};
 /* Track M step 3 (REV-069, Grok Bot 19:55 ET): on the phone SCORE is pinned to the right edge (CSS .pin-r) and TITLE shrinks
    first, so NEW + TITLE + SCORE fit the pane with a PHONE_PEEK_ px window between them; the other columns scroll through
    that window. TITLE never goes under PHONE_TITLE_MIN_ px and never grows past its content width. */
-var PHONE_PEEK_=96,PHONE_TITLE_MIN_=140;
+var PHONE_PEEK_=96,PHONE_TITLE_MIN_=140,PHONE_SCORE_MIN_=72;
 function fitPhoneColumns_(cols,widths){var wrap=$('gridwrap'),avail=wrap&&wrap.clientWidth;
   /* the pane settles after the first fit (map split, landscape): refit whenever its width changes */
   if(wrap&&!S.phoneFitRO&&typeof ResizeObserver==='function'){var lastW=avail;S.phoneFitRO=new ResizeObserver(function(){var nw=wrap.clientWidth;if(nw&&nw!==lastW){lastW=nw;refitColumnsToPane_()}});S.phoneFitRO.observe(wrap)}if(!avail||cols.indexOf('TITLE')<0||cols.indexOf('OVERALL_RATING')<0)return false;
   if(S.colNatural&&S.colNatural.TITLE)widths.TITLE=S.colNatural.TITLE;
+  /* REV-070: at the 11 px header floor "SCORE ▼⌄" needs 72 px, so the pinned column never clips its sort mark */
+  widths.OVERALL_RATING=Math.max(Number(widths.OVERALL_RATING)||0,PHONE_SCORE_MIN_);
   var fixed=(Number(widths.NEW)||columnWidth('NEW'))+(Number(widths.OVERALL_RATING)||columnWidth('OVERALL_RATING')),room=avail-fixed-PHONE_PEEK_,nat=Number(widths.TITLE)||columnWidth('TITLE');
   widths.TITLE=Math.max(PHONE_TITLE_MIN_,Math.min(nat,Math.floor(room)));return true}
 function fitColumnsToPane_(cols,widths){
