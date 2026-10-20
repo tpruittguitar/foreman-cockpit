@@ -930,3 +930,16 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer #d-body .bd-row.unk .p { color: var(--pe-text-secondary); font-weight: 400; font-family: var(--pe-font-label); font-size: var(--pe-fs-min) !important; letter-spacing: .06em; }
   #drawer #d-body .bd-foot { margin-top: 4px; font-family: var(--pe-font-label); font-size: var(--pe-fs-min) !important; letter-spacing: .08em; line-height: 16px; color: var(--pe-text-secondary); overflow-wrap: anywhere; }
 }
+
+/* Track M step 11 (REV-081, Grok Bot 22:18 ET: p42 item 13). Phone drawer detail cards at the 11 px floor (L-1), every tab.
+   Before: card titles 9.8 px, key / value grid 10.6 px, confidence tags 10.8 px, bucket pills 10.2 px (pipeline-ui-workspace.css
+   phone scaling). Card titles: mono 11 px Secondary label; keys mono 11 px Secondary; values --pe-fs-small; tags / pills 11 px. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #drawer #d-body .detail-card h3 { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; font-weight: 400 !important;
+    letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  #drawer #d-body .kv { font-size: var(--pe-fs-small) !important; }
+  #drawer #d-body .kv > div:nth-child(odd) { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; letter-spacing: .06em; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  #drawer #d-body .kv > div:nth-child(even), #drawer #d-body .kv > div:nth-child(even) * { font-size: var(--pe-fs-small) !important; overflow-wrap: anywhere; }
+  #drawer #d-body .conf, #drawer #d-body .bpill, #drawer #d-body .chip { font-size: var(--pe-fs-min) !important; }
+  #drawer #d-body .edit-grid label, #drawer #d-body .enrich-grid label, #drawer #d-body .research-note { font-size: var(--pe-fs-min) !important; }
+}
