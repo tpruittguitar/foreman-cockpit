@@ -28,8 +28,8 @@ test('lanes select the right rows and exclude protected states', () => {
   const b = W.build(text, { now: NOW });
   const ids = lane => b.lanes[lane].map(r => r.PRIMARY_ID);
   assert.deepEqual(ids('FORGE_ENRICH_STRATEGIC'), ['V2I-000000000001', 'V2I-000000000006', 'V2I-000000000007']);
-  // analyzed row 5 comes first despite being older
-  assert.equal(ids('FORGE_ENRICH_FEASIBILITY')[0], 'V2I-000000000005');
+  // REV-106 (Tim 2026-10-20): newest first; the undated analyzed row 5 goes after the dated rows
+  assert.deepEqual(ids('FORGE_ENRICH_FEASIBILITY'), ['V2I-000000000001', 'V2I-000000000006', 'V2I-000000000007', 'V2I-000000000005']);
   assert.ok(!ids('FORGE_ENRICH_FEASIBILITY').includes('V2I-000000000002'));
   // fresh UNCONFIRMED (row 6) waits; stale UNCONFIRMED (row 7) and missing (row 1) are listed
   assert.deepEqual(ids('FORGE_POSTING_VALIDATION'), ['V2I-000000000001', 'V2I-000000000007']);
@@ -67,4 +67,20 @@ test('render is small, capped and well formed on the scrubbed fixture', () => {
     assert.ok(lines.length <= W.LIMIT);
     for (const l of lines) assert.ok(!/\| (APPLIED|REJECTED_BY_EMPLOYER|DECLINED_BY_TIM|DUPLICATE|CLOSED_DEAD|INVALID_DISCOVERY) \|/.test(l), l);
   }
+});
+
+test('REV-106: priority tiers — Shield AI, then Director+ US mfg/ops/quality, then the rest, Memphis last; newest first within a tier', () => {
+  const r = (inv, id, co, title, loc, date) => `${inv} | ${id} | ${co} | ${title} | SCOUT_INTAKE | OPEN | - | R1 | ${loc} | DATE_ADDED=${date}`;
+  const text = head + [
+    r(10, 'V2I-0000000000A0', 'Acme', 'Program Coordinator', 'Austin, TX', '2026-10-12'),
+    r(11, 'V2I-0000000000A1', 'Shield AI', 'Manufacturing Engineer', 'Dallas, TX', '2026-10-01'),
+    r(12, 'V2I-0000000000A2', 'Beta', 'Director of Manufacturing', 'Memphis, TN', '2026-10-12'),
+    r(13, 'V2I-0000000000A3', 'Gamma', 'Senior Director, Quality', 'Greenville, SC', '2026-10-02'),
+    r(14, 'V2I-0000000000A4', 'Delta', 'Director of Operations', 'Toronto, Ontario, Canada', '2026-10-12'),
+    r(15, 'V2I-0000000000A5', 'Eps', 'VP Operations', 'Chattanooga, TN', '2026-10-11'),
+  ].join('\n') + '\nEND V2_CURRENT_POPULATION_MASTER (6 rows)\n';
+  const b = W.build(text, { now: NOW });
+  assert.deepEqual(b.lanes.FORGE_ENRICH_FEASIBILITY.map(x => x.PRIMARY_ID),
+    ['V2I-0000000000A1', 'V2I-0000000000A5', 'V2I-0000000000A3', 'V2I-0000000000A4', 'V2I-0000000000A0', 'V2I-0000000000A2']);
+  assert.equal(W.LIMIT, 80);
 });
