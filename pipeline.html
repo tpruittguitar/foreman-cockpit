@@ -1471,6 +1471,7 @@ function renderDetail(r){if(!allowedInView_(r,S.preset)){S.focus=null;$('drawer'
   var tabs=[['overview','Overview'],['posting','Posting'],['fit','Fit & Score'],['application','Application'],['documents','Documents'],['history','History']];$('detail-tabs').innerHTML=tabs.map(function(t){return '<button data-dtab="'+t[0]+'" class="'+(S.detailTab===t[0]?'on':'')+'">'+t[1]+'</button>'}).join('');
   $('detail-tabs').querySelectorAll('button').forEach(function(b){b.onclick=function(){S.detailTab=b.getAttribute('data-dtab');renderDetail(r)}});
   var dt=$('detail-tabs'),act=dt.querySelector('button.on');if(act){dt.style.setProperty('--tab-x',act.offsetLeft+'px');dt.style.setProperty('--tab-w',act.offsetWidth+'px')}
+  if(act&&dt.scrollWidth>dt.clientWidth+1){var tb=dt.getBoundingClientRect(),ab=act.getBoundingClientRect();if(ab.left<tb.left+12)dt.scrollLeft-=tb.left+12-ab.left;else if(ab.right>tb.right-12)dt.scrollLeft+=ab.right-(tb.right-12)}   // REV-074: phone tab row scrolls; keep the active tab in view
   if(S.detailTab==='overview'){$('d-body').innerHTML=overviewHtml_(r);bindDetail_(r)}else if(S.detailTab==='fit'){$('d-body').innerHTML=fitHtml_(r);bindDetail_(r)}else if(S.detailTab==='posting')renderPosting_(r);else if(S.detailTab==='application')renderApplication_(r);else if(S.detailTab==='documents')renderDocsTab_(r);else renderHistory_(r);
   if(resetDetailScroll)detailBody.scrollTop=0;detailBody.dataset.detailKey=detailKey;
   bindNextStep_(r);PipelineMotion.workspace(r.id,S.detailTab);

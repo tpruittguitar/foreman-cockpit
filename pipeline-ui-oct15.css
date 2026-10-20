@@ -860,3 +860,20 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
     border: 0 !important; background: transparent !important; color: var(--pe-cyan) !important; font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-small) !important;
     letter-spacing: 0 !important; text-transform: none !important; text-decoration: underline; text-underline-offset: 3px; }
 }
+
+/* Track M step 8 (REV-074, Grok Bot 21:12 ET: p42 item 6). Phone detail tabs: the desktop LOOK-8 underline row, one line,
+   scrolls sideways when the labels overflow (no boxes, no cut-off buttons). Mono 11 px Secondary, active Cyan with a 2 px
+   Cyan underline, 44 px targets, seam below. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #drawer #detail-tabs { display: flex !important; flex-wrap: nowrap !important; justify-content: flex-start !important; gap: 22px !important; margin: 0 !important;
+    padding: 0 18px !important; height: var(--pe-target-phone) !important; min-height: 0 !important; overflow-x: auto !important; overflow-y: hidden !important;
+    scrollbar-width: none; border: 0 !important; border-bottom: var(--pe-border) !important; background: transparent !important; box-shadow: none !important; }
+  #drawer #detail-tabs::-webkit-scrollbar { display: none; }
+  #drawer #detail-tabs::after { display: none !important; }
+  #drawer #detail-tabs button { position: relative; flex: none !important; width: auto !important; min-width: 0 !important; height: var(--pe-target-phone) !important;
+    min-height: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important;
+    white-space: nowrap !important; line-height: var(--pe-target-phone) !important; font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important;
+    letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; }
+  #drawer #detail-tabs button.on { color: var(--pe-cyan) !important; }
+  #drawer #detail-tabs button.on::after { content: ""; position: absolute; left: -6px; right: -6px; bottom: 0; height: 2px; background: var(--pe-cyan); }
+}
