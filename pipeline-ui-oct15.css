@@ -943,3 +943,17 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer #d-body .conf, #drawer #d-body .bpill, #drawer #d-body .chip { font-size: var(--pe-fs-min) !important; }
   #drawer #d-body .edit-grid label, #drawer #d-body .enrich-grid label, #drawer #d-body .research-note { font-size: var(--pe-fs-min) !important; }
 }
+
+/* Track M step 12 (REV-082, Grok Bot 22:46 ET: p42 item 14). Phone materials and in-card buttons in the desktop outline style
+   (golden .dbtn): 1 px Outline border, no fill, mono 11 px capitals in Secondary; the enabled primary action (Open posting) is a
+   Cyan outline; disabled is a dashed Outline border in Secondary (LOOK-5). Before, the phone showed the base filled-white button. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #drawer .wh-actions button, #drawer #d-body .detail-card .row button { border: 1px solid var(--pe-outline) !important; border-radius: 0 !important;
+    background: transparent !important; box-shadow: none !important; font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important;
+    font-weight: 400 !important; letter-spacing: var(--pe-btn-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; opacity: 1 !important; }
+  #drawer #d-body .detail-card .row button { min-height: var(--pe-target-phone) !important; padding: 0 12px !important; }
+  #drawer .wh-actions #ws-open { background: transparent !important; }   /* beats pipeline-ui-workspace.css #ws-open fill (same id weight, later file wins) */
+  #drawer .wh-actions #ws-open:not(:disabled) { border-color: var(--pe-cyan) !important; color: var(--pe-cyan) !important; }
+  #drawer .wh-actions #ws-open:disabled { border: 1px dashed var(--pe-outline) !important; color: var(--pe-text-secondary) !important; }
+  #drawer .wh-actions button:disabled, #drawer #d-body .detail-card .row button:disabled { border: 1px dashed var(--pe-outline) !important; color: var(--pe-text-secondary) !important; }
+}
