@@ -1134,7 +1134,9 @@ function fitRows_(){var w=$('gridwrap'),g=$('grid'),root=document.documentElemen
   if(root.style.getPropertyValue('--row-h')!==h+'px'){root.style.setProperty('--row-h',h+'px');root.style.setProperty('--row-font',(h>=30?14:h>=27?13:h>=25?12.5:h>=21?12:11.5)+'px')}}
 function visibleCols(){var phone=phoneLayout();var set=phone?S.cols.phone:S.cols.desktop;var v=set.filter(function(c){return COLS.indexOf(c)>=0});
   /* REV-069: on the phone SCORE is the right-hand column (pinned there by CSS .pin-r); the saved column order is unchanged */
-  if(phone&&v.indexOf('OVERALL_RATING')>=0){v.splice(v.indexOf('OVERALL_RATING'),1);v.push('OVERALL_RATING')}return v}
+  if(phone&&v.indexOf('OVERALL_RATING')>=0){v.splice(v.indexOf('OVERALL_RATING'),1);v.push('OVERALL_RATING')}
+  /* REV-084 (Tim 23:35 ET): on the phone LOCATION is the column right after TITLE (added when the saved set lacks it) */
+  if(phone&&v.indexOf('TITLE')>=0){if(v.indexOf('LOCATION')>=0)v.splice(v.indexOf('LOCATION'),1);v.splice(v.indexOf('TITLE')+1,0,'LOCATION')}return v}
 /* ---------- presets ---------- */
 function validHttpUrl_(v){return /^https?:\/\/[^\s]+$/i.test(String(v||'').trim())}
 function researchGaps_(r){var p=r.payload||{},g=[];if(PipelineTrust.salary(p)==='UNKNOWN')g.push('salary');if(!PipelinePolicy.links(r).preferred)g.push('posting link');if(!hasResolvedFlex_(r))g.push('FLEX');return g}
@@ -1262,7 +1264,7 @@ function render(){
   if($('clearf'))$('clearf').onclick=function(){S.chartFilter=null;S.filters={};pushHash();render()};
   var rows=filteredRows();
   $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
-  var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
+  var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(c==='LOCATION'?'c-loc ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
   var tb='';rows.forEach(function(r){
     var cls=(attentionFor_(r).strong?'priority-hot ':'')+(S.seen[r.id]?'seen ':'')+(S.focus===r.id?'focus':'');
@@ -1283,11 +1285,11 @@ function render(){
       if(c==='FLEX'){var fi=PipelineTrust.flexInfo(r.payload);v=fi.text?'<span title="'+esc(fi.label)+'">'+(fi.approx?'<span class="approx">~</span>':'')+esc(fi.text)+'</span>':''}
       if(c==='IDENTITY_CONFIDENCE'){var ic=(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN').toUpperCase();v+='<span class="conf '+esc(ic)+'">'+esc(ic)+'</span>'}
       var mono=/^(INV|PRIMARY_ID|REQ|DATE_|SALARY_|COMP_|APP_DATE|FLEX_ASOF|CELLS)/.test(c)?' mono':'';
-      return '<td class="'+(i<2?'sticky':'')+(c==='OVERALL_RATING'?' pin-r':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>'});
+      return '<td class="'+(i<2?'sticky':'')+(c==='OVERALL_RATING'?' pin-r':'')+(c==='LOCATION'?' c-loc':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>'});
   $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
   fixSticky();
   $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
-  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView)setTimeout(function(){dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}}});
+  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!document.body.classList.contains('pe-sheet'))setTimeout(function(){if(document.body.classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}}});
   $('grid').querySelectorAll('.row-select').forEach(function(cb){cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets();mapSelectionChanged_()}});
   autoFitRenderedColumns_();applyColumnWidths();enableColumnResize();fitRows_();
   if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();if(S.tab==='columns')renderColumns();if(S.tab==='scoring')renderScoring();document.querySelectorAll('[data-chart-filter]').forEach(function(el){el.setAttribute('aria-pressed',S.chartFilter&&JSON.parse(el.dataset.chartFilter).label===S.chartFilter.label?'true':'false')});
@@ -1684,15 +1686,16 @@ var PANE_FIT_FLOOR_={TITLE:192,LOCATION:120,COMPANY:120};
 /* Track M step 3 (REV-069, Grok Bot 19:55 ET): on the phone SCORE is pinned to the right edge (CSS .pin-r) and TITLE shrinks
    first, so NEW + TITLE + SCORE fit the pane with a PHONE_PEEK_ px window between them; the other columns scroll through
    that window. TITLE never goes under PHONE_TITLE_MIN_ px and never grows past its content width. */
-var PHONE_PEEK_=96,PHONE_TITLE_MIN_=140,PHONE_SCORE_MIN_=72;
+var PHONE_PEEK_=96,PHONE_TITLE_MIN_=140,PHONE_SCORE_MIN_=72,PHONE_LOC_W_=90,PHONE_TITLE_MIN_LOC_=120;   /* REV-084: LOCATION 90 px after TITLE; TITLE >= 120 then */
 function fitPhoneColumns_(cols,widths){var wrap=$('gridwrap'),avail=wrap&&wrap.clientWidth;
   /* the pane settles after the first fit (map split, landscape): refit whenever its width changes */
   if(wrap&&!S.phoneFitRO&&typeof ResizeObserver==='function'){var lastW=avail;S.phoneFitRO=new ResizeObserver(function(){var nw=wrap.clientWidth;if(nw&&nw!==lastW){lastW=nw;refitColumnsToPane_()}});S.phoneFitRO.observe(wrap)}if(!avail||cols.indexOf('TITLE')<0||cols.indexOf('OVERALL_RATING')<0)return false;
   if(S.colNatural&&S.colNatural.TITLE)widths.TITLE=S.colNatural.TITLE;
   /* REV-070: at the 11 px header floor "SCORE ▼⌄" needs 72 px, so the pinned column never clips its sort mark */
   widths.OVERALL_RATING=Math.max(Number(widths.OVERALL_RATING)||0,PHONE_SCORE_MIN_);
-  var fixed=(Number(widths.NEW)||columnWidth('NEW'))+(Number(widths.OVERALL_RATING)||columnWidth('OVERALL_RATING')),room=avail-fixed-PHONE_PEEK_,nat=Number(widths.TITLE)||columnWidth('TITLE');
-  widths.TITLE=Math.max(PHONE_TITLE_MIN_,Math.min(nat,Math.floor(room)));return true}
+  var loc=cols.indexOf('LOCATION')===cols.indexOf('TITLE')+1;if(loc)widths.LOCATION=PHONE_LOC_W_;
+  var fixed=(Number(widths.NEW)||columnWidth('NEW'))+(Number(widths.OVERALL_RATING)||columnWidth('OVERALL_RATING'))+(loc?PHONE_LOC_W_:0),room=avail-fixed-(loc?0:PHONE_PEEK_),nat=Number(widths.TITLE)||columnWidth('TITLE');
+  widths.TITLE=Math.max(loc?PHONE_TITLE_MIN_LOC_:PHONE_TITLE_MIN_,Math.min(nat,Math.floor(room)));return true}
 function fitColumnsToPane_(cols,widths){
   if(phoneLayout()&&S.colNatural)return fitPhoneColumns_(cols,widths);
   if(!document.body.classList.contains('pe-three-col')||phoneLayout()||!S.colNatural)return false;
@@ -2819,7 +2822,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv
   function fit(){var b=bb&&bb.offsetParent!==null?bb.getBoundingClientRect():null;document.body.style.setProperty('--pe-sheet-bottom',(b?Math.max(0,Math.round(innerHeight-b.top)):0)+'px')}
   function sync(){var want=phoneLayout()&&d.classList.contains('on')&&!d.dataset.auto;   /* the load-time preview of the top job (data-auto) stays in the page */
     if(want===open){if(want)fit();return}open=want;document.body.classList.toggle('pe-sheet',want);
-    if(want){fit();d.scrollTop=0;try{if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}catch(e){}}
+    if(want){fit();d.scrollTop=0;requestAnimationFrame(function(){d.scrollTop=0;if(window.scrollY)window.scrollTo(0,0)});try{if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}catch(e){}}
     else{try{if(history.state&&history.state.peSheet)history.back()}catch(e){}}}
   new MutationObserver(sync).observe(d,{attributes:true,attributeFilter:['class','data-auto']});window.addEventListener('resize',sync);
   window.addEventListener('popstate',function(){if(open&&!(history.state&&history.state.peSheet)){var c=$('d-close');if(c)c.click();else d.classList.remove('on')}});sync();})();

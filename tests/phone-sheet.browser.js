@@ -51,9 +51,13 @@ const JOB='V2X-A4CCD49EE686';
     // load: the phone previews the top job below the queue (shown, not opened): no sheet, the queue stays usable
     let s0=await st();assert.equal(s0.sheet,false,t+'load-time preview is not a sheet');assert.notEqual(s0.pos,'fixed');
     const hl0=s0.hl;
+    // REV-084 (Tim 23:35 ET, iPhone): simulate a 47 px status-bar inset; on open the header row starts below it, sheet at the top
+    await page.addStyleTag({content:':root{--pe-safe-top:47px !important}'});
     await page.locator('#grid tbody tr[data-id]').nth(1).tap();await page.waitForTimeout(1000);
+    const top=await page.evaluate(()=>({head:document.querySelector('#drawer .d-head').getBoundingClientRect().top,back:document.getElementById('d-back').getBoundingClientRect().top,title:document.getElementById('d-title').getBoundingClientRect().top,st:document.getElementById('drawer').scrollTop,wy:scrollY,vv:visualViewport?visualViewport.offsetTop:0}));
+    assert(top.head>=47&&top.back>=47&&top.title>=47,t+'header row below the safe-area inset on open: '+JSON.stringify(top));assert.equal(top.st,0,t+'sheet opens scrolled to the top');assert.equal(top.wy,0);assert.equal(top.vv,0);
     let s=await st();
-    assert(s.on&&s.sheet,t+'open job is a sheet');assert.equal(s.pos,'fixed',t+'sheet is fixed');assert.equal(s.top,0,t+'sheet starts at the top');assert.equal(s.w,w,t+'full width');
+    assert(s.on&&s.sheet,t+'open job is a sheet');assert.equal(s.pos,'fixed',t+'sheet is fixed');assert.equal(s.top,0,t+'sheet starts at the top (its padding holds the inset)');assert.equal(s.w,w,t+'full width');
     assert(Math.abs(s.bottom-s.bbTop)<=1,t+'sheet ends at the bottom nav: '+s.bottom+' vs '+s.bbTop);assert.equal(s.topHit,'drawer',t+'sheet covers the page header');assert.equal(s.midHit,'drawer');assert.equal(s.bbHit,'bottombar',t+'bottom nav still visible and tappable');
     assert(s.dec.bottom<=s.bottom+1&&s.dec.bottom>=s.bottom-12,t+'decision row pinned at the sheet bottom: '+JSON.stringify([s.dec.bottom,s.bottom]));
     assert(s.ring.bottom<=s.dec.top,t+'ring clear of the decision row');assert.equal(s.hl,hl0+1,t+'opening adds one history entry');assert.deepEqual(s.hs,{peSheet:1});
