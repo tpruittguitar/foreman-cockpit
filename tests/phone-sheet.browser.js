@@ -46,7 +46,7 @@ const JOB='V2X-A4CCD49EE686';
     const t=w+'x'+h+': ';const {ctx,page,errors}=await open({phone:[w,h],master:big});
     const st=()=>page.evaluate(()=>{const d=document.getElementById('drawer'),bb=document.getElementById('bottombar'),r=d.getBoundingClientRect(),b=bb.getBoundingClientRect(),dec=d.querySelector('.wh-decide'),ring=d.querySelector('.ws-ring');
       const at=(x,y)=>{const e=document.elementFromPoint(x,y);return e?(d.contains(e)?'drawer':bb.contains(e)?'bottombar':(e.closest('header')?'header':e.tagName)):null};
-      return {on:d.classList.contains('on'),sheet:document.body.classList.contains('pe-sheet'),pos:getComputedStyle(d).position,top:r.top,bottom:r.bottom,w:r.width,bbTop:b.top,bbH:b.height,
+      return {on:d.classList.contains('on'),sheet:document.getElementById('drawer').classList.contains('pe-sheet'),pos:getComputedStyle(d).position,top:r.top,bottom:r.bottom,w:r.width,bbTop:b.top,bbH:b.height,
         topHit:at(innerWidth/2,12),midHit:at(innerWidth/2,innerHeight/2),bbHit:at(innerWidth/2,b.top+b.height/2),dec:dec&&dec.getBoundingClientRect().toJSON(),ring:ring&&ring.getBoundingClientRect().toJSON(),hs:history.state,hl:history.length,scrollTop:d.scrollTop,ih:innerHeight}});
     // load: the phone previews the top job below the queue (shown, not opened): no sheet, the queue stays usable
     let s0=await st();assert.equal(s0.sheet,false,t+'load-time preview is not a sheet');assert.notEqual(s0.pos,'fixed');
@@ -73,7 +73,7 @@ const JOB='V2X-A4CCD49EE686';
     assert.deepEqual(errors,[]);await ctx.close();}
   // desktop: the drawer stays in the layout (no sheet)
   {const {ctx,page,errors}=await open({master:big});const hl0=await page.evaluate(()=>history.length);await page.locator('#grid tbody tr[data-id]').first().click();await page.waitForTimeout(900);
-    const d=await page.evaluate(()=>({sheet:document.body.classList.contains('pe-sheet'),pos:getComputedStyle(document.getElementById('drawer')).position,hl:history.length}));
+    const d=await page.evaluate(()=>({sheet:document.getElementById('drawer').classList.contains('pe-sheet'),pos:getComputedStyle(document.getElementById('drawer')).position,hl:history.length}));
     assert.equal(d.sheet,false,'desktop: no sheet');assert.notEqual(d.pos,'fixed','desktop drawer not fixed');assert.equal(d.hl,hl0,'desktop: no history entry');assert.deepEqual(errors,[]);await ctx.close();}
   await browser.close();server.close();console.log('phone-sheet.browser.js: OK');
 })().catch(e=>{console.error(e);process.exit(1)});

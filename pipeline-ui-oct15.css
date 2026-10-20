@@ -917,7 +917,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
    set it (desktop browsers report 0). */
 :root { --pe-safe-top: env(safe-area-inset-top, 0px); }
 @media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
-  body.pe-sheet #drawer.on { position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: var(--pe-sheet-bottom, 0px) !important;
+  #drawer.on.pe-sheet { position: fixed !important; top: 0 !important; left: 0 !important; right: 0 !important; bottom: var(--pe-sheet-bottom, 0px) !important;
     width: auto !important; height: auto !important; max-height: none !important; margin: 0 !important; z-index: 80 !important;
     overflow-y: auto !important; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     padding: var(--pe-safe-top) 0 0 !important; border: 0 !important; border-radius: 0 !important; background: var(--pe-hull) !important;
@@ -925,14 +925,14 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   /* The decision row sits inside the Overview top block (.ov-top), so position: sticky let go once that block scrolled away.
      In the sheet the block's box is dropped (display: contents) and the row is placed last in the Overview (order), so it stays
      pinned to the sheet's bottom edge through the whole Overview, as in p42. */
-  body.pe-sheet #drawer.on #d-body:has(.ov-top) { display: flex !important; flex-direction: column !important; }
-  body.pe-sheet #drawer.on #d-body .ov-top { display: contents !important; }
-  body.pe-sheet #drawer.on #d-body .ov-top > :not(.wh-decide) { order: 0 !important; }   /* keep source order (the ring block has order 2 elsewhere) */
-  body.pe-sheet #drawer.on #d-body .wh-decide { order: 99; position: sticky !important; bottom: 0 !important; z-index: 3 !important; background: var(--pe-hull) !important; }
+  #drawer.on.pe-sheet #d-body:has(.ov-top) { display: flex !important; flex-direction: column !important; }
+  #drawer.on.pe-sheet #d-body .ov-top { display: contents !important; }
+  #drawer.on.pe-sheet #d-body .ov-top > :not(.wh-decide) { order: 0 !important; }   /* keep source order (the ring block has order 2 elsewhere) */
+  #drawer.on.pe-sheet #d-body .wh-decide { order: 99; position: sticky !important; bottom: 0 !important; z-index: 3 !important; background: var(--pe-hull) !important; }
   /* The drawer is a flex column; with the sheet's fixed height its rows would shrink to fit (the header went to 0 px). They keep
      their own height and the sheet scrolls. */
-  body.pe-sheet #drawer.on > *, body.pe-sheet #drawer.on > .dh > * { flex-shrink: 0 !important; }
-  body.pe-sheet #pop { z-index: 82; }
+  #drawer.on.pe-sheet > *, #drawer.on.pe-sheet > .dh > * { flex-shrink: 0 !important; }
+  #pop { z-index: 82; }   /* REV-088: above the sheet on the phone (was scoped to body.pe-sheet) */
 }
 
 /* Track M step 10 (REV-080, Grok Bot 22:01 ET: p42 item 12). Phone score breakdown: the desktop rows (golden .bd), fitted to

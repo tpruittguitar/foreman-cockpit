@@ -1117,18 +1117,23 @@ function syncStateUp(delay){if(!hasWriter())return;clearTimeout(syncTimer);syncT
     gsPost({action:'state',state:body}).then(function(j){S.stateSending=false;if(nSent)S.reviewSend={at:Date.now(),sent:nSent,ok:keep(j),kept:j&&j.reviewed,error:keep(j)?'':(j&&j.ok?'Writer did not confirm review records (older Writer?)':(j&&(j.error||'refused'))||'no response')};
       if(keep(j)){Object.keys(sent).forEach(function(k){if(S.reviewed[k]&&S.reviewed[k].t===sent[k])delete S.reviewDirty[k]});S.reviewRetry=0;if(Object.keys(S.reviewDirty).length)S.stateSendAgain=true}else{reviewRetry_(j);if(nSent)syncStateDown()}if(S.stateSendAgain){S.stateSendAgain=false;syncStateUp(300)}if(typeof renderWriterStatus_==='function'&&!S.renderingWriter_)renderWriterStatus_();S.stateSync=j&&j.ok?{ok:true,at:at}:{ok:false,at:at,error:(j&&(j.error+(j.detail?' · '+j.detail:'')))||'no response'}},function(e){S.stateSending=false;reviewRetry_(null);if(nSent)syncStateDown();if(S.stateSendAgain){S.stateSendAgain=false;syncStateUp(1500)}S.stateSync={ok:false,at:at,error:String(e&&e.message||e)}}).then(function(){if(typeof ntBadge_==='function')ntBadge_();if(S.tab==='needs-tim'&&typeof ntPaint_==='function')ntPaint_()})},delay==null?1500:delay)}
 /* ---------- column model ---------- */
-var COLS=[],COLTYPE={};
+var ROWS_FIRST_=120,ROWS_CHUNK_=200;   /* REV-088: phone table rows built in the first pass / per idle chunk (120 = the rows the auto-fit reads) */
+var COLS=[],COLTYPE={},ENUM_COLS_=['BUCKET','DISPOSITION','SECTION','NEW','MISMATCH','TIM_RULING','FLEX','NOTIFICATION_SOURCE','SALARY_CONF','SALARY_BASIS','DECLINE_REASON_CODE','FLOOR_STATUS','OVERALL_RATING','SCREEN_GATE'];
 function buildColumnModel(){
   var m=S.master;COLS=FIXED.slice(0,9).concat(COMPUTED).concat(['SCOUT_ACTION']).concat(m.payloadKeys.filter(function(k){return COMPUTED.indexOf(k)<0}));
   COLS=COLS.filter(function(c,i){return COLS.indexOf(c)===i});
   COLTYPE={};
   COLS.forEach(function(c){
     if(DATE_KEYS[c])COLTYPE[c]='date';else if(MONEY_KEYS[c])COLTYPE[c]='money';
+    else if(ENUM_COLS_.indexOf(c)>=0)COLTYPE[c]='enum';   /* REV-088 (perf): a listed enum column needs no scan of every row (OVERALL_RATING alone cost ~1 s) */
     else{var set={},n=0,len=0;S.rows.forEach(function(r){var v=val(r,c);if(v){if(!set[v]){set[v]=1;n++}len+=v.length}});
-      var avg=S.rows.length?len/S.rows.length:0;COLTYPE[c]=(n<=45&&avg<40)||['BUCKET','DISPOSITION','SECTION','NEW','MISMATCH','TIM_RULING','FLEX','NOTIFICATION_SOURCE','SALARY_CONF','SALARY_BASIS','DECLINE_REASON_CODE','FLOOR_STATUS','OVERALL_RATING','SCREEN_GATE'].indexOf(c)>=0?'enum':'text'}
+      var avg=S.rows.length?len/S.rows.length:0;COLTYPE[c]=(n<=45&&avg<40)?'enum':'text'}
   });
 }
-function phoneLayout(){return window.innerWidth<=760||(window.innerWidth<=980&&window.matchMedia('(pointer:coarse)').matches)}
+/* REV-088 (perf): the same test as before (width <= 760, or coarse pointer and width <= 980) through one MediaQueryList.
+   Reading window.innerWidth while the DOM is being rebuilt forced a layout on every call (render calls this per column). */
+var PHONE_MQ_=window.matchMedia('(max-width:760px), (pointer:coarse) and (max-width:980px)');
+function phoneLayout(){return PHONE_MQ_.matches}
 function fitRows_(){var w=$('gridwrap'),g=$('grid'),root=document.documentElement;if(!w||!g)return;if(phoneLayout()||document.body.dataset.density==='comfortable'){root.style.removeProperty('--row-h');root.style.removeProperty('--row-font');return}
   var head=g.querySelector('thead'),avail=w.clientHeight-(head?head.offsetHeight:32);if(avail<=0)return;var r19=avail/19,r16=Math.floor(avail/16),h=r19>=27?Math.min(60,Math.floor(r19)):r16>=23?Math.min(27,r16):Math.max(20,Math.floor(avail/15));
   if(root.style.getPropertyValue('--row-h')!==h+'px'){root.style.setProperty('--row-h',h+'px');root.style.setProperty('--row-font',(h>=30?14:h>=27?13:h>=25?12.5:h>=21?12:11.5)+'px')}}
@@ -1266,9 +1271,25 @@ function render(){
   $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
   var cols=visibleCols();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<2?'sticky ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(c==='LOCATION'?'c-loc ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
-  var tb='';rows.forEach(function(r){
+  /* REV-088 (perf): on the phone the first ROWS_FIRST_ rows are built now and the rest in idle-time chunks (same rows, same
+     order, same markup); the first screen paints without waiting for all of them. Desktop builds every row at once, as before. */
+  var seq=S.renderSeq_=(S.renderSeq_||0)+1,cut=phoneLayout()&&rows.length>ROWS_FIRST_+ROWS_CHUNK_?ROWS_FIRST_:rows.length;
+  var tb='';for(var ri=0;ri<cut;ri++)tb+=rowHtml_(rows[ri],cols);S.renderKey_=cols.join('|');S.renderPending_=cut<rows.length;
+  $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
+  /* REV-088 (perf): fixSticky runs once at the end, from applyColumnWidths, after the <col> widths are set */
+  $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
+  $('grid').querySelectorAll('tbody tr').forEach(bindRow_);
+  if(cut<rows.length)(function more(next){var idle=window.requestIdleCallback||function(f){return setTimeout(function(){f({timeRemaining:function(){return 8}})},16)};
+    idle(function(){if(seq!==S.renderSeq_)return;var tbody=$('grid').querySelector('tbody'),end=Math.min(rows.length,next+ROWS_CHUNK_),h='';for(var k=next;k<end;k++)h+=rowHtml_(rows[k],cols);
+      var before=tbody.rows.length;tbody.insertAdjacentHTML('beforeend',h);for(var q=before;q<tbody.rows.length;q++){var tr=tbody.rows[q];bindRow_(tr);if(tr.getAttribute('data-id')===S.focus)tr.classList.add('focus')}
+      if(end<rows.length)more(end);else S.renderPending_=false},{timeout:400})})(cut);
+  autoFitRenderedColumns_();applyColumnWidths();enableColumnResize();fitRows_();
+  if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();if(S.tab==='columns')renderColumns();if(S.tab==='scoring')renderScoring();document.querySelectorAll('[data-chart-filter]').forEach(function(el){el.setAttribute('aria-pressed',S.chartFilter&&JSON.parse(el.dataset.chartFilter).label===S.chartFilter.label?'true':'false')});
+}
+/* REV-088 (perf): one table row's HTML (the cell code moved out of render() unchanged, so render and renderLight_ share it) */
+function rowHtml_(r,cols){
     var cls=(attentionFor_(r).strong?'priority-hot ':'')+(S.seen[r.id]?'seen ':'')+(S.focus===r.id?'focus':'');
-    tb+='<tr data-id="'+esc(r.id)+'" class="'+cls+'">'+cols.map(function(c,i){var v=val(r,c),extra='';
+    return '<tr data-id="'+esc(r.id)+'" class="'+cls+'">'+cols.map(function(c,i){var v=val(r,c),extra='';
       if(c==='NEW'){var changed=isChanged(r);v='<input type="checkbox" class="row-select" data-id="'+esc(r.id)+'" '+(S.checked[r.id]?'checked':'')+' onclick="event.stopPropagation()"> '+(S.pins[r.id]?'<span class="pin on">★</span> ':'')+(isNew(r)?'<span class="g new">◆</span>':'')+(changed?'<span class="changed">CHANGED</span>':'')}
       else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'rule':'pend')+'">'+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'◈':'◇')+'</span>'+esc(v):''}
       else if(c==='COMPANY')v=(ruling(r)?'<span class="write-tag">'+esc(rulingState(r).s)+'</span> ':'')+(r.parseError?'<span class="g err" title="'+esc(r.parseError)+'">!</span>':'')+esc(v);
@@ -1285,16 +1306,25 @@ function render(){
       if(c==='FLEX'){var fi=PipelineTrust.flexInfo(r.payload);v=fi.text?'<span title="'+esc(fi.label)+'">'+(fi.approx?'<span class="approx">~</span>':'')+esc(fi.text)+'</span>':''}
       if(c==='IDENTITY_CONFIDENCE'){var ic=(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN').toUpperCase();v+='<span class="conf '+esc(ic)+'">'+esc(ic)+'</span>'}
       var mono=/^(INV|PRIMARY_ID|REQ|DATE_|SALARY_|COMP_|APP_DATE|FLEX_ASOF|CELLS)/.test(c)?' mono':'';
-      return '<td class="'+(i<2?'sticky':'')+(c==='OVERALL_RATING'?' pin-r':'')+(c==='LOCATION'?' c-loc':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>'});
-  $('grid').querySelector('tbody').innerHTML=tb||'<tr><td colspan="'+cols.length+'" class="faint">no rows match</td></tr>';
-  fixSticky();
-  $('grid').querySelectorAll('thead th').forEach(function(th){th.onclick=function(e){if(e.target&&e.target.classList.contains('resize-handle'))return;openPop(th.getAttribute('data-c'),th)}});
-  $('grid').querySelectorAll('tbody tr').forEach(function(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!document.body.classList.contains('pe-sheet'))setTimeout(function(){if(document.body.classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}}});
-  $('grid').querySelectorAll('.row-select').forEach(function(cb){cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets();mapSelectionChanged_()}});
-  autoFitRenderedColumns_();applyColumnWidths();enableColumnResize();fitRows_();
-  if(S.tab==='reports')renderReports();if(S.tab==='documents')renderDocuments();if(S.tab==='rules')renderRules();if(S.tab==='columns')renderColumns();if(S.tab==='scoring')renderScoring();document.querySelectorAll('[data-chart-filter]').forEach(function(el){el.setAttribute('aria-pressed',S.chartFilter&&JSON.parse(el.dataset.chartFilter).label===S.chartFilter.label?'true':'false')});
+      return '<td class="'+(i<2?'sticky':'')+(c==='OVERALL_RATING'?' pin-r':'')+(c==='LOCATION'?' c-loc':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>';
 }
-function fixSticky(){var ths=$('grid').querySelectorAll('thead th.sticky');var left=0;ths.forEach(function(th,i){th.style.left=left+'px';var w=th.getBoundingClientRect().width;$('grid').querySelectorAll('tbody tr').forEach(function(tr){var td=tr.children[i];if(td)td.style.left=left+'px'});left+=w})}
+/* REV-088: row click and checkbox handlers (moved out of render() unchanged) */
+function bindRow_(tr){tr.onclick=function(e){if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!$('drawer').classList.contains('pe-sheet'))setTimeout(function(){if($('drawer').classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}};var cb=tr.querySelector('.row-select');if(cb)cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets();mapSelectionChanged_()}}
+/* REV-088 (perf, Tim 23:35 ET "the phone feels very slow"): opening or closing a job used to rebuild every table row (890 at
+   1,872 jobs). When the visible list (same rows, same order, same columns) is unchanged, only the rows named in ids are
+   rebuilt and the focus mark moved; the readout and dashboard redraw as before. Any other change takes the full render(). */
+function renderLight_(ids){if(!S.master)return;var rows=filteredRows(),cols=visibleCols(),trs=$('grid').querySelectorAll('tbody tr[data-id]');
+  if(S.renderKey_!==cols.join('|')||(S.renderPending_?trs.length>rows.length:trs.length!==rows.length)||[].some.call(trs,function(tr,i){return tr.getAttribute('data-id')!==rows[i].id}))return render();
+  attentionCache={};renderReadout();renderDashboard();var byId={};trs.forEach(function(tr){byId[tr.getAttribute('data-id')]=tr});
+  (ids||[]).forEach(function(id){var tr=id&&byId[id],r=id&&rowById(id);if(!tr||!r)return;var tmp=document.createElement('tbody');tmp.innerHTML=rowHtml_(r,cols);var n=tmp.firstElementChild;if(!n)return;tr.replaceWith(n);bindRow_(n);byId[id]=n});
+  Object.keys(byId).forEach(function(id){var tr=byId[id];if(tr.classList.contains('focus')!==(S.focus===id))tr.classList.toggle('focus',S.focus===id)});
+  if(S.tab==='reports')renderReports();}
+/* REV-088 (perf): read the sticky header widths once, then write: the header cells inline, the body cells through one style
+   rule per sticky column. Before, every row's cell got an inline left between layout reads (890 rows x 2 columns). */
+function fixSticky(){var g=$('grid'),ths=[].slice.call(g.querySelectorAll('thead th.sticky')),cg=g.querySelector('colgroup'),cs=cg?cg.children:[],
+    ws=ths.map(function(th){var c=cs[th.cellIndex],w=c&&parseFloat(c.style.width);return w>0?w:th.getBoundingClientRect().width}),left=0,css='';   /* table-layout: fixed, so the <col> width is the column width: no layout read */
+  ths.forEach(function(th,i){th.style.left=left+'px';css+='#grid>tbody>tr>td:nth-child('+(th.cellIndex+1)+'){left:'+left+'px}';left+=ws[i]});
+  var st=$('grid-sticky-css');if(!st){st=document.createElement('style');st.id='grid-sticky-css';document.head.appendChild(st)}if(st.textContent!==css)st.textContent=css}
 /* ---------- header popover: sort + filter ---------- */
 function openPop(c,anchor){
   var pop=$('pop'),t=COLTYPE[c]||'text',f=S.filters[c]||{type:t};
@@ -1440,7 +1470,7 @@ function renderWorkspaceHead_(r){var dh=document.querySelector('#drawer .dh');if
   var locked=S.mapMode==='selected'&&mapLocationsForRow_(r).length>0;
   dh.innerHTML='<div class="d-head"><button id="d-back" class="d-back" type="button" aria-label="Back to the queue">‹ Queue</button><span class="d-label">◉ <span class="d-kind">JOB DRAWER · </span>'+esc(r.id)+'<span class="d-bk"> · '+esc(String(bucketWord_(r.BUCKET)).toUpperCase())+'</span>'+(locked?'<span class="nb-sep"> · </span><span class="nb">LOCKED ON MAP</span>':'')+'</span><span class="wh-nav"><button id="ws-prev" title="Previous row (K)" aria-label="Previous job" '+(i<=0?'disabled':'')+'>‹</button><button id="ws-next" title="Next row (J)" aria-label="Next job" '+(i<0||i>=rows.length-1?'disabled':'')+'>›</button><button id="d-close" aria-label="Close job">✕</button></span></div><div class="wh-top"><div class="wh-title"><h2 id="d-title"></h2><div class="ws-meta" id="d-meta">'+meta+'</div><div class="sub" id="d-sub"></div></div></div><div class="wh-chips">'+chips+'</div>'+decisionEssentials_(r)+'<div class="wh-actions"><fieldset class="wh-action-group wh-prepare"><legend>Posting and application materials</legend><button id="ws-open" '+(ls.preferred?'':'disabled')+' title="'+esc(ls.preferred||'No usable posting link on this row')+'">Open posting</button><button id="ws-packet" title="Copy a plain-text packet of this row for an AI or a note">Copy packet</button><button id="ws-cover" disabled title="Phase 5 · AI cover-letter drafting waits for Tim\'s decision on the recommendation">Draft cover letter</button></fieldset></div>';
   $('d-title').textContent=r.TITLE;$('d-title').title=r.COMPANY+' — '+r.TITLE;
-  $('d-close').onclick=$('d-back').onclick=function(){$('drawer').classList.remove('on');S.focus=null;S.openDelta=null;render();pushHash()};
+  $('d-close').onclick=$('d-back').onclick=function(){var was=S.focus;$('drawer').classList.remove('on');S.focus=null;S.openDelta=null;renderLight_([was]);pushHash()};
   $('ws-prev').onclick=function(){stepFocus_(-1)};$('ws-next').onclick=function(){stepFocus_(1)};
   dh.querySelectorAll('[data-decide-key]').forEach(function(b){b.onclick=function(){prepareDecision_(b.dataset.decideKey)}});
   $('ws-open').onclick=function(){openExternal_(ls.preferred)};$('ws-packet').onclick=function(){copyPacket_(r)};
@@ -1575,9 +1605,9 @@ function renderHistory_(r){
   if(!hasWriter()){$('timeline').innerHTML='<div class="tip">Writer not configured.</div>';return}
   gsGet('events','&primaryId='+encodeURIComponent(r.PRIMARY_ID)+'&limit=200').then(function(j){var ev=j.events||[];S.events[r.id]=ev;$('timeline').innerHTML=ev.length?ev.map(function(e){return '<div class="event"><div class="ts">'+esc((e.ts||'').replace('T',' ').slice(0,19))+' · '+esc(e.actor||'SYSTEM')+'</div><div class="ev"><b>'+esc(e.type||'EVENT')+'</b>'+(e.kind?' · '+esc(e.kind):'')+(e.code?' · '+esc(e.code):'')+(e.note?'<br>'+esc(e.note):'')+'</div></div>'}).join(''):'<div class="tip">No v5 event history yet. Existing master history remains in the row payload.</div>'});
 }
-function openRow(id){var r=rowById(id);if(!r)return;delete $('drawer').dataset.auto;   // REV-083: a real open (tap, keys, map, link) becomes the phone sheet
+function openRow(id){var r=rowById(id);if(!r)return;var prevFocus=S.focus;delete $('drawer').dataset.auto;   // REV-083: a real open (tap, keys, map, link) becomes the phone sheet
 S.focus=id;S.detailTab=S.detailTab||'overview';S.seen[id]=Date.now();LS.set('seen',S.seen);
-  if(!S.openDelta||S.openDelta.id!==id){S.openDelta={id:id,delta:reviewDelta_(r),had:!!S.reviewed[id]};if(recordReview_(r))LS.set('reviewed',S.reviewed)}syncStateUp();$('drawer').classList.add('on');renderDetail(r);render();pushHash()}
+  if(!S.openDelta||S.openDelta.id!==id){S.openDelta={id:id,delta:reviewDelta_(r),had:!!S.reviewed[id]};if(recordReview_(r))LS.set('reviewed',S.reviewed)}syncStateUp();$('drawer').classList.add('on');renderDetail(r);renderLight_([id,prevFocus]);pushHash()}
 function linkify(s){s=esc(s);return s.replace(/(https?:\/\/[^\s"<]+)/g,'<a href="$1" target="_blank" rel="noopener">$1</a>')}
 $('d-close').onclick=function(){$('drawer').classList.remove('on');S.focus=null;S.openDelta=null;render()};
 document.addEventListener('keydown',function(e){if(e.target&&/^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(e.target.tagName)||e.target.isContentEditable||document.querySelector('dialog[open]')||S.tab!=='pipeline'||e.ctrlKey||e.metaKey||e.altKey)return;if(e.key==='Escape'){$('drawer').classList.remove('on');closePop();return}var rows=filteredRows();if(!rows.length)return;var idx=rows.findIndex(function(x){return x.id===S.focus});if(e.key==='ArrowDown'||e.key==='j'||e.key==='J'){e.preventDefault();openRow(rows[Math.min(rows.length-1,idx+1)].id)}else if(e.key==='ArrowUp'||e.key==='k'||e.key==='K'){e.preventDefault();openRow(rows[Math.max(0,idx-1)].id)}else if(['1','2','3','4'].includes(e.key)&&S.focus){e.preventDefault();prepareDecision_(e.key)}else if(e.key==='Enter'&&S.focus){openRow(S.focus)}else if((e.key==='d'||e.key==='D')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-state'))$('edit-state').value='DECLINED_BY_TIM'},0)}else if((e.key==='a'||e.key==='A')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-state'))$('edit-state').value='APPLIED'},0)}else if((e.key==='n'||e.key==='N')&&S.focus){openRow(S.focus);S.detailTab='overview';renderDetail(rowById(S.focus));setTimeout(function(){if($('edit-note'))$('edit-note').focus()},0)}});
@@ -2819,12 +2849,13 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv
 /* REV-083 (Tim 22:58 ET, option A): on the phone an open job is a full-screen sheet. Opening it adds one history entry, so
    the phone Back button closes the sheet; "‹ Queue" / close go back through that same entry. Desktop is untouched. */
 (function sheet_(){var d=$('drawer'),bb=$('bottombar'),open=false;
-  function fit(){var b=bb&&bb.offsetParent!==null?bb.getBoundingClientRect():null;document.body.style.setProperty('--pe-sheet-bottom',(b?Math.max(0,Math.round(innerHeight-b.top)):0)+'px')}
+  var fitted=false;   /* REV-088 (perf): the bottom nav is measured once and again on resize, not on every open (each read forced a layout) */
+  function fit(){fitted=true;var b=bb&&bb.offsetParent!==null?bb.getBoundingClientRect():null;document.body.style.setProperty('--pe-sheet-bottom',(b?Math.max(0,Math.round(innerHeight-b.top)):0)+'px')}
   function sync(){var want=phoneLayout()&&d.classList.contains('on')&&!d.dataset.auto;   /* the load-time preview of the top job (data-auto) stays in the page */
-    if(want===open){if(want)fit();return}open=want;document.body.classList.toggle('pe-sheet',want);
-    if(want){fit();d.scrollTop=0;requestAnimationFrame(function(){d.scrollTop=0;if(window.scrollY)window.scrollTo(0,0)});try{if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}catch(e){}}
+    if(want===open)return;   /* REV-088: class changes inside the open sheet no longer re-measure the bottom nav (resize does) */open=want;d.classList.toggle('pe-sheet',want);   /* REV-088 (perf): on the drawer, so the switch restyles the sheet only (a body class restyled the whole 890-row page) */
+    if(want){if(!fitted)fit();requestAnimationFrame(function(){if(d.scrollTop)d.scrollTop=0;if(window.scrollY)window.scrollTo(0,0)});try{if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}catch(e){}}
     else{try{if(history.state&&history.state.peSheet)history.back()}catch(e){}}}
-  new MutationObserver(sync).observe(d,{attributes:true,attributeFilter:['class','data-auto']});window.addEventListener('resize',sync);
+  new MutationObserver(sync).observe(d,{attributes:true,attributeFilter:['class','data-auto']});window.addEventListener('resize',function(){fitted=false;sync();if(open)fit()});
   window.addEventListener('popstate',function(){if(open&&!(history.state&&history.state.peSheet)){var c=$('d-close');if(c)c.click();else d.classList.remove('on')}});sync();})();
 function pushHash(){var o={t:S.tab,p:S.preset,s:S.sort,f:S.filters};if(S.focus)o.j=S.focus;if(S.mapFull)o.m=1;renderCrumb_();try{history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(o)))}catch(e){}}
 function readHash(){try{if(location.hash.length>1){var o=JSON.parse(decodeURIComponent(location.hash.slice(1)));if(o.t&&$('view-'+o.t))S.tab=o.t;if(o.p&&PRESETS[o.p])S.preset=o.p;if(o.s)S.sort=o.s;if(o.f)S.filters=o.f;if(o.j)S.pendingFocus=String(o.j);if(o.m)S.pendingMap=true}}catch(e){}}
