@@ -637,7 +637,7 @@ function renderWriterStatus_(){
   html+=writerRow_('writer',!hasWriter()?'not configured':!w?'checking…':w.unsupported?'monitor unavailable':w.fetchError?'<span class="pill bad">UNREACHABLE</span>':(label+(w.freeze&&w.freeze.frozen?' · '+esc(w.freeze.reason||'')+' · by '+esc(w.freeze.by||'?'):'')));
   html+=writerRow_('live code',writerBuildHtml_());
   html+=writerRow_('scoring',scoringStampHtml_());
-  html+=writerRow_('review records',reviewStatusHtml_());
+  html+=writerRow_('review records',reviewStatusHtml_());html+=writerRow_('job sheet','<span id="sheet-diag">'+sheetDiagHtml_()+'</span>');   /* REV-089 */
   html+=writerRow_('stored FLEX values',refreshStatusHtml_());
   html+=writerRow_('frontend',buildStatusHtml_()+' <span class="mono"><a href="'+buildCommitUrl_(i.commit||'')+'" target="_blank" rel="noopener">'+esc(short)+'</a></span>'+(i.pr?' · '+prLink_(i.pr,i.subject):''));
   if(w&&!w.unsupported&&!w.fetchError){var q2=w.queue||{},proc2=q2.processing||[],u=w.unverified||{};
@@ -1091,6 +1091,8 @@ function reviewSendNow_(force){if(!S.master)return;if(hasWriter()&&!S.stateSynce
 document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&e.target.closest('[data-review-send]');if(!b)return;e.preventDefault();e.stopPropagation();
   b.disabled=true;b.textContent='Sending…';reviewSendNow_(true);if(!Object.keys(S.reviewDirty||{}).length)renderWriterStatus_()},true);
 /* REV-056: one line in System so a device shows what it holds and whether its records reached the Writer. */
+function sheetDiagHtml_(){var g=S.sheetDiag;if(!g)return 'open a job on the phone to record';return esc(g.at+' · standalone '+(g.standalone?'yes':'no')+' · safe-area top '+g.env+' px · sheet top '+g.sheetTop+' · header top '+g.headTop+' · scroll '+g.scrollTop+'/'+g.winY+' · height '+g.ih+' (visual '+g.vvH+', offset '+g.vvTop+') · nav '+g.bottom)}
+function renderSystemSheetDiag_(){var e=$('sheet-diag');if(e)e.innerHTML=sheetDiagHtml_()}
 function reviewStatusHtml_(){if(typeof PipelineReview==='undefined')return 'not loaded';var all=Object.keys(S.reviewed||{}),bl=all.filter(function(k){return S.reviewed[k].bl}).length,pend=Object.keys(S.reviewDirty||{}).length,b=S.reviewBaseline||LS.get('reviewBaselineInfo',null),x=S.reviewSend;
   var base=LS.get(REVIEW_BASELINE_KEY_,false)?(b&&b.made!=null?'baseline '+b.made+' made'+(b.at?' '+reviewWhen_(b.at):''):'baseline done'):'baseline not run'+(b&&b.reason?': '+b.reason:'')+(!S.stateSynced&&S.stateRead&&!S.stateRead.ok?' (state read failed '+reviewWhen_(S.stateRead.at)+' · '+S.stateRead.error+' · try '+S.stateRead.tries+', retrying)':'');
   var send=x?(x.ok?(x.viaRead?'<span class="pill ok">✓</span> checked the Writer '+reviewWhen_(x.at)+' · '+x.sent+' already there · Writer holds '+x.kept:'<span class="pill ok">✓</span> last send '+reviewWhen_(x.at)+' · '+x.sent+' sent · Writer holds '+x.kept):'<span class="pill bad">⊗</span> last send '+reviewWhen_(x.at)+' · '+esc(x.error)):'no send yet';
@@ -2882,10 +2884,16 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv
    the phone Back button closes the sheet; "‹ Queue" / close go back through that same entry. Desktop is untouched. */
 (function sheet_(){var d=$('drawer'),bb=$('bottombar'),open=false;
   var fitted=false;   /* REV-088 (perf): the bottom nav is measured once and again on resize, not on every open (each read forced a layout) */
+  /* REV-089: what the device reports at each sheet open, shown in System -> Job sheet (for the iPhone home-screen app check) */
+  function diag(){try{var p=document.createElement('div');p.style.cssText='position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top);visibility:hidden;pointer-events:none';document.body.appendChild(p);var env=Math.round(p.getBoundingClientRect().height);p.remove();
+    var hd=d.querySelector('.d-head'),r=d.getBoundingClientRect(),hr=hd?hd.getBoundingClientRect():null,vv=window.visualViewport;
+    S.sheetDiag={at:new Date().toLocaleTimeString(),standalone:!!navigator.standalone||matchMedia('(display-mode: standalone)').matches,env:env,sheetTop:Math.round(r.top),headTop:hr?Math.round(hr.top):null,scrollTop:Math.round(d.scrollTop),winY:Math.round(window.scrollY),
+      ih:innerHeight,vvH:vv?Math.round(vv.height):null,vvTop:vv?Math.round(vv.offsetTop):null,bottom:getComputedStyle(document.body).getPropertyValue('--pe-sheet-bottom').trim()};if(typeof renderSystemSheetDiag_==='function')renderSystemSheetDiag_()}catch(e){}}
   function fit(){fitted=true;var b=bb&&bb.offsetParent!==null?bb.getBoundingClientRect():null;document.body.style.setProperty('--pe-sheet-bottom',(b?Math.max(0,Math.round(innerHeight-b.top)):0)+'px')}
   function sync(){var want=phoneLayout()&&d.classList.contains('on')&&!d.dataset.auto;   /* the load-time preview of the top job (data-auto) stays in the page */
     if(want===open)return;   /* REV-088: class changes inside the open sheet no longer re-measure the bottom nav (resize does) */open=want;d.classList.toggle('pe-sheet',want);   /* REV-088 (perf): on the drawer, so the switch restyles the sheet only (a body class restyled the whole 890-row page) */
-    if(want){if(!fitted)fit();requestAnimationFrame(function(){if(d.scrollTop)d.scrollTop=0;if(window.scrollY)window.scrollTo(0,0)});try{if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}catch(e){}}
+    var de=document.documentElement;de.style.overflow=want?'hidden':'';document.body.style.overflow=want?'hidden':'';   /* REV-089: the page cannot scroll under the sheet */
+    if(want){if(!fitted)fit();requestAnimationFrame(function(){if(d.scrollTop)d.scrollTop=0;if(window.scrollY)window.scrollTo(0,0);requestAnimationFrame(diag)});try{if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}catch(e){}}
     else{try{if(history.state&&history.state.peSheet)history.back()}catch(e){}}}
   new MutationObserver(sync).observe(d,{attributes:true,attributeFilter:['class','data-auto']});window.addEventListener('resize',function(){fitted=false;sync();if(open)fit()});
   window.addEventListener('popstate',function(){if(open&&!(history.state&&history.state.peSheet)){var c=$('d-close');if(c)c.click();else d.classList.remove('on')}});sync();})();
