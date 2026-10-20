@@ -1,4 +1,4 @@
-// REV-074: the structured runtime stores its snapshot as a head + 250-job shards so a page read never
+// REV-075: the structured runtime stores its snapshot as a head + 250-job shards so a page read never
 // parses the whole multi-megabyte snapshot (Cloudflare 503 "Worker exceeded resource limits", 2026-10-19).
 const test = require('node:test');
 const assert = require('node:assert');

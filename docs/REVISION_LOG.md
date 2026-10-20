@@ -2,7 +2,7 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
-## Batch 2026-10-19-F — structured runtime read path stops exceeding the Cloudflare CPU limit (REV-074)
+## Batch 2026-10-19-F — structured runtime read path stops exceeding the Cloudflare CPU limit (REV-075)
 
 Trigger: Tim's 2026-10-19 21:10 ET screenshot — CRITICAL `FETCH FAILED · NO DATA`, "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON", first failure 21:07 ET, no cached copy.
 
@@ -24,7 +24,7 @@ Writer / Apps Script, canonical master, receipts, scoring, Track M UI, KV bindin
 
 ### Verification
 
-`npm test`: 592 pass, 0 fail. `npm run check:cloudflare` passes. Live check after deploy: see REV-074 in forge-coordination `control/CHANGE_REGISTER.txt`.
+`npm test`: 592 pass, 0 fail. `npm run check:cloudflare` passes. Live check after deploy: see REV-075 in forge-coordination `control/CHANGE_REGISTER.txt`.
 
 ### Residual risk
 

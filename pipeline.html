@@ -792,7 +792,7 @@ function importStructuredFromWriter_(base){
   return fetchJsonRetry_(base+'/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(x){var r=x.r,j=x.j;if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('structured import HTTP '+r.status));return j});
 }
 
-/* REV-074: a Cloudflare platform error (503 "Worker exceeded resource limits", 502, 522) is an HTML page.
+/* REV-075: a Cloudflare platform error (503 "Worker exceeded resource limits", 502, 522) is an HTML page.
  * r.json() on it reported "Unexpected token '<'". Read text, name the real failure, retry 5xx/non-JSON twice. */
 function fetchJsonRetry_(url,opts,attempt){
   attempt=attempt||0;
@@ -855,7 +855,7 @@ function loadStructuredRuntime_(q){
     return S.load;
   }).catch(function(e){
     if(seq!==S.loadSeq)return null;
-    /* REV-074: the stored copy is a speed path, not the authority. When it cannot be read, read the canonical
+    /* REV-075: the stored copy is a speed path, not the authority. When it cannot be read, read the canonical
      * master straight from the Writer (the ?src=writer path) instead of stopping on FETCH FAILED. */
     if(hasWriter()&&q.get('noFallback')!=='1'){S.structuredFallback={at:new Date().toISOString(),reason:e.message};readout('<b>stored copy unavailable</b> ('+esc(e.message)+') · reading the master from the Writer');return loadWriter_()}
     S.load={freshness:'NONE',error:e.message,startedAt:new Date().toISOString(),failedAt:new Date().toISOString(),text:'',meta:{source:'structured-runtime',structuredApi:base},fromCache:false,archive:{state:'NOT_LOADED'},evidence:{state:'NOT_LOADED'}};

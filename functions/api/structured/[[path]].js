@@ -31,8 +31,8 @@ function snapshotStore(env) {
   return env && env.PIPELINE_SNAPSHOT_KV ? env.PIPELINE_SNAPSHOT_KV : null;
 }
 
-/* REV-074 (2026-10-19): the snapshot is stored as a small head plus 250-job shards.
- * Until REV-074 every request (health, counts, each 250-row page, even the import) read and JSON.parsed the
+/* REV-075 (2026-10-19): the snapshot is stored as a small head plus 250-job shards.
+ * Until REV-075 every request (health, counts, each 250-row page, even the import) read and JSON.parsed the
  * whole multi-megabyte snapshot. At 1,872 jobs that exceeded the Cloudflare Worker CPU limit and Cloudflare
  * answered 503 "Worker exceeded resource limits" as an HTML page (Pipeline Explorer: "Unexpected token '<'").
  * Now reads parse only the small head, and aligned page reads return the stored shard text with no parse. */
