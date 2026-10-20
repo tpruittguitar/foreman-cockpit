@@ -1,4 +1,5 @@
-/* REV-081 (Track M step 11; Grok Bot 22:18 ET, p42 item 13): no drawer text under 11 px on any tab (details opened).
+/* REV-082 (Track M step 12; Grok Bot 22:46 ET, p42 item 14): materials buttons in the desktop outline style.
+   REV-081 (Track M step 11; Grok Bot 22:18 ET, p42 item 13): no drawer text under 11 px on any tab (details opened).
    REV-080 (Track M step 10; Grok Bot 22:01 ET, p42 item 12): score breakdown as 4-column rows on the phone.
    REV-076 (Track M step 9; Grok Bot 21:22 ET, p42 item 11): Why label 11 px mono, Fit & Score an inline Cyan link.
    REV-074 (Track M step 8; Grok Bot 21:12 ET, p42 item 6): tabs as one 44 px scrolling underline row, 11 px mono, active in view.
@@ -69,6 +70,12 @@ const JOB='V2X-A4CCD49EE686';
     assert.deepEqual(r.dec.btn.map(b=>b.t.replace(/\s+/g,' ')),['✓ Pursue','Hold','Research','⊖ Decline'].map(x=>x),t+'decision buttons: '+JSON.stringify(r.dec.btn));
     r.dec.btn.forEach(b=>assert(b.h>=52,t+'decision target >= 52 px: '+JSON.stringify(b)));assert.equal(r.dec.sub,false,t+'no key hints on the phone');
     assert(r.ev.length===5,'five evidence lines');r.ev.forEach(e=>{assert(e.h>=44,t+'evidence row >= 44 px');assert.equal(e.bar,'3px');assert.match(e.glyph,/^"[✓✕?≈]"$/,t+'state glyph: '+JSON.stringify(r.ev));assert.equal(e.sfs,'11px')});
+    // REV-082 (p42 item 14): materials buttons outline style: no fill, 1 px border, mono 11 px capitals; Open posting Cyan; disabled dashed.
+    const mb=await page.evaluate(()=>[...document.querySelectorAll('#drawer .wh-actions button')].map(b=>{const c=getComputedStyle(b);return {id:b.id,dis:b.disabled,bg:c.backgroundColor,bw:c.borderTopWidth,bs:c.borderTopStyle,bc:c.borderTopColor,c:c.color,tt:c.textTransform,fs:c.fontSize,ff:c.fontFamily}}));
+    const cyan2=await tok(page,'--pe-cyan'),out2=await tok(page,'--pe-outline'),sec2=await tok(page,'--pe-text-secondary'),mono2=await page.evaluate(()=>getComputedStyle(document.querySelector('#drawer .d-label')).fontFamily);
+    assert(mb.length>=3,t+'materials buttons');mb.forEach(b=>{assert.equal(b.bg,'rgba(0, 0, 0, 0)',t+'no fill: '+b.id);assert.equal(b.bw,'1px');assert.equal(b.tt,'uppercase');assert.equal(b.fs,'11px');assert.equal(b.ff,mono2,t+'mono: '+b.id);
+      if(b.dis){assert.equal(b.bs,'dashed',t+'disabled dashed: '+b.id);assert.equal(b.c,sec2)}else if(b.id==='ws-open'){assert.equal(b.bc,cyan2,t+'Open posting Cyan outline');assert.equal(b.c,cyan2)}else{assert.equal(b.bc,out2,t+'outline border: '+b.id);assert.equal(b.c,sec2)}});
+    assert(mb.some(b=>b.id==='ws-open'&&!b.dis),t+'fixture has an enabled Open posting');assert(mb.some(b=>b.dis),t+'fixture has a disabled button');
     assert.equal(r.acts.pos,'static',t+'materials not sticky');assert(r.acts.after,t+'materials after the drawer body');r.acts.btn.forEach(b=>{assert(b.h>=44,t+'materials target >= 44 px');assert(parseFloat(b.fs)>=11)});
     assert.deepEqual(r.under,[],t+'no text under 11 px in ring / decisions / evidence / materials');
     // REV-072 (p42 items 1-4): one 44 px header row with "‹ Queue", 11 px label with the bucket word and no JOB DRAWER / LOCKED ON MAP;
