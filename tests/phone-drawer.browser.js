@@ -1,4 +1,5 @@
-/* REV-076 (Track M step 9; Grok Bot 21:22 ET, p42 item 11): Why label 11 px mono, Fit & Score an inline Cyan link.
+/* REV-080 (Track M step 10; Grok Bot 22:01 ET, p42 item 12): score breakdown as 4-column rows on the phone.
+   REV-076 (Track M step 9; Grok Bot 21:22 ET, p42 item 11): Why label 11 px mono, Fit & Score an inline Cyan link.
    REV-074 (Track M step 8; Grok Bot 21:12 ET, p42 item 6): tabs as one 44 px scrolling underline row, 11 px mono, active in view.
    REV-073 (Track M step 7; Grok Bot 20:54 ET, p42 item 5): state card dropped when quiet, compact otherwise; pay right after the place.
    REV-072 (Track M step 6; Grok Bot 20:35 ET, p42 items 1-4): header row, ‹ Queue, title token, one meta line, ring clear of the decision row.
@@ -89,6 +90,12 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(wy.link.c,await tok(page,'--pe-cyan'),t+'link Cyan');assert.equal(wy.link.td,'underline');assert.equal(wy.link.fs,wy.link.wfs,t+'link at the text size');assert(wy.link.h>=44,t+'link touch >= 44 px: '+wy.link.h);
     await page.locator('#d-body .why-link').tap();await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>document.querySelector('#detail-tabs button.on').dataset.dtab),'fit',t+'link opens Fit & Score');
     await page.locator('#detail-tabs button[data-dtab="overview"]').tap();await page.waitForTimeout(500);
+    // REV-080 (p42 item 12): breakdown rows are a 4-column grid (name · weight · bar · points), 28 px, 13 px text, nothing clipped;
+    // unknown rows say "? " and UNKNOWN in mono 11 px; the footer is mono 11 px.
+    const bd=await page.evaluate(()=>{const b=document.querySelector('#d-body .bd'),cs=e=>getComputedStyle(e);return {rows:[...b.querySelectorAll('.bd-row')].map(r=>({unk:r.classList.contains('unk'),d:cs(r).display,n:cs(r).gridTemplateColumns.split(' ').length,h:Math.round(r.getBoundingClientRect().height),fs:cs(r.querySelector('.nm')).fontSize,
+      pfs:cs(r.querySelector('.p')).fontSize,q:getComputedStyle(r.querySelector('.nm'),'::before').content,clip:[...r.children].filter(c=>c.scrollWidth>c.clientWidth+1).map(c=>c.className),right:r.querySelector('.p').getBoundingClientRect().right,rr:r.getBoundingClientRect().right})),foot:cs(document.querySelector('#d-body .bd-foot')).fontSize}});
+    assert(bd.rows.length>=5,t+'breakdown rows');bd.rows.forEach((r,i)=>{assert.equal(r.d,'grid',t+'row '+i+' grid');assert.equal(r.n,4,t+'four columns');assert(r.h>=28,t+'row 28 px');assert.equal(r.fs,'13px');assert.deepEqual(r.clip,[],t+'nothing clipped in row '+i);assert(r.right<=r.rr+1,t+'points inside the row');
+      if(r.unk){assert.equal(r.q,'"? "',t+'unknown row marked "? "');assert.equal(r.pfs,'11px')}});assert(bd.rows.some(r=>r.unk),t+'fixture has an unknown row');assert.equal(bd.foot,'11px',t+'footer 11 px');
     // REV-073 (p42 item 5): with nothing to verify, block or follow up, the state card is gone on the phone; meta has pay right after the place.
     const de=await page.evaluate(()=>{const s=document.querySelector('#drawer .decision-essentials');return {quiet:s.classList.contains('de-quiet'),shown:!!s.offsetParent,meta:document.getElementById('d-meta').innerText}});
     assert.equal(de.quiet,true,t+'first job has a quiet state card');assert.equal(de.shown,false,t+'quiet state card hidden on the phone');
