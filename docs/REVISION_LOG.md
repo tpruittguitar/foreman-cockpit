@@ -2,6 +2,34 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-19-F — structured runtime read path stops exceeding the Cloudflare CPU limit (REV-075)
+
+Trigger: Tim's 2026-10-19 21:10 ET screenshot — CRITICAL `FETCH FAILED · NO DATA`, "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON", first failure 21:07 ET, no cached copy.
+
+### Root cause (FACT, reproduced)
+
+- 28 of 32 live `GET /api/structured/jobs?limit=250` reads at 21:20 ET returned HTTP 503, Cloudflare HTML page "Worker exceeded resource limits". The Explorer called `r.json()` on that HTML page.
+- Every structured request (health, counts, each of the 8 pages, the import) read `snapshot/current` from KV and `JSON.parse`d the whole snapshot. The 21:07 ET import stored 1,872 jobs. Bench with the same handler and 1,872 realistic rows (9.2 MB): 15 ms median / 21 ms p90 CPU per page read, above the 10 ms Workers Free limit (INFERENCE: this account is on the free CPU limit; the 503 title is Cloudflare's CPU-limit page).
+- Not caused by the Track M UI merges; the Writer, master and Apps Script were unaffected. `?src=writer` loaded LIVE at 21:15 ET.
+
+### Changed
+
+1. `functions/api/structured/[[path]].js`: snapshot stored as `snapshot/v2/head` (meta, counts, total) plus 250-job shards under a generation key; head written last, previous generation's shards deleted, v1 `snapshot/current` retired. Health and counts read only the head. An aligned page read returns the stored shard text with no parse (bench: 3.5 ms median / 4.8 ms p90). Unaligned windows parse only the shards they touch. `/jobs/<id>` scans shard text and parses one shard. `/jobs` with no snapshot answers 409 `STRUCTURED_SNAPSHOT_NOT_LOADED` (the Explorer already imports once on that error) instead of parsing the live master for every page.
+2. `pipeline.html`: `fetchJsonRetry_` reads text, names the real failure ("HTTP 503 · Worker exceeded resource limits"), retries 5xx/non-JSON twice (0.6 s, 1.5 s). If the stored copy still cannot be read and the Writer is configured, the Explorer reads the canonical master from the Writer (the `?src=writer` path) instead of stopping on FETCH FAILED. `?noFallback=1` disables the fallback for diagnosis. The Writer branch of `load()` is now `loadWriter_()`, unchanged in content.
+3. `tests/structured-shards.test.js`: store, 8-page read equals the full set, unaligned and two-shard windows equal a plain slice, job lookup, 404, counts, generation replacement deletes old shards, legacy blob retired, 409 when empty.
+
+### Not changed
+
+Writer / Apps Script, canonical master, receipts, scoring, Track M UI, KV binding, the job record shape returned to clients.
+
+### Verification
+
+`npm test`: 592 pass, 0 fail. `npm run check:cloudflare` passes. Live check after deploy: see REV-075 in forge-coordination `control/CHANGE_REGISTER.txt`.
+
+### Residual risk
+
+The import (`/admin/import-from-writer`) still parses the Writer master JSON and serializes 1,872 jobs in one invocation; it can itself exceed the CPU limit as the population grows. It is called after loads and writes; a failure there leaves the previous snapshot in place and the Explorer falls back to the Writer. Rollback to the previous build makes the old code find no v1 blob, so it imports a fresh one rather than serving stale data.
+
 ## Batch 2026-10-17-E — receipt index to GitHub (REV-010, cutover pending)
 
 Trigger: Tim approved moving the receipt index to GitHub on 2026-10-17; he created the public `forge-writer-state` repo after merging PR #117. The Drive index had previously been saved empty, blocking Writer writes until recovery.
