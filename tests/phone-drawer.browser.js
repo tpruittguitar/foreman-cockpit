@@ -1,4 +1,5 @@
-/* REV-073 (Track M step 7; Grok Bot 20:54 ET, p42 item 5): state card dropped when quiet, compact otherwise; pay right after the place.
+/* REV-074 (Track M step 8; Grok Bot 21:12 ET, p42 item 6): tabs as one 44 px scrolling underline row, 11 px mono, active in view.
+   REV-073 (Track M step 7; Grok Bot 20:54 ET, p42 item 5): state card dropped when quiet, compact otherwise; pay right after the place.
    REV-072 (Track M step 6; Grok Bot 20:35 ET, p42 items 1-4): header row, ‹ Queue, title token, one meta line, ring clear of the decision row.
    REV-071 (Track M step 5; Grok Bot 20:21 ET, phone drawer vs v1.5 p42 B): ring (SVG, --pe-ring-phone 88 px, value 26 px,
    band text right), decision row pinned to the drawer bottom (52 px, no key hints, Pursue · Hold · Research │ Decline),
@@ -68,6 +69,17 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(r.hd.chips,false,t+'chips row dropped');
     assert(r.clear.ringBottom<=r.clear.decTop,t+'ring clear of the decision row: '+JSON.stringify(r.clear));assert(r.clear.scoreBottom<=r.clear.decTop,t+'score block clear: '+JSON.stringify(r.clear));
     assert(parseFloat(r.qv)>=11,t+'.qh-view >= 11 px: '+r.qv);
+    // REV-074 (p42 item 6): tabs are one 44 px underline row at 11 px mono, no boxes, scrolls sideways; the active tab is in view.
+    const tb=await page.evaluate(()=>{const dt=document.getElementById('detail-tabs'),cs=e=>getComputedStyle(e),bs=[...dt.querySelectorAll('button')],r=dt.getBoundingClientRect();
+      return {h:r.height,ox:cs(dt).overflowX,tops:[...new Set(bs.map(b=>Math.round(b.getBoundingClientRect().top)))],btn:bs.map(b=>({t:b.innerText,fs:cs(b).fontSize,h:b.getBoundingClientRect().height,bw:cs(b).borderTopWidth,bl:cs(b).borderLeftWidth,bg:cs(b).backgroundColor,on:b.classList.contains('on'),c:cs(b).color,u:getComputedStyle(b,'::after').height}))}});
+    assert.equal(tb.h,44,t+'tab row 44 px');assert.equal(tb.ox,'auto',t+'tab row scrolls sideways');assert.equal(tb.tops.length,1,t+'tabs on one line: '+JSON.stringify(tb.tops));
+    assert.equal(tb.btn.length,6,t+'six tabs');tb.btn.forEach(b=>{assert.equal(b.fs,'11px',t+'tab 11 px: '+b.t);assert(b.h>=44,t+'tab target 44 px');assert.equal(b.bw,'0px',t+'no box: '+b.t);assert.equal(b.bl,'0px');assert.equal(b.bg,'rgba(0, 0, 0, 0)',t+'no fill: '+b.t)});
+    const on=tb.btn.filter(b=>b.on);assert.equal(on.length,1);assert.equal(on[0].c,await tok(page,'--pe-cyan'),t+'active tab cyan');assert.equal(on[0].u,'2px',t+'active underline 2 px');
+    const sec=await tok(page,'--pe-text-secondary');tb.btn.filter(b=>!b.on).forEach(b=>assert.equal(b.c,sec,t+'resting tab Secondary: '+b.t));
+    await page.locator('#detail-tabs button[data-dtab="history"]').tap();await page.waitForTimeout(500);
+    const hv=await page.evaluate(()=>{const dt=document.getElementById('detail-tabs'),a=dt.querySelector('button.on'),r=dt.getBoundingClientRect(),b=a.getBoundingClientRect();return {t:a.dataset.dtab,inView:b.left>=r.left-1&&b.right<=r.right+1}});
+    assert.equal(hv.t,'history');assert(hv.inView,t+'active tab scrolled into view');
+    await page.locator('#detail-tabs button[data-dtab="overview"]').tap();await page.waitForTimeout(500);
     // REV-073 (p42 item 5): with nothing to verify, block or follow up, the state card is gone on the phone; meta has pay right after the place.
     const de=await page.evaluate(()=>{const s=document.querySelector('#drawer .decision-essentials');return {quiet:s.classList.contains('de-quiet'),shown:!!s.offsetParent,meta:document.getElementById('d-meta').innerText}});
     assert.equal(de.quiet,true,t+'first job has a quiet state card');assert.equal(de.shown,false,t+'quiet state card hidden on the phone');
