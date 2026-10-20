@@ -36,10 +36,10 @@ const JOB='V2X-A4CCD49EE686';
   }
   const measure=page=>page.evaluate(()=>{const wrap=document.getElementById('gridwrap'),wr=wrap.getBoundingClientRect(),g=document.getElementById('grid');
     const th=g.querySelector('thead th[data-c="OVERALL_RATING"]'),tds=[...g.querySelectorAll('tbody tr[data-id]')].slice(0,6).map(tr=>tr.querySelector('td.pin-r'));
-    const tt=g.querySelector('thead th[data-c="TITLE"]'),tn=g.querySelector('thead th[data-c="NEW"]'),title=g.querySelector('tbody tr[data-id] td:nth-child(2)');
+    const tt=g.querySelector('thead th[data-c="TITLE"]'),tn=g.querySelector('thead th[data-c="NEW"]'),title=g.querySelector('tbody tr[data-id] td:nth-child(1)');
     const box=e=>{const r=e.getBoundingClientRect();return {l:r.left,r:r.right,w:r.width}};
     const tl=g.querySelector('thead th[data-c="LOCATION"]'),ths=[...g.querySelectorAll('thead th[data-c]')].map(e=>e.dataset.c),lc=g.querySelector('tbody tr[data-id] td.c-loc'),lcs=lc&&getComputedStyle(lc),mono=getComputedStyle(document.querySelector('#grid thead th')).fontFamily;
-    return {wrap:{l:wr.left,r:wr.right,w:wrap.clientWidth,sw:wrap.scrollWidth,sl:wrap.scrollLeft},th:box(th),tds:tds.map(box),title:box(tt),nw:box(tn),ell:getComputedStyle(title).textOverflow,pos:getComputedStyle(th).position,
+    return {wrap:{l:wr.left,r:wr.right,w:wrap.clientWidth,sw:wrap.scrollWidth,sl:wrap.scrollLeft},th:box(th),tds:tds.map(box),title:box(tt),nw:tn?box(tn):null,ell:getComputedStyle(title).textOverflow,pos:getComputedStyle(th).position,
       order:ths,loc:tl&&box(tl),lcell:lc&&{fs:lcs.fontSize,ff:lcs.fontFamily,c:lcs.color,ell:lcs.textOverflow,ws:lcs.whiteSpace,w:lc.getBoundingClientRect().width},mono}});
   for(const [w,h] of [[390,844],[402,874],[874,402]]){
     const {ctx,page,errors}=await open({phone:[w,h]});
@@ -48,12 +48,9 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(m.pos,'sticky','SCORE pinned on the phone');
     inside(m.th,'SCORE header');m.tds.forEach((b,i)=>inside(b,'score row '+i));
     assert(Math.abs(m.th.r-m.wrap.l-m.wrap.w)<=1.5,w+'x'+h+': SCORE sits at the right edge ('+(m.th.r-m.wrap.l)+' of '+m.wrap.w+')');
-    // REV-087 (Tim 23:35 ET): LOCATION right after TITLE, ~90 px, mono 11 px Secondary, ellipsis; TITLE shrinks first, >= 120 px
-    assert.equal(m.order[m.order.indexOf('TITLE')+1],'LOCATION',w+'x'+h+' LOCATION right after TITLE: '+m.order);
-    assert(m.title.w>=120,'TITLE never under 120 px: '+m.title.w);assert(Math.abs(m.loc.w-90)<=2,w+'x'+h+' LOCATION about 90 px: '+m.loc.w);
-    if(w<500)assert(m.nw.w+m.title.w+m.loc.w+m.th.w<=m.wrap.w+1.5,w+'x'+h+' NEW + TITLE + LOCATION + SCORE fit the pane: '+JSON.stringify([m.nw.w,m.title.w,m.loc.w,m.th.w,m.wrap.w]));
-    assert.equal(m.lcell.fs,'11px');assert.equal(m.lcell.ell,'ellipsis');assert.equal(m.lcell.ws,'nowrap');assert.equal(m.lcell.c,await page.evaluate(()=>{const d=document.createElement('i');d.style.color='var(--pe-text-secondary)';document.body.appendChild(d);const c=getComputedStyle(d).color;d.remove();return c}),'LOCATION Secondary');
-    assert.notEqual(m.lcell.ff,await page.evaluate(()=>getComputedStyle(document.body).fontFamily),'LOCATION in the mono face');
+    // REV-090 (Tim 00:36 ET): the four required columns TITLE · COMPANY · LOCATION · SCORE are fully in view (tests/phone-columns.browser.js has the rest)
+    assert.deepEqual(m.order.slice(0,3),['TITLE','COMPANY','LOCATION'],w+'x'+h+' order: '+m.order);assert.equal(m.order[m.order.length-1],'OVERALL_RATING');
+    assert(m.title.w>=110||w>500,'TITLE >= 110 px by default: '+m.title.w);assert.equal(m.lcell.fs,'11px');assert.equal(m.lcell.ell,'ellipsis');
     assert.equal(m.ell,'ellipsis','long titles end in an ellipsis');
     // REV-070 (N-10): every header and cell text in the phone table is at least 11 px
     const small=await page.evaluate(()=>{const out=[];document.querySelectorAll('#grid thead th, #grid tbody tr[data-id] td, #grid tbody tr[data-id] td *').forEach(e=>{if(!e.textContent.trim())return;const fs=parseFloat(getComputedStyle(e).fontSize);if(fs>0&&fs<11)out.push((e.dataset.c||e.className||e.tagName)+' '+fs)});['::before','::after'].forEach(p=>document.querySelectorAll('#grid thead th').forEach(e=>{const c=getComputedStyle(e,p).content;if(c&&c!=='none'&&c!=='""'){const fs=parseFloat(getComputedStyle(e,p).fontSize);if(fs<11)out.push(e.dataset.c+p+' '+fs)}}));return out.slice(0,8)});

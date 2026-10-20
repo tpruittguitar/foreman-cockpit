@@ -70,7 +70,7 @@
   /* Type */
   --pe-font-label: "IBM Plex Mono", "Inter", ui-monospace, monospace;
   --pe-font-ui: "Inter", system-ui, sans-serif;
-  --pe-label-tracking: .12em; --pe-th-tracking: .08em; --pe-btn-tracking: .06em;
+  --pe-label-tracking: .12em; --pe-th-tracking: .08em; --pe-btn-tracking: .06em; --pe-cell-tracking: .02em;   /* REV-090: phone COMPANY / LOCATION cells (Grok Bot nit on #166) */
   /* Type scale measured on p40 at 1:1 (px). L-1 (N-10): nothing below 11 px. */
   --pe-fs-min: 11px;
   --pe-fs-brand: 16px;        /* PIPELINE EXPLORER */
