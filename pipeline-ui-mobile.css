@@ -48,9 +48,9 @@
   #job-map-card .map-actions{right:62px;bottom:8px}
 
   /* Jobs table: compact, readable, no card rows */
-  #grid th{height:30px;min-height:30px;padding:3px 6px;font:9.5px var(--mono);letter-spacing:.8px}
+  #grid th{height:30px;min-height:30px;padding:3px 6px;font:var(--pe-fs-min,11px) var(--mono);letter-spacing:.6px}/* REV-070 N-10: 11 px floor */
   #grid td,body:not([data-density=comfortable]) #grid td{height:34px;min-height:34px;padding:4px 5px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #grid th[data-c]:before{font-size:9px;letter-spacing:.6px}
+  #grid th[data-c]:before{font-size:var(--pe-fs-min,11px);letter-spacing:.6px}
 
   /* Workspace below the queue */
   #drawer .wh-top{padding:12px 12px 4px}
@@ -117,8 +117,8 @@
   .qh-title{padding-top:5px!important}.qh-title:before{font-size:14px!important}.qh-title .mono{font-size:12px!important}
   .qh-tools{padding-top:4px!important}.qh-view{min-height:34px!important;max-width:118px!important;font-size:10.5px!important;padding:0 7px!important}
   #worksplit{height:min(40vh,285px)!important;min-height:185px!important}
-  #grid th{height:26px!important;min-height:26px!important;padding:2px 5px!important;font-size:8.3px!important;letter-spacing:.55px!important}
-  #grid td,body:not([data-density=comfortable]) #grid td{height:30px!important;min-height:30px!important;padding:3px 5px!important;font-size:10.8px!important;line-height:1.08!important}
+  #grid th{height:26px!important;min-height:26px!important;padding:2px 5px!important;font-size:var(--pe-fs-min,11px)!important;letter-spacing:.5px!important}
+  #grid td,body:not([data-density=comfortable]) #grid td{height:30px!important;min-height:30px!important;padding:3px 5px!important;font-size:var(--pe-fs-min,11px)!important;line-height:1.15!important}
 
   #drawer{border-color:#262626!important}
   #drawer .wh-top{padding:9px 10px 3px!important;gap:6px!important}
