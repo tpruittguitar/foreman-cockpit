@@ -913,7 +913,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
    full-screen sheet over the page header, the banner and the view tabs (p42: the job detail fills the phone). The bottom nav
    stays visible below it (the sheet ends at --pe-sheet-bottom, measured from #bottombar). The sheet scrolls itself, so the
    pinned decision row sits at the sheet's bottom edge. "‹ Queue" and the phone Back button close it (pipeline.html REV-083). */
-/* REV-084 (Tim 23:35 ET, iPhone): the sheet starts below the status bar / notch. The inset is a custom property so a test can
+/* REV-087 (Tim 23:35 ET, iPhone): the sheet starts below the status bar / notch. The inset is a custom property so a test can
    set it (desktop browsers report 0). */
 :root { --pe-safe-top: env(safe-area-inset-top, 0px); }
 @media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
@@ -984,7 +984,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .wh-actions button:disabled, #drawer #d-body .detail-card .row button:disabled { border: 1px dashed var(--pe-outline) !important; color: var(--pe-text-secondary) !important; }
 }
 
-/* REV-084 (Tim 23:35 ET). Phone pipeline row: LOCATION right after TITLE (pipeline.html visibleCols / fitPhoneColumns_: 90 px,
+/* REV-087 (Tim 23:35 ET). Phone pipeline row: LOCATION right after TITLE (pipeline.html visibleCols / fitPhoneColumns_: 90 px,
    TITLE shrinks first and keeps >= 120 px, SCORE stays pinned right). Mono 11 px Secondary, one line with an ellipsis. */
 @media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
   #grid tbody tr[data-id] td.c-loc, body:not([data-density=comfortable]) #grid tbody tr[data-id] td.c-loc { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; letter-spacing: .02em; color: var(--pe-text-secondary) !important;

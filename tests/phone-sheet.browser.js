@@ -51,7 +51,7 @@ const JOB='V2X-A4CCD49EE686';
     // load: the phone previews the top job below the queue (shown, not opened): no sheet, the queue stays usable
     let s0=await st();assert.equal(s0.sheet,false,t+'load-time preview is not a sheet');assert.notEqual(s0.pos,'fixed');
     const hl0=s0.hl;
-    // REV-084 (Tim 23:35 ET, iPhone): simulate a 47 px status-bar inset; on open the header row starts below it, sheet at the top
+    // REV-087 (Tim 23:35 ET, iPhone): simulate a 47 px status-bar inset; on open the header row starts below it, sheet at the top
     await page.addStyleTag({content:':root{--pe-safe-top:47px !important}'});
     await page.locator('#grid tbody tr[data-id]').nth(1).tap();await page.waitForTimeout(1000);
     const top=await page.evaluate(()=>({head:document.querySelector('#drawer .d-head').getBoundingClientRect().top,back:document.getElementById('d-back').getBoundingClientRect().top,title:document.getElementById('d-title').getBoundingClientRect().top,st:document.getElementById('drawer').scrollTop,wy:scrollY,vv:visualViewport?visualViewport.offsetTop:0}));

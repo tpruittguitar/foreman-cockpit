@@ -1135,7 +1135,7 @@ function fitRows_(){var w=$('gridwrap'),g=$('grid'),root=document.documentElemen
 function visibleCols(){var phone=phoneLayout();var set=phone?S.cols.phone:S.cols.desktop;var v=set.filter(function(c){return COLS.indexOf(c)>=0});
   /* REV-069: on the phone SCORE is the right-hand column (pinned there by CSS .pin-r); the saved column order is unchanged */
   if(phone&&v.indexOf('OVERALL_RATING')>=0){v.splice(v.indexOf('OVERALL_RATING'),1);v.push('OVERALL_RATING')}
-  /* REV-084 (Tim 23:35 ET): on the phone LOCATION is the column right after TITLE (added when the saved set lacks it) */
+  /* REV-087 (Tim 23:35 ET): on the phone LOCATION is the column right after TITLE (added when the saved set lacks it) */
   if(phone&&v.indexOf('TITLE')>=0){if(v.indexOf('LOCATION')>=0)v.splice(v.indexOf('LOCATION'),1);v.splice(v.indexOf('TITLE')+1,0,'LOCATION')}return v}
 /* ---------- presets ---------- */
 function validHttpUrl_(v){return /^https?:\/\/[^\s]+$/i.test(String(v||'').trim())}
@@ -1686,7 +1686,7 @@ var PANE_FIT_FLOOR_={TITLE:192,LOCATION:120,COMPANY:120};
 /* Track M step 3 (REV-069, Grok Bot 19:55 ET): on the phone SCORE is pinned to the right edge (CSS .pin-r) and TITLE shrinks
    first, so NEW + TITLE + SCORE fit the pane with a PHONE_PEEK_ px window between them; the other columns scroll through
    that window. TITLE never goes under PHONE_TITLE_MIN_ px and never grows past its content width. */
-var PHONE_PEEK_=96,PHONE_TITLE_MIN_=140,PHONE_SCORE_MIN_=72,PHONE_LOC_W_=90,PHONE_TITLE_MIN_LOC_=120;   /* REV-084: LOCATION 90 px after TITLE; TITLE >= 120 then */
+var PHONE_PEEK_=96,PHONE_TITLE_MIN_=140,PHONE_SCORE_MIN_=72,PHONE_LOC_W_=90,PHONE_TITLE_MIN_LOC_=120;   /* REV-087: LOCATION 90 px after TITLE; TITLE >= 120 then */
 function fitPhoneColumns_(cols,widths){var wrap=$('gridwrap'),avail=wrap&&wrap.clientWidth;
   /* the pane settles after the first fit (map split, landscape): refit whenever its width changes */
   if(wrap&&!S.phoneFitRO&&typeof ResizeObserver==='function'){var lastW=avail;S.phoneFitRO=new ResizeObserver(function(){var nw=wrap.clientWidth;if(nw&&nw!==lastW){lastW=nw;refitColumnsToPane_()}});S.phoneFitRO.observe(wrap)}if(!avail||cols.indexOf('TITLE')<0||cols.indexOf('OVERALL_RATING')<0)return false;

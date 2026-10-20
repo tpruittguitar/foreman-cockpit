@@ -1,4 +1,4 @@
-/* REV-084 (Tim 23:35 ET): phone LOCATION column right after TITLE.
+/* REV-087 (Tim 23:35 ET): phone LOCATION column right after TITLE.
    REV-069 (Track M step 3, Grok Bot 19:55 ET): (a) on the phone SCORE is visible at the right edge without sideways
    scroll and stays there while the other columns scroll; TITLE shrinks first (>= 140 px, ellipsis), leaving a 96 px
    window. 390 x 844, 402 x 874, landscape 874 x 402; desktop not pinned. (b) the ring label rule is never under 11 px.
@@ -48,7 +48,7 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(m.pos,'sticky','SCORE pinned on the phone');
     inside(m.th,'SCORE header');m.tds.forEach((b,i)=>inside(b,'score row '+i));
     assert(Math.abs(m.th.r-m.wrap.l-m.wrap.w)<=1.5,w+'x'+h+': SCORE sits at the right edge ('+(m.th.r-m.wrap.l)+' of '+m.wrap.w+')');
-    // REV-084 (Tim 23:35 ET): LOCATION right after TITLE, ~90 px, mono 11 px Secondary, ellipsis; TITLE shrinks first, >= 120 px
+    // REV-087 (Tim 23:35 ET): LOCATION right after TITLE, ~90 px, mono 11 px Secondary, ellipsis; TITLE shrinks first, >= 120 px
     assert.equal(m.order[m.order.indexOf('TITLE')+1],'LOCATION',w+'x'+h+' LOCATION right after TITLE: '+m.order);
     assert(m.title.w>=120,'TITLE never under 120 px: '+m.title.w);assert(Math.abs(m.loc.w-90)<=2,w+'x'+h+' LOCATION about 90 px: '+m.loc.w);
     if(w<500)assert(m.nw.w+m.title.w+m.loc.w+m.th.w<=m.wrap.w+1.5,w+'x'+h+' NEW + TITLE + LOCATION + SCORE fit the pane: '+JSON.stringify([m.nw.w,m.title.w,m.loc.w,m.th.w,m.wrap.w]));
