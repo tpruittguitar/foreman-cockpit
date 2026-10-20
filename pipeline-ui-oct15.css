@@ -987,17 +987,6 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
 /* REV-087 (Tim 23:35 ET). Phone pipeline row: LOCATION right after TITLE (pipeline.html visibleCols / fitPhoneColumns_: 90 px,
    TITLE shrinks first and keeps >= 120 px, SCORE stays pinned right). Mono 11 px Secondary, one line with an ellipsis. */
 @media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
-  #grid tbody tr[data-id] td.c-loc, body:not([data-density=comfortable]) #grid tbody tr[data-id] td.c-loc { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; letter-spacing: var(--pe-cell-tracking); color: var(--pe-text-secondary) !important;
+  #grid tbody tr[data-id] td.c-loc, body:not([data-density=comfortable]) #grid tbody tr[data-id] td.c-loc { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important; letter-spacing: .02em; color: var(--pe-text-secondary) !important;
     white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
-}
-
-/* REV-090 (Tim 00:36 / 00:37 ET). Phone queue: COMPANY and LOCATION mono 11 px Secondary with an ellipsis (TITLE already ends in
-   one); the header edge of TITLE, COMPANY, LOCATION and SCORE is a 44 px touch target (SCORE's on its left side). */
-@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
-  #grid tbody tr[data-id] td.c-co, body:not([data-density=comfortable]) #grid tbody tr[data-id] td.c-co { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-min) !important;
-    letter-spacing: var(--pe-cell-tracking); color: var(--pe-text-secondary) !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }
-  #grid tbody tr[data-id] td.c-loc { letter-spacing: var(--pe-cell-tracking) !important; }
-  #grid tbody tr[data-id] td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #grid thead th .resize-handle.ph-edge { width: var(--pe-target-phone) !important; right: 0 !important; left: auto !important; border: 0 !important; touch-action: none; z-index: 6; }
-  #grid thead th .resize-handle.ph-edge.ph-edge-l { left: 0 !important; right: auto !important; }
 }
