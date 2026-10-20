@@ -66,7 +66,7 @@ const JOB='V2X-A4CCD49EE686';
       await page.evaluate(id=>{const tr=document.querySelector('#grid tbody tr[data-id="'+id+'"]');tr.click()},other);await page.waitForTimeout(700);
       const r=await page.evaluate(()=>({st:document.getElementById('drawer').scrollTop,head:document.querySelector('#drawer .d-head').getBoundingClientRect().top}));
       assert.equal(r.st,0,t+'next job opens at its top: '+JSON.stringify(r));assert(r.head>=47,t+'next job header visible')}
-    // REV-096: no ancestor of the open sheet clips it (iOS WebKit clipped the fixed sheet to #view-pipeline's scroll box)
+    // REV-097: no ancestor of the open sheet clips it (iOS WebKit clipped the fixed sheet to #view-pipeline's scroll box)
     {const anc=await page.evaluate(()=>{const out=[];for(let e=document.getElementById('drawer').parentElement;e&&e!==document.body;e=e.parentElement){const s=getComputedStyle(e);out.push({id:e.id||e.tagName,ov:s.overflowX+'/'+s.overflowY,tf:s.transform,fl:s.filter,ct:s.contain,wc:s.willChange})}return out});
      anc.forEach(a=>{assert.equal(a.ov,'visible/visible',t+a.id+' does not clip the sheet: '+JSON.stringify(a));assert.equal(a.tf,'none');assert.equal(a.fl,'none');assert.equal(a.ct,'none')})}
     // REV-089: the page cannot scroll under the sheet; System records what the device reported

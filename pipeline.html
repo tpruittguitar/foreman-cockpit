@@ -2936,7 +2936,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv
   function sync(){var want=phoneLayout()&&d.classList.contains('on')&&!d.dataset.auto;   /* the load-time preview of the top job (data-auto) stays in the page */
     if(want===open)return;   /* REV-088: class changes inside the open sheet no longer re-measure the bottom nav (resize does) */open=want;d.classList.toggle('pe-sheet',want);   /* REV-088 (perf): on the drawer, so the switch restyles the sheet only (a body class restyled the whole 890-row page) */
     var de=document.documentElement;de.style.overflow=want?'hidden':'';document.body.style.overflow=want?'hidden':'';   /* REV-089: the page cannot scroll under the sheet */
-    /* REV-096 (Tim 02:59 ET, iPhone: top still hidden, pull shows it, springs back). The sheet's parent #view-pipeline is a
+    /* REV-097 (Tim 02:59 ET, iPhone: top still hidden, pull shows it, springs back). The sheet's parent #view-pipeline is a
        clipping scroll box (overflow hidden/auto) that starts below the page header and tabs; iOS WebKit clips a fixed child to
        it, so the sheet's top sat outside the clip. While the sheet is open no ancestor clips it. Inline styles, so only these
        elements restyle (REV-088 perf). */
