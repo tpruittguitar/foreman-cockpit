@@ -1,4 +1,5 @@
-/* REV-080 (Track M step 10; Grok Bot 22:01 ET, p42 item 12): score breakdown as 4-column rows on the phone.
+/* REV-081 (Track M step 11; Grok Bot 22:18 ET, p42 item 13): no drawer text under 11 px on any tab (details opened).
+   REV-080 (Track M step 10; Grok Bot 22:01 ET, p42 item 12): score breakdown as 4-column rows on the phone.
    REV-076 (Track M step 9; Grok Bot 21:22 ET, p42 item 11): Why label 11 px mono, Fit & Score an inline Cyan link.
    REV-074 (Track M step 8; Grok Bot 21:12 ET, p42 item 6): tabs as one 44 px scrolling underline row, 11 px mono, active in view.
    REV-073 (Track M step 7; Grok Bot 20:54 ET, p42 item 5): state card dropped when quiet, compact otherwise; pay right after the place.
@@ -39,6 +40,13 @@ const JOB='V2X-A4CCD49EE686';
     return {ctx,page,errors,posts,W};
   }
   const tok=(page,v)=>page.evaluate(v=>{const d=document.createElement('i');d.style.color='var('+v+')';document.body.appendChild(d);const c=getComputedStyle(d).color;d.remove();return c},v);
+  // REV-081: every tab, every <details> opened: no text in the drawer under 11 px
+  const under11=async page=>{const out=[];for(const tab of ['overview','posting','fit','application','documents','history']){
+      await page.locator('#detail-tabs button[data-dtab="'+tab+'"]').tap();await page.waitForTimeout(500);
+      out.push(...await page.evaluate(tab=>{const d=document.getElementById('drawer');d.querySelectorAll('details').forEach(x=>x.open=true);const r=[];
+        d.querySelectorAll('*').forEach(e=>{if(!e.getClientRects().length)return;const cs=getComputedStyle(e);if(cs.visibility==='hidden')return;
+          if(![...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim()))return;const fs=parseFloat(cs.fontSize);if(fs<11)r.push(tab+': '+e.tagName+'.'+(typeof e.className==='string'?e.className:'')+' '+fs+'px "'+e.textContent.trim().slice(0,24)+'"')});return r},tab));}
+    await page.locator('#detail-tabs button[data-dtab="overview"]').tap();await page.waitForTimeout(400);return out};
   const lines=fixture.split('\n'),tpl=lines.find(l=>/\| READY_TO_PURSUE \|/.test(l)),extra=[];for(let i=0;i<130;i++)extra.push(tpl.replace(/^\d+ \| V2X-[0-9A-F]+/,(900+i)+' | V2X-'+String(900+i).padStart(12,'0')));
   const big=lines.slice(0,lines.indexOf(tpl)).concat(extra,lines.slice(lines.indexOf(tpl))).join('\n');
   for(const [w,h] of [[390,844],[402,874]]){
@@ -100,6 +108,7 @@ const JOB='V2X-A4CCD49EE686';
     const de=await page.evaluate(()=>{const s=document.querySelector('#drawer .decision-essentials');return {quiet:s.classList.contains('de-quiet'),shown:!!s.offsetParent,meta:document.getElementById('d-meta').innerText}});
     assert.equal(de.quiet,true,t+'first job has a quiet state card');assert.equal(de.shown,false,t+'quiet state card hidden on the phone');
     assert.match(de.meta,/^[^·]+ · [^·]+ · (~?\$|Pay unknown)/,t+'pay right after the place: '+de.meta);
+    assert.deepEqual(await under11(page),[],t+'first job: no drawer text under 11 px on any tab');
     if(w===390)await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-drawer-390x844.png'});
     await page.locator('#d-back').tap();await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>document.getElementById('drawer').classList.contains('on')),false,t+'‹ Queue closes the drawer');
     // an APPLIED job keeps a compact card: no "Current state" row, 11 px labels, next step as a 44 px inline link
@@ -113,6 +122,7 @@ const JOB='V2X-A4CCD49EE686';
     assert.equal(ap.shown,true,t+'APPLIED job shows the state card');assert.equal(ap.state,false,t+'no Current state row on the phone (bucket is in the header)');
     ap.labels.forEach(f=>assert.equal(f,'11px',t+'card labels 11 px'));assert(ap.btn.h>=44,t+'next step target >= 44 px');assert.equal(ap.btn.bw,'0px',t+'next step is an inline link');assert.equal(ap.btn.fs,'13px');
     assert(ap.h<=120,t+'compact card: '+JSON.stringify(ap));
+    assert.deepEqual(await under11(page),[],t+'APPLIED job: no drawer text under 11 px on any tab');
     assert.deepEqual(errors,[]);await ctx.close();}
   // desktop drawer unchanged: decision row static, ring 124 px
   {const {ctx,page,errors}=await open({master:big});await page.locator('#grid tbody tr[data-id]').first().click();await page.waitForTimeout(900);
