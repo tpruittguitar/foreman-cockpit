@@ -844,3 +844,19 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .m-pay { display: inline; }
   #drawer .wh-chips { display: none !important; }
 }
+
+/* Track M step 7 (REV-073, Grok Bot 20:54 ET: p42 item 5). The phone drops the decision-essentials card when it has nothing
+   to say (no decision to verify, no blocker, no application, default next step); the bucket is already in the header line.
+   When it does have something, it is a compact plate: verification line (only with a decision), blocker / applied lines,
+   and the next step as an inline cyan link (44 px target). Labels 11 px mono, text --pe-fs-small. */
+@media (max-width: 760px), (pointer: coarse) and (max-width: 980px) {
+  #drawer .decision-essentials.de-quiet { display: none !important; }
+  #drawer .decision-essentials { margin: 4px 10px 6px !important; padding: 4px 10px !important; line-height: 1.3 !important; }
+  #drawer .decision-essentials .ds-state, #drawer .decision-essentials.de-noverify .ds-verify { display: none !important; }
+  #drawer .decision-essentials .decision-status b, #drawer .decision-essentials .decision-blocker b, #drawer .decision-essentials .decision-applied b {
+    font-family: var(--pe-font-label); font-size: var(--pe-fs-min) !important; font-weight: 400; letter-spacing: var(--pe-label-tracking); text-transform: uppercase; color: var(--pe-text-secondary); margin-right: 6px; }
+  #drawer .decision-essentials .decision-status span, #drawer .decision-essentials p { font-size: var(--pe-fs-small) !important; margin: 4px 0 !important; }
+  #drawer .decision-essentials .next-job-step { display: inline-flex; align-items: center; gap: 4px; min-height: var(--pe-target-phone); margin: 0 !important; padding: 0 !important;
+    border: 0 !important; background: transparent !important; color: var(--pe-cyan) !important; font-family: var(--pe-font-ui) !important; font-size: var(--pe-fs-small) !important;
+    letter-spacing: 0 !important; text-transform: none !important; text-decoration: underline; text-underline-offset: 3px; }
+}
