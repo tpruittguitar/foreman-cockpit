@@ -28,7 +28,7 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
     await page.addInitScript(()=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));window.PX_TEST_BATCH_MS=150});
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{}}));await page.route('**/raw.githubusercontent.com/**',r=>r.fulfill({body:''}));
     await page.route('**/writer*',r=>{const req=r.request(),a=new URL(req.url()).searchParams.get('action');
-      if(req.method()==='POST'){const b=JSON.parse(req.postData()||'{}');posts.push(b);return r.fulfill({json:(writer&&writer.post?writer.post(b):{ok:true,receipt:{REQUEST_ID:b.ruling&&b.ruling.requestId}})})}
+      if(req.method()==='POST'){const b=JSON.parse(req.postData()||'{}');posts.push(b);return Promise.resolve(writer&&writer.post?writer.post(b):{ok:true,receipt:{REQUEST_ID:b.ruling&&b.ruling.requestId}}).then(json=>r.fulfill({json}))}
       if(a==='master')return r.fulfill({json:{ok:true,text:fixture,modifiedTime:new Date().toISOString(),fetchedAt:new Date().toISOString()}});
       if(a==='held_emails')return r.fulfill({json:{ok:true,count:1,holds:[hold]}});
       return r.fulfill({json:{ok:true}})});
@@ -146,12 +146,27 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
   {
     ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}}));
     await page.evaluate(()=>{window.PX_TEST_BATCH_MS=3000});
-    await page.locator('[data-an-more="OPEN"]').click();await page.waitForSelector('#grid tbody tr[data-id]');
+    await page.$eval('[data-an-more="OPEN"]',b=>b.click());await page.waitForSelector('#grid tbody tr[data-id]');
     await page.locator('#grid tbody tr[data-id]').first().click();await page.locator('#edit-note').fill('undo test');
     await page.locator('#save-decision').click();await page.locator('#undo-decision').click();
     await page.waitForTimeout(3500);
     assert.strictEqual(posts.filter(p=>/ruling|batch|undo_ruling/.test(p.action)).length,0,'queued decision undone locally; nothing sent');
     assert.match(await page.locator('#edit-status').innerText(),/Undone/);
+    assert.deepStrictEqual(errors,[]);await ctx.close();
+  }
+  // 9 (Grok re-QA #182). An in-flight ruling the Writer refuses, then Undo → no undo_ruling (it would erase the earlier decision).
+  {
+    let release;const gate=new Promise(z=>release=z);
+    ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}},{post:async b=>{if(b.action==='ruling'){await gate;return {ok:false,error:'PROTECTED_APPLIED_ROW (test)'}}return {ok:true}}}));
+    await page.evaluate(()=>{window.PX_TEST_BATCH_MS=50});
+    await page.$eval('[data-an-more="OPEN"]',b=>b.click());await page.waitForSelector('#grid tbody tr[data-id]');
+    await page.locator('#grid tbody tr[data-id]').first().click();await page.locator('#edit-note').fill('undo in flight');
+    await page.locator('#save-decision').click();await page.waitForFunction(()=>true);await page.waitForTimeout(400);
+    assert.strictEqual(posts.filter(p=>p.action==='ruling').length,1,'the ruling is in flight');
+    await page.locator('#undo-decision').click();release();
+    await page.waitForFunction(()=>/Undone|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});await page.waitForTimeout(500);
+    assert.strictEqual(posts.filter(p=>p.action==='undo_ruling').length,0,'failed in-flight ruling → no undo_ruling sent');
+    assert.match(await page.locator('#edit-status').innerText(),/earlier decision stands/);
     assert.deepStrictEqual(errors,[]);await ctx.close();
   }
   // 4. A held email shows in Needs you with one-tap Same role / Different role.
