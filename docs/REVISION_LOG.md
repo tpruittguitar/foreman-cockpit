@@ -2,7 +2,7 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
-## Batch 2026-10-20-C: Act now + the decision rule + held emails in Needs you (REV-123, Simplify plan PR 1)
+## Batch 2026-10-20-C: Act now + the decision rule + held emails in Needs you (REV-124, Simplify plan PR 1)
 
 Trigger: the Pipeline Explorer simplify plan (PR 1) with Tim's 19:39–19:43 ET rulings. If Tim clicks Applied, it is true. A decided role leaves every default view and can't be decided twice. The saved state comes from the request's own status. A retry reuses the requestId. A held email shows in Needs you with one-tap Same role / Different role.
 
