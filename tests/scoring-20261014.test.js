@@ -52,7 +52,8 @@ test('Open roles is the default view and hides Applied; All live keeps it',()=>{
   assert.match(html,/OPEN:\{label:'Open roles',[^\n]*fn:function\(r\)\{return !terminalJob_\(r\)&&r\.BUCKET!=='APPLIED'\}\}/);
   assert.match(html,/ALL:\{label:'All live'/);
   // Tim 2026-10-18: every start opens on Open roles, even when the URL carries All live or a history/applied view.
-  assert.match(html,/if\(S\.tab==='pipeline'&&\/\^\(ALL\|APPLIED\|DECLINED\|TERMINAL\|TERMINAL_HISTORY\|DEAD_POSTINGS\)\$\/\.test\(S\.preset\)\)S\.preset='OPEN';/);
+  // Simplify PR 1: the same reset applies when the start opens on Act now.
+  assert.match(html,/if\(\(S\.tab==='pipeline'\|\|S\.tab==='act-now'\)&&\/\^\(ALL\|APPLIED\|DECLINED\|TERMINAL\|TERMINAL_HISTORY\|DEAD_POSTINGS\)\$\/\.test\(S\.preset\)\)S\.preset='OPEN';/);
 });
 
 test('structured runtime loads the published model and canonical rules',()=>{

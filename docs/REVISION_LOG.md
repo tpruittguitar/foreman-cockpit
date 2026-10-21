@@ -31,6 +31,24 @@ Trigger: the Pipeline Explorer simplify plan (PR 1) with Tim's 19:39–19:43 ET 
 ### Not changed
 
 Scoring math, the job table, columns, the drawer layout, and the Writer (REV-122 holds the Writer half and needs the Writer deploy).
+## Batch 2026-10-20-B: Tim's Applied stands; email confirms the same row; held emails get Same / Different (REV-122)
+
+Trigger: Tim 2026-10-20 19:39–19:43 ET: "If I click applied then it's true... Some roles don't get a replied notification." Email evidence found later should upgrade the same row and never create a second decision. A held email must show in Needs Tim with a one-tap "Same role / Different role".
+
+### Changed (Writer, `apps-script/Code.gs`)
+
+1. **APPLIED ruling:** writes `APP_CONFIRMATION`. It is `TIM_RULING` for Tim's own ruling, which already needs no email and records "Tim direct statement…". It is `EMAIL` when the ruling came from an email upsert.
+2. **Later email on a Tim-ruled row:** an APPLIED email that matches a row Tim already marked Applied upgrades that same row: `APP_CONFIRMATION=EMAIL`, `APP_EMAIL_EVIDENCE`, `APP_EMAIL_DATE`, tag `APPLIED_EMAIL_CONFIRMED_<date>`. Tim's `APP_STATUS_EVIDENCE` and `APP_DATE` stay as they are. Rows from before this change count as Tim-ruled when they carry the `TIM_APPLIED_` tag or the "Tim direct statement" evidence.
+3. **Near-match hold:** an APPLIED email that matches no row exactly, from an employer where Tim has a role marked Applied with no email yet, is held (`NEAR_TIM_RULED`). It no longer creates a second row.
+4. **Held-email store `PIPELINE_HELD_EMAILS.json`:** every upsert HOLD (near match, ambiguous identity, archived match) is recorded once per email upsert key, from both the single and the batch path.
+   - `GET held_emails` lists the open holds.
+   - `POST resolve_held_email {holdId, choice: SAME|DIFFERENT, primaryId}` replays the held email once. SAME targets the chosen row; on an archived row it restores first, and a second tap attaches the email. DIFFERENT creates the email's own row. Then it closes the hold. Replays answer `ALREADY_RESOLVED`.
+   - Not allowed inside a batch.
+5. **Tests:** `tests/held-emails.test.js` (6), plus the governed write-action list. Full `npm test` passes 612/612.
+
+### Not changed
+
+Exact-match email updates, email replay (`ALREADY_APPLIED`), the rejected-row regression guard, and the Explorer. The Needs Tim card and the Act Now Applied button ship in the next PR. Needs a Writer deploy.
 
 ## Batch 2026-10-20-A: terminal rows keep moving to the archive (REV-117)
 
