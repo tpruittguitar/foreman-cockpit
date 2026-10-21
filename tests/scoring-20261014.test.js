@@ -112,10 +112,10 @@ test('writes retry on Writer lock timeout and the default view re-reads a fresh 
   assert.match(html,/var body=n===1\?\{action:'ruling',ruling:rulingWire_\(items\[0\]\.ru\)\}:\{action:'batch',requests:/);   // REV-132: quick taps coalesce into one batch
   assert.match(html,/return gsPostRetryBusy_\(body,function\(k,of,wait\)/);
   assert.match(html,/gsPostRetryBusy_\(\{action:'batch',requests:chunk\}\)/);
-  assert.match(html,/function reloadAfterWrite_\(\)\{if\(S\.structuredBase&&S\.cfg\.key\)return importStructuredFromWriter_\(S\.structuredBase\)/);
+  assert.match(html,/function reloadAfterWrite_\(\)\{if\(S\.structuredBase&&S\.cfg\.key\)\{if\(structuredSyncDeferred_\(\)\)try\{render\(\)\}catch\(e\)\{\}return structuredSync_\(S\.structuredBase\)/);   // REV-152: at most one rebuild a minute per device
   assert.match(html,/if\(ok\)it\.say\('Saved · refreshing the master to confirm…'\)/);assert.match(html,/if\(any\)reloadAfterWrite_\(\)/);
   assert.match(html,/postRuling_\(r,ru,function\(t\)\{setText_\('edit-status',t\)\}\)/);
-  assert.match(html,/S\.structuredBase=base;\s*if\(S\.cfg\.key&&!S\.structuredSyncing&&Date\.now\(\)-\(S\.structuredSyncedAt\|\|0\)>60000\)/);
+  assert.match(html,/S\.structuredBase=base;\s*if\(S\.cfg\.key&&!S\.structuredSyncing&&!structuredSyncDeferred_\(\)&&Date\.now\(\)-\(S\.structuredSyncedAt\|\|0\)>60000\)/);
   assert.doesNotMatch(html,/gsPost\(\{action:'ruling',ruling:ru\}\)\.then\(function\(j\)\{ru\.receipt/);
   assert.match(html,/\$\('undo-decision'\)\.onclick=function\(\)\{if\(!hasWriter\(\)\)\{alert\('Writer required for undo\.'\);return\} undoRuling_\(r,/);   // Grok QA #182: undo goes through the queue
   assert.match(html,/else if\(x\.ok\)\{ok=false;err=String\(\(j&&j\.error\)\|\|'batch not committed; retry'\)\}/);

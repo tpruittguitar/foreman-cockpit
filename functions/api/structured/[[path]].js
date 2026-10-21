@@ -38,7 +38,26 @@ function snapshotStore(env) {
  * Now reads parse only the small head, and aligned page reads return the stored shard text with no parse. */
 const SHARD_SIZE = 250;
 const HEAD_KEY = 'snapshot/v2/head';
-function shardKey(gen, i) { return 'snapshot/v2/' + gen + '/' + i; }
+function shardKey(gen, i) { return 'snapshot/v2/' + gen + '/' + i; }   /* REV-075 v2 layout, read only for a head written before REV-152 */
+
+/* REV-152 (Tim 2026-10-21 15:32 ET "Build 142", renumbered: 142 was taken): the free Workers KV plan allows 1,000 deletes
+ * and 1,000 writes a day. Every import wrote a new generation (8 puts) and deleted the old one (8 deletes), and the Explorer
+ * imports after every save and on every page load, so on 2026-10-21 deletes ran out ("KV requests are temporarily blocked",
+ * reset 00:00 UTC). Now each shard is stored under a name made from its own content: a shard that did not change is not
+ * written again (a ruling changes one shard, so an import costs about 2 writes), a content-named key never changes value
+ * (no stale-cache or two-writer mix-ups), and nothing is deleted: every shard carries a 2-day expiry, shards still in use
+ * are re-written once a day, and shards left behind by a newer import simply expire. Expiry costs no KV operation. */
+const SHARD_TTL_S = 2 * 86400;
+const SHARD_REFRESH_MS = 86400000;            /* re-put a shard still in use once it is a day old, well inside its 2-day expiry */
+const HEAD_UNCHANGED_REFRESH_MS = 15 * 60000; /* an identical import re-writes the head (new timestamps) at most every 15 min */
+function contentKey(hash) { return 'snapshot/v3/s/' + hash; }
+
+async function sha(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].slice(0, 12).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function headShardKey(head, i) { return head.keys ? head.keys[i] : shardKey(head.gen, i); }
 
 async function readHead(env) {
   const store = snapshotStore(env);
@@ -48,7 +67,7 @@ async function readHead(env) {
 }
 
 async function readShardText(env, head, i) {
-  const raw = await snapshotStore(env).get(shardKey(head.gen, i));
+  const raw = await snapshotStore(env).get(headShardKey(head, i));
   if (raw == null) throw new Error('SNAPSHOT_SHARD_MISSING_' + i);
   return raw;
 }
@@ -59,21 +78,43 @@ async function readAllJobs(env, head) {
   return jobs;
 }
 
+/* Returns { stored, mode, written, deleted } — written/deleted count KV operations so the cost of each import is visible. */
 async function saveSnapshot(env, snapshot) {
   const store = snapshotStore(env);
   if (!store) return false;
   const jobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
   const previous = await readHead(env).catch(() => null);
-  const gen = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const now = Date.now();
+  const prevAt = {};
+  if (previous && previous.keys) previous.keys.forEach((k, i) => { prevAt[k] = (previous.putAt && previous.putAt[i]) || 0; });
   const shards = Math.ceil(jobs.length / SHARD_SIZE);
-  for (let i = 0; i < shards; i++) await store.put(shardKey(gen, i), JSON.stringify(jobs.slice(i * SHARD_SIZE, (i + 1) * SHARD_SIZE)));
-  const head = { gen, shardSize: SHARD_SIZE, shards, total: jobs.length, meta: snapshot.meta || {}, counts: snapshot.counts || {}, ok: snapshot.ok !== false };
-  await store.put(HEAD_KEY, JSON.stringify(head));   /* head last: readers switch generations in one step */
-  if (previous && previous.gen && previous.gen !== gen) {
-    for (let i = 0; i < (previous.shards || 0); i++) { try { await store.delete(shardKey(previous.gen, i)); } catch {} }
+  const keys = [], putAt = [];
+  let written = 0, deleted = 0;
+  for (let i = 0; i < shards; i++) {
+    const text = JSON.stringify(jobs.slice(i * SHARD_SIZE, (i + 1) * SHARD_SIZE));
+    const key = contentKey(await sha(text));
+    const seen = prevAt[key];
+    if (seen && now - seen < SHARD_REFRESH_MS) { keys.push(key); putAt.push(seen); continue; }
+    await store.put(key, text, { expirationTtl: SHARD_TTL_S });
+    written++; keys.push(key); putAt.push(now);
   }
-  try { await store.delete(SNAPSHOT_KEY); } catch {}   /* retire the single-blob v1 copy so a rollback re-imports instead of serving it stale */
-  return true;
+  const same = !!(previous && previous.keys && written === 0 && previous.keys.length === keys.length && previous.keys.every((k, i) => k === keys[i]));
+  if (same && now - (previous.at || 0) < HEAD_UNCHANGED_REFRESH_MS) return { stored: true, mode: 'UNCHANGED', written: 0, deleted: 0 };
+  const head = { v: 3, keys, putAt, at: now, shardSize: SHARD_SIZE, shards, total: jobs.length, meta: snapshot.meta || {}, counts: snapshot.counts || {}, ok: snapshot.ok !== false, v1Retired: true };
+  await store.put(HEAD_KEY, JSON.stringify(head));   /* head last: readers switch to the new shard list in one step */
+  written++;
+  /* One-time clean-up of the pre-REV-152 layout; after that no import deletes anything. */
+  if (!previous || !previous.v1Retired) {
+    if (previous && previous.gen) for (let i = 0; i < (previous.shards || 0); i++) { try { await store.delete(shardKey(previous.gen, i)); deleted++; } catch {} }
+    try { await store.delete(SNAPSHOT_KEY); deleted++; } catch {}   /* retire the single-blob v1 copy so a rollback re-imports instead of serving it stale */
+  }
+  return { stored: true, mode: same ? 'UNCHANGED_HEAD_REFRESHED' : 'STORED', written, deleted };
+}
+
+/* REV-152: a shard can be missing when it expired (no import for 2 days) or has not reached this location yet. Answer
+ * NOT_LOADED so the Explorer re-imports once (its existing path) and meanwhile reads the master from the Writer. */
+function shardMissing(e) {
+  return response({ ok: false, service: 'structured-runtime', error: 'STRUCTURED_SNAPSHOT_NOT_LOADED', detail: String(e && e.message || e) }, 409);
 }
 
 function jobsPageResponse(head, rawJobs, limit, offset) {
@@ -218,8 +259,8 @@ export async function onRequest(context) {
       if (!snapshot || !Array.isArray(snapshot.jobs)) return response({ ok: false, error: 'INVALID_SNAPSHOT', detail: 'Snapshot must include jobs array.' }, 400);
       if (!snapshot.meta) snapshot.meta = {};
       snapshot.meta.storedAt = new Date().toISOString();
-      const stored = await saveSnapshot(context.env, snapshot);
-      return response({ ok: true, service: 'structured-runtime', imported: true, stored, jobs: snapshot.jobs.length, counts: snapshot.counts || {}, meta: snapshot.meta });
+      const kv = await saveSnapshot(context.env, snapshot);
+      return response({ ok: true, service: 'structured-runtime', imported: true, stored: !!(kv && kv.stored), kv, jobs: snapshot.jobs.length, counts: snapshot.counts || {}, meta: snapshot.meta });
     } catch (e) {
       return response({ ok: false, service: 'structured-runtime', error: 'SNAPSHOT_UPLOAD_FAILED', detail: String(e && e.message || e) }, 502);
     }
@@ -232,8 +273,8 @@ export async function onRequest(context) {
       const built = parseMasterText(master.text);
       built.meta.writerFetchedAt = master.fetchedAt || master.modifiedTime || '';
       built.meta.writerId = master.id || '';
-      const stored = await saveSnapshot(context.env, built);
-      return response({ ok: true, service: 'structured-runtime', imported: true, stored, jobs: built.jobs.length, counts: built.counts, meta: built.meta });
+      const kv = await saveSnapshot(context.env, built);
+      return response({ ok: true, service: 'structured-runtime', imported: true, stored: !!(kv && kv.stored), kv, jobs: built.jobs.length, counts: built.counts, meta: built.meta });
     } catch (e) {
       return response({ ok: false, service: 'structured-runtime', error: 'IMPORT_FROM_WRITER_FAILED', detail: String(e && e.message || e) }, 502);
     }
@@ -248,7 +289,10 @@ export async function onRequest(context) {
 
   if (path === '/jobs') {
     const { limit, offset } = normalizeLimitOffset(url);
-    if (snapshot) return snapshotJobsPage(context.env, snapshot, limit, offset);
+    if (snapshot) {
+      try { return await snapshotJobsPage(context.env, snapshot, limit, offset); }
+      catch (e) { if (!/SNAPSHOT_SHARD_MISSING/.test(String(e && e.message))) throw e; return shardMissing(e); }
+    }
     /* No snapshot: say so (the Explorer then imports once) rather than parse the live master on every page. */
     return response({ ok: false, service: 'structured-runtime', error: 'STRUCTURED_SNAPSHOT_NOT_LOADED', detail: 'No structured snapshot is stored; POST /api/structured/admin/import-from-writer first.' }, 409);
   }
@@ -258,7 +302,8 @@ export async function onRequest(context) {
     const id = decodeURIComponent(jobMatch[1]);
     const needle = JSON.stringify(id);
     for (let i = 0; i < snapshot.shards; i++) {
-      const raw = await readShardText(context.env, snapshot, i);
+      let raw;
+      try { raw = await readShardText(context.env, snapshot, i); } catch (e) { if (!/SNAPSHOT_SHARD_MISSING/.test(String(e && e.message))) throw e; return shardMissing(e); }
       if (raw.indexOf(needle) < 0) continue;
       const job = JSON.parse(raw).find(j => String(j.PRIMARY_ID || j.id || '') === id);
       if (job) return response({ ok: true, service: 'structured-runtime', job, meta: snapshot.meta || {}, source: 'snapshot' });
