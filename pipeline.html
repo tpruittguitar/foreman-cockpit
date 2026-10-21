@@ -1662,6 +1662,7 @@ function postRuling_(r,ru,say){
 var RULING_BATCH_={q:[],timer:0,chain:Promise.resolve(),rows:{},MS:(typeof window!=='undefined'&&window.PX_TEST_BATCH_MS)||3000,MAX:25};
 function rulingWire_(ru){var w=JSON.parse(JSON.stringify(ru));delete w.decisionSnap;delete w.writeStatus;delete w.error;delete w.receipt;delete w.outbox;return w}   // device-only fields stay here
 function rulingEnqueue_(r,ru,say,now){
+  if(ru.undone){delete OUTBOX_.inflight[ru.requestId];return Promise.resolve()}   // Undo got there first: never send it
   return new Promise(function(res){
     RULING_BATCH_.q=RULING_BATCH_.q.filter(function(x){if(x.r.id!==r.id)return true;if(x.ru.requestId!==ru.requestId)delete OUTBOX_.inflight[x.ru.requestId];x.res();return false});   // newest decision on a row wins; the Writer refuses two for one row in a batch
     RULING_BATCH_.q.push({r:r,ru:ru,say:say,res:res});
@@ -1717,7 +1718,8 @@ function undoRuling_(r,say){
      undone is known to have landed: its send came back saved, or request_result reports it COMPLETE|PENDING. A failed send,
      a check that errors, or "not found" drops it locally, so Tim's earlier decision on that row is never erased. */
   var queued=false;RULING_BATCH_.q=RULING_BATCH_.q.filter(function(x){if(x.r.id!==r.id)return true;queued=true;x.ru.undone=true;delete OUTBOX_.inflight[x.ru.requestId];x.res();return false});
-  var flying=(RULING_BATCH_.rows[r.id]||[]).slice(),ru=S.rulings[r.id],retrying=!!(ru&&outboxRetryable_(ru));   // flying: sends for this row that left the queue (they may land)
+  var flying=(RULING_BATCH_.rows[r.id]||[]).slice(),ru=S.rulings[r.id],retrying=!!(ru&&outboxRetryable_(ru)),
+    saved=!ru||(typeof PipelineActNow!=='undefined'?PipelineActNow.saveState(ru)==='SAVED':/^(VERIFIED|READBACK_PENDING|READBACK_UNCONFIRMED)$/.test(String(ru.writeStatus||'')));   // no local record: a decision made elsewhere   // flying: sends for this row that left the queue (they may land)
   flying.forEach(function(f){f.undone=true});
   if(ru){ru.undone=true;if(ru.outbox)ru.outbox.auto=false;delete S.rulings[r.id];LS.set('rulings',S.rulings)}
   render();
@@ -1728,7 +1730,7 @@ function undoRuling_(r,say){
     var check;
     if(flying.length)check=flying.some(function(f){return f.sent===true})?Promise.resolve(true):Promise.all(flying.filter(function(f){return f.sent!==false}).map(landed_)).then(function(v){return v.some(Boolean)});
     else if(retrying)check=landed_(ru);
-    else check=Promise.resolve(true);   // a saved decision: undo it on the Writer
+    else check=Promise.resolve(saved);   // only a saved decision is undone on the Writer; a refused one or a draft never landed
     return check.then(function(landed){
       if(!landed){say('Undone · it never reached the Writer, so your earlier decision stands');render();return}
       return gsPost({action:'undo_ruling',undo:{primaryId:r.PRIMARY_ID}}).then(function(j){if(j.ok){say('Undone');reloadAfterWrite_()}else say(j.error||'Undo failed')});
@@ -1751,8 +1753,9 @@ function outboxDue_(force){var now=Date.now();return Object.keys(S.rulings).filt
 function outboxTick_(force){if(OUTBOX_.busy||!hasWriter()||!S.load||S.load.freshness!=='LIVE')return;var due=outboxDue_(force);if(!due.length){outboxSchedule_();return}
   if(due.length>1){   // REV-132: several waiting → ask request_result for each (reads, no lock), then one batch for the rest
     OUTBOX_.busy=true;due=due.slice(0,RULING_BATCH_.MAX);
+    var held=due.map(function(k){return S.rulings[k]});
     Promise.all(due.map(function(k){var ru=S.rulings[k];return gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return !!(j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||'')))},function(){return false})})).then(function(landed){
-      var ps=[];due.forEach(function(k,i){var ru=S.rulings[k];
+      var ps=[];due.forEach(function(k,i){var ru=held[i];if(!ru||ru.undone)return;   // undone during the check (Undo also removes it from S.rulings)
         if(landed[i]){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;return}
         var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();ru.writeStatus='SUBMITTING';ru.error='';OUTBOX_.inflight[ru.requestId]=1;ps.push(rulingEnqueue_(rowById(k)||{id:k},ru,function(){}))});
       LS.set('rulings',S.rulings);rulingFlush_();if(!ps.length)render();return Promise.all(ps)}).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()});return}
@@ -1760,6 +1763,7 @@ function outboxTick_(force){if(OUTBOX_.busy||!hasWriter()||!S.load||S.load.fresh
   var ru=S.rulings[id],r=rowById(id)||{id:id};OUTBOX_.busy=true;
   gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||''))?'landed':'send'},function(){return 'send'}).then(function(next){
     if(next==='landed'){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;LS.set('rulings',S.rulings);render();return}
+    if(ru.undone)return;   // undone during the check
     var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();
     ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;return rulingEnqueue_(r,ru,function(){},true);
   }).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()})}

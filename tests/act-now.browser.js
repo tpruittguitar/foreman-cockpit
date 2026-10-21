@@ -169,6 +169,42 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
     assert.match(await page.locator('#edit-status').innerText(),/earlier decision stands/);
     assert.deepStrictEqual(errors,[]);await ctx.close();
   }
+  // 10/11 (Grok re-QA #182 2a/2b). Seeded rulings on one row; the drawer's Undo for that row.
+  async function seeded(seed,onGet){
+    const c=await browser.newContext({viewport:{width:1440,height:900}}),pg=await c.newPage(),errs=[],ps=[];pg.on('pageerror',e=>errs.push(e.message));
+    await pg.addInitScript(s=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));localStorage.setItem('px.rulings',JSON.stringify(s));window.PX_TEST_BATCH_MS=50},seed);
+    await pg.route('**/api.github.com/**',r=>r.fulfill({json:{}}));await pg.route('**/raw.githubusercontent.com/**',r=>r.fulfill({body:''}));
+    await pg.route('**/writer*',async r=>{const req=r.request(),u=new URL(req.url()),a=u.searchParams.get('action');
+      if(req.method()==='POST'){ps.push(JSON.parse(req.postData()||'{}'));return r.fulfill({json:{ok:true}})}
+      if(a==='master')return r.fulfill({json:{ok:true,text:fixture,modifiedTime:new Date().toISOString(),fetchedAt:new Date().toISOString()}});
+      if(a==='request_result')return r.fulfill({json:await onGet(u)});
+      return r.fulfill({json:{ok:true}})});
+    await pg.goto(base+'/pipeline.html?src=writer&open=jobs');await pg.waitForSelector('#grid tbody tr[data-id]');
+    return {c,pg,errs,ps};
+  }
+  const pid='V2X-C567A75157C0',drawer=async pg=>{await pg.evaluate(id=>{const s=document.getElementById('search');if(s){s.value=id;s.dispatchEvent(new Event('input',{bubbles:true}))}},pid);
+    await pg.waitForSelector('#grid tbody tr[data-id="'+pid+'"]',{timeout:10000});await pg.$eval('#grid tbody tr[data-id="'+pid+'"]',tr=>tr.click());await pg.waitForSelector('#undo-decision')};
+  {  // 10: a refused "Decision not saved" is undone locally; undo_ruling would erase the earlier decision
+    const {c,pg,errs,ps}=await seeded({[pid]:{kind:'DECLINE',code:'FIT',writeStatus:'WRITE_FAILED',error:'PROTECTED_APPLIED_ROW (test)',ts:'2026-10-20T20:20:58.387Z',primaryId:pid,actor:'TIM',requestId:'PX-REFUSED-1'}},()=>({ok:true,found:false}));
+    await drawer(pg);await pg.$eval('#undo-decision',b=>b.click());
+    await pg.waitForFunction(()=>/Undone|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});await pg.waitForTimeout(400);
+    assert.strictEqual(ps.filter(p=>p.action==='undo_ruling').length,0,'refused ruling → no undo_ruling');
+    assert.match(await pg.locator('#edit-status').innerText(),/earlier decision stands/);
+    assert.deepStrictEqual(errs,[]);await c.close();
+  }
+  {  // 11: Undo while the outbox's request_result check is running → the outbox never sends that ruling
+    let release,first=true;const gate=new Promise(z=>release=z);
+    const {c,pg,errs,ps}=await seeded({[pid]:{kind:'DECLINE',code:'FIT',writeStatus:'WRITE_FAILED',error:'Lock timeout: another process was holding the lock for too long.',outbox:{auto:true,tries:1,nextAt:0},ts:'2026-10-20T20:20:58.387Z',primaryId:pid,actor:'TIM',requestId:'PX-RACE-1'}},
+      async()=>{if(first){first=false;await gate}return {ok:true,found:false}});
+    await pg.waitForFunction(()=>performance.getEntriesByType('resource').some(e=>/action=request_result/.test(e.name))||true);
+    await drawer(pg);await pg.waitForTimeout(3000);   // the outbox's check (fired ~2.5 s after load) is now held at the gate
+    await pg.$eval('#undo-decision',b=>b.click());
+    await pg.waitForFunction(()=>/Undone|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});
+    release();await pg.waitForTimeout(1500);
+    assert.strictEqual(ps.filter(p=>p.action==='ruling'||p.action==='batch').length,0,'the undone ruling is never sent');
+    assert.strictEqual(ps.filter(p=>p.action==='undo_ruling').length,0);
+    assert.deepStrictEqual(errs,[]);await c.close();
+  }
   // 4. A held email shows in Needs you with one-tap Same role / Different role.
   ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}}));
   await page.locator('#bell').click();await page.waitForSelector('[data-nt-held="HOLD-UK-test0001"]',{timeout:10000});
