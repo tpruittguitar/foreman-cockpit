@@ -820,7 +820,23 @@ function gsPostRetryBusy_(body,onRetry){var attempt=0;function go(){return gsPos
 function setText_(id,text){var e=$(id);if(e)e.textContent=text}
 /* The default view reads a stored copy of the master. After a write, rebuild that copy from the Writer before reading,
  * so the readback sees the write. Until 2026-10-15 the copy was rebuilt only by a manual button (stale since Oct 11). */
-function reloadAfterWrite_(){if(S.structuredBase&&S.cfg.key)return importStructuredFromWriter_(S.structuredBase).then(function(){S.structuredSyncedAt=Date.now();return load()},function(){return load()});return load()}
+/* REV-152 (Tim 2026-10-21 15:32 ET): Cloudflare's free plan allows 1,000 KV writes a day and every rebuild of the stored copy
+ * spends some, so one device rebuilds it at most once a minute. The first rebuild after a quiet minute runs at once (one
+ * ruling, or one 3-s batch, reloads exactly as before). Saves inside that minute share one rebuild at the end of the minute;
+ * their rulings already show on screen from S.rulings, and the reload (which verifies them) follows that rebuild. */
+var STRUCT_SYNC_={MS:60000,last:0,running:null,trail:null};
+function structuredSyncWait_(){return Math.max(0,STRUCT_SYNC_.MS-(Date.now()-STRUCT_SYNC_.last))}
+function structuredSyncDeferred_(){return !!(STRUCT_SYNC_.running||STRUCT_SYNC_.trail||structuredSyncWait_()>0)}
+function structuredSync_(base){
+  function run(){STRUCT_SYNC_.last=Date.now();var p=STRUCT_SYNC_.running=importStructuredFromWriter_(base),done=function(){if(STRUCT_SYNC_.running===p)STRUCT_SYNC_.running=null};p.then(done,done);return p}
+  if(STRUCT_SYNC_.trail)return STRUCT_SYNC_.trail;                                     // already one rebuild waiting: it will include this save
+  if(!STRUCT_SYNC_.running&&structuredSyncWait_()===0)return run();
+  var t=STRUCT_SYNC_.trail=new Promise(function(res){setTimeout(res,structuredSyncWait_())})
+    .then(function(){return STRUCT_SYNC_.running&&STRUCT_SYNC_.running.catch(function(){})})   // never two imports at once from this device
+    .then(function(){if(STRUCT_SYNC_.trail===t)STRUCT_SYNC_.trail=null;return run()});      // a save after this point starts a new wait
+  return t;
+}
+function reloadAfterWrite_(){if(S.structuredBase&&S.cfg.key){if(structuredSyncDeferred_())try{render()}catch(e){}return structuredSync_(S.structuredBase).then(function(){S.structuredSyncedAt=Date.now();return load()},function(){return load()})}return load()}
 function importStructuredFromWriter_(base){
   if(!S.rows||!S.rows.length)readout('<b>seeding structured runtime.</b> importing current Writer master');
   return fetchJsonRetry_(base+'/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(x){var r=x.r,j=x.j;if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('structured import HTTP '+r.status));return j});
@@ -889,7 +905,7 @@ function loadStructuredRuntime_(q){
     if(S.master&&S.text===j.text){S.meta=Object.assign(meta,{fromCache:false});S.structuredSame=(S.structuredSame||0)+1;renderLoadAlert_();renderReadout()}
     else apply(j.text,meta,false);renderLoadAlert_();renderReadout();
     S.structuredBase=base;
-    if(S.cfg.key&&!S.structuredSyncing&&Date.now()-(S.structuredSyncedAt||0)>60000){S.structuredSyncing=true;importStructuredFromWriter_(base).then(function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now();if(seq===S.loadSeq)load()},function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now()})}
+    if(S.cfg.key&&!S.structuredSyncing&&!structuredSyncDeferred_()&&Date.now()-(S.structuredSyncedAt||0)>60000){S.structuredSyncing=true;structuredSync_(base).then(function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now();if(seq===S.loadSeq)load()},function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now()})}
     return S.load;
   }).catch(function(e){
     if(seq!==S.loadSeq)return null;
