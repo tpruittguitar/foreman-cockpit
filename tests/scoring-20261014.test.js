@@ -117,6 +117,9 @@ test('writes retry on Writer lock timeout and the default view re-reads a fresh 
   assert.match(html,/postRuling_\(r,ru,function\(t\)\{setText_\('edit-status',t\)\}\)/);
   assert.match(html,/S\.structuredBase=base;\s*if\(S\.cfg\.key&&!S\.structuredSyncing&&Date\.now\(\)-\(S\.structuredSyncedAt\|\|0\)>60000\)/);
   assert.doesNotMatch(html,/gsPost\(\{action:'ruling',ruling:ru\}\)\.then\(function\(j\)\{ru\.receipt/);
+  assert.match(html,/\$\('undo-decision'\)\.onclick=function\(\)\{if\(!hasWriter\(\)\)\{alert\('Writer required for undo\.'\);return\} undoRuling_\(r,/);   // Grok QA #182: undo goes through the queue
+  assert.match(html,/else if\(x\.ok\)\{ok=false;err=String\(\(j&&j\.error\)\|\|'batch not committed; retry'\)\}/);
+  assert.match(html,/\}finally\{rulingDone_\(items\)\}/);
 });
 
 test('readback confirms by state; notes compare the way the Writer stores them',()=>{

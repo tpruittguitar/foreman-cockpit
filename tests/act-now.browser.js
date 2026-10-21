@@ -119,6 +119,39 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
     await page.waitForTimeout(300);
     assert.strictEqual(await page.locator('[data-an-retry="'+refusePid+'"]').count(),1,'the refused one shows the retry chip');
     assert.strictEqual(await page.locator('[data-an-retry]').count(),1,'only the refused one');
+    assert.strictEqual(posts.filter(p=>p.action==='batch'||p.action==='ruling').length,1,'still one write after the final wait');
+    assert.deepStrictEqual(errors,[]);await ctx.close();
+  }
+  // 7 (Grok QA #182). "master changed; retry" (BATCH_RULING_RETRY) returns PLANNED items as ok:true with nothing written:
+  //    none may be marked saved; all go to the outbox and are resent with the same requestIds until a batch commits.
+  {
+    let retries=1;
+    ({ctx,page,errors,posts}=await open(phone(390,844),{post:b=>{if(b.action!=='batch')return {ok:true};const res=b.requests.map((q,i)=>({index:i,ok:true,mode:'PLANNED',primaryId:q.ruling.primaryId,requestId:q.ruling.requestId}));
+      if(retries-->0)return {ok:false,mode:'BATCH_RULING_RETRY',error:'master changed during request (a -> b); retry',results:res};
+      return {ok:true,mode:'BATCH_RULING_SINGLE_COMMIT',writeId:'W-7',results:res.map(x=>({...x,mode:'BATCH_RULING'}))}}}));
+    await page.evaluate(()=>{window.PX_TEST_OUTBOX_DELAYS=[300,300,300]});
+    const ids=(await cards(page)).slice(0,3).map(c=>c.id);
+    for(const id of ids){await page.locator('[data-an-decline="'+id+'"]').click();await page.locator('[data-an-for="'+id+'"][data-an-reason="fit"]').click()}
+    await page.waitForFunction(()=>{try{return Object.values(JSON.parse(localStorage.getItem('px.rulings'))).filter(r=>r.writeStatus!=='SUBMITTING').length>=3}catch(e){return false}},null,{timeout:10000});
+    const after1=await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('px.rulings'))).map(r=>[r.writeStatus,!!(r.outbox&&r.outbox.auto)]));
+    assert.ok(after1.every(([s,auto])=>s==='WRITE_FAILED'&&auto),'not committed → none saved, all in the outbox: '+JSON.stringify(after1));
+    const batches=()=>posts.filter(p=>p.action==='batch');
+    const rids=batches()[0].requests.map(q=>q.ruling.requestId).sort();
+    await page.evaluate(()=>{document.dispatchEvent(new Event('visibilitychange'))});
+    await page.waitForFunction(()=>{try{return Object.values(JSON.parse(localStorage.getItem('px.rulings'))).every(r=>r.writeStatus==='READBACK_PENDING'||r.writeStatus==='VERIFIED')}catch(e){return false}},null,{timeout:40000});
+    const last=batches()[batches().length-1];assert.deepStrictEqual(last.requests.map(q=>q.ruling.requestId).sort(),rids,'resent with the same requestIds');
+    assert.deepStrictEqual(errors,[]);await ctx.close();
+  }
+  // 8 (Grok QA #182). Undo goes through the queue: a decision still waiting on this device is dropped, and nothing is sent.
+  {
+    ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}}));
+    await page.evaluate(()=>{window.PX_TEST_BATCH_MS=3000});
+    await page.locator('[data-an-more="OPEN"]').click();await page.waitForSelector('#grid tbody tr[data-id]');
+    await page.locator('#grid tbody tr[data-id]').first().click();await page.locator('#edit-note').fill('undo test');
+    await page.locator('#save-decision').click();await page.locator('#undo-decision').click();
+    await page.waitForTimeout(3500);
+    assert.strictEqual(posts.filter(p=>/ruling|batch|undo_ruling/.test(p.action)).length,0,'queued decision undone locally; nothing sent');
+    assert.match(await page.locator('#edit-status').innerText(),/Undone/);
     assert.deepStrictEqual(errors,[]);await ctx.close();
   }
   // 4. A held email shows in Needs you with one-tap Same role / Different role.
