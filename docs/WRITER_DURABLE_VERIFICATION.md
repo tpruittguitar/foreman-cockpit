@@ -66,8 +66,9 @@ VERIFY (a LATER execution: next queue tick, the start of the next write, GET ver
      `RECEIPT_LOG_ROTATION` header block.
 
   The event log follows steps 2 and 3, and its new active log starts with an `EVENT_LOG_ROTATED` line. Nothing is
-  deleted. `readEvents_` reads the active log, then archives newest first, until it has enough matching events (undo,
-  timeline, request lookups). Legacy intake proofs read the receipt archives too. Replay protection never reads archived
+  deleted. `readEvents_` reads the active log. Per-row history (timeline, undo, receipt corrections) then walks archives
+  newest first, stopping once it has what it needs; recent-event lookups (request_result, discovery requests) read at most
+  the newest archive and only when it is under 3 MB, so they never load a large archive. Archive ids are read once. Legacy intake proofs read the receipt archives too. Replay protection never reads archived
   text: it comes from the index. `{"action":"rotate_logs","force":true}` rotates now; `"dryRun":true` only reports.
 - **`correct_receipts` (POST).** It appends a `RECEIPT_CORRECTION` block and never edits or deletes the original. The block
   carries `CORRECTION=FALSE_COMPLETE`, `FINDING=MASTER_NOT_PERSISTED`, `DISPOSITION=SUPERSEDED`, evidence hashes and a

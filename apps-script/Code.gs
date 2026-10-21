@@ -135,10 +135,10 @@ function doGet(e) {
     if (a === 'evidence') return out_(readEvidence_(p.primaryId || ''));
     if (a === 'migration_status') return out_({ ok: true, state: migrationSummary_(readMigrationState_()), freeze: readFreeze_() });
     if (a === 'state') return out_({ ok: true, state: readState_() });
-    if (a === 'receipts') return out_({ ok: true, text: readReceipts_() });
+    if (a === 'receipts') { var regR; try { regR = readLogArchives_().receipts; } catch (re) { regR = []; } return out_({ ok: true, text: readReceipts_(), archived: regR, note: regR.length ? 'Active receipt log only; older receipts are in the archived files listed (REV-134).' : '' }); }
     if (a === 'rules') { var R = readRules_(); return out_({ ok: R.status !== 'UNAVAILABLE', rules: R }); }
     if (a === 'runs') return out_({ ok: true, runs: readRuns_() });
-    if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200)) });
+    if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200), { deep: !!p.primaryId }) });
     if (a === 'interview_notes') return out_(readInterviewNotes_(p.primaryId || ''));
     if (a === 'documents') return out_(readJobDocuments_());
     if (a === 'document_text') return out_(readDocumentText_(p.fileId || ''));
@@ -524,7 +524,7 @@ function findRequestResult_(requestId) {
     return { ok:true, found:true, requestId:rid, source:'receipts' };
   }
 
-  var events = readEvents_('', 1000);
+  var events = readEvents_('', 1000, { match: function (e) { return String(e.requestId || '') === rid; } });   // shallow: active + a small newest archive; the index answers rotated requests
   for (var i = 0; i < events.length; i++) {
     if (String(events[i].requestId || '') === rid) {
       return { ok:true, found:true, requestId:rid, source:'events', event:events[i] };
@@ -931,6 +931,7 @@ function rotateEventLog_(force, dryRun, at) {
   var name = EVENT_LOG_NAME + '__ARCHIVE_' + archiveStamp_(at);
   if (dryRun) return { mode: 'DRY_RUN', bytes: bytes, archiveName: name };
   var reg = readLogArchives_();
+  reg.events = reg.events.filter(function (a) { return a.id !== f.getId(); });   // a rotation that stopped before its rename
   reg.events.push({ id: f.getId(), name: name, rotatedAt: at, bytes: bytes });
   writeLogArchives_(reg);                                   // history stays findable before the log moves
   f.setName(name);
@@ -952,6 +953,7 @@ function rotateReceiptLog_(force, dryRun, at, actor) {
   idx.rotations.push(rot);
   writeIndex_(idx);                                         // replay protection is carried by the index BEFORE the log moves
   var reg = readLogArchives_();
+  reg.receipts = reg.receipts.filter(function (a) { return a.id !== f.getId(); });
   reg.receipts.push({ id: f.getId(), name: name, rotatedAt: at, bytes: bytes });
   writeLogArchives_(reg);
   f.setName(name);
@@ -981,8 +983,10 @@ function maybeRotateLogs_() {
 }
 /** Active receipt log plus every rotated text archive, oldest first (legacy intake proofs only; never on the write path). */
 function readReceiptsWithArchives_() {
-  var parts = [], reg; try { reg = readLogArchives_(); } catch (e) { reg = { receipts: [] }; }
+  var parts = [], reg, active = receiptsFile_(), seen = {}; if (active) seen[active.getId()] = true;
+  try { reg = readLogArchives_(); } catch (e) { reg = { receipts: [] }; }
   reg.receipts.slice().sort(function (a, b) { return String(a.rotatedAt || '').localeCompare(String(b.rotatedAt || '')); }).forEach(function (a) {
+    if (!a.id || seen[a.id]) return; seen[a.id] = true;
     try { parts.push(DriveApp.getFileById(a.id).getBlob().getDataAsString()); } catch (e) {}
   });
   parts.push(readReceipts_());
@@ -998,7 +1002,8 @@ function correctReceipts_(req) {
   var lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
     if (MASTER_WRITTEN_IN_EXECUTION_) return { ok: false, error: 'cannot verify in an execution that wrote the master' };
-    var lines = readMasterLines_('MASTER_READ'), byPid = rowsByPid_(lines), replay = replayState_(), events = readEvents_('', 5000);
+    var lines = readMasterLines_('MASTER_READ'), byPid = rowsByPid_(lines), replay = replayState_(), wanted = {}; list.forEach(function (c) { wanted[String((c && c.requestId) || '').trim()] = true; });
+    var events = readEvents_('', 1000, { deep: true, match: function (e) { return !!(e.after && wanted[e.requestId]); }, stop: function (rows) { var got = {}; rows.forEach(function (e) { got[e.requestId] = true; }); return Object.keys(wanted).every(function (k) { return got[k]; }); } });
     var idx = readIndex_() || emptyIndex_(), at = new Date().toISOString(), receipts = [], results = [], evOut = [];
     list.forEach(function (c) {
       var rid = String(c.requestId || '').trim(), ev = events.filter(function (e) { return e.requestId === rid && e.after; })[0];
@@ -2623,18 +2628,25 @@ function parseEventLines_(text, primaryId) {
   var rows = String(text || '').split('\n').filter(Boolean).map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);
   return primaryId ? rows.filter(function (r) { return String(r.primaryId || '') === String(primaryId); }) : rows;
 }
-/** Newest events first. REV-134: the active log holds recent events only; older ones are read from rotated archives,
- *  newest archive first, only while fewer than `limit` matching events have been found. */
-function readEvents_(primaryId, limit) {
-  limit = Math.max(1, Math.min(limit || 200, 1000));
-  var it = folder_().getFilesByName(EVENT_LOG_NAME), rows = [], activeId = '';
-  if (it.hasNext()) { var f = it.next(); activeId = f.getId(); rows = parseEventLines_(f.getBlob().getDataAsString(), primaryId); }
-  if (rows.length < limit) {
+/** Newest events first. REV-134: the active log holds recent events only; older ones sit in rotated archives.
+ *  opts.deep: walk archives newest first (per-row history, undo, correction lookups); otherwise read at most the newest
+ *  archive, and only when it is small (<= SHALLOW_ARCHIVE_BYTES), so recent-event lookups never load a large archive.
+ *  opts.match(e): extra filter. opts.stop(rows): stop walking archives once it returns true. Archive ids are read once. */
+var SHALLOW_ARCHIVE_BYTES = 3000000;
+function readEvents_(primaryId, limit, opts) {
+  opts = opts || {}; limit = Math.max(1, Math.min(limit || 200, 1000));
+  var keep = function (rows) { return opts.match ? rows.filter(opts.match) : rows; };
+  var it = folder_().getFilesByName(EVENT_LOG_NAME), rows = [], seen = {};
+  if (it.hasNext()) { var f = it.next(); seen[f.getId()] = true; rows = keep(parseEventLines_(f.getBlob().getDataAsString(), primaryId)); }
+  var done = function () { return rows.length >= limit || (opts.stop && opts.stop(rows)); };
+  if (!done()) {
     var reg; try { reg = readLogArchives_(); } catch (e) { reg = { events: [] }; }
     var arch = reg.events.slice().sort(function (a, b) { return String(b.rotatedAt || '').localeCompare(String(a.rotatedAt || '')); });
-    for (var i = 0; i < arch.length && rows.length < limit; i++) {
-      if (!arch[i].id || arch[i].id === activeId) continue;   // a rotation that stopped before its rename lists the active file
-      try { rows = rows.concat(parseEventLines_(DriveApp.getFileById(arch[i].id).getBlob().getDataAsString(), primaryId)); } catch (e) {}
+    if (!opts.deep) arch = arch.slice(0, 1).filter(function (a) { return (+a.bytes || 0) <= SHALLOW_ARCHIVE_BYTES; });
+    for (var i = 0; i < arch.length && !done(); i++) {
+      if (!arch[i].id || seen[arch[i].id]) continue;   // the active file (a rotation stopped before its rename) or a repeat
+      seen[arch[i].id] = true;
+      try { rows = rows.concat(keep(parseEventLines_(DriveApp.getFileById(arch[i].id).getBlob().getDataAsString(), primaryId))); } catch (e) {}
     }
   }
   rows.sort(function (a,b) { return String(b.ts||'').localeCompare(String(a.ts||'')); });
@@ -2645,7 +2657,7 @@ function readDiscoveryRequests_(primaryId, limit) {
   if (it.hasNext()) rows=it.next().getBlob().getDataAsString().split('\n').filter(Boolean).map(function(l){try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean);
   if (primaryId) rows=rows.filter(function(r){return String(r.primaryId||'')===String(primaryId)});
   var ev=readEvents_('',1000), by={}, idxD=readIndex_(); ev.forEach(function(e){if(e.requestId&&e.type==='TIM_RULING')by[e.requestId]=e});
-  rows=rows.map(function(r){var e=by[r.requestId];return Object.assign({},r,e&&e.type==='TIM_RULING'?{lastEventType:e.type,lastEventAt:e.ts,lastActor:e.actor||'',status:(e.verified===true||(idxD&&idxD.requests[r.requestId]&&idxD.requests[r.requestId].s==='COMPLETE'))?'ENRICHED':'SUBMITTED'}:{status:'REQUESTED'})});
+  rows=rows.map(function(r){var e=by[r.requestId],ix=idxD&&idxD.requests[r.requestId];return Object.assign({},r,e&&e.type==='TIM_RULING'?{lastEventType:e.type,lastEventAt:e.ts,lastActor:e.actor||'',status:(e.verified===true||(ix&&ix.s==='COMPLETE'))?'ENRICHED':'SUBMITTED'}:{status:ix&&ix.s==='COMPLETE'?'ENRICHED':ix?'SUBMITTED':'REQUESTED'})});   // REV-134: an event in a large archive is not read; the index still knows the request
   rows.sort(function(a,b){return String(b.requestedAt||'').localeCompare(String(a.requestedAt||''))});
   return {ok:true,fileName:DISCOVERY_REQUESTS_NAME,requests:rows.slice(0,Math.max(1,Math.min(limit||100,500)))};
 }
@@ -2983,7 +2995,8 @@ function undoLastRuling_(u) {
   var pid=String(u.primaryId||'').trim(); if(!pid) return {ok:false,error:'primaryId required'};
   var idx=readIndex_();
   // Only a ruling proven durable may be undone: legacy events carry verified:true; new ones need an index COMPLETE verdict.
-  var ev=readEvents_(pid,200).filter(function(e){return e.type==='TIM_RULING' && e.before && e.after && (e.verified===true || (idx && e.requestId && idx.requests[e.requestId] && idx.requests[e.requestId].s==='COMPLETE'));})[0];
+  var undoable=function(e){return e.type==='TIM_RULING' && e.before && e.after && (e.verified===true || (idx && e.requestId && idx.requests[e.requestId] && idx.requests[e.requestId].s==='COMPLETE'));};
+  var ev=readEvents_(pid,200,{deep:true,stop:function(rows){return rows.some(undoable)}}).filter(undoable)[0];   // REV-134: archives walked only until one is found
   if(!ev) return {ok:false,error:'no verified Tim ruling to undo'};
   var lock=LockService.getScriptLock(); lock.waitLock(20000);
   try {
@@ -3064,4 +3077,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

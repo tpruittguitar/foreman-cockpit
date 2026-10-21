@@ -89,3 +89,34 @@ test('a busy Writer answers at once and rotates nothing', t => {
   finally { global.LockService = prior; }
   assert.equal(w.files.has(REG), false);
 });
+
+test('a rotation that stopped before its rename is listed once after the next rotation; events are never read twice', t => {
+  const w = mk(t);
+  w.post(decline('C-1', A)); w.advance(200000); w.run(() => W.verifyPendingWrites_());
+  const f = w.files.get(EV), setName = f.setName; let once = true;
+  f.setName = n => { if (once) { once = false; throw new Error('Synthetic crash before rename'); } return setName(n); };
+  assert.throws(() => w.run(() => W.rotateLogs_({ force: true })), /Synthetic crash/);
+  assert.equal(archives(w).events.length, 1, 'registry already points at the still-active file');
+  assert.equal(w.run(() => W.readEvents_(A, 200, { deep: true })).filter(e => e.requestId === 'C-1').length, 1, 'active id is not re-read as an archive');
+  const r = w.post({ action: 'rotate_logs', force: true });
+  assert.equal(r.events.mode, 'ROTATED');
+  assert.equal(archives(w).events.filter(a => a.id === f.getId()).length, 1, 'one entry per archive id');
+  assert.equal(w.run(() => W.readEvents_(A, 200, { deep: true })).filter(e => e.requestId === 'C-1' && e.type === 'TIM_RULING').length, 1);
+});
+
+test('recent-event lookups never load a large archive; per-row history and undo still reach it', t => {
+  const w = mk(t);
+  w.post(decline('S-1', A)); w.advance(200000); w.run(() => W.verifyPendingWrites_());
+  w.files.get(EV).content += JSON.stringify({ type: 'PAD', ts: '2026-10-01T00:00:00Z', pad: 'x'.repeat(W.SHALLOW_ARCHIVE_BYTES) }) + '\n';
+  const r = w.post({ action: 'rotate_logs', force: true }); assert.equal(r.events.mode, 'ROTATED');
+  const arch = w.files.get(r.events.archiveName), getBlob = arch.getBlob; let reads = 0;
+  arch.getBlob = () => { reads++; return getBlob(); };
+  const shallow = w.run(() => W.readEvents_('', 1000));
+  assert.equal(reads, 0, 'unfiltered lookup skips the large archive'); assert.ok(!shallow.some(e => e.requestId === 'S-1'));
+  const rr = w.run(() => W.findRequestResult_('S-1'));
+  assert.equal(reads, 0); assert.equal(rr.found, true); assert.equal(rr.source, 'index', 'the index answers a rotated request');
+  const hist = w.run(() => W.readEvents_(A, 200, { deep: true }));
+  assert.equal(reads, 1); assert.ok(hist.some(e => e.requestId === 'S-1'), 'per-row history reads the archive');
+  w.advance(200000);
+  assert.equal(w.post({ action: 'undo_ruling', undo: { primaryId: A } }).ok, true, 'undo reaches it');
+});
