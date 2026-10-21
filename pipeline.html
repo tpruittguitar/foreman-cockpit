@@ -1645,9 +1645,56 @@ function bindDetail_(r){
 /* One path for every Tim ruling (drawer and Act Now). The same ru object, and so the same requestId, is reused by a retry:
    the Writer answers a replay from its request index, so a retry can never record a second decision. */
 function postRuling_(r,ru,say){
-  ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;render();say('Submitting; master not yet verified…');
-  var wire=JSON.parse(JSON.stringify(ru));delete wire.decisionSnap;delete wire.writeStatus;delete wire.error;delete wire.receipt;delete wire.outbox;   // device-only fields stay here
-  return gsPostRetryBusy_({action:'ruling',ruling:wire},function(n,of,wait){say('Writer busy with another job · retrying automatically ('+n+' of '+of+') in '+Math.round(wait/1000)+' s…')}).then(function(j){delete OUTBOX_.inflight[ru.requestId];ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');ru.writeStatus=j.ok?'READBACK_PENDING':'WRITE_FAILED';outboxMark_(ru);S.rulings[r.id]=ru;LS.set('rulings',S.rulings);if(j.ok){say('Saved · refreshing the master to confirm…');reloadAfterWrite_()}else {LS.set('writeError',ru.error);say(ru.outbox&&ru.outbox.auto?ru.error+' · not saved yet; it will be resent automatically until the Writer saves it':ru.error);render()}outboxSchedule_()}).catch(function(e){delete OUTBOX_.inflight[ru.requestId];ru.error=e.message;LS.set('writeError',e.message);ru.writeStatus='RESULT_UNKNOWN';outboxMark_(ru);LS.set('rulings',S.rulings);say('Result unknown · '+e.message+' · it will be checked and resent automatically');render();outboxSchedule_()});
+  ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;render();
+  say(!S.load||S.load.freshness!=='LIVE'?'Writes are disabled until the current master loads · your decision is kept on this device and sent automatically once it does':'Queued · sent together with your other decisions in a few seconds…');
+  return rulingEnqueue_(r,ru,say);
+}
+/* REV-132 (Tim 2026-10-21 00:00 ET: "the system MUST perform better than this"). Every Writer write holds the one lock for
+   ~35-40 s and a second write inside the 120 s verify grace is fenced, so 30 quick taps meant 30 fights for the lock.
+   Taps now gather for RULING_BATCH_.MS after the last one and go as ONE action:'batch' (max 25): one lock, one master save,
+   one verify for all of them. A batch to the Writer only ever goes one at a time from this device. Each ruling keeps its
+   own requestId, so a resend is answered ALREADY_APPLIED and can never record a second decision. Per-item results decide
+   each ruling; a whole-batch failure (busy, fence, network) leaves every item to the REV-131 outbox. */
+var RULING_BATCH_={q:[],timer:0,chain:Promise.resolve(),MS:(typeof window!=='undefined'&&window.PX_TEST_BATCH_MS)||3000,MAX:25};
+function rulingWire_(ru){var w=JSON.parse(JSON.stringify(ru));delete w.decisionSnap;delete w.writeStatus;delete w.error;delete w.receipt;delete w.outbox;return w}   // device-only fields stay here
+function rulingEnqueue_(r,ru,say,now){
+  return new Promise(function(res){
+    RULING_BATCH_.q=RULING_BATCH_.q.filter(function(x){if(x.r.id!==r.id)return true;if(x.ru.requestId!==ru.requestId)delete OUTBOX_.inflight[x.ru.requestId];x.res();return false});   // newest decision on a row wins; the Writer refuses two for one row in a batch
+    RULING_BATCH_.q.push({r:r,ru:ru,say:say,res:res});
+    clearTimeout(RULING_BATCH_.timer);
+    if(now||RULING_BATCH_.q.length>=RULING_BATCH_.MAX)rulingFlush_();else RULING_BATCH_.timer=setTimeout(rulingFlush_,RULING_BATCH_.MS);
+  });
+}
+function rulingFlush_(){
+  clearTimeout(RULING_BATCH_.timer);
+  while(RULING_BATCH_.q.length)(function(items){RULING_BATCH_.chain=RULING_BATCH_.chain.then(function(){return rulingSend_(items)}).catch(function(){})})(RULING_BATCH_.q.splice(0,RULING_BATCH_.MAX));
+  return RULING_BATCH_.chain;
+}
+function rulingSend_(items){
+  var n=items.length,label=n===1?'Sending to the Writer…':'Sending '+n+' decisions to the Writer in one write…';
+  items.forEach(function(it){it.say(label)});
+  var body=n===1?{action:'ruling',ruling:rulingWire_(items[0].ru)}:{action:'batch',requests:items.map(function(it){return {action:'ruling',ruling:rulingWire_(it.ru)}})};
+  return gsPostRetryBusy_(body,function(k,of,wait){items.forEach(function(it){it.say('Writer busy with another job · retrying automatically ('+k+' of '+of+') in '+Math.round(wait/1000)+' s…')})}).then(function(j){
+    var any=false;
+    items.forEach(function(it,i){
+      var x=n===1?j:((j&&j.results)||[])[i];
+      var ok=!!(x&&(x.ok||/ALREADY_APPLIED|PENDING_VERIFICATION/.test(String(x.mode||''))));   // landed earlier, or written and awaiting verify
+      var err=ok?'':String((x&&x.error)||(j&&j.error)||'write failed');
+      var rc=n===1?(j&&j.receipt)||null:(ok?{REQUEST_ID:it.ru.requestId,WRITE_ID:(j&&j.writeId)||'',MODE:x.mode||'',BATCH_SIZE:n}:null);
+      rulingSettle_(it,ok,err,rc);any=any||ok;
+    });
+    if(any)reloadAfterWrite_();else render();
+    outboxSchedule_();
+  },function(e){items.forEach(function(it){rulingSettle_(it,null,e.message,null)});render();outboxSchedule_()});
+}
+/* ok: true saved · false refused/failed · null result unknown. */
+function rulingSettle_(it,ok,err,receipt){
+  var r=it.r,ru=it.ru;delete OUTBOX_.inflight[ru.requestId];
+  ru.receipt=receipt;ru.error=ok?'':err;ru.writeStatus=ok?'READBACK_PENDING':ok===null?'RESULT_UNKNOWN':'WRITE_FAILED';
+  outboxMark_(ru);if(S.rulings[r.id]===ru||!S.rulings[r.id])S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
+  if(ok)it.say('Saved · refreshing the master to confirm…');
+  else{LS.set('writeError',ru.error);it.say(ok===null?'Result unknown · '+err+' · it will be checked and resent automatically':ru.outbox&&ru.outbox.auto?ru.error+' · not saved yet; it will be resent automatically until the Writer saves it':ru.error)}
+  it.res();
 }
 /* REV-131 (Tim 2026-10-20 23:11 / 23:16 ET: "shouldn't the system automatically resubmit until it saves to the master").
    Every Tim ruling the Writer did not confirm stays in an outbox and is resent with the SAME requestId until it saves:
@@ -1661,12 +1708,20 @@ var OUTBOX_={inflight:{},timer:0,busy:false};
 function outboxRetryable_(ru){if(!ru||!ru.requestId)return false;var s=ru.writeStatus;return s==='RESULT_UNKNOWN'||(s==='WRITE_FAILED'&&OUTBOX_RETRY_RE_.test(String(ru.error||'')))||(s==='SUBMITTING'&&!OUTBOX_.inflight[ru.requestId])}
 function outboxMark_(ru){var o=ru.outbox||{tries:0};if(outboxRetryable_(ru)){o.auto=true;o.nextAt=Date.now()+OUTBOX_DELAYS_[Math.min(o.tries||0,OUTBOX_DELAYS_.length-1)];ru.outbox=o}else if(ru.outbox){ru.outbox.auto=false;ru.outbox.nextAt=0}}
 function outboxDue_(force){var now=Date.now();return Object.keys(S.rulings).filter(function(k){var ru=S.rulings[k];return outboxRetryable_(ru)&&(force||!ru.outbox||!ru.outbox.nextAt||ru.outbox.nextAt<=now)})}
-function outboxTick_(force){if(OUTBOX_.busy||!hasWriter()||!S.load||S.load.freshness!=='LIVE')return;var id=outboxDue_(force)[0];if(!id){outboxSchedule_();return}
+function outboxTick_(force){if(OUTBOX_.busy||!hasWriter()||!S.load||S.load.freshness!=='LIVE')return;var due=outboxDue_(force);if(!due.length){outboxSchedule_();return}
+  if(due.length>1){   // REV-132: several waiting → ask request_result for each (reads, no lock), then one batch for the rest
+    OUTBOX_.busy=true;due=due.slice(0,RULING_BATCH_.MAX);
+    Promise.all(due.map(function(k){var ru=S.rulings[k];return gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return !!(j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||'')))},function(){return false})})).then(function(landed){
+      var ps=[];due.forEach(function(k,i){var ru=S.rulings[k];
+        if(landed[i]){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;return}
+        var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();ru.writeStatus='SUBMITTING';ru.error='';OUTBOX_.inflight[ru.requestId]=1;ps.push(rulingEnqueue_(rowById(k)||{id:k},ru,function(){}))});
+      LS.set('rulings',S.rulings);rulingFlush_();if(!ps.length)render();return Promise.all(ps)}).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()});return}
+  var id=due[0];
   var ru=S.rulings[id],r=rowById(id)||{id:id};OUTBOX_.busy=true;
   gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||''))?'landed':'send'},function(){return 'send'}).then(function(next){
     if(next==='landed'){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;LS.set('rulings',S.rulings);render();return}
     var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();
-    return postRuling_(r,ru,function(){});
+    ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;return rulingEnqueue_(r,ru,function(){},true);
   }).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()})}
 function outboxSchedule_(){clearTimeout(OUTBOX_.timer);var next=Infinity;Object.keys(S.rulings).forEach(function(k){var ru=S.rulings[k];if(outboxRetryable_(ru))next=Math.min(next,ru.outbox&&ru.outbox.nextAt||Date.now())});if(next<Infinity)OUTBOX_.timer=setTimeout(function(){outboxTick_(false)},Math.max(1000,next-Date.now()))}
 /* ---------- Act Now (Simplify PR 1) ---------- */
