@@ -39,7 +39,7 @@ fs.mkdirSync(out,{recursive:true});
    else if(a==='schedules')j={ok:true,manifest:{schema:1,revision:0,tasks:[],history:[]},nativeControl:'UNSUPPORTED'};
    await route.fulfill({json:j});
   });
-  await page.goto('http://127.0.0.1:'+server.address().port+'/pipeline.html');await page.waitForSelector('#grid tbody tr[data-id]');
+  await page.goto('http://127.0.0.1:'+server.address().port+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');
   const clock=page.locator('header .writer-identity > [data-writer-countdown]'),clockBar=clock.locator('[role=progressbar]');
   await page.waitForFunction(()=>document.querySelector('header [data-writer-countdown]').dataset.state==='countdown');
   // Record an actual countdown and refresh for the review preview (synthetic endpoint only).

@@ -24,7 +24,7 @@ const JOB='V2X-A4CCD49EE686';
     await page.route('**/api/structured/admin/import-from-writer',async r=>{N.imports++;await new Promise(x=>setTimeout(x,300));r.fulfill({json:{ok:true,imported:srcLines.length}})});
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');
       r.fulfill({json:a==='scoring'?{ok:true,exists:true,model:{publishedRevision:26,modelVersion:'test'}}:a==='state'?{ok:true,state:{seen:{},reviewed:{}}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html');await page.waitForSelector('#grid tbody tr[data-id]');
+    await page.goto(base+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');
     return {ctx,page,errors,N};
   }
   const pages=Math.ceil(srcLines.length/250);
@@ -56,7 +56,7 @@ const JOB='V2X-A4CCD49EE686';
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{sha:'x'}}));
     await page.route('**/geocoding-api.open-meteo.com/**',r=>{asks++;r.fulfill({json:{results:[]}})});
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString()}:a==='state'?{ok:true,state:{seen:{},reviewed:{}}}:{ok:true,exists:false}})});
-    await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(4000);const a1=asks;
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(4000);const a1=asks;
     assert(a1>=1,'misses asked once: '+a1);asks=0;await page.reload();await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(4000);
     assert.equal(asks,0,'remembered misses are not asked again ('+asks+')');await ctx.close()}
   // 5. REV-098: the canonical rules and published revision arrive late; on a second visit the kept copy gives the same scoring
@@ -73,7 +73,7 @@ const JOB='V2X-A4CCD49EE686';
       if(a==='scoring'||a==='canonical_rules')await new Promise(x=>setTimeout(x,1500));   // the Writer answers after the first paint
       r.fulfill({json:a==='scoring'?{ok:true,exists:true,publishedRevision:26,model:{modelVersion:'test',publishedRevision:26}}:a==='canonical_rules'?{ok:true,text:rules}:a==='state'?{ok:true,state:{seen:{},reviewed:{}}}:{ok:true}})});
     const settle=async()=>{await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(5000)};
-    await page.goto(base+'/pipeline.html');await settle();const first=await page.evaluate(()=>window.__scored);
+    await page.goto(base+'/pipeline.html?open=jobs');await settle();const first=await page.evaluate(()=>window.__scored);
     assert(await page.evaluate(()=>!!localStorage.getItem('px.scoringSeedV1')),'rules + revision kept after the first visit');
     await page.reload();await settle();const second=await page.evaluate(()=>window.__scored);const n=srcLines.length;
     assert(second<=n+15,'second visit scores each row about once (plus a fixed few for the dashboard): '+second+' calls for '+n+' rows (first visit '+first+')');

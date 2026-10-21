@@ -18,7 +18,7 @@ async function go(page,tab){const rail=page.locator('#rail');if(await rail.isVis
     await page.addInitScript(([l])=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));if(l&&!sessionStorage.getItem('seeded')){sessionStorage.setItem('seeded','1');localStorage.setItem('px.layout',l)}},[layout||'']);
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{sha:'x'}}));
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html');await go(page,'pipeline');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(400);
+    await page.goto(base+'/pipeline.html?open=jobs');await go(page,'pipeline');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(400);
     return {ctx,page,errors};
   }
   // iPhone portrait (cockpit): counts and map, then the Jobs queue with its first row on screen, then the selected job below it

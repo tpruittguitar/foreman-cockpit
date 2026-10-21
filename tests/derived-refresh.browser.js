@@ -37,7 +37,7 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
     if(a==='canonical_rules'||a==='rules')return r.fulfill({json:{ok:true,text:rules}});
     if(a==='master')return r.fulfill({json:{ok:true,id:'m',text:master.join('\n'),fetchedAt:new Date().toISOString(),modifiedTime:new Date(Date.UTC(2026,9,7,0,0,version)).toISOString()}});
     return r.fulfill({json:{ok:true}})});
-  await page.goto(origin+'/pipeline.html');await page.waitForSelector('#grid tbody tr[data-id]');
+  await page.goto(origin+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');
   const gotoScoring=async()=>{await page.evaluate(()=>document.querySelector('[data-tab="scoring"]').click());await page.waitForSelector('#score-stored-status')};
   const statusText=async()=>(await page.locator('#score-stored-status').innerText()).trim();
   const sys=async()=>{await page.evaluate(()=>{const p=document.getElementById('writer-panel');if(p.hidden)document.getElementById('writer-badge').click()});await page.waitForTimeout(150);const t=await page.locator('#writer-panel .build-row',{hasText:/^stored FLEX values/i}).innerText();await page.evaluate(()=>document.getElementById('sys-close').click());return t};

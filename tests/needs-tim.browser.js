@@ -31,7 +31,7 @@ const operations={ok:true,store:{obligations:{}},summary:{open:[{id:'OB-1',state
     await page.route('**/api.github.com/repos/tpruittguitar/forge-coordination/contents/attention/**',r=>r.fulfill({json:attention}));
     await page.route('**/raw.githubusercontent.com/**',r=>r.fulfill({body:''}));
     await page.route('**/writer*',r=>{const req=r.request();if(req.method()==='POST'){posts.push(req.postData());return r.fulfill({json:{ok:true}})}const a=new URL(req.url()).searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?writerStatus:a==='operations'?operations:{ok:true}})});
-    await page.goto(base+'/pipeline.html?src=writer'+(hash||''));await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(600);
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs'+(hash||''));await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(600);
     return {ctx,page,errors,posts};
   }
   // 1. Start from a URL that last showed Applied: the opening page is Open roles and lists no applied or terminal job.

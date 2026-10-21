@@ -54,7 +54,7 @@ async function main() {
         else if (action === 'runs') body = { ok: true, runs: [] };
         await route.fulfill({ json: body });
       });
-      await page.goto('http://127.0.0.1:' + server.address().port + '/pipeline.html');
+      await page.goto('http://127.0.0.1:' + server.address().port + '/pipeline.html?open=jobs');
       if (await page.locator('#rail').isVisible()) {
         await page.locator('#rail').hover();
         await page.locator('#rail [data-tab="pipeline"], #rail [data-go="pipeline"]').first().click();await page.mouse.move(700,450);await page.waitForTimeout(220);

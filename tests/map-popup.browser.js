@@ -72,7 +72,7 @@ function checkPopup(m,pin,what,phone){
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{sha:'x'}}));
     await page.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForSelector('.map-target');await page.waitForTimeout(1200);
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForSelector('.map-target');await page.waitForTimeout(1200);
     const emptySpot=async()=>page.evaluate(()=>{const b=document.getElementById('job-map').getBoundingClientRect();for(let y=b.top+b.height*.5;y<b.bottom-10;y+=6)for(let x=b.left+10;x<b.right-10;x+=6){const e=document.elementFromPoint(x,y);if(e&&e.closest('#job-map')&&!e.closest('.map-target,#map-pop,button')){const ok=[...document.querySelectorAll('.map-target')].every(t=>{const r=t.getBoundingClientRect();return Math.hypot(r.left+r.width/2-x,r.top+r.height/2-y)>40});if(ok)return {x,y}}}return null});
     const pins=await page.locator('.map-target:not([hidden])').count();assert(pins>1,what+': filtered view pins');
     let multi=0;

@@ -28,7 +28,7 @@ const JOB='V2X-A4CCD49EE686';
       return r.fulfill({json:a==='master'?{ok:true,id:'m',text:opts.master||fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:
         a==='scoring'?(opts.model===false?{ok:true,exists:false}:{ok:true,exists:true,model:{publishedRevision:26,modelVersion:'test'}}):
         a==='state'?{ok:true,state:W.store?JSON.parse(JSON.stringify(W.store)):opts.state||{seen:{},reviewed:{}}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(2500);
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(2500);
     return {ctx,page,errors,posts,W};
   }
   const tok=(page,v)=>page.evaluate(v=>{const d=document.createElement('i');d.style.color='var('+v+')';document.body.appendChild(d);const c=getComputedStyle(d).color;d.remove();return c},v);
@@ -64,7 +64,7 @@ const JOB='V2X-A4CCD49EE686';
   for(const vp of [[1600,1000],[390,844]]){const ctx=await browser.newContext({viewport:{width:vp[0],height:vp[1]},isMobile:vp[0]<500,hasTouch:vp[0]<500});const page=await ctx.newPage();
     await page.addInitScript(()=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}))});
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='state'?{ok:true,state:{seen:{},reviewed:{}}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#grid tbody tr[data-id]');
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');
     assert.equal(await page.evaluate(()=>getComputedStyle(document.getElementById('map-drawer-divider')).display),'none',vp+': no map / drawer handle');await ctx.close();}
   await browser.close();server.close();console.log('drawer-resize.browser.js: OK');
 })().catch(e=>{console.error(e);process.exit(1)});

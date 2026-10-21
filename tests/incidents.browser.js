@@ -22,7 +22,7 @@ const run=(file,status,m,error,extra)=>Object.assign({file,fileId:'id-'+file,ter
     if(q.method()==='POST'){const b=JSON.parse(q.postData()||'{}');if(b.action==='state')statePosts.push(b.state);return r.fulfill({json:{ok:true}})}
     if(a==='writer_status')return r.fulfill({json:Object.assign({now:new Date().toISOString()},status)});
     return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:{ok:true}})});
-  await page.goto(base+'/pipeline.html');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(800);
+  await page.goto(base+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(800);
   const panel=async()=>{const open=await page.locator('#writer-panel').evaluate(e=>!e.hidden);if(!open){await page.locator('#writer-badge').click();await page.waitForTimeout(200)}};
   const refresh=async()=>{await panel();await page.locator('#writer-refresh').click();await page.waitForTimeout(600)};
   const read=()=>page.evaluate(()=>({health:document.getElementById('sys-health')&&document.getElementById('sys-health').textContent,badge:document.getElementById('writer-badge').className,badgeText:document.getElementById('writer-badge').textContent,

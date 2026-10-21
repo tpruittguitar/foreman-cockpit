@@ -76,6 +76,13 @@
     if (j.declineCandidates) add({ id: 'live:jobs-decline', section: 'JOBS', level: 'WATCH', title: plural(j.declineCandidates, 'AI decline recommendation') + ' waiting for your OK', detail: 'An AI recommends declining; nothing is declined until you approve.', action: 'Review and approve or reject the declines.', go: { tab: 'pipeline', preset: 'DECLINE_CANDIDATES' } });
     if (j.unconfirmed) add({ id: 'live:jobs-unconfirmed', section: 'FAILED', level: 'ACTION', title: plural(j.unconfirmed, 'of your decisions', 'of your decisions') + ' not confirmed in the master', detail: 'Saved from this browser but the master does not show them yet (pending readback, unknown Writer result, or mismatch).', action: 'Open My rulings; retry any that stay unconfirmed after a refresh.', go: { tab: 'pipeline', preset: 'RULED' } });
     if (j.deadActive) add({ id: 'live:jobs-dead-active', section: 'UPKEEP', level: 'WATCH', title: plural(j.deadActive, 'closed posting') + ' still filed as active', detail: 'The employer\'s ATS reports these postings closed. They are hidden from your open queue; the master still has them in an active bucket.', action: 'Claude or a lane should file them CLOSED_DEAD. Open the list to check.', go: { tab: 'pipeline', preset: 'DEAD_POSTINGS' } });
+    // REV-122 / Tim 2026-10-20 19:43 ET: an email the Writer held instead of creating a row must not sit unnoticed.
+    ((ctx.held && ctx.held.holds) || []).forEach(function (h) {
+      var kind = { NEAR_TIM_RULED: 'You already marked a ' + (h.company || 'this employer') + ' role Applied', AMBIGUOUS: 'It matches more than one role', ARCHIVED_MATCH: 'It matches an archived role' }[h.kind] || 'The Writer could not place it';
+      add({ id: 'live:held-email:' + h.id, section: 'JOBS', level: 'ACTION', title: 'Held email: ' + [h.company, h.title].filter(Boolean).join(' — ') + (h.state ? ' (' + String(h.state).replace(/_/g, ' ').toLowerCase() + ')' : ''),
+        detail: kind + '. ' + (h.evidence ? 'Email: ' + h.evidence + '. ' : '') + (h.status === 'RESTORED_AWAITING_ATTACH' ? 'The archived role was restored; tap Same role again to attach the email.' : 'Same role attaches it; Different role gives it its own row.'),
+        held: { id: h.id, candidates: h.candidates || [] }, raisedBy: 'WRITER', at: h.at });
+    });
     return out;
   }
 
@@ -103,6 +110,8 @@
       (it.blocks ? '<p class="nt-blocks"><b>Holding up:</b> ' + esc(it.blocks) + '</p>' : '') +
       (opts ? '<div class="nt-opts">' + opts + (it.recommended ? '<span class="nt-rec">Recommended: ' + esc(it.recommended) + '</span>' : '') + '</div>' : (it.recommended ? '<p class="nt-rec">Recommended: ' + esc(it.recommended) + '</p>' : '')) +
       (it.action ? '<p class="nt-action"><b>What to do:</b> ' + esc(it.action) + '</p>' : '') +
+      (it.held ? '<div class="nt-opts nt-held">' + it.held.candidates.map(function (c) { return '<button type="button" class="nt-opt" data-nt-held="' + esc(it.held.id) + '" data-nt-choice="SAME" data-nt-pid="' + esc(c.primaryId) + '">Same role' + (it.held.candidates.length > 1 || c.title ? ': ' + esc([c.title, c.location].filter(Boolean).join(', ')) : '') + '</button>'; }).join('') +
+        '<button type="button" class="nt-opt" data-nt-held="' + esc(it.held.id) + '" data-nt-choice="DIFFERENT">Different role</button><span class="nt-held-status" data-nt-held-status="' + esc(it.held.id) + '"></span></div>' : '') +
       '<div class="nt-foot">' +
         (it.go ? '<button type="button" class="nt-go" data-nt-go="' + idx + '">Open →</button>' : '') +
         (it.sourceUrl ? '<a href="' + esc(it.sourceUrl) + '" target="_blank" rel="noopener">Source ↗</a>' : '') + links +

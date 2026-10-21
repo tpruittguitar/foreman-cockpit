@@ -29,7 +29,7 @@ const JOB='V2X-A4CCD49EE686';
       return r.fulfill({json:a==='master'?{ok:true,id:'m',text:opts.master||fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:
         a==='scoring'?(opts.model===false?{ok:true,exists:false}:{ok:true,exists:true,model:{publishedRevision:26,modelVersion:'test'}}):
         a==='state'?{ok:true,state:W.store?JSON.parse(JSON.stringify(W.store)):opts.state||{seen:{},reviewed:{}}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html?src=writer'+(opts.hash||''));await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(2500);
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs'+(opts.hash||''));await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(2500);
     return {ctx,page,errors,posts,W};
   }
   const tok=(page,v)=>page.evaluate(v=>{const d=document.createElement('i');d.style.color='var('+v+')';document.body.appendChild(d);const c=getComputedStyle(d).color;d.remove();return c},v);
@@ -50,6 +50,7 @@ const JOB='V2X-A4CCD49EE686';
         topHit:at(innerWidth/2,60),midHit:at(innerWidth/2,innerHeight/2),bbHit:at(innerWidth/2,b.top+b.height/2),dec:dec&&dec.getBoundingClientRect().toJSON(),ring:ring&&ring.getBoundingClientRect().toJSON(),hs:history.state,hl:history.length,scrollTop:d.scrollTop,ih:innerHeight}});
     // REV-094 (Tim 02:16 ET): the phone opens on the pipeline list: no job shown, no sheet, the queue at the top of the screen
     let s0=await st();assert.equal(s0.on,false,t+'no job open on load');assert.equal(s0.sheet,false,t+'no sheet on load');
+    // Simplify PR 1: a cold start opens on Act now (tests/act-now.browser.js); ?open=jobs opens this job list directly.
     const q0=await page.evaluate(()=>{const tr=document.querySelector('#grid tbody tr[data-id]'),r=tr.getBoundingClientRect();return {top:r.top,bottom:r.bottom,ih:innerHeight,sy:scrollY,hash:location.hash}});
     assert(q0.top>0&&q0.bottom<q0.ih,t+'first queue row on screen: '+JSON.stringify(q0));assert.equal(q0.sy,0,t+'page not scrolled');assert.doesNotMatch(decodeURIComponent(q0.hash),/"j":/,t+'no job in the URL');
     const hl0=s0.hl;

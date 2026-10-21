@@ -74,7 +74,7 @@ function check(m,what){
     await page.route('**/api.github.com/**',r=>r.fulfill({json:{sha:'x'}}));
     await page.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));   // offline: state centroids
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true}})});
-    await page.goto(base+'/pipeline.html?src=writer');var bbx0;await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForSelector('#map-frame');await page.waitForTimeout(500);
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs');var bbx0;await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForSelector('#map-frame');await page.waitForTimeout(500);
     const what=vp.width+'x'+vp.height;
     // filtered view at 100%
     await page.locator('[data-mapseg="visible"]').click();await page.waitForTimeout(900);
