@@ -27,6 +27,7 @@
   function saveState(ru) {
     if (!ru) return '';
     var s = ru.writeStatus || (ru.receipt ? 'READBACK_PENDING' : 'LOCAL_DRAFT');
+    if (ru.outbox && ru.outbox.auto && s !== 'VERIFIED' && s !== 'READBACK_PENDING') return 'PENDING';   // REV-131: the outbox is still resending it
     if (s === 'WRITE_FAILED' || s === 'RESULT_UNKNOWN' || (ru.error && s !== 'VERIFIED' && s !== 'READBACK_PENDING')) return 'NOT_SAVED';
     if (s === 'VERIFIED' || s === 'READBACK_PENDING' || s === 'READBACK_UNCONFIRMED') return 'SAVED';
     if (s === 'LOCAL_DRAFT') return 'NOT_SAVED';

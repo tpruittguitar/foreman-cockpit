@@ -960,7 +960,7 @@ function apply(text,meta,fromCache){
   // First visit ever on this device: everything already in the master counts as shown now, except rows added within the NEW window.
   if(!LS.get('baselined',false)){var t=Date.now();S.rows.forEach(function(r){var recent=r.dateAdded&&(t-r.dateAdded.getTime())/864e5<=S.newDays;if(!recent)S.seen[r.id]=t});LS.set('seen',S.seen);LS.set('baselined',true)}
   Object.keys(S.rulings).forEach(function(id){var ru=S.rulings[id],row=S.rows.find(function(r){return r.id===id});if(ru.writeStatus==='READBACK_PENDING'||ru.writeStatus==='READBACK_UNCONFIRMED'&&ru.receipt){ru.writeStatus=!fromCache&&PipelineTrust.matches(row,ru)?'VERIFIED':'READBACK_UNCONFIRMED';if(ru.writeStatus==='VERIFIED'){ru.verifiedAt=new Date().toISOString();LS.set('writeError','');S.lastWrite={at:ru.verifiedAt,id:id,requestId:ru.requestId};LS.set('lastWrite',S.lastWrite)}}});LS.set('rulings',S.rulings);
-  buildColumnModel();resetOpeningTableLayout_();renderPresets();render();renderAutobar();if(S.pendingFocus){var pf=S.pendingFocus;S.pendingFocus=null;if(rowById(pf)){if(S.tab!=='pipeline')switchTab('pipeline');selectMapRow_(pf)}}if(S.focus&&terminalJob_(rowById(S.focus))&&!historyPreset_(S.preset)){S.focus=null;mapView.focus=null;$('drawer').classList.remove('on')}if(S.focus&&$('drawer').classList.contains('on')&&rowById(S.focus))renderDetail(rowById(S.focus));/* REV-094 (Tim 02:16 ET): the phone opens on the pipeline list. The load-time preview of the top job (REV-083 data-auto) is
+  buildColumnModel();resetOpeningTableLayout_();renderPresets();render();renderAutobar();if(!fromCache)setTimeout(function(){outboxTick_(true)},2500);   /* REV-131: resend unsaved rulings once a live master is in */if(S.pendingFocus){var pf=S.pendingFocus;S.pendingFocus=null;if(rowById(pf)){if(S.tab!=='pipeline')switchTab('pipeline');selectMapRow_(pf)}}if(S.focus&&terminalJob_(rowById(S.focus))&&!historyPreset_(S.preset)){S.focus=null;mapView.focus=null;$('drawer').classList.remove('on')}if(S.focus&&$('drawer').classList.contains('on')&&rowById(S.focus))renderDetail(rowById(S.focus));/* REV-094 (Tim 02:16 ET): the phone opens on the pipeline list. The load-time preview of the top job (REV-083 data-auto) is
      gone: it sat in the page under the header and sprang back when pulled. A job opens only when Tim opens one (full-screen sheet). */
 }
 function decorate(r){
@@ -1136,7 +1136,7 @@ var REVIEW_BASELINE_KEY_='reviewBaselineV2';
    this device holds (the Writer merges by job id, so a repeat changes nothing). */
 function reviewSendNow_(force){if(!S.master)return;if(hasWriter()&&!S.stateSynced){syncStateDown();if(!force)return}clearTimeout(S.reviewRetryTimer);S.reviewRetryTimer=null;S.reviewRetry=0;
   maybeBaselineReviews_(force);if(force)Object.keys(S.reviewed||{}).forEach(function(k){S.reviewDirty[k]=1});if(Object.keys(S.reviewDirty||{}).length)syncStateUp(0)}
-['visibilitychange','pageshow','online'].forEach(function(ev){(ev==='visibilitychange'?document:window).addEventListener(ev,function(){if(document.visibilityState==='hidden')return;reviewSendNow_(false)})});
+['visibilitychange','pageshow','online'].forEach(function(ev){(ev==='visibilitychange'?document:window).addEventListener(ev,function(){if(document.visibilityState==='hidden')return;reviewSendNow_(false);outboxTick_(true)})});
 document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&e.target.closest('[data-review-send]');if(!b)return;e.preventDefault();e.stopPropagation();
   b.disabled=true;b.textContent='Sending…';reviewSendNow_(true);if(!Object.keys(S.reviewDirty||{}).length)renderWriterStatus_()},true);
 /* REV-056: one line in System so a device shows what it holds and whether its records reached the Writer. */
@@ -1645,10 +1645,30 @@ function bindDetail_(r){
 /* One path for every Tim ruling (drawer and Act Now). The same ru object, and so the same requestId, is reused by a retry:
    the Writer answers a replay from its request index, so a retry can never record a second decision. */
 function postRuling_(r,ru,say){
-  ru.error='';ru.writeStatus='SUBMITTING';render();say('Submitting; master not yet verified…');
-  var wire=JSON.parse(JSON.stringify(ru));delete wire.decisionSnap;delete wire.writeStatus;delete wire.error;delete wire.receipt;   // device-only fields stay here
-  gsPostRetryBusy_({action:'ruling',ruling:wire},function(n,of,wait){say('Writer busy with another job · retrying automatically ('+n+' of '+of+') in '+Math.round(wait/1000)+' s…')}).then(function(j){ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');ru.writeStatus=j.ok?'READBACK_PENDING':'WRITE_FAILED';S.rulings[r.id]=ru;LS.set('rulings',S.rulings);if(j.ok){say('Saved · refreshing the master to confirm…');reloadAfterWrite_()}else {LS.set('writeError',ru.error);say(ru.error);render()}}).catch(function(e){ru.error=e.message;LS.set('writeError',e.message);ru.writeStatus='RESULT_UNKNOWN';LS.set('rulings',S.rulings);say('Result unknown · '+e.message);render()});
+  ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;render();say('Submitting; master not yet verified…');
+  var wire=JSON.parse(JSON.stringify(ru));delete wire.decisionSnap;delete wire.writeStatus;delete wire.error;delete wire.receipt;delete wire.outbox;   // device-only fields stay here
+  return gsPostRetryBusy_({action:'ruling',ruling:wire},function(n,of,wait){say('Writer busy with another job · retrying automatically ('+n+' of '+of+') in '+Math.round(wait/1000)+' s…')}).then(function(j){delete OUTBOX_.inflight[ru.requestId];ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');ru.writeStatus=j.ok?'READBACK_PENDING':'WRITE_FAILED';outboxMark_(ru);S.rulings[r.id]=ru;LS.set('rulings',S.rulings);if(j.ok){say('Saved · refreshing the master to confirm…');reloadAfterWrite_()}else {LS.set('writeError',ru.error);say(ru.outbox&&ru.outbox.auto?ru.error+' · not saved yet; it will be resent automatically until the Writer saves it':ru.error);render()}outboxSchedule_()}).catch(function(e){delete OUTBOX_.inflight[ru.requestId];ru.error=e.message;LS.set('writeError',e.message);ru.writeStatus='RESULT_UNKNOWN';outboxMark_(ru);LS.set('rulings',S.rulings);say('Result unknown · '+e.message+' · it will be checked and resent automatically');render();outboxSchedule_()});
 }
+/* REV-131 (Tim 2026-10-20 23:11 / 23:16 ET: "shouldn't the system automatically resubmit until it saves to the master").
+   Every Tim ruling the Writer did not confirm stays in an outbox and is resent with the SAME requestId until it saves:
+   busy / lock timeout / write fence / network / result unknown, and a "Saving" left behind by a closed page. Before each
+   resend the Writer's request_result is asked, so a write that did land is never sent again (and a resend would be
+   answered as a replay anyway). Backoff 30 s → 10 min; also on app open, return to the foreground and coming online.
+   A real refusal (e.g. a protected applied row) stops the outbox and shows "Decision not saved" with the reason. */
+var OUTBOX_RETRY_RE_=/lock timeout|writer busy|another process was holding the lock|WRITE_FENCE|not yet independently verified|frozen|Writes are disabled|master changed during request|\bretry\b|Failed to fetch|NetworkError|network|timed? ?out|HTTP 5\d\d|result unknown|could not be verified|Unexpected token|Load failed/i;
+var OUTBOX_DELAYS_=(typeof window!=='undefined'&&window.PX_TEST_OUTBOX_DELAYS)||[30000,60000,120000,300000,600000];
+var OUTBOX_={inflight:{},timer:0,busy:false};
+function outboxRetryable_(ru){if(!ru||!ru.requestId)return false;var s=ru.writeStatus;return s==='RESULT_UNKNOWN'||(s==='WRITE_FAILED'&&OUTBOX_RETRY_RE_.test(String(ru.error||'')))||(s==='SUBMITTING'&&!OUTBOX_.inflight[ru.requestId])}
+function outboxMark_(ru){var o=ru.outbox||{tries:0};if(outboxRetryable_(ru)){o.auto=true;o.nextAt=Date.now()+OUTBOX_DELAYS_[Math.min(o.tries||0,OUTBOX_DELAYS_.length-1)];ru.outbox=o}else if(ru.outbox){ru.outbox.auto=false;ru.outbox.nextAt=0}}
+function outboxDue_(force){var now=Date.now();return Object.keys(S.rulings).filter(function(k){var ru=S.rulings[k];return outboxRetryable_(ru)&&(force||!ru.outbox||!ru.outbox.nextAt||ru.outbox.nextAt<=now)})}
+function outboxTick_(force){if(OUTBOX_.busy||!hasWriter()||!S.load||S.load.freshness!=='LIVE')return;var id=outboxDue_(force)[0];if(!id){outboxSchedule_();return}
+  var ru=S.rulings[id],r=rowById(id)||{id:id};OUTBOX_.busy=true;
+  gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||''))?'landed':'send'},function(){return 'send'}).then(function(next){
+    if(next==='landed'){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;LS.set('rulings',S.rulings);render();return}
+    var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();
+    return postRuling_(r,ru,function(){});
+  }).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()})}
+function outboxSchedule_(){clearTimeout(OUTBOX_.timer);var next=Infinity;Object.keys(S.rulings).forEach(function(k){var ru=S.rulings[k];if(outboxRetryable_(ru))next=Math.min(next,ru.outbox&&ru.outbox.nextAt||Date.now())});if(next<Infinity)OUTBOX_.timer=setTimeout(function(){outboxTick_(false)},Math.max(1000,next-Date.now()))}
 /* ---------- Act Now (Simplify PR 1) ---------- */
 function actNowModel_(){return PipelineActNow.pick(distinctRows_().filter(function(r){return !terminalJob_(r)||ruling(r)}),{now:Date.now(),ruling:ruling,score:function(r){var s=scoreFor_(r);return s?s.overall:null},fitMeasured:hasMeasuredFit_,snoozes:S.anSnooze})}
 function actNowHtml_(){if(!S.master||typeof PipelineActNow==='undefined')return '';if(!document.getElementById('an-css')){var st=document.createElement('style');st.id='an-css';st.textContent=PipelineActNow.CSS;document.head.appendChild(st)}
