@@ -24,7 +24,7 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
     if(a==='scoring')return r.fulfill({json:{ok:true,exists:true,model:published}});
     if(a==='canonical_rules'||a==='rules')return r.fulfill({json:{ok:true,text:rules}});
     return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:{ok:true}})});
-  await page.goto(base+'/pipeline.html');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(900);
+  await page.goto(base+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(900);
   const scoringPosts=()=>posts.filter(p=>p.action==='save_scoring_model');
   const weights=()=>page.$$eval('[data-score-weight]',els=>Object.fromEntries(els.map(e=>[e.dataset.scoreWeight,+e.value])));
   const badges=()=>page.$$eval('#grid tbody tr .score-badge',e=>e.map(x=>x.textContent.trim()).join(','));

@@ -2,6 +2,36 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-20-C: Act now + the decision rule + held emails in Needs you (REV-123, Simplify plan PR 1)
+
+Trigger: the Pipeline Explorer simplify plan (PR 1) with Tim's 19:39–19:43 ET rulings. If Tim clicks Applied, it is true. A decided role leaves every default view and can't be decided twice. The saved state comes from the request's own status. A retry reuses the requestId. A held email shows in Needs you with one-tap Same role / Different role.
+
+### Changed
+
+1. `pipeline-act-now.js` (new, pure plus html): the Act now list and the decision rule.
+   - **List:** up to 10 roles that are scored, Director-level and up, in the US, not Memphis, and not decided. Shield AI is pinned first, then score, then newest. An estimated salary counts as pay and is labelled "est.".
+   - **Cards:** Open posting, Applied, Decline (pay / location / level / fit / other), Later (3 days, on this device). All controls are ≥ 44 px and styled only with v1.5 tokens.
+   - **Decided roles** leave at once while the write is pending. They come back only with "Decision not saved · tap to retry", which resends the same request, or with "Changed since your decision", which shows old → new for title, location, remote/onsite, pay, a 10+ point score move, a repost or reopen, a recruiter contact, or application status.
+   - A card whose decision didn't save offers only the retry, so a second decision can't be made from it.
+2. `pipeline.html`
+   - **New view `view-act-now`:** the app opens on it, and an explicit link or `?open=jobs` still opens the job table. The Pipeline nav and section tabs now start with "Act now". The cockpit table layout and the table look are unchanged.
+   - **Shared `postRuling_`:** used by the drawer and Act now. Device-only fields (`decisionSnap`, status) stay off the wire.
+   - **`passes()`:** hides a role with Tim's ruling from every view except Decided / My rulings / Applied / Declined / Terminal / Interviews / Pinned, and except during search.
+   - **New preset "Decided".**
+   - **Drawer:** a second deciding ruling shows "Already decided: <decision>, <date>" with a **Change decision** button.
+   - **Decision snapshots:** every Tim ruling stores the decision-time values that later changes are measured against.
+3. `pipeline-needs-tim.js`: held emails from the Writer's `GET held_emails` become Needs you items with **Same role** (one button per candidate) and **Different role**, which call `resolve_held_email`.
+4. `pipeline-navigation.js`: the Pipeline group routes to Act now, with an "Act now" tab first.
+5. **Tests:**
+   - `tests/act-now.test.js` (6).
+   - `tests/act-now.browser.js`: cold load at 390×844, 402×874 and 1440×900; Shield AI first; Memphis excluded; Applied leaves the list and stays out after a reload and in the table; Decided finds it; a refused Decline comes back with the retry and the retry reuses the requestId; a held email resolves with one tap.
+   - The table-focused browser tests open with `?open=jobs`.
+   - `scoring-20261014.test.js` now matches the shared poster.
+
+### Not changed
+
+Scoring math, the job table, columns, the drawer layout, and the Writer (REV-122 holds the Writer half and needs the Writer deploy).
+
 ## Batch 2026-10-20-A: terminal rows keep moving to the archive (REV-117)
 
 Trigger: Tim 2026-10-20 18:26 ET: "Dead and closed and no longer available can be a separate file right? ... the system needs to verify against it in several scenarios."

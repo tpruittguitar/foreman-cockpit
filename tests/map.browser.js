@@ -14,7 +14,7 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   await page.addInitScript(()=>{if(sessionStorage.getItem('seeded'))return;sessionStorage.setItem('seeded','1');localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));localStorage.setItem('px.baselined','true');localStorage.setItem('px.seen','{}');localStorage.setItem('px.geoCache',JSON.stringify({'tullahoma, tn':{lat:34.775,lon:-86.55,state:'TN',approx:false,source:'test'},'costa mesa, ca':{lat:33.6411,lon:-117.9187,state:'CA',approx:false,source:'test'},'louisville, co':{lat:39.9778,lon:-105.1319,state:'CO',approx:false,source:'test'}}))});
   await page.route('**/writer*',r=>{const q=r.request(),a=new URL(q.url()).searchParams.get('action');if(q.method()==='POST')posts.push(q.postData());return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:{ok:true}})});
   await page.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));
-  await page.goto(base+'/pipeline.html');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(900);
+  await page.goto(base+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(900);
   const zoom=async()=>+await page.locator('#job-map').getAttribute('data-zoom');
   const label=async()=>page.locator('#map-zoom-level').innerText();
   const pick=async(id)=>{await page.locator('#grid tbody tr[data-id="'+id+'"]').click();await page.waitForTimeout(1200)};

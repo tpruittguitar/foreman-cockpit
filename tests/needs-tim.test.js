@@ -31,6 +31,9 @@ test('Open roles hides applied; start never restores All live or a history view'
   ['ALL','APPLIED','DECLINED','TERMINAL','TERMINAL_HISTORY','DEAD_POSTINGS'].forEach(p=>{const S={tab:'pipeline',preset:p},LS={set(){}};vm.runInNewContext(m[1],{S,LS});assert.strictEqual(S.preset,'OPEN',p)});
   ['NEEDS_TIM','DECLINE_CANDIDATES','RULED','SCOUT_INTAKE'].forEach(p=>{const S={tab:'pipeline',preset:p},LS={set(){}};vm.runInNewContext(m[1],{S,LS});assert.strictEqual(S.preset,p,'working views survive a reload')});
   assert.match(fs.readFileSync(path.join(__dirname,'..','pipeline-navigation.js'),'utf8'),/data-st-reset data-go="pipeline" data-preset="OPEN"/,'leaving Intake returns to Open roles');
+  // Simplify PR 1: a cold start with no link opens Act now; a link to the job table, or ?open=jobs, still opens the table.
+  const run=(hash,search)=>{const S={tab:'pipeline',preset:'OPEN'},LS={set(){}};vm.runInNewContext(m[1],{S,LS,location:{hash,search}});return S.tab};
+  assert.strictEqual(run('',''),'act-now');assert.strictEqual(run('#%7B%22t%22%3A%22pipeline%22%7D',''),'pipeline');assert.strictEqual(run('','?src=writer&open=jobs'),'pipeline');
 });
 
 test('live items: Writer faults, unfinished work, obligations, usage and job counts land in the right sections',()=>{

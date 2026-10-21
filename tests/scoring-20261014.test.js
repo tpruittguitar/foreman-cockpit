@@ -107,10 +107,11 @@ test('scoring config is memoized; rules text is not re-parsed per row',()=>{
 test('writes retry on Writer lock timeout and the default view re-reads a fresh copy after writes',()=>{
   assert.match(html,/var WRITER_BUSY_RE_=\/lock timeout\|writer busy\|another process was holding the lock\/i/);
   assert.match(html,/function gsPostRetryBusy_\(body,onRetry\)/);
-  assert.match(html,/gsPostRetryBusy_\(\{action:'ruling',ruling:ru\}/);
+  assert.match(html,/gsPostRetryBusy_\(\{action:'ruling',ruling:wire\}/);   // Simplify PR 1: one shared poster (postRuling_) for the drawer and Act Now
   assert.match(html,/gsPostRetryBusy_\(\{action:'batch',requests:chunk\}\)/);
   assert.match(html,/function reloadAfterWrite_\(\)\{if\(S\.structuredBase&&S\.cfg\.key\)return importStructuredFromWriter_\(S\.structuredBase\)/);
-  assert.match(html,/if\(j\.ok\)\{setText_\('edit-status','Saved · refreshing the master to confirm…'\);reloadAfterWrite_\(\)\}/);
+  assert.match(html,/if\(j\.ok\)\{say\('Saved · refreshing the master to confirm…'\);reloadAfterWrite_\(\)\}/);
+  assert.match(html,/postRuling_\(r,ru,function\(t\)\{setText_\('edit-status',t\)\}\)/);
   assert.match(html,/S\.structuredBase=base;\s*if\(S\.cfg\.key&&!S\.structuredSyncing&&Date\.now\(\)-\(S\.structuredSyncedAt\|\|0\)>60000\)/);
   assert.doesNotMatch(html,/gsPost\(\{action:'ruling',ruling:ru\}\)\.then\(function\(j\)\{ru\.receipt/);
 });

@@ -12,7 +12,7 @@ const fixture=require('./gen_population').generate(600,70);
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(()=>localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'synthetic-only'})));
   await page.route('**/*',async route=>{const req=route.request(),u=new URL(req.url());if(u.hostname!=='127.0.0.1')return route.abort();if(u.pathname!=='/writer')return route.continue();if(req.method()!=='GET'){writes.push(JSON.parse(req.postData()).action);return route.fulfill({json:{ok:false,error:'Preview forbids writes'}})}const action=u.searchParams.get('action');if(action==='master'&&delayRead)await new Promise(r=>setTimeout(r,1200));let j={ok:true};if(action==='master')j={ok:true,text:fixture,id:'synthetic-only',fetchedAt:new Date().toISOString()};else if(action==='state')j={ok:true,state:{}};else if(action==='canonical_rules')j={ok:true,text:fs.readFileSync(repo+'/tests/fixtures/TIM_PIPELINE_RULES_CANONICAL.sample.txt','utf8')};else if(action==='writer_status')j={ok:true,level:'ok',warnings:[],queue:{processing:[]},unverified:{pending:[]}};await route.fulfill({json:j});});
-  await page.goto('http://127.0.0.1:'+server.address().port+'/pipeline.html');
+  await page.goto('http://127.0.0.1:'+server.address().port+'/pipeline.html?open=jobs');
   await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(900);
   const cdp=await context.newCDPSession(page),frames=[];
   cdp.on('Page.screencastFrame',event=>{frames.push({time:event.metadata.timestamp,data:event.data});cdp.send('Page.screencastFrameAck',{sessionId:event.sessionId}).catch(()=>{});});

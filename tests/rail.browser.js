@@ -40,7 +40,7 @@ function labelsOk(s,what){
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true}})});
     // ?src=writer: since #156 (REV-075) a failed structured-runtime read retries and then falls back to the Writer about 2 s
     // later, which moved the page frame in the middle of this test. The rail checks need a settled page, so load the Writer path.
-    await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#rail .rail-group > button > svg');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(600);
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs');await page.waitForSelector('#rail .rail-group > button > svg');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(600);
     const away=async()=>{await page.mouse.move(vp.width*0.5,vp.height*0.5);await page.waitForTimeout(450)};
     await away();
     const collapsed=await snap(page);labelsOk(collapsed,what+' collapsed');
