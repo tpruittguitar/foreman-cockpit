@@ -741,13 +741,17 @@ function recoverWriteResult_(rid,attempt){
     return new Promise(function(resolve){setTimeout(resolve,350*(attempt+1))}).then(function(){return recoverWriteResult_(rid,attempt+1)});
   });
 }
+var GS_POST_TIMEOUT_MS=(typeof window!=='undefined'&&window.PX_TEST_POST_TIMEOUT_MS)||150000;
 function gsPost(body){
   if(!S.load||S.load.freshness!=='LIVE')return Promise.resolve({ok:false,error:'Writes are disabled: the current canonical master is not loaded'+(S.load&&S.load.error?' ('+S.load.error+')':'')+'. Refresh first.'});
   body=JSON.parse(JSON.stringify(body||{}));
   var rid=requestIdForBody_(body);
   body.key=S.cfg.key;
-  return requestProgress_(fetch(S.cfg.url,{method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body)})
-    .then(function(r){return r.text()})
+  /* Grok QA #182: a POST that never answers ends as "result unknown" after GS_POST_TIMEOUT_MS; the request_result check and
+     the outbox take it from there (same requestId). A long Writer batch (lock wait + 25 rows) stays well inside 150 s. */
+  var ctl=typeof AbortController!=='undefined'?new AbortController():null,tm=ctl?setTimeout(function(){ctl.abort()},GS_POST_TIMEOUT_MS):0;
+  return requestProgress_(fetch(S.cfg.url,{method:'POST',redirect:'follow',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(body),signal:ctl?ctl.signal:undefined})
+    .then(function(r){clearTimeout(tm);return r.text()},function(e){clearTimeout(tm);throw ctl&&ctl.signal.aborted?new Error('Writer did not answer in '+Math.round(GS_POST_TIMEOUT_MS/1000)+' s; result unknown'):e})
     .then(function(t){
       var j=null;try{j=JSON.parse(t)}catch(e){}
       if(j&&j.ok)return j;
@@ -1640,14 +1644,99 @@ function bindDetail_(r){
   if($('enrich-save'))$('enrich-save').onclick=function(){saveEnrichment_(r)}
   if($('enrich-salary-kind'))$('enrich-salary-kind').onchange=function(){var n=$('enrich-note');if(this.value==='ESTIMATED'&&n&&!n.value.trim())n.value=estBasisDefault_(r.payload)};
   if($('enrich-request'))$('enrich-request').onclick=function(){requestResearch_(r)};
-  if($('undo-decision'))$('undo-decision').onclick=function(){if(!hasWriter()){alert('Writer required for undo.');return} $('edit-status').textContent='Undoing…';gsPost({action:'undo_ruling',undo:{primaryId:r.PRIMARY_ID}}).then(function(j){if(j.ok)reloadAfterWrite_();else setText_('edit-status',j.error||'Undo failed')})};
+  if($('undo-decision'))$('undo-decision').onclick=function(){if(!hasWriter()){alert('Writer required for undo.');return} undoRuling_(r,function(t){setText_('edit-status',t)})};
 }
 /* One path for every Tim ruling (drawer and Act Now). The same ru object, and so the same requestId, is reused by a retry:
    the Writer answers a replay from its request index, so a retry can never record a second decision. */
 function postRuling_(r,ru,say){
-  ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;render();say('Submitting; master not yet verified…');
-  var wire=JSON.parse(JSON.stringify(ru));delete wire.decisionSnap;delete wire.writeStatus;delete wire.error;delete wire.receipt;delete wire.outbox;   // device-only fields stay here
-  return gsPostRetryBusy_({action:'ruling',ruling:wire},function(n,of,wait){say('Writer busy with another job · retrying automatically ('+n+' of '+of+') in '+Math.round(wait/1000)+' s…')}).then(function(j){delete OUTBOX_.inflight[ru.requestId];ru.receipt=j.receipt||null;ru.error=j.ok?'':(j.error||'write failed');ru.writeStatus=j.ok?'READBACK_PENDING':'WRITE_FAILED';outboxMark_(ru);S.rulings[r.id]=ru;LS.set('rulings',S.rulings);if(j.ok){say('Saved · refreshing the master to confirm…');reloadAfterWrite_()}else {LS.set('writeError',ru.error);say(ru.outbox&&ru.outbox.auto?ru.error+' · not saved yet; it will be resent automatically until the Writer saves it':ru.error);render()}outboxSchedule_()}).catch(function(e){delete OUTBOX_.inflight[ru.requestId];ru.error=e.message;LS.set('writeError',e.message);ru.writeStatus='RESULT_UNKNOWN';outboxMark_(ru);LS.set('rulings',S.rulings);say('Result unknown · '+e.message+' · it will be checked and resent automatically');render();outboxSchedule_()});
+  ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;render();
+  say(!S.load||S.load.freshness!=='LIVE'?'Writes are disabled until the current master loads · your decision is kept on this device and sent automatically once it does':'Queued · sent together with your other decisions in a few seconds…');
+  return rulingEnqueue_(r,ru,say);
+}
+/* REV-132 (Tim 2026-10-21 00:00 ET: "the system MUST perform better than this"). Every Writer write holds the one lock for
+   ~35-40 s and a second write inside the 120 s verify grace is fenced, so 30 quick taps meant 30 fights for the lock.
+   Taps now gather for RULING_BATCH_.MS after the last one and go as ONE action:'batch' (max 25): one lock, one master save,
+   one verify for all of them. A batch to the Writer only ever goes one at a time from this device. Each ruling keeps its
+   own requestId, so a resend is answered ALREADY_APPLIED and can never record a second decision. Per-item results decide
+   each ruling; a whole-batch failure (busy, fence, network) leaves every item to the REV-131 outbox. */
+var RULING_BATCH_={q:[],timer:0,chain:Promise.resolve(),rows:{},MS:(typeof window!=='undefined'&&window.PX_TEST_BATCH_MS)||3000,MAX:25};
+function rulingWire_(ru){var w=JSON.parse(JSON.stringify(ru));delete w.decisionSnap;delete w.writeStatus;delete w.error;delete w.receipt;delete w.outbox;return w}   // device-only fields stay here
+function rulingEnqueue_(r,ru,say,now){
+  if(ru.undone){delete OUTBOX_.inflight[ru.requestId];return Promise.resolve()}   // Undo got there first: never send it
+  return new Promise(function(res){
+    RULING_BATCH_.q=RULING_BATCH_.q.filter(function(x){if(x.r.id!==r.id)return true;if(x.ru.requestId!==ru.requestId)delete OUTBOX_.inflight[x.ru.requestId];x.res();return false});   // newest decision on a row wins; the Writer refuses two for one row in a batch
+    RULING_BATCH_.q.push({r:r,ru:ru,say:say,res:res});
+    clearTimeout(RULING_BATCH_.timer);
+    if(now||RULING_BATCH_.q.length>=RULING_BATCH_.MAX)rulingFlush_();else RULING_BATCH_.timer=setTimeout(rulingFlush_,(typeof window!=='undefined'&&window.PX_TEST_BATCH_MS)||RULING_BATCH_.MS);
+  });
+}
+function rulingFlush_(){
+  clearTimeout(RULING_BATCH_.timer);
+  while(RULING_BATCH_.q.length)(function(items){items.forEach(function(it){(RULING_BATCH_.rows[it.r.id]=RULING_BATCH_.rows[it.r.id]||[]).push(it.ru)});RULING_BATCH_.chain=RULING_BATCH_.chain.then(function(){return rulingSend_(items)}).catch(function(){})})(RULING_BATCH_.q.splice(0,RULING_BATCH_.MAX));
+  return RULING_BATCH_.chain;
+}
+function rulingSend_(items){
+  var n=items.length,label=n===1?'Sending to the Writer…':'Sending '+n+' decisions to the Writer in one write…';
+  items.forEach(function(it){it.say(label)});
+  var body=n===1?{action:'ruling',ruling:rulingWire_(items[0].ru)}:{action:'batch',requests:items.map(function(it){return {action:'ruling',ruling:rulingWire_(it.ru)}})};
+  return gsPostRetryBusy_(body,function(k,of,wait){items.forEach(function(it){it.say('Writer busy with another job · retrying automatically ('+k+' of '+of+') in '+Math.round(wait/1000)+' s…')})}).then(function(j){
+    var any=false;
+    try{
+      /* Grok QA #182: a per-item ok counts only when the batch committed. BATCH_RULING_RETRY ("master changed") returns its
+         PLANNED items as ok:true with nothing written. Results match by requestId; a decision with no result is unknown. */
+      var committed=n===1?!!(j&&j.ok):!!(j&&(j.mode==='BATCH_RULING_SINGLE_COMMIT'||j.writeId)),byRid={},byIx={};
+      if(n>1)((j&&j.results)||[]).forEach(function(x){if(!x)return;if(x.requestId)byRid[x.requestId]=x;else if(typeof x.index==='number')byIx[x.index]=x});   // the Writer's refusals carry index + primaryId only
+      items.forEach(function(it,i){var ok,err='',rc=null,x=n===1?j:byRid[it.ru.requestId]||(byIx[i]&&(!byIx[i].primaryId||byIx[i].primaryId===it.ru.primaryId)?byIx[i]:null),mode=String((x&&x.mode)||'');
+        if(!x){ok=null;err=String((j&&j.error)||'no Writer result for this decision')}
+        else if(/ALREADY_APPLIED|PENDING_VERIFICATION/.test(mode)||(x.ok&&committed))ok=true;   // landed earlier, written and awaiting verify, or in a committed batch
+        else if(x.ok){ok=false;err=String((j&&j.error)||'batch not committed; retry')}           // planned but not written: the whole batch goes back to the outbox
+        else{ok=false;err=String(x.error||(j&&j.error)||'write failed')}
+        if(ok)rc=n===1?(j.receipt||null):{REQUEST_ID:it.ru.requestId,WRITE_ID:(j&&j.writeId)||'',MODE:mode,BATCH_SIZE:n};
+        try{rulingSettle_(it,ok,err,rc)}catch(e){}any=any||ok===true});
+      if(any)reloadAfterWrite_();else render();
+      outboxSchedule_();
+    }finally{rulingDone_(items)}
+  },function(e){try{items.forEach(function(it){try{rulingSettle_(it,null,e.message,null)}catch(x){}});render();outboxSchedule_()}finally{rulingDone_(items)}});
+}
+function rulingDone_(items){items.forEach(function(it){delete OUTBOX_.inflight[it.ru.requestId];var a=RULING_BATCH_.rows[it.r.id];if(a){a.splice(a.indexOf(it.ru)>>>0,1);if(!a.length)delete RULING_BATCH_.rows[it.r.id]}it.res()})
+}
+/* ok: true saved · false refused/failed · null result unknown. */
+function rulingSettle_(it,ok,err,receipt){
+  var r=it.r,ru=it.ru;delete OUTBOX_.inflight[ru.requestId];
+  if(ru.undone){ru.sent=ok;if(ru.outbox)ru.outbox.auto=false;return}   // Undo came first: never store or resend it; undoRuling_ reads ru.sent   // Undo came first: never store or resend it
+  ru.receipt=receipt;ru.error=ok?'':err;ru.writeStatus=ok?'READBACK_PENDING':ok===null?'RESULT_UNKNOWN':'WRITE_FAILED';
+  outboxMark_(ru);if(S.rulings[r.id]===ru||!S.rulings[r.id])S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
+  if(ok)it.say('Saved · refreshing the master to confirm…');
+  else{LS.set('writeError',ru.error);it.say(ok===null?'Result unknown · '+err+' · it will be checked and resent automatically':ru.outbox&&ru.outbox.auto?ru.error+' · not saved yet; it will be resent automatically until the Writer saves it':ru.error)}
+  it.res();
+}
+/* Grok QA #182: Undo goes through the same one-at-a-time queue, so it can never land before a queued or retrying ruling for
+   the same row (which would then reverse it). A ruling still waiting on this device is simply dropped: it never reached the
+   Writer, so there is nothing there to undo. One that may have landed is undone after the sends ahead of it finish. */
+function undoRuling_(r,say){
+  /* Grok re-QA #182: the Writer's undo_ruling removes the LAST ruling on the row. So it is sent only when the ruling being
+     undone is known to have landed: its send came back saved, or request_result reports it COMPLETE|PENDING. A failed send,
+     a check that errors, or "not found" drops it locally, so Tim's earlier decision on that row is never erased. */
+  var queued=false;RULING_BATCH_.q=RULING_BATCH_.q.filter(function(x){if(x.r.id!==r.id)return true;queued=true;x.ru.undone=true;delete OUTBOX_.inflight[x.ru.requestId];x.res();return false});
+  var flying=(RULING_BATCH_.rows[r.id]||[]).slice(),ru=S.rulings[r.id],retrying=!!(ru&&outboxRetryable_(ru)),
+    saved=!ru||(typeof PipelineActNow!=='undefined'?PipelineActNow.saveState(ru)==='SAVED':/^(VERIFIED|READBACK_PENDING|READBACK_UNCONFIRMED)$/.test(String(ru.writeStatus||'')));   // no local record: a decision made elsewhere   // flying: sends for this row that left the queue (they may land)
+  flying.forEach(function(f){f.undone=true});
+  if(ru){ru.undone=true;if(ru.outbox)ru.outbox.auto=false;delete S.rulings[r.id];LS.set('rulings',S.rulings)}
+  render();
+  if(queued&&!flying.length){say('Undone · it had not been sent yet');return Promise.resolve()}
+  say('Undoing…');
+  function landed_(x){return gsGet('request_result','&requestId='+encodeURIComponent(x.requestId)).then(function(j){return !!(j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||'')))},function(){return false})}
+  RULING_BATCH_.chain=RULING_BATCH_.chain.then(function(){
+    var check;
+    if(flying.length)check=flying.some(function(f){return f.sent===true})?Promise.resolve(true):Promise.all(flying.filter(function(f){return f.sent!==false}).map(landed_)).then(function(v){return v.some(Boolean)});
+    else if(retrying)check=landed_(ru);
+    else check=Promise.resolve(saved);   // only a saved decision is undone on the Writer; a refused one or a draft never landed
+    return check.then(function(landed){
+      if(!landed){say('Undone · it never reached the Writer, so your earlier decision stands');render();return}
+      return gsPost({action:'undo_ruling',undo:{primaryId:r.PRIMARY_ID}}).then(function(j){if(j.ok){say('Undone');reloadAfterWrite_()}else say(j.error||'Undo failed')});
+    });
+  }).catch(function(e){say('Undo failed · '+e.message)});
+  return RULING_BATCH_.chain;
 }
 /* REV-131 (Tim 2026-10-20 23:11 / 23:16 ET: "shouldn't the system automatically resubmit until it saves to the master").
    Every Tim ruling the Writer did not confirm stays in an outbox and is resent with the SAME requestId until it saves:
@@ -1658,15 +1747,25 @@ function postRuling_(r,ru,say){
 var OUTBOX_RETRY_RE_=/lock timeout|writer busy|another process was holding the lock|WRITE_FENCE|not yet independently verified|frozen|Writes are disabled|master changed during request|\bretry\b|Failed to fetch|NetworkError|network|timed? ?out|HTTP 5\d\d|result unknown|could not be verified|Unexpected token|Load failed/i;
 var OUTBOX_DELAYS_=(typeof window!=='undefined'&&window.PX_TEST_OUTBOX_DELAYS)||[30000,60000,120000,300000,600000];
 var OUTBOX_={inflight:{},timer:0,busy:false};
-function outboxRetryable_(ru){if(!ru||!ru.requestId)return false;var s=ru.writeStatus;return s==='RESULT_UNKNOWN'||(s==='WRITE_FAILED'&&OUTBOX_RETRY_RE_.test(String(ru.error||'')))||(s==='SUBMITTING'&&!OUTBOX_.inflight[ru.requestId])}
+function outboxRetryable_(ru){if(!ru||!ru.requestId||ru.undone)return false;var s=ru.writeStatus;return s==='RESULT_UNKNOWN'||(s==='WRITE_FAILED'&&OUTBOX_RETRY_RE_.test(String(ru.error||'')))||(s==='SUBMITTING'&&!OUTBOX_.inflight[ru.requestId])}
 function outboxMark_(ru){var o=ru.outbox||{tries:0};if(outboxRetryable_(ru)){o.auto=true;o.nextAt=Date.now()+OUTBOX_DELAYS_[Math.min(o.tries||0,OUTBOX_DELAYS_.length-1)];ru.outbox=o}else if(ru.outbox){ru.outbox.auto=false;ru.outbox.nextAt=0}}
 function outboxDue_(force){var now=Date.now();return Object.keys(S.rulings).filter(function(k){var ru=S.rulings[k];return outboxRetryable_(ru)&&(force||!ru.outbox||!ru.outbox.nextAt||ru.outbox.nextAt<=now)})}
-function outboxTick_(force){if(OUTBOX_.busy||!hasWriter()||!S.load||S.load.freshness!=='LIVE')return;var id=outboxDue_(force)[0];if(!id){outboxSchedule_();return}
+function outboxTick_(force){if(OUTBOX_.busy||!hasWriter()||!S.load||S.load.freshness!=='LIVE')return;var due=outboxDue_(force);if(!due.length){outboxSchedule_();return}
+  if(due.length>1){   // REV-132: several waiting → ask request_result for each (reads, no lock), then one batch for the rest
+    OUTBOX_.busy=true;due=due.slice(0,RULING_BATCH_.MAX);
+    var held=due.map(function(k){return S.rulings[k]});
+    Promise.all(due.map(function(k){var ru=S.rulings[k];return gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return !!(j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||'')))},function(){return false})})).then(function(landed){
+      var ps=[];due.forEach(function(k,i){var ru=held[i];if(!ru||ru.undone)return;   // undone during the check (Undo also removes it from S.rulings)
+        if(landed[i]){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;return}
+        var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();ru.writeStatus='SUBMITTING';ru.error='';OUTBOX_.inflight[ru.requestId]=1;ps.push(rulingEnqueue_(rowById(k)||{id:k},ru,function(){}))});
+      LS.set('rulings',S.rulings);rulingFlush_();if(!ps.length)render();return Promise.all(ps)}).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()});return}
+  var id=due[0];
   var ru=S.rulings[id],r=rowById(id)||{id:id};OUTBOX_.busy=true;
   gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||''))?'landed':'send'},function(){return 'send'}).then(function(next){
     if(next==='landed'){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;LS.set('rulings',S.rulings);render();return}
+    if(ru.undone)return;   // undone during the check
     var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();
-    return postRuling_(r,ru,function(){});
+    ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;return rulingEnqueue_(r,ru,function(){},true);
   }).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()})}
 function outboxSchedule_(){clearTimeout(OUTBOX_.timer);var next=Infinity;Object.keys(S.rulings).forEach(function(k){var ru=S.rulings[k];if(outboxRetryable_(ru))next=Math.min(next,ru.outbox&&ru.outbox.nextAt||Date.now())});if(next<Infinity)OUTBOX_.timer=setTimeout(function(){outboxTick_(false)},Math.max(1000,next-Date.now()))}
 /* ---------- Act Now (Simplify PR 1) ---------- */
@@ -1676,7 +1775,7 @@ function actNowHtml_(){if(!S.master||typeof PipelineActNow==='undefined')return 
 function actNowSay_(id,t){var c=document.querySelector('#act-now [data-an-id="'+id+'"]');if(!c)return;var m=c.querySelector('.an-say');if(!m){m=document.createElement('div');m.className='an-why an-say';m.setAttribute('role','status');c.appendChild(m)}m.textContent=t}
 function actDecide_(id,kind,code){var r=rowById(id);if(!r)return;var cur=ruling(r);if(cur&&PipelineActNow.DECIDING[cur.kind]&&PipelineActNow.saveState(cur)==='NOT_SAVED'){actNowSay_(id,'Your earlier decision did not save. Tap “Decision not saved · tap to retry” to resend that same decision.');return}var prior=PipelineActNow.alreadyDecided(r,cur);if(prior){actNowSay_(id,'Already decided: '+prior.label+(prior.date?', '+prior.date:'')+'. Open the job to change the decision.');return}
   if(!hasWriter()){actNowSay_(id,'Writer not connected on this device; nothing saved.');return}
-  var ts=new Date().toISOString(),ru={writeStatus:'LOCAL_DRAFT',kind:kind,value:'',code:code||'',dupOf:'',note:kind==='APPLIED'?'Applied (Act now)':'',ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,actor:'TIM',requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
+  var ts=new Date().toISOString(),ru={writeStatus:'LOCAL_DRAFT',kind:kind,value:'',code:code||'',dupOf:'',note:kind==='APPLIED'?'Applied (Act now)':'',ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,actor:'TIM',requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,17)+'-'+r.id.slice(-6)+'-'+Math.random().toString(36).slice(2,6).toUpperCase()};
   ru.decisionSnap=PipelineActNow.snapshot(r,(scoreFor_(r)||{}).overall);S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
   postRuling_(r,ru,function(t){actNowSay_(id,t)})}
 function renderActNow_(){var v=$('view-act-now');if(!v)return;v.innerHTML=S.master?'<div class="an-wrap">'+actNowHtml_()+'</div>':'<div class="an-wrap"><div class="act-now"><div class="an-empty">Loading roles…</div></div></div>';bindActNow_()}
@@ -1698,7 +1797,7 @@ function saveTimDecision(r){
   var appEv=applicationEvidence_(r);if(appEv&&['DECLINE','CLOSED_DEAD','INVALID_DISCOVERY','DUPLICATE','MANUAL_RESEARCH','APPLY_NOW'].indexOf(kind)>=0&&(r.BUCKET==='APPLIED'||r.BUCKET==='REJECTED_BY_EMPLOYER')){$('edit-status').textContent='Not saved · you already applied'+(appEv.date?' on '+appEv.date:'')+(appEv.evidence?' ('+appEv.evidence+')':'')+'. An applied job keeps its record; use Rejected by employer or a note instead.';return}
   if(kind==='REJECTED_BY_EMPLOYER'&&!$('edit-evidence').value.trim()&&!note){$('edit-status').textContent='Add rejection evidence or a note identifying the employer notice.';return}
   if(kind==='DUPLICATE'&&!dup){$('edit-status').textContent='Duplicate target required.';return}
-  var ts=new Date().toISOString(),ru={writeStatus:'LOCAL_DRAFT',kind:kind,value:value,code:code,dupOf:dup,note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,actor:'TIM',requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,14)+'-'+r.id.slice(-6)};
+  var ts=new Date().toISOString(),ru={writeStatus:'LOCAL_DRAFT',kind:kind,value:value,code:code,dupOf:dup,note:note,ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,actor:'TIM',requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,17)+'-'+r.id.slice(-6)+'-'+Math.random().toString(36).slice(2,6).toUpperCase()};
   if(kind==='REJECTED_BY_EMPLOYER'){ru.evidence=$('edit-evidence').value.trim()||note;ru.eventDate=$('edit-event-date').value}
   ru.decisionSnap=PipelineActNow.snapshot(r,(scoreFor_(r)||{}).overall);delete S.changeOk[r.id];
   S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
