@@ -127,7 +127,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','migrate_receipt_index','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','rotate_logs','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','migrate_receipt_index','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','rotate_logs','evidence_repair','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -176,7 +176,7 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived', 'archive_sweep', 'resolve_held_email', 'rotate_logs'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived', 'archive_sweep', 'resolve_held_email', 'rotate_logs', 'evidence_repair'];
 function dispatchWrite_(req) {
   req = req || {};
   if(req.automation){var alignmentError=automationEnvelopeError_(req,automationAlignmentRead_());if(alignmentError)return {ok:false,mode:'PAUSED_CONFLICT',error:alignmentError};}
@@ -195,6 +195,7 @@ function dispatchWrite_(req) {
   if (a === 'undo_ruling') return undoLastRuling_(req.undo || req);
   if (a === 'rotate_receipts') return rotateReceipts_(req);
   if (a === 'rotate_logs') return rotateLogs_(req);
+  if (a === 'evidence_repair') return evidenceRepair_(req);
   if (a === 'migration') return { ok:false, mode:'RETIRED_MIGRATION', error:'The live plain-text master is already migrated; old Doc migration is disabled.' };
   if (a === 'freeze_writer') return setFreeze_(req, true);
   if (a === 'unfreeze_writer') return setFreeze_(req, false);
@@ -212,7 +213,7 @@ function dispatchWrite_(req) {
     var malformed = [];
     list.forEach(function (sub, ix) {
       var err = !sub || typeof sub !== 'object' ? 'request must be a JSON object'
-        : sub.action === 'batch' || sub.action === 'archive_sweep' || sub.action === 'resolve_held_email' || sub.action === 'rotate_logs' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
+        : sub.action === 'batch' || sub.action === 'archive_sweep' || sub.action === 'resolve_held_email' || sub.action === 'rotate_logs' || sub.action === 'evidence_repair' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
         : requestShapeError_(sub);
       if (err) malformed.push({ index: ix, ok: false, error: err });
     });
@@ -1491,6 +1492,83 @@ function archiveSweep_(req) {
     var writeId = stageVerification_('ARCHIVE_SWEEP', [], [receipt], countsLineOf_(all), at);
     return { ok: true, op: 'apply', verification: 'PENDING', writeId: writeId, requestId: rid, moved: pids.length, archiveAppended: add.length, summary: summary };
   } finally { lock.releaseLock(); }
+}
+
+/* ================= evidence repair (REV-135) ================= */
+/* FACT 2026-10-21: V2_EVIDENCE_COMPANION.jsonl was created 2026-10-05 but its oldest record is 2026-10-15T00:35Z; every record
+ * written 2026-10-05..14 (including the migration's own records) is gone, so 896 of 2,137 records point at base versions
+ * that no longer exist and resolveEvidence_ returns null for those rows (the 119 archive-sweep holds). Repair, append-only:
+ * for each live row whose chain is broken, one NEW head record (base 0) holding the row's evidence from the migration's
+ * pre-split text snapshot (the Oct 5 state), overlaid with every surviving record for that row in version order, plus an
+ * EVIDENCE_RECOVERY_NOTE naming what was lost. The row's EVIDENCE_REF moves to that record. Nothing is edited or deleted;
+ * notes written 2026-10-05..14 that no surviving source holds stay lost and the note says so. op plan is read-only. */
+var LOST_WINDOW_ = '2026-10-05..2026-10-14';
+function rollbackEvidence_(lines) {
+  var by = {}, dup = {};
+  (lines || []).forEach(function (l) { var r = rowParts_(l); if (!r) return; var pid = r.fixed[1].trim(); if (by[pid]) dup[pid] = true; by[pid] = splitRowEvidence_(l, 0).fields; });
+  Object.keys(dup).forEach(function (pid) { delete by[pid]; });   // an ambiguous Oct 5 identity is never guessed
+  return by;
+}
+/** Pure: the repairs for one master snapshot. */
+function planEvidenceRepair_(lines, recs, rollbackLines, at, rid) {
+  var rb = rollbackEvidence_(rollbackLines), byPid = {}, maxV = {}, out = [], next = lines.slice(), counts = { broken: 0, withOct5: 0, withoutOct5: 0, survivingRecords: 0, emptyRebuild: 0 };
+  recs.forEach(function (r) { (byPid[r.pid] = byPid[r.pid] || []).push(r); if (!(r.v <= (maxV[r.pid] || 0))) maxV[r.pid] = r.v; });
+  var live = rowsByPid_(lines);
+  lines.forEach(function (l, i) {
+    var r = rowParts_(l); if (!r) return; var pid = r.fixed[1].trim(), ref = evidenceRefOf_(l);
+    if (!ref || (live[pid] || []).length !== 1 || resolveEvidence_(recs, pid, ref) !== null) return;
+    counts.broken++;
+    var seen = {}, surv = (byPid[pid] || []).filter(function (x) { if (x.v > ref || seen[x.v]) return false; seen[x.v] = true; return true; }).sort(function (a, b) { return a.v - b.v; });
+    var f = {}, has5 = !!rb[pid];
+    if (has5) { Object.keys(rb[pid]).forEach(function (k) { f[k] = rb[pid][k]; }); counts.withOct5++; } else counts.withoutOct5++;
+    surv.forEach(function (x) { Object.keys(x.f || {}).forEach(function (k) { f[k] = x.f[k]; }); });
+    counts.survivingRecords += surv.length;
+    if (!Object.keys(f).length) counts.emptyRebuild++;
+    f.EVIDENCE_RECOVERY_NOTE = clean_('Rebuilt ' + at + ' (' + rid + '): ' + (has5 ? 'the 2026-10-05 pre-split snapshot' : 'no 2026-10-05 snapshot row (added after the split)') +
+      (surv.length ? ' plus ' + surv.length + ' surviving record(s) v' + surv.map(function (x) { return x.v; }).join(',v') : '') +
+      '. Evidence written ' + LOST_WINDOW_ + ' was lost when ' + COMPANION_NAME + ' was emptied before 2026-10-15T00:35Z; the prior head EVC1:' + ref + ' no longer resolved.');
+    var v = (maxV[pid] || 0) + 1; maxV[pid] = v;
+    var rec = { pid: pid, v: v, base: 0, ts: at, src: 'EVIDENCE_REPAIR:' + rid, f: f };
+    r.P.EVIDENCE_REF = EVIDENCE_SCHEMA + ':' + v;
+    next[i] = r.fixed.join(' | ') + ' | ' + buildPayload(r.lead, r.P, r.O);
+    out.push({ pid: pid, index: i, from: l, to: next[i], rec: rec, oct5: has5, surviving: surv.length, priorRef: ref });
+  });
+  return { repairs: out, lines: next, counts: counts };
+}
+/** POST evidence_repair {op: plan | apply, requestId?}. plan reads only; apply appends records, then one master commit. */
+function evidenceRepair_(req) {
+  req = req || {}; var op = String(req.op || 'plan');
+  if (op !== 'plan' && op !== 'apply') return { ok: false, error: 'evidence_repair op must be plan | apply' };
+  var lock = null;
+  if (op === 'apply') { lock = LockService.getScriptLock(); lock.waitLock(30000); }
+  try {
+    DOC_ACCESS_ = [];
+    var st = readMigrationState_(); if (!st || st.mode !== 'LIVE' || st.status !== 'CUTOVER_COMPLETE') return { ok: false, error: 'evidence companion not live' };
+    var snapId = st.rollback && st.rollback.textSnapshotId; if (!snapId) return { ok: false, error: 'no pre-split text snapshot recorded in migration state (fail closed)' };
+    var snapText = DriveApp.getFileById(snapId).getBlob().getDataAsString();
+    if (st.rollback.textSnapshotHash && textHash_(linesFromMasterText_(snapText).join('\n')) !== st.rollback.textSnapshotHash && textHash_(snapText) !== st.rollback.textSnapshotHash)
+      return { ok: false, error: 'pre-split snapshot hash does not match the migration record (fail closed)' };
+    var M = openMaster_(), snapshot = M.lines.slice();
+    if (op === 'apply') { var fence = writeFence_(snapshot); if (fence) return fence; }
+    var cf = DriveApp.getFileById(st.companionId), cText = cf.getBlob().getDataAsString(), recs = parseCompanion_(cText);
+    var at = new Date().toISOString(), rid = String(req.requestId || '') || ('EVIDENCE-REPAIR-' + at.replace(/[^0-9]/g, '').slice(0, 14));
+    var plan = planEvidenceRepair_(snapshot, recs, linesFromMasterText_(snapText), at, rid);
+    var add = plan.repairs.map(function (x) { return JSON.stringify(x.rec); }).join('\n');
+    var summary = { companionRecords: recs.length, repairs: plan.repairs.length, counts: plan.counts, appendBytes: add.length, snapshotId: snapId };
+    if (op === 'plan') return { ok: true, op: 'plan', summary: summary, sample: plan.repairs.slice(0, 12).map(function (x) { return { primaryId: x.pid, priorRef: x.priorRef, newRef: x.rec.v, oct5: x.oct5, surviving: x.surviving, keys: Object.keys(x.rec.f).length }; }) };
+    if (!plan.repairs.length) return { ok: true, op: 'apply', repaired: 0, summary: summary };
+    var nextText = (cText ? cText.replace(/\n*$/, '\n') : '') + add + '\n';
+    cf.setContent(nextText);
+    if (cf.getBlob().getDataAsString() !== nextText) return { ok: false, mode: 'COMPANION_READBACK_FAILED', error: 'companion append did not read back; the master was not touched' };
+    WRITE_CONTEXT_ = { action: 'evidence_repair', requestId: rid };
+    saveMasterLines_(plan.lines, snapshot);
+    var pids = plan.repairs.map(function (x) { return x.pid; });
+    var receipt = { RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: rid, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', TARGET_CANONICAL_ID: 'MULTIPLE (' + pids.length + ')',
+      PRIMARY_IDS: pids, CHANGES: ['EVIDENCE_REF_REBUILT'], COMPANION_FILE_ID: st.companionId, COMPANION_APPENDED: pids.length, READBACK_VERIFIED: 'PENDING', TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: 'PENDING_VERIFICATION', EXECUTED_AT: at };
+    var writeId = stageVerification_('EVIDENCE_REPAIR', [], [receipt], countsLineOf_(plan.lines), at);
+    appendEvents_([{ type: 'EVIDENCE_REPAIR', ts: at, requestId: rid, writeId: writeId, repaired: pids.length, counts: plan.counts }]);
+    return { ok: true, op: 'apply', verification: 'PENDING', writeId: writeId, requestId: rid, repaired: pids.length, summary: summary };
+  } finally { if (lock) lock.releaseLock(); }
 }
 
 /* ================= master read ================= */
@@ -3077,4 +3155,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
