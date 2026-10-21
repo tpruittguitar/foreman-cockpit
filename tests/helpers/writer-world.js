@@ -18,6 +18,7 @@ function world(t, opts = {}) {
       getParents: () => iter([folder]), getLastUpdated: () => new Date(f.modified),
       getBlob: () => { fault(f.name, 'read', false); return { getDataAsString: () => f.content }; },
       setContent: v => { fault(f.name, 'write', false); if (id === MASTER) saves++; f.content = String(v); f.modified = ++clock; fault(f.name, 'write', true); return f; },
+      getSize: () => Buffer.byteLength(f.content),
       setName: n => { files.delete(f.name); f.name = n; files.set(n, f); return f; }, setTrashed() {} };
     files.set(name, f); files.set(id, f); return f;
   }
