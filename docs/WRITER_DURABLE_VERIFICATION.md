@@ -55,6 +55,20 @@ VERIFY (a LATER execution: next queue tick, the start of the next write, GET ver
      Docs size limit, and is written synchronously.
 
   A second call returns `ALREADY_ROTATED`.
+- **`rotate_logs` (REV-134; POST, and automatic on the queue tick).** Drive has no append, so every write read and
+  rewrote the whole event log and receipt log. On 2026-10-21 they were 37.3 MB and 12.9 MB, roughly 230 MB of Drive I/O
+  per Tim decision. When either active log passes `LOG_ROTATE_BYTES` (2 MB), the queue tick rotates it under the script
+  lock (`tryLock`, 1 s; a busy Writer skips the tick). Steps for the receipt log, in order:
+  1. Read the active text log and write every request it proves `COMPLETE` into the receipt index, unless the index
+     already has that request (a `FALSE_COMPLETE` correction keeps it out). Add a `TEXT_LOG` rotation record.
+  2. Record the archive in `PIPELINE_LOG_ARCHIVES.json` and read it back.
+  3. Rename the file to `<name>__ARCHIVE_<timestamp>` (same file ID, content untouched) and start a new active log with a
+     `RECEIPT_LOG_ROTATION` header block.
+
+  The event log follows steps 2 and 3, and its new active log starts with an `EVENT_LOG_ROTATED` line. Nothing is
+  deleted. `readEvents_` reads the active log, then archives newest first, until it has enough matching events (undo,
+  timeline, request lookups). Legacy intake proofs read the receipt archives too. Replay protection never reads archived
+  text: it comes from the index. `{"action":"rotate_logs","force":true}` rotates now; `"dryRun":true` only reports.
 - **`correct_receipts` (POST).** It appends a `RECEIPT_CORRECTION` block and never edits or deletes the original. The block
   carries `CORRECTION=FALSE_COMPLETE`, `FINDING=MASTER_NOT_PERSISTED`, `DISPOSITION=SUPERSEDED`, evidence hashes and a
   replacement note.

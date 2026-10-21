@@ -163,7 +163,13 @@ function processWriterQueue() {
   if (!busy && typeof runAtsCheck_ === 'function' && Date.now() - started <= QUEUE_CLAIM_CUTOFF_MS) {
     try { atsCheck = runAtsCheck_(false, false); } catch (ae) { atsCheck = { ok: false, error: String(ae && ae.message || ae) }; }
   }
+  // REV-134: keep the event and receipt logs small (two metadata reads; rotates only when one passes LOG_ROTATE_BYTES).
+  var logRotation;
+  if (!busy && typeof maybeRotateLogs_ === 'function' && Date.now() - started <= QUEUE_CLAIM_CUTOFF_MS) {
+    try { logRotation = maybeRotateLogs_(); } catch (le) { logRotation = { ok: false, error: String(le && le.message || le) }; }
+  }
   var summary = { ok: true, processed: done.length, remaining: listPending_(f.queue).length, busy: busy, deferred: deferred, verification: verification, results: done };
+  if (logRotation && !logRotation.skipped) summary.logRotation = logRotation;
   if (worklists && !worklists.skipped) summary.worklists = worklists;
   if (atsCheck && !atsCheck.skipped) summary.atsCheck = atsCheck;
   if (holds && (holds.error || holds.checked)) summary.holds = holds;
