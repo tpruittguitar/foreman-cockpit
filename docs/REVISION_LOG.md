@@ -2,6 +2,38 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-20-D: unsaved rulings resend themselves until the Writer saves them (REV-131)
+
+Trigger: Tim 2026-10-20 23:10–23:16 ET: "how do I resubmit a declined role that failed to write? … shouldn't the system automatically resubmit until it saves to the master" / "agree".
+
+### Found (FACT, Tim's laptop saved decisions vs the Writer, 23:12 ET)
+
+- BLADE, Sr. Director of Operations, declined 22:50 ET; and DAVRON, Plant General Manager, declined 22:52 ET. Both showed `WRITE_FAILED` "Lock timeout" while the archive sweep and the row corrections held the Writer's lock. Neither was in the master.
+- Applied Materials, Director of Quality – Photonics, declined 16:20 ET, sat in `SUBMITTING` for 7 h. The Writer had no record of the request (`request_result` found:false).
+- The busy-retry tried 4 times over about 98 s and then stopped for good. Nothing ever resumed a "Saving" left behind by a closed page.
+- All three were resent with their original requestIds at 23:12 ET and saved (writeIds W-20261021031245293, W-20261021031403124, W-20261021031523789).
+
+### Changed (`pipeline.html`, `pipeline-act-now.js`)
+
+1. **Ruling outbox.** Every Tim ruling the Writer did not confirm is resent with the **same requestId** until it saves:
+   - Covered: busy / lock timeout, write fence, writes disabled (stale master), network, result unknown, and a `SUBMITTING` with no request in flight (page closed).
+   - Before each resend it asks `request_result`. A write that already landed is marked saved and not sent again; a resend would be answered as a replay anyway.
+   - Backoff runs 30 s → 1 → 2 → 5 → 10 min. It also runs when a live master loads, when the app returns to the foreground, and when the device comes online.
+   - A real refusal stops it and shows "Decision not saved" with the Writer's reason.
+2. **While the outbox is resending**, the decision counts as pending: the role stays out of the default views, and the card offers no second decision.
+3. **The status line** keeps the Writer's own error and adds that it will be resent.
+
+### Verified
+
+`npm test` 619/619. `tests/act-now.browser.js` part 5:
+- A Decline fenced twice is resent automatically and saved on the third post, all under one requestId.
+- A stale "Saving" is checked and resent once.
+- One that had landed is not posted again.
+- No "not saved" chip appears while the outbox works.
+- The outbox state never reaches the wire.
+
+`master-load` and `needs-tim` still pass.
+
 ## Batch 2026-10-20-C: Act now + the decision rule + held emails in Needs you (REV-124, Simplify plan PR 1)
 
 Trigger: the Pipeline Explorer simplify plan (PR 1) with Tim's 19:39–19:43 ET rulings. If Tim clicks Applied, it is true. A decided role leaves every default view and can't be decided twice. The saved state comes from the request's own status. A retry reuses the requestId. A held email shows in Needs you with one-tap Same role / Different role.

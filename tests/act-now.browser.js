@@ -75,6 +75,33 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
   const ids=posts.filter(p=>p.action==='ruling').map(p=>p.ruling.requestId);assert.deepStrictEqual(ids,[firstId,firstId],'retry reuses the requestId');
   assert.strictEqual(posts.filter(p=>p.action==='ruling')[0].ruling.code,'PAY_BELOW_FLOOR');
   assert.deepStrictEqual(errors,[]);await ctx.close();
+  // 5 (REV-131). The outbox resends unsaved rulings with the same requestId until the Writer saves them.
+  //    a) a Decline refused by a write fence is resent automatically, no tap; b) a "Saving" left by a closed page is checked
+  //    with request_result and resent; c) one that did land is marked saved without a second post.
+  {
+    let fence=2;const landed='PX-LANDED-1';
+    const seeds={'V2X-C567A75157C0':{kind:'DECLINE',code:'FIT',writeStatus:'SUBMITTING',ts:'2026-10-20T20:20:58.387Z',primaryId:'V2X-C567A75157C0',actor:'TIM',requestId:'PX-STUCK-1'},
+      'V2X-299323199555':{kind:'DECLINE',code:'PAY_BELOW_FLOOR',writeStatus:'SUBMITTING',ts:'2026-10-20T20:21:00.000Z',primaryId:'V2X-299323199555',actor:'TIM',requestId:landed}};
+    const ctx2=await browser.newContext(phone(390,844)),pg=await ctx2.newPage(),errs=[],ps=[];pg.on('pageerror',e=>errs.push(e.message));
+    await pg.addInitScript(s=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));localStorage.setItem('px.rulings',JSON.stringify(s));window.PX_TEST_OUTBOX_DELAYS=[300,300,300]},seeds);
+    await pg.route('**/api.github.com/**',r=>r.fulfill({json:{}}));await pg.route('**/raw.githubusercontent.com/**',r=>r.fulfill({body:''}));
+    await pg.route('**/writer*',r=>{const req=r.request(),u=new URL(req.url()),a=u.searchParams.get('action');
+      if(req.method()==='POST'){const b=JSON.parse(req.postData()||'{}');ps.push(b);if(b.action==='ruling'&&b.ruling.code==='LOCATION'&&fence-->0)return r.fulfill({json:{ok:false,mode:'WRITE_FENCE',error:'an earlier master write is not yet independently verified; retry after it is decided'}});return r.fulfill({json:{ok:true,receipt:{REQUEST_ID:b.ruling&&b.ruling.requestId}}})}
+      if(a==='master')return r.fulfill({json:{ok:true,text:fixture,modifiedTime:new Date().toISOString(),fetchedAt:new Date().toISOString()}});
+      if(a==='request_result')return r.fulfill({json:u.searchParams.get('requestId')===landed?{ok:true,found:true,status:'COMPLETE',durable:true}:{ok:true,found:false}});
+      return r.fulfill({json:{ok:true}})});
+    await pg.goto(base+'/pipeline.html?src=writer');await pg.waitForSelector('#act-now .an-card');
+    const tgt2=(await cards(pg))[0].id;
+    await pg.locator('[data-an-decline="'+tgt2+'"]').click();await pg.locator('[data-an-for="'+tgt2+'"][data-an-reason="location"]').click();
+    await pg.waitForFunction(()=>{try{return Object.values(JSON.parse(localStorage.getItem('px.rulings'))).every(r=>/^(READBACK_PENDING|READBACK_UNCONFIRMED|VERIFIED)$/.test(r.writeStatus)&&!(r.outbox&&r.outbox.auto))}catch(e){return false}},null,{timeout:30000});
+    const rul2=ps.filter(p=>p.action==='ruling'),loc=rul2.filter(p=>p.ruling.code==='LOCATION');
+    assert.strictEqual(loc.length,3,'fenced twice, then saved: 3 posts');assert.strictEqual(new Set(loc.map(p=>p.ruling.requestId)).size,1,'one requestId throughout');
+    assert.strictEqual(rul2.filter(p=>p.ruling.requestId==='PX-STUCK-1').length,1,'stale Saving resent once');
+    assert.strictEqual(rul2.filter(p=>p.ruling.requestId===landed).length,0,'a write that landed is not sent again');
+    assert.strictEqual(await pg.locator('[data-an-retry]').count(),0,'no "not saved" chip while the outbox works');
+    assert.ok(rul2.every(p=>p.ruling.outbox===undefined),'outbox state stays on the device');
+    assert.deepStrictEqual(errs,[]);await ctx2.close();
+  }
   // 4. A held email shows in Needs you with one-tap Same role / Different role.
   ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}}));
   await page.locator('#bell').click();await page.waitForSelector('[data-nt-held="HOLD-UK-test0001"]',{timeout:10000});

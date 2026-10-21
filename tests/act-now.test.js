@@ -60,3 +60,11 @@ test('second decision is blocked with "Already decided: <decision>, <date>"; car
   assert.match(h, /\$200k est\./); assert.match(h, /Open posting/); assert.match(h, /data-an-applied="E"/); assert.match(h, /data-an-later="E"/);
   assert.match(A.CSS, /min-height:var\(--pe-target-min\)/); assert.doesNotMatch(A.CSS, /#[0-9a-f]{3,6}\b/i, 'tokens only');
 });
+
+test('REV-131: a ruling the outbox is still resending counts as pending (decided, hidden), never as not saved', () => {
+  assert.equal(A.saveState({ writeStatus: 'WRITE_FAILED', error: 'Lock timeout', outbox: { auto: true, tries: 1 } }), 'PENDING');
+  assert.equal(A.saveState({ writeStatus: 'WRITE_FAILED', error: 'row is protected', outbox: { auto: false } }), 'NOT_SAVED');
+  const r = row('A'), ru = { kind: 'DECLINE', ts: '2026-10-20T12:00:00Z', writeStatus: 'RESULT_UNKNOWN', outbox: { auto: true }, requestId: 'PX-1' };
+  assert.equal(A.rule(r, ru, 80).hidden, true);
+});
+
