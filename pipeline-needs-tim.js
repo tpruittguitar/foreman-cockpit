@@ -78,9 +78,10 @@
     if (j.deadActive) add({ id: 'live:jobs-dead-active', section: 'UPKEEP', level: 'WATCH', title: plural(j.deadActive, 'closed posting') + ' still filed as active', detail: 'The employer\'s ATS reports these postings closed. They are hidden from your open queue; the master still has them in an active bucket.', action: 'Claude or a lane should file them CLOSED_DEAD. Open the list to check.', go: { tab: 'pipeline', preset: 'DEAD_POSTINGS' } });
     // REV-122 / Tim 2026-10-20 19:43 ET: an email the Writer held instead of creating a row must not sit unnoticed.
     ((ctx.held && ctx.held.holds) || []).forEach(function (h) {
-      var kind = { NEAR_TIM_RULED: 'You already marked a ' + (h.company || 'this employer') + ' role Applied', AMBIGUOUS: 'It matches more than one role', ARCHIVED_MATCH: 'It matches an archived role' }[h.kind] || 'The Writer could not place it';
-      add({ id: 'live:held-email:' + h.id, section: 'JOBS', level: 'ACTION', title: 'Held email: ' + [h.company, h.title].filter(Boolean).join(' — ') + (h.state ? ' (' + String(h.state).replace(/_/g, ' ').toLowerCase() + ')' : ''),
-        detail: kind + '. ' + (h.evidence ? 'Email: ' + h.evidence + '. ' : '') + (h.status === 'RESTORED_AWAITING_ATTACH' ? 'The archived role was restored; tap Same role again to attach the email.' : 'Same role attaches it; Different role gives it its own row.'),
+      var kind = { NEAR_TIM_RULED: 'You already marked a ' + (h.company || 'this employer') + ' role Applied', AMBIGUOUS: 'It matches more than one role', ARCHIVED_MATCH: 'It matches an archived role', RELISTED_PROTECTED: 'A role you declined, were rejected for or applied to is listed again' }[h.kind] || 'The Writer could not place it';
+      var relisted = h.kind === 'RELISTED_PROTECTED';
+      add({ id: 'live:held-email:' + h.id, section: 'JOBS', level: 'ACTION', title: (relisted ? 'Listed again: ' : 'Held email: ') + [h.company, h.title].filter(Boolean).join(' — ') + (h.state ? ' (' + String(h.state).replace(/_/g, ' ').toLowerCase() + ')' : ''),
+        detail: kind + '. ' + (relisted ? (h.sourceUrl ? 'New listing: ' + h.sourceUrl + '. ' : '') + 'Same role keeps your earlier decision; Different role adds it as a new opportunity to reconsider.' : (h.evidence ? 'Email: ' + h.evidence + '. ' : '') + (h.status === 'RESTORED_AWAITING_ATTACH' ? 'The archived role was restored; tap Same role again to attach the email.' : 'Same role attaches it; Different role gives it its own row.')),
         held: { id: h.id, candidates: h.candidates || [] }, raisedBy: 'WRITER', at: h.at });
     });
     return out;

@@ -1762,7 +1762,7 @@ function heldRecord_(ev, plan, at) {
   var key = plan.upsertKey || ('UK-' + hashHex(JSON.stringify(e)).slice(0, 16));
   var kind = plan.holdKind || (/^ARCHIVED_MATCH/.test(plan.error || '') ? 'ARCHIVED_MATCH' : 'OTHER');
   var cands = plan.candidates || (plan.primaryId ? [{ primaryId: plan.primaryId, archived: kind === 'ARCHIVED_MATCH' }] : []);
-  return { id: 'HOLD-' + key, upsertKey: key, kind: kind, status: 'OPEN', at: at, reason: plan.error || '', company: e.COMPANY || '', title: e.TITLE || '', state: e.STATE || e.state || '', eventDate: e.EVENT_DATE || '', evidence: e.EVIDENCE || '', candidates: cands, event: e };
+  return { id: 'HOLD-' + key, origin: plan.origin || 'EMAIL', location: e.LOCATION || '', sourceUrl: e.SOURCE_URL || '', upsertKey: key, kind: kind, status: 'OPEN', at: at, reason: plan.error || '', company: e.COMPANY || '', title: e.TITLE || '', state: e.STATE || e.state || '', eventDate: e.EVENT_DATE || '', evidence: e.EVIDENCE || '', candidates: cands, event: e };
 }
 function recordHolds_(pairs) {
   if (!pairs.length) return;
@@ -1782,6 +1782,16 @@ function resolveHeldEmail_(req) {
   var o = readHeld_(), h = o.holds.filter(function (x) { return x.id === id; })[0];
   if (!h) return { ok: false, error: 'no held email ' + id };
   if (h.status === 'RESOLVED') return { ok: true, mode: 'ALREADY_RESOLVED', hold: h };
+  if (h.origin === 'INTAKE') {
+    // A protected role listed again. Same role keeps Tim's earlier decision (nothing written); Different role admits the
+    // new listing as its own row, marked RELISTING_OF the protected row, so he can reconsider it.
+    if (choice === 'SAME') { h.status = 'RESOLVED'; h.choice = choice; h.resolvedAt = new Date().toISOString(); h.result = { mode: 'KEPT_PRIOR_DECISION' }; writeHeld_(o); return { ok: true, holdId: h.id, choice: choice, mode: 'KEPT_PRIOR_DECISION' }; }
+    var rid = 'TIM-RELISTED-' + h.id, rec = JSON.parse(JSON.stringify(h.event));
+    var ir = applyIntakeToMaster_({ action: 'intake', requestId: rid, run: { SCOUT_RUN_ID: rid, GROSS_FOUND: 1 }, records: [rec] }, { relistingApproved: { holdId: h.id, candidateIds: h.candidates.map(function (c) { return c.primaryId; }) } });
+    var admitted = (ir.results || []).some(function (r) { return /_WRITTEN$/.test(r.result); });
+    if (admitted) { h.status = 'RESOLVED'; h.choice = choice; h.resolvedAt = new Date().toISOString(); h.result = { mode: 'RELISTING_ADMITTED', primaryId: ((ir.results || [])[0] || {}).PRIMARY_ID || '', writeId: ir.writeId || '' }; writeHeld_(o); }
+    return Object.assign({ holdId: h.id, choice: choice }, ir);
+  }
   var ev = JSON.parse(JSON.stringify(h.event)); ev.actor = ev.actor || 'EMAIL_UPSERT'; ev.requestId = h.upsertKey;
   if (choice === 'SAME') {
     var pid = String(req.primaryId || (h.candidates.length === 1 ? h.candidates[0].primaryId : '')).trim();
@@ -1895,7 +1905,7 @@ function applyUpsertToMaster_(ev) {
 }
 
 /* ================= intake (Scout discovery -> canonical rows) ================= */
-function applyIntakeToMaster_(req) {
+function applyIntakeToMaster_(req, internal) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -1908,8 +1918,11 @@ function applyIntakeToMaster_(req) {
     var rules = readRules_();
     // Dedupe (and next INV numbering) against live rows AND archived terminal history, so a declined/closed/rejected job is not re-admitted.
     var flexPolicy = readFlexPolicy_();
-    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_(), flexPolicy: flexPolicy });
+    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_(), flexPolicy: flexPolicy, relistingApproved: internal && internal.relistingApproved });
     if (!plan.ok) return { ok: false, error: plan.error, results: plan.results || [] };
+    // A protected role listed again is held for Tim in Needs Tim (same store as held emails); nothing is written for it.
+    var relisted = plan.results.filter(function (r) { return r.holdPlan; });
+    if (relisted.length) recordHolds_(relisted.map(function (r) { var hp = r.holdPlan; delete r.holdPlan; return { ev: (req.records || [])[r.index] || {}, plan: hp }; }));
     var routing = evidenceRouting_(), routedAt = new Date().toISOString(), routedMap = {};
     plan.newLines = plan.newLines.map(function (l) { var r = externalizeEvidence_(routing, '', l, 'INTAKE:' + ((req.run && req.run.SCOUT_RUN_ID) || ''), routedAt); routedMap[l] = r; return r; });
     plan.insertLines = plan.insertLines.map(function (l) { return routedMap[l] || l; });
@@ -2341,6 +2354,7 @@ function planUpsertApplication(lines, ev, ctx) {
   if (!company || !title) return { ok: false, mode: 'INVALID', error: 'COMPANY and TITLE are required (or TARGET_PRIMARY_ID)' };
   var idx = indexExisting(lines);
   var m = matchExisting({ COMPANY: company, TITLE: title, LOCATION: ev.LOCATION || '', REQ_ID: ev.REQ_ID || '', SOURCE_URL: ev.SOURCE_URL || '' }, idx);
+  if (m.kind === 'conflict' && ev.CREATE_NEW !== true) return { ok: false, mode: 'HOLD', holdKind: 'IDENTITY_CONFLICT', error: 'identity conflict (' + m.by + '); resend with TARGET_PRIMARY_ID, or CREATE_NEW if it is a different role', possibleMatches: m.rows.map(function (r) { return r.id + ' [' + r.bucket + '] ' + r.location; }), candidates: m.rows.map(function (r) { return r.id; }) };
   if (m.kind === 'ambiguous' && ev.CREATE_NEW !== true) return { ok: false, mode: 'HOLD', holdKind: 'AMBIGUOUS', error: 'identity ambiguous (' + m.by + '); resend with TARGET_PRIMARY_ID', possibleMatches: m.rows.map(function (r) { return r.id + ' [' + r.bucket + '] ' + r.location; }), candidates: m.rows.map(function (r) { return { primaryId: r.id, title: r.title, location: r.location, bucket: r.bucket }; }), upsertKey: upsertKey };
   if (m.kind === 'exact') {
     var row = m.rows[0], li = -1;
@@ -2408,6 +2422,21 @@ function normLocation(s) { s = String(s || '').toLowerCase(); if (!s || /not_sta
 function atsJobIds(text) { var out = []; String(text || '').replace(/https?:\/\/[^\s"<>|;]+/gi, function (u) { var m; if ((m = u.match(/greenhouse\.io\/[^\/?#]+\/jobs\/(\d{6,})/i)) || (m = u.match(/[?&]gh_jid=(\d{6,})/i)) || (m = u.match(/myworkdayjobs\.com\/[^?#]*_R-?(\d{4,})/i))) { if (out.indexOf(m[1]) < 0) out.push(m[1]); } }); return out; }
 function reqTokens(s) { var out = []; String(s || '').replace(/[A-Za-z]*[-_ ]?\d{5,}[A-Za-z0-9-]*/g, function (m) { out.push(m.replace(/[^A-Za-z0-9]/g, '').toUpperCase()); }); return out; }
 function reqCore(s) { var t = reqTokens(s); return t.length ? t[0].replace(/^(LI|GH|WD|JR|R|REQ)/, '') : ''; }
+/* Job-board posting numbers (LinkedIn job view, Indeed jk, Glassdoor listing) name a board listing, not an employer
+   requisition. Copied into REQ they must never make a record look like a different job (2026-10-22: a LinkedIn job id
+   in REQ_ID re-admitted Anduril Fury, archived REJECTED_BY_EMPLOYER with ANTI_RESURRECTION=YES). */
+function boardJobIds(canonUrls) { var out = []; (canonUrls || []).forEach(function (u) { var m = String(u || '').match(/^(?:linkedin\.com\/jobs\/view|indeed\.com\/jk|glassdoor\.com\/job)\/([a-z0-9]+)$/i); if (m) out.push(m[1].toUpperCase()); }); return out; }
+function employerReqCores(tokens, boardIds) {
+  return (tokens || []).filter(function (t) { return !/^LI\d/.test(t) && (boardIds || []).indexOf(t.replace(/^(LI|GH|WD|JR|R|REQ)/, '')) < 0; })
+    .map(function (t) { return t.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); });
+}
+/* Identities a differing requisition may not silently re-admit: Tim declined it, the employer rejected him, he applied,
+   or the row is marked ANTI_RESURRECTION / DO_NOT_REWORK. CLOSED_DEAD and DUPLICATE are not protected by bucket alone. */
+var PROTECTED_IDENTITY_BUCKETS = ['APPLIED', 'REJECTED_BY_EMPLOYER', 'DECLINED_BY_TIM'];
+function protectedIdentity_(bucket, payload) {
+  var yes = function (v) { return /^(yes|y|true)$/i.test(String(v || '').trim()); };
+  return PROTECTED_IDENTITY_BUCKETS.indexOf(bucket) >= 0 || yes(payload && payload.ANTI_RESURRECTION) || yes(payload && payload.DO_NOT_REWORK);
+}
 function canonUrl(u) {
   u = String(u || '').trim(); if (!/^https?:\/\//i.test(u)) return '';
   var m = u.match(/^https?:\/\/([^\/?#]+)([^?#]*)/i); if (!m) return '';
@@ -2450,18 +2479,21 @@ function indexExisting(lines) {
     // Every URL field the Writer reads or writes on a row takes part in dedupe; SOURCE is the legacy reader (22 live rows).
     var urls = urlsIn(c[7]).concat(urlsIn(pp.payload.SOURCE || ''), urlsIn(pp.payload.SOURCE_URL || ''), urlsIn(pp.payload.INITIATING_URL || ''), urlsIn(pp.payload.COMPANY_SOURCE_URL || ''), urlsIn(pp.payload.INTAKE_SOURCE_URL || ''));
     var atsText = [c[7], pp.payload.SOURCE, pp.payload.SOURCE_URL, pp.payload.INITIATING_URL, pp.payload.COMPANY_SOURCE_URL, pp.payload.INTAKE_SOURCE_URL].join(' ');
-    rows.push({ timRuled: c[4] === 'APPLIED' && timRuledApplied_(pp.payload, c[6] === '-' ? [] : c[6].split(';').map(function (x) { return x.trim(); })), inv: parseInt(c[0], 10), id: c[1].trim(), company: c[2], title: c[3], bucket: c[4], location: c[8], reqTokens: reqTokens(c[7]), reqCores: reqTokens(c[7]).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), atsIds: atsJobIds(atsText), urls: urls, ne: normEmployer(c[2]), nt: normTitle(c[3]), nl: normLocation(c[8]), intakeKey: pp.payload.INTAKE_KEY || '' });
+    rows.push({ timRuled: c[4] === 'APPLIED' && timRuledApplied_(pp.payload, c[6] === '-' ? [] : c[6].split(';').map(function (x) { return x.trim(); })), inv: parseInt(c[0], 10), id: c[1].trim(), company: c[2], title: c[3], bucket: c[4], location: c[8], reqTokens: reqTokens(c[7]), reqCores: reqTokens(c[7]).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), employerReqCores: employerReqCores(reqTokens(c[7]), boardJobIds(urls)), protectedIdentity: protectedIdentity_(c[4], pp.payload), atsIds: atsJobIds(atsText), urls: urls, ne: normEmployer(c[2]), nt: normTitle(c[3]), nl: normLocation(c[8]), intakeKey: pp.payload.INTAKE_KEY || '' });
   }
   return rows;
 }
 /** Find matches for one intake record. Returns {kind:'none'|'exact'|'ambiguous', rows:[...], by:''} */
-function matchExisting(rec, idx) {
+function matchExisting(rec, idx, opts) {
+  opts = opts || {};
   var ne = normEmployer(rec.COMPANY), nt = normTitle(rec.TITLE), nl = normLocation(rec.LOCATION);
   var rc = reqCore(rec.REQ_ID || ''), cu = canonUrl(rec.SOURCE_URL || '');
   function verdict(kind, rows, by) { return { kind:kind, rows:rows, by:by,
     compared:{employer:ne, requisition:rc, title:nt, location:nl, sourceUrl:rec.SOURCE_URL || ''} }; }
   function compatible(r) { return ne && (r.ne === ne || (rec.EMPLOYER_RELATIONSHIP_EVIDENCE && PipelinePolicy.validUrl(rec.EMPLOYER_RELATIONSHIP_URL) && String(rec.EMPLOYER_ALIASES||'').split(',').some(function(alias){return normEmployer(alias)===r.ne;}))); }
-  function conflictingReq(r) { return rc && r.reqCores.length && r.reqCores.indexOf(rc) < 0; }
+  var recEmpReq = employerReqCores(reqTokens(rec.REQ_ID || ''), boardJobIds([cu, canonUrl(rec.INITIATING_URL || '')]))[0] || '';
+  // Only employer requisitions can make two otherwise identical postings different jobs; job-board ids never can.
+  function conflictingReq(r) { var er = r.employerReqCores || r.reqCores; return recEmpReq && er.length && er.indexOf(recEmpReq) < 0; }
   var key = rec.INTAKE_KEY, byKey = key ? idx.filter(function (r) { return r.intakeKey === key; }) : [];
   if (byKey.length) {
     if (byKey.some(function (r) { return !compatible(r) || conflictingReq(r); })) return verdict('conflict', byKey, 'INTAKE_KEY_IDENTITY_CONFLICT');
@@ -2489,9 +2521,17 @@ function matchExisting(rec, idx) {
     var byId = idx.filter(function (r) { return compatible(r) && r.nt === nt && !conflictingReq(r); });
     if (byId.length) {
       var sameLoc = byId.filter(function (r) { return nl && r.nl && r.nl === nl; });
-      if (sameLoc.length === 1) return verdict('exact', sameLoc, 'EMPLOYER_TITLE_LOCATION');
+      if (sameLoc.length === 1) {
+        // Tim 2026-10-22: a protected role reaching intake through a different listing (none of its URLs or requisitions
+        // matched above) may be a second chance. Hold it for him: never insert it, never silently treat it as a no-op.
+        if (opts.holdRelistedProtected && sameLoc[0].protectedIdentity && (cu.length > 12 || rc || recAts.length)) return verdict('conflict', sameLoc, 'PROTECTED_IDENTITY_RELISTED');
+        return verdict('exact', sameLoc, 'EMPLOYER_TITLE_LOCATION');
+      }
       return verdict('ambiguous', sameLoc.length ? sameLoc : byId, 'EMPLOYER_TITLE_NEEDS_LOCATION');
     }
+    // Same employer, title and location as a protected row, kept apart only by a differing requisition: hold for Tim.
+    var guarded = idx.filter(function (r) { return r.protectedIdentity && compatible(r) && r.nt === nt && nl && r.nl === nl; });
+    if (guarded.length) return verdict('conflict', guarded, 'PROTECTED_IDENTITY_REQ_CONFLICT');
   }
   // Requisition numbers are employer-local. A shared token alone does not merge unrelated employers.
   return verdict('none', [], 'NO_SUPPORTED_MATCH');
@@ -2641,9 +2681,15 @@ function planIntake(lines, records, rulesObj, ctx) {
       results.push(res); continue;
     }
     if (nc.outcome === 'REVIEW') { res.NEVER_CONSIDER_REVIEW_NEEDED = nc.ruleId; summary.NEVER_CONSIDER_REVIEW_NEEDED++; }
-    var m = matchExisting(rec, idx);
+    var m = matchExisting(rec, idx, { holdRelistedProtected: true });
+    // Only Tim's "Different role" on a relisting hold sets ctx.relistingApproved (never an intake request field).
+    var approved = ctx.relistingApproved;
+    if (approved && m.kind === 'conflict' && /^PROTECTED_IDENTITY_/.test(m.by) && m.rows.length && m.rows.every(function (r) { return approved.candidateIds.indexOf(r.id) >= 0; }))
+      m = { kind: 'none', rows: [], by: 'TIM_APPROVED_RELISTING', relistingOf: m.rows.map(function (r) { return r.id; }) };
     res.identity = m; res.initiatingUrl = rec.INITIATING_URL || rec.SOURCE_URL || '';
-    if (m.kind === 'conflict' || m.kind === 'ambiguous') { res.result='WRITE_FAILED'; res.outcome=m.kind === 'conflict' ? 'IDENTITY_CONFLICT' : 'AMBIGUOUS_MATCH'; res.detail=res.outcome+': '+m.by; res.candidateIds=m.rows.map(function(r){return r.id;}); res.nextAction='Resolve exact employer/requisition evidence; preserve this candidate'; summary.WRITE_FAILED++; results.push(res); continue; }
+    if (m.kind === 'conflict' || m.kind === 'ambiguous') { res.result='WRITE_FAILED'; res.outcome=m.kind === 'conflict' ? 'IDENTITY_CONFLICT' : 'AMBIGUOUS_MATCH'; res.detail=res.outcome+': '+m.by; res.candidateIds=m.rows.map(function(r){return r.id;}); res.nextAction='Resolve exact employer/requisition evidence; preserve this candidate';
+      if (/^PROTECTED_IDENTITY_/.test(m.by)) { res.nextAction = 'Held for Tim: a role he declined, was rejected for, applied to or protected is listed again'; res.holdPlan = { holdKind: 'RELISTED_PROTECTED', origin: 'INTAKE', error: 'RELISTED_PROTECTED (' + m.by + '): ' + m.rows.map(function (r) { return r.id + ' [' + r.bucket + ']'; }).join(', '), candidates: m.rows.map(function (r) { return { primaryId: r.id, bucket: r.bucket, archived: ARCHIVE_BUCKETS.indexOf(r.bucket) >= 0 }; }) }; }
+      summary.WRITE_FAILED++; results.push(res); continue; }
     if (m.kind === 'exact') { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = m.rows[0].id; res.INV = m.rows[0].inv; res.BUCKET = m.rows[0].bucket; res.matchedBy = m.by; if (m.by === 'INTAKE_KEY') { res.detail = 'REPLAY'; summary.REPLAY++; } summary.EXISTING_MATCH++; results.push(res); continue; }
     if(!PipelinePolicy.validUrl(rec.SOURCE_URL)){res.result='WRITE_FAILED';res.detail='SOURCE_URL_REQUIRED: retain initiating job-board, email click-through, or ATS link';summary.WRITE_FAILED++;results.push(res);continue;}
     var proposed = String(rec.PROPOSED_BUCKET || '').toUpperCase(); var conf = String(rec.IDENTITY_CONFIDENCE || '').toUpperCase() || (rec.REQ_ID || rec.SOURCE_URL ? 'MEDIUM' : 'LOW');
@@ -2660,7 +2706,8 @@ function planIntake(lines, records, rulesObj, ctx) {
     function set(k, v) { if (v === undefined || v === null || v === '') return; if (O.indexOf(k) < 0) O.push(k); P[k] = clean_(v); }
     set('INTAKE_KEY', rec.INTAKE_KEY); set('SCOUT_RUN_ID', runId || 'UNSPECIFIED'); set('DISCOVERED_AT_ET', rec.DISCOVERED_AT_ET || nowET); set('DISCOVERY_SOURCE', rec.DISCOVERY_SOURCE || 'Scout');
     set('SOURCE_URL', rec.SOURCE_URL); set('INITIATING_URL',rec.INITIATING_URL||rec.SOURCE_URL); set('COMPANY_SOURCE_URL',rec.COMPANY_SOURCE_URL); set('SOURCE_PROVIDER', rec.SOURCE_PROVIDER); set('REQ_ID', rec.REQ_ID); set('IDENTITY_CONFIDENCE', conf);
-    set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED'); if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
+    set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED');
+    if (m.relistingOf) { set('RELISTING_OF', m.relistingOf.join(',')); set('RELISTING_APPROVED_BY', 'TIM:' + approved.holdId); } if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
     INTAKE_FACT_KEYS.forEach(function (k) { if(!PipelinePolicy.isV4(ctx.flexPolicy)||k!=='FLEX_HINT')set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
     if (nc.outcome === 'REVIEW') { set('NEVER_CONSIDER_REVIEW_NEEDED', nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'); set('NEVER_CONSIDER_REASON', nc.reason); }
     set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', rec.SOURCE_PROVIDER || rec.DISCOVERY_SOURCE || 'Scout');
@@ -3155,4 +3202,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
