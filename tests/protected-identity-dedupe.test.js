@@ -46,16 +46,69 @@ test('a protected title at a different location is not held', () => {
   assert.equal(v.kind, 'none');
 });
 
-test('planIntake: the Fury LinkedIn record is EXISTING_MATCH and the Blue Origin requisition is IDENTITY_CONFLICT; nothing is written', () => {
-  const rules = C.parseCanonicalNeverConsiderRules('');
-  const plan = C.planIntake(archive, [
-    { ...fury, REQ_ID: '4465067799', SOURCE_URL: 'https://www.linkedin.com/jobs/view/4465067799' },
-    { COMPANY: 'Blue Origin', TITLE: 'Lunar Manufacturing & Assembly Manager', LOCATION: 'Space Coast, FL', REQ_ID: 'R69279', SOURCE_URL: 'https://blueorigin.wd5.myworkdayjobs.com/x/job/Space-Coast-FL/Lunar_R69279' }
-  ], rules, { run: { SCOUT_RUN_ID: 'TEST', GROSS_FOUND: 2 }, now: '2026-10-23T00:00:00.000Z', nowET: '2026-10-22 20:00 ET' });
-  assert.equal(plan.results[0].result, 'EXISTING_MATCH'); assert.equal(plan.results[0].PRIMARY_ID, 'V2S-ANDURIL-FURY-5577');
-  assert.equal(plan.results[1].result, 'WRITE_FAILED'); assert.equal(plan.results[1].outcome, 'IDENTITY_CONFLICT');
-  assert.deepEqual(plan.results[1].candidateIds, ['V2I-674D32C11C4C']);
+const rules = C.parseCanonicalNeverConsiderRules('');
+const ctx = extra => ({ run: { SCOUT_RUN_ID: 'TEST', GROSS_FOUND: 1 }, now: '2026-10-23T00:00:00.000Z', nowET: '2026-10-22 20:00 ET', ...extra });
+const furyLinkedIn = { ...fury, REQ_ID: '4465067799', SOURCE_URL: 'https://www.linkedin.com/jobs/view/4465067799' };
+const blueRepost = { COMPANY: 'Blue Origin', TITLE: 'Lunar Manufacturing & Assembly Manager', LOCATION: 'Space Coast, FL', REQ_ID: 'R69279', SOURCE_URL: 'https://blueorigin.wd5.myworkdayjobs.com/x/job/Space-Coast-FL/Lunar_R69279' };
+
+test('Tim 2026-10-22: a protected role listed again through a different listing is held for review, never inserted, never a silent no-op', () => {
+  const plan = C.planIntake(archive, [furyLinkedIn, blueRepost], rules, { ...ctx(), run: { SCOUT_RUN_ID: 'TEST', GROSS_FOUND: 2 } });
+  assert.equal(plan.results[0].result, 'WRITE_FAILED'); assert.equal(plan.results[0].outcome, 'IDENTITY_CONFLICT');
+  assert.match(plan.results[0].detail, /PROTECTED_IDENTITY_RELISTED/); assert.deepEqual(plan.results[0].candidateIds, ['V2S-ANDURIL-FURY-5577']);
+  assert.equal(plan.results[0].holdPlan.holdKind, 'RELISTED_PROTECTED'); assert.equal(plan.results[0].holdPlan.origin, 'INTAKE');
+  assert.deepEqual(plan.results[0].holdPlan.candidates, [{ primaryId: 'V2S-ANDURIL-FURY-5577', bucket: 'REJECTED_BY_EMPLOYER', archived: true }]);
+  assert.equal(plan.results[1].result, 'WRITE_FAILED'); assert.match(plan.results[1].detail, /PROTECTED_IDENTITY_REQ_CONFLICT/);
+  assert.equal(plan.results[1].holdPlan.holdKind, 'RELISTED_PROTECTED');
   assert.equal(plan.newLines.length, 0);
+});
+
+test('the same listing (same requisition) is still a plain no-op: nothing new to review', () => {
+  const plan = C.planIntake(archive, [{ ...fury, REQ_ID: 'GH-4962385007 / internal Req 5577', SOURCE_URL: 'https://job-boards.greenhouse.io/andurilindustries/jobs/4962385007' }], rules, ctx());
+  assert.equal(plan.results[0].result, 'EXISTING_MATCH'); assert.equal(plan.results[0].PRIMARY_ID, 'V2S-ANDURIL-FURY-5577'); assert.equal(plan.results[0].holdPlan, undefined);
+});
+
+test('a record with no listing evidence (no URL, no requisition) is not held', () => {
+  assert.equal(C.matchExisting(fury, idx, { holdRelistedProtected: true }).kind, 'exact');
+});
+
+test('an unprotected row reached through a new listing keeps today\'s EXISTING_MATCH', () => {
+  const plan = C.planIntake(archive, [{ COMPANY: 'Zeta Motors', TITLE: 'Plant Manager', LOCATION: 'Dayton, OH', SOURCE_URL: 'https://www.linkedin.com/jobs/view/4999999999' }], rules, ctx());
+  assert.equal(plan.results[0].result, 'EXISTING_MATCH'); assert.equal(plan.results[0].PRIMARY_ID, 'V2I-DDDDDDDDDDDD');
+});
+
+test('email upserts keep matching protected rows across listings (an APPLIED/REJECTED email must still attach)', () => {
+  assert.equal(C.matchExisting(furyLinkedIn, idx).kind, 'exact');
+  assert.equal(C.matchExisting(furyLinkedIn, idx, { holdRelistedProtected: true }).by, 'PROTECTED_IDENTITY_RELISTED');
+});
+
+test('Different role (Tim\'s approval) admits the relisting as its own row marked RELISTING_OF; only for the held candidates', () => {
+  const approved = C.planIntake(archive, [furyLinkedIn], rules, ctx({ relistingApproved: { holdId: 'HOLD-UK-1', candidateIds: ['V2S-ANDURIL-FURY-5577'] } }));
+  assert.equal(approved.results[0].result, 'SCOUT_INTAKE_WRITTEN'); assert.equal(approved.newLines.length, 1);
+  assert.match(approved.newLines[0], /RELISTING_OF=V2S-ANDURIL-FURY-5577/); assert.match(approved.newLines[0], /RELISTING_APPROVED_BY=TIM:HOLD-UK-1/);
+  const other = C.planIntake(archive, [furyLinkedIn], rules, ctx({ relistingApproved: { holdId: 'HOLD-UK-2', candidateIds: ['V2I-SOMETHING-ELSE'] } }));
+  assert.equal(other.results[0].result, 'WRITE_FAILED'); assert.equal(other.newLines.length, 0);
+});
+
+test('an intake record cannot approve its own relisting', () => {
+  const plan = C.planIntake(archive, [{ ...furyLinkedIn, relistingApproved: { candidateIds: ['V2S-ANDURIL-FURY-5577'] }, RELISTING_APPROVED_BY: 'TIM:x', CREATE_NEW: true }], rules, ctx());
+  assert.equal(plan.results[0].result, 'WRITE_FAILED'); assert.equal(plan.newLines.length, 0);
+});
+
+test('relisting holds carry their origin, location and new listing for Needs Tim; email holds stay EMAIL', () => {
+  const plan = C.planIntake(archive, [furyLinkedIn], rules, ctx());
+  const h = C.heldRecord_(furyLinkedIn, plan.results[0].holdPlan, '2026-10-23T00:00:00.000Z');
+  assert.equal(h.origin, 'INTAKE'); assert.equal(h.kind, 'RELISTED_PROTECTED'); assert.equal(h.location, 'Ashville, OH');
+  assert.equal(h.sourceUrl, 'https://www.linkedin.com/jobs/view/4465067799'); assert.equal(h.candidates[0].primaryId, 'V2S-ANDURIL-FURY-5577');
+  assert.equal(C.heldRecord_({ COMPANY: 'X', TITLE: 'Y', STATE: 'APPLIED' }, { holdKind: 'AMBIGUOUS' }, 'now').origin, 'EMAIL');
+});
+
+test('Needs Tim shows a relisting hold as "Listed again" with the keep / reconsider choice', () => {
+  const NT = require('../pipeline-needs-tim.js');
+  const items = NT.liveItems({ now: Date.parse('2026-10-23T00:00:00Z'), held: { holds: [{ id: 'HOLD-UK-1', origin: 'INTAKE', kind: 'RELISTED_PROTECTED', company: 'Anduril Industries', title: 'Deputy Head of Production, Autonomous Airpower (Fury)', sourceUrl: 'https://www.linkedin.com/jobs/view/4465067799', candidates: [{ primaryId: 'V2S-ANDURIL-FURY-5577', archived: true }], at: '2026-10-23T00:00:00Z' }] } });
+  const it = items.find(i => i.id === 'live:held-email:HOLD-UK-1');
+  assert.match(it.title, /^Listed again: Anduril Industries/);
+  assert.match(it.detail, /listed again/); assert.match(it.detail, /Same role keeps your earlier decision; Different role adds it as a new opportunity/);
+  assert.match(it.detail, /linkedin\.com\/jobs\/view\/4465067799/); assert.deepEqual(it.held.candidates.map(c => c.primaryId), ['V2S-ANDURIL-FURY-5577']);
 });
 
 test('upsert_application holds on an identity conflict instead of minting a second row; CREATE_NEW is Tim\'s override', () => {

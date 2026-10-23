@@ -1762,7 +1762,7 @@ function heldRecord_(ev, plan, at) {
   var key = plan.upsertKey || ('UK-' + hashHex(JSON.stringify(e)).slice(0, 16));
   var kind = plan.holdKind || (/^ARCHIVED_MATCH/.test(plan.error || '') ? 'ARCHIVED_MATCH' : 'OTHER');
   var cands = plan.candidates || (plan.primaryId ? [{ primaryId: plan.primaryId, archived: kind === 'ARCHIVED_MATCH' }] : []);
-  return { id: 'HOLD-' + key, upsertKey: key, kind: kind, status: 'OPEN', at: at, reason: plan.error || '', company: e.COMPANY || '', title: e.TITLE || '', state: e.STATE || e.state || '', eventDate: e.EVENT_DATE || '', evidence: e.EVIDENCE || '', candidates: cands, event: e };
+  return { id: 'HOLD-' + key, origin: plan.origin || 'EMAIL', location: e.LOCATION || '', sourceUrl: e.SOURCE_URL || '', upsertKey: key, kind: kind, status: 'OPEN', at: at, reason: plan.error || '', company: e.COMPANY || '', title: e.TITLE || '', state: e.STATE || e.state || '', eventDate: e.EVENT_DATE || '', evidence: e.EVIDENCE || '', candidates: cands, event: e };
 }
 function recordHolds_(pairs) {
   if (!pairs.length) return;
@@ -1782,6 +1782,16 @@ function resolveHeldEmail_(req) {
   var o = readHeld_(), h = o.holds.filter(function (x) { return x.id === id; })[0];
   if (!h) return { ok: false, error: 'no held email ' + id };
   if (h.status === 'RESOLVED') return { ok: true, mode: 'ALREADY_RESOLVED', hold: h };
+  if (h.origin === 'INTAKE') {
+    // A protected role listed again. Same role keeps Tim's earlier decision (nothing written); Different role admits the
+    // new listing as its own row, marked RELISTING_OF the protected row, so he can reconsider it.
+    if (choice === 'SAME') { h.status = 'RESOLVED'; h.choice = choice; h.resolvedAt = new Date().toISOString(); h.result = { mode: 'KEPT_PRIOR_DECISION' }; writeHeld_(o); return { ok: true, holdId: h.id, choice: choice, mode: 'KEPT_PRIOR_DECISION' }; }
+    var rid = 'TIM-RELISTED-' + h.id, rec = JSON.parse(JSON.stringify(h.event));
+    var ir = applyIntakeToMaster_({ action: 'intake', requestId: rid, run: { SCOUT_RUN_ID: rid, GROSS_FOUND: 1 }, records: [rec] }, { relistingApproved: { holdId: h.id, candidateIds: h.candidates.map(function (c) { return c.primaryId; }) } });
+    var admitted = (ir.results || []).some(function (r) { return /_WRITTEN$/.test(r.result); });
+    if (admitted) { h.status = 'RESOLVED'; h.choice = choice; h.resolvedAt = new Date().toISOString(); h.result = { mode: 'RELISTING_ADMITTED', primaryId: ((ir.results || [])[0] || {}).PRIMARY_ID || '', writeId: ir.writeId || '' }; writeHeld_(o); }
+    return Object.assign({ holdId: h.id, choice: choice }, ir);
+  }
   var ev = JSON.parse(JSON.stringify(h.event)); ev.actor = ev.actor || 'EMAIL_UPSERT'; ev.requestId = h.upsertKey;
   if (choice === 'SAME') {
     var pid = String(req.primaryId || (h.candidates.length === 1 ? h.candidates[0].primaryId : '')).trim();
@@ -1895,7 +1905,7 @@ function applyUpsertToMaster_(ev) {
 }
 
 /* ================= intake (Scout discovery -> canonical rows) ================= */
-function applyIntakeToMaster_(req) {
+function applyIntakeToMaster_(req, internal) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -1908,8 +1918,11 @@ function applyIntakeToMaster_(req) {
     var rules = readRules_();
     // Dedupe (and next INV numbering) against live rows AND archived terminal history, so a declined/closed/rejected job is not re-admitted.
     var flexPolicy = readFlexPolicy_();
-    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_(), flexPolicy: flexPolicy });
+    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_(), flexPolicy: flexPolicy, relistingApproved: internal && internal.relistingApproved });
     if (!plan.ok) return { ok: false, error: plan.error, results: plan.results || [] };
+    // A protected role listed again is held for Tim in Needs Tim (same store as held emails); nothing is written for it.
+    var relisted = plan.results.filter(function (r) { return r.holdPlan; });
+    if (relisted.length) recordHolds_(relisted.map(function (r) { var hp = r.holdPlan; delete r.holdPlan; return { ev: (req.records || [])[r.index] || {}, plan: hp }; }));
     var routing = evidenceRouting_(), routedAt = new Date().toISOString(), routedMap = {};
     plan.newLines = plan.newLines.map(function (l) { var r = externalizeEvidence_(routing, '', l, 'INTAKE:' + ((req.run && req.run.SCOUT_RUN_ID) || ''), routedAt); routedMap[l] = r; return r; });
     plan.insertLines = plan.insertLines.map(function (l) { return routedMap[l] || l; });
@@ -2471,7 +2484,8 @@ function indexExisting(lines) {
   return rows;
 }
 /** Find matches for one intake record. Returns {kind:'none'|'exact'|'ambiguous', rows:[...], by:''} */
-function matchExisting(rec, idx) {
+function matchExisting(rec, idx, opts) {
+  opts = opts || {};
   var ne = normEmployer(rec.COMPANY), nt = normTitle(rec.TITLE), nl = normLocation(rec.LOCATION);
   var rc = reqCore(rec.REQ_ID || ''), cu = canonUrl(rec.SOURCE_URL || '');
   function verdict(kind, rows, by) { return { kind:kind, rows:rows, by:by,
@@ -2507,7 +2521,12 @@ function matchExisting(rec, idx) {
     var byId = idx.filter(function (r) { return compatible(r) && r.nt === nt && !conflictingReq(r); });
     if (byId.length) {
       var sameLoc = byId.filter(function (r) { return nl && r.nl && r.nl === nl; });
-      if (sameLoc.length === 1) return verdict('exact', sameLoc, 'EMPLOYER_TITLE_LOCATION');
+      if (sameLoc.length === 1) {
+        // Tim 2026-10-22: a protected role reaching intake through a different listing (none of its URLs or requisitions
+        // matched above) may be a second chance. Hold it for him: never insert it, never silently treat it as a no-op.
+        if (opts.holdRelistedProtected && sameLoc[0].protectedIdentity && (cu.length > 12 || rc || recAts.length)) return verdict('conflict', sameLoc, 'PROTECTED_IDENTITY_RELISTED');
+        return verdict('exact', sameLoc, 'EMPLOYER_TITLE_LOCATION');
+      }
       return verdict('ambiguous', sameLoc.length ? sameLoc : byId, 'EMPLOYER_TITLE_NEEDS_LOCATION');
     }
     // Same employer, title and location as a protected row, kept apart only by a differing requisition: hold for Tim.
@@ -2662,9 +2681,15 @@ function planIntake(lines, records, rulesObj, ctx) {
       results.push(res); continue;
     }
     if (nc.outcome === 'REVIEW') { res.NEVER_CONSIDER_REVIEW_NEEDED = nc.ruleId; summary.NEVER_CONSIDER_REVIEW_NEEDED++; }
-    var m = matchExisting(rec, idx);
+    var m = matchExisting(rec, idx, { holdRelistedProtected: true });
+    // Only Tim's "Different role" on a relisting hold sets ctx.relistingApproved (never an intake request field).
+    var approved = ctx.relistingApproved;
+    if (approved && m.kind === 'conflict' && /^PROTECTED_IDENTITY_/.test(m.by) && m.rows.length && m.rows.every(function (r) { return approved.candidateIds.indexOf(r.id) >= 0; }))
+      m = { kind: 'none', rows: [], by: 'TIM_APPROVED_RELISTING', relistingOf: m.rows.map(function (r) { return r.id; }) };
     res.identity = m; res.initiatingUrl = rec.INITIATING_URL || rec.SOURCE_URL || '';
-    if (m.kind === 'conflict' || m.kind === 'ambiguous') { res.result='WRITE_FAILED'; res.outcome=m.kind === 'conflict' ? 'IDENTITY_CONFLICT' : 'AMBIGUOUS_MATCH'; res.detail=res.outcome+': '+m.by; res.candidateIds=m.rows.map(function(r){return r.id;}); res.nextAction='Resolve exact employer/requisition evidence; preserve this candidate'; summary.WRITE_FAILED++; results.push(res); continue; }
+    if (m.kind === 'conflict' || m.kind === 'ambiguous') { res.result='WRITE_FAILED'; res.outcome=m.kind === 'conflict' ? 'IDENTITY_CONFLICT' : 'AMBIGUOUS_MATCH'; res.detail=res.outcome+': '+m.by; res.candidateIds=m.rows.map(function(r){return r.id;}); res.nextAction='Resolve exact employer/requisition evidence; preserve this candidate';
+      if (/^PROTECTED_IDENTITY_/.test(m.by)) { res.nextAction = 'Held for Tim: a role he declined, was rejected for, applied to or protected is listed again'; res.holdPlan = { holdKind: 'RELISTED_PROTECTED', origin: 'INTAKE', error: 'RELISTED_PROTECTED (' + m.by + '): ' + m.rows.map(function (r) { return r.id + ' [' + r.bucket + ']'; }).join(', '), candidates: m.rows.map(function (r) { return { primaryId: r.id, bucket: r.bucket, archived: ARCHIVE_BUCKETS.indexOf(r.bucket) >= 0 }; }) }; }
+      summary.WRITE_FAILED++; results.push(res); continue; }
     if (m.kind === 'exact') { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = m.rows[0].id; res.INV = m.rows[0].inv; res.BUCKET = m.rows[0].bucket; res.matchedBy = m.by; if (m.by === 'INTAKE_KEY') { res.detail = 'REPLAY'; summary.REPLAY++; } summary.EXISTING_MATCH++; results.push(res); continue; }
     if(!PipelinePolicy.validUrl(rec.SOURCE_URL)){res.result='WRITE_FAILED';res.detail='SOURCE_URL_REQUIRED: retain initiating job-board, email click-through, or ATS link';summary.WRITE_FAILED++;results.push(res);continue;}
     var proposed = String(rec.PROPOSED_BUCKET || '').toUpperCase(); var conf = String(rec.IDENTITY_CONFIDENCE || '').toUpperCase() || (rec.REQ_ID || rec.SOURCE_URL ? 'MEDIUM' : 'LOW');
@@ -2681,7 +2706,8 @@ function planIntake(lines, records, rulesObj, ctx) {
     function set(k, v) { if (v === undefined || v === null || v === '') return; if (O.indexOf(k) < 0) O.push(k); P[k] = clean_(v); }
     set('INTAKE_KEY', rec.INTAKE_KEY); set('SCOUT_RUN_ID', runId || 'UNSPECIFIED'); set('DISCOVERED_AT_ET', rec.DISCOVERED_AT_ET || nowET); set('DISCOVERY_SOURCE', rec.DISCOVERY_SOURCE || 'Scout');
     set('SOURCE_URL', rec.SOURCE_URL); set('INITIATING_URL',rec.INITIATING_URL||rec.SOURCE_URL); set('COMPANY_SOURCE_URL',rec.COMPANY_SOURCE_URL); set('SOURCE_PROVIDER', rec.SOURCE_PROVIDER); set('REQ_ID', rec.REQ_ID); set('IDENTITY_CONFIDENCE', conf);
-    set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED'); if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
+    set('INITIAL_UNKNOWN_FIELDS', rec.INITIAL_UNKNOWN_FIELDS || 'UNSPECIFIED');
+    if (m.relistingOf) { set('RELISTING_OF', m.relistingOf.join(',')); set('RELISTING_APPROVED_BY', 'TIM:' + approved.holdId); } if (m.kind === 'ambiguous') set('POSSIBLE_MATCHES', m.rows.map(function (r) { return r.id; }).join(','));
     INTAKE_FACT_KEYS.forEach(function (k) { if(!PipelinePolicy.isV4(ctx.flexPolicy)||k!=='FLEX_HINT')set(k, rec[k]); }); set('EMPLOYER_PRIMARY_BUSINESS', rec.EMPLOYER_PRIMARY_BUSINESS);
     if (nc.outcome === 'REVIEW') { set('NEVER_CONSIDER_REVIEW_NEEDED', nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'); set('NEVER_CONSIDER_REASON', nc.reason); }
     set('DATE_ADDED', today_(now)); set('MASTER_LOADED_AT', now); set('NOTIFICATION_SOURCE', rec.SOURCE_PROVIDER || rec.DISCOVERY_SOURCE || 'Scout');
