@@ -1,0 +1,23 @@
+# ASK-20261018-07 / D-8 (Tim 2026-10-22: "Add it"): run the unit tests on every pull request and on main, and show a
+# green/red check. Visible only: it is not a required status check, so it never blocks merging. Read only.
+name: unit-tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: unit-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
