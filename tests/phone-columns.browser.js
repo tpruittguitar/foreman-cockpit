@@ -71,13 +71,9 @@ const JOB='V2X-A4CCD49EE686';
        assert(ms.wrap.sl>=Math.min(200,sl)-1,t+'scrolled to '+sl+': '+ms.wrap.sl);inView(ms,t+'scrollLeft '+sl+': ');
        ['NEW','TITLE','COMPANY','LOCATION','OVERALL_RATING'].forEach(c=>assert(Math.abs(ms.four[c].l-m0.four[c].l)<=1,t+c+' stays put at scrollLeft '+sl+': '+ms.four[c].l+' vs '+m0.four[c].l))}
      await page.evaluate(()=>{document.getElementById('gridwrap').scrollLeft=0});await page.waitForTimeout(200)}
-    // REV-092: the NEW cell shows the row checkbox in view, and a tap anywhere in the cell toggles it without opening the job
-    {const nc=page.locator('#grid tbody tr[data-id]').first().locator('td.c-new');const cb=await nc.locator('.row-select').boundingBox(),cell=await nc.boundingBox();
-     assert(cb&&cb.x>=m.wrap.l-0.5&&cb.x+cb.width<=cell.x+cell.width+0.5,t+'checkbox inside the NEW cell: '+JSON.stringify(cb));
-     await page.mouse.click(cell.x+cell.width/2,cell.y+cell.height-3);await page.waitForTimeout(300);
-     assert.equal(await nc.locator('.row-select').isChecked(),true,t+'tap on the NEW cell checks the row');
-     assert.equal(await page.evaluate(()=>document.getElementById('drawer').classList.contains('pe-sheet')),false,t+'tap on the NEW cell does not open the job');
-     await page.mouse.click(cell.x+cell.width/2,cell.y+cell.height-3);await page.waitForTimeout(300);assert.equal(await nc.locator('.row-select').isChecked(),false,t+'second tap unchecks')}
+    // The NEW cell is the pin / new / changed marks. There is no row checkbox.
+    {const nc=page.locator('#grid tbody tr[data-id]').first().locator('td.c-new');
+     assert.equal(await nc.locator('input').count(),0,t+'NEW cell has no checkbox')}
     // resize COMPANY +24: TITLE gives the room, all four stay in view, the width is saved and survives a reload
     const t0=m.four.TITLE.w;await drag(page,'COMPANY',24);m=await M(page);
     assert(Math.abs(m.four.COMPANY.w-104)<=2,t+'COMPANY widened to ~104: '+m.four.COMPANY.w);assert(Math.abs(m.four.TITLE.w-(t0-24))<=2,t+'TITLE shrank by the same: '+m.four.TITLE.w);inView(m,t+'after resize: ');

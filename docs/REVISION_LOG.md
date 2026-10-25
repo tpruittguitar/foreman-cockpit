@@ -9,7 +9,7 @@ Trigger: Tim 2026-10-25 19:27 ET: implement multi-select and group decision maki
 ### Changed (`pipeline.html`, `pipeline-list-select.js`)
 
 1. Ctrl or Cmd click toggles a row in the selection. Shift click selects the visible range from the anchor. Shift plus Ctrl adds that range. A plain click still opens the row and only moves the anchor.
-2. The checkbox still selects one row and keeps the others. Shift click on a row or its checkbox selects the range.
+2. There is no row checkbox. The NEW cell keeps the pin, new, and changed marks.
 3. Selected rows get a `sel` mark. With a selection, one menu applies Decline, Applied, Request research, Pursue, Closed / dead, or Invalid to every selected row through the existing Writer batch. Applied is refused for a row already Rejected by employer. Decline, research, and invalid keep their previous allowed states. Pursue and Closed / dead are refused on Applied and Rejected by employer rows.
 
 ### Verified

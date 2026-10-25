@@ -36,7 +36,7 @@ test('a checkbox click keeps the other rows and follows the box', () => {
   assert.deepEqual(Object.keys(off.checked), ['c']);
 });
 
-test('the job list wires ctrl, shift, and one decision menu for the selection', () => {
+test('the job list wires ctrl, shift, and one decision menu, with no row checkbox', () => {
   assert.match(html, /<script src="pipeline-list-select\.js"><\/script>/);
   assert.match(html, /PipelineListSelect\.apply/);
   assert.match(html, /id="bulk-decision"/);
@@ -45,4 +45,5 @@ test('the job list wires ctrl, shift, and one decision menu for the selection', 
   assert.match(html, /value="DECLINE">Decline/);
   assert.match(html, /id="bulk-apply"/);
   assert.match(html, /kind:spec\.kind,value:spec\.value\|\|''/);
+  assert.equal(html.includes('class="row-select"'), false);
 });
