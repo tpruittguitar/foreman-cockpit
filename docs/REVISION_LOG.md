@@ -2,6 +2,25 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-25: job-list multi-select and one decision for the selection
+
+Trigger: Tim 2026-10-25 19:27 ET: implement multi-select and group decision making on the job list. The Action Center redesign stays a mockup.
+
+### Changed (`pipeline.html`, `pipeline-list-select.js`)
+
+1. Ctrl or Cmd click toggles a row in the selection. Shift click selects the visible range from the anchor. Shift plus Ctrl adds that range. A plain click still opens the row and only moves the anchor.
+2. The checkbox still selects one row and keeps the others. Shift click on a row or its checkbox selects the range.
+3. Selected rows get a `sel` mark. With a selection, one menu applies Decline, Applied, Request research, Pursue, Closed / dead, or Invalid to every selected row through the existing Writer batch. Applied is refused for a row already Rejected by employer. Decline, research, and invalid keep their previous allowed states. Pursue and Closed / dead are refused on Applied and Rejected by employer rows.
+
+### Verified
+
+`node --test tests/list-select.test.js` (5).
+
+### Not changed
+
+Needs you layout, the Action Center, scoring, and the Writer.
+
+
 ## Batch 2026-10-20-D: unsaved rulings resend themselves until the Writer saves them (REV-131)
 
 Trigger: Tim 2026-10-20 23:10–23:16 ET: "how do I resubmit a declined role that failed to write? … shouldn't the system automatically resubmit until it saves to the master" / "agree".

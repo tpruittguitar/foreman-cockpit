@@ -50,6 +50,7 @@ th{position:sticky;top:0;z-index:3;background:#080808;color:var(--dim);font-size
 th .fx{color:var(--faint);margin-left:4px;font-size:10.8px}th.sorted{color:var(--white)}th.filtered .fx{color:var(--nc)}
 td.sticky,th.sticky{position:sticky;z-index:2;background:#050505}th.sticky{z-index:4}
 tbody tr:hover td{background:#0e0e0e}tbody tr.focus td{background:#121212;box-shadow:inset 0 -1px 0 var(--nc)}
+tbody tr.sel td{background:#161410;box-shadow:inset 3px 0 0 var(--nc)}
 tbody tr.seen td{color:#c9c9c9}td.mono{font-family:var(--mono);font-size:11.5px}
 .g{font-family:var(--mono);margin-right:4px}.g.new{color:var(--new)}.g.rule{color:var(--focus)}.g.pend{color:var(--caution)}.g.err{color:var(--fault)}
 td.b-READY_TO_PURSUE{color:var(--white)}td.b-APPLIED{color:var(--white)}td.b-DECLINED_BY_TIM,td.b-DUPLICATE,td.b-CLOSED_DEAD,td.b-INVALID_DISCOVERY{color:var(--faint)}td.b-BLOCKED,td.b-TIM_DECISION_REQUIRED{color:var(--nc)}
@@ -107,7 +108,7 @@ textarea.cfg{width:100%;height:280px;font-family:var(--mono);font-size:11.3px}
 .doc-preview-head{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);background:#090909;min-height:56px}.doc-preview-head .meta{flex:1;min-width:0}.doc-preview-head h3{margin:0 0 3px;font-size:11.7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.doc-preview-head .tip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .doc-preview-actions{display:flex;gap:6px;flex:none}.doc-preview-body{position:relative;flex:1;min-height:0;background:#111}.doc-preview-body iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff}.doc-preview-empty{height:100%;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px;color:var(--faint);font:11.7px var(--mono);line-height:1.6}.doc-type{display:inline-block;border:1px solid #333;border-radius:10px;padding:2px 6px;font:9.6px var(--mono);color:#aaa;margin-left:6px}
 .doc-score-panel{border-top:1px solid var(--line2);padding:12px;background:#070707}.doc-score-panel h2{margin:0 0 4px;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#fff}.doc-score-panel h3{margin:0 0 5px;font-size:11.3px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}.doc-score-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}.doc-score-card{border:1px solid var(--line2);border-radius:6px;background:#0b0b0b;padding:9px;min-width:0}.doc-score-card .doc-score-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#dfe7df;font-size:11.3px;margin-bottom:7px}.doc-score-metrics{display:grid;grid-template-columns:1fr 1fr;gap:6px}.doc-score-metric{border:1px solid #28332d;padding:7px;background:#080b09}.doc-score-metric b{display:block;font:700 22px var(--mono);color:#d9e6d9}.doc-score-metric span{display:block;margin-top:2px;color:var(--faint);font:10.8px var(--mono);text-transform:uppercase}.doc-score-card .good{color:var(--ng)}.doc-score-card .warn{color:#e4c66d}.doc-score-card .unknown{color:var(--faint);font-size:18px}.doc-score-hits{margin-top:7px;color:#9fb1a2;font:10.8px var(--mono);line-height:1.35;word-break:break-word}.doc-score-profile{border-top:1px solid var(--line);padding-top:10px}.doc-score-profile textarea{width:100%;min-height:70px;resize:vertical}.doc-score-profile .tip{max-width:920px}.doc-paste{margin-top:8px}.doc-paste-msg{color:#e4c66d;margin-bottom:5px}.doc-paste-text{width:100%;min-height:110px;resize:vertical;box-sizing:border-box;font:11.7px/1.4 var(--mono)}.doc-paste .row{margin-top:5px}
-.bulkbar{display:inline-flex;gap:4px;align-items:center}.bulkbar b{font:11.3px var(--mono);color:#fff}
+.bulkbar{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}.bulkbar b{font:11.3px var(--mono);color:#fff}.bulk-decision{display:inline-flex;gap:4px;align-items:center;font:11px var(--mono);color:var(--dim)}.bulk-decision select{min-height:28px;max-width:180px}
 .resize-handle{position:absolute;right:-2px;top:0;width:5px;height:100%;cursor:col-resize;z-index:5}
 th{position:sticky} th{min-width:70px} td,th{max-width:none}
 
@@ -422,6 +423,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-ai-usage.js"></script>
 <script src="pipeline-needs-tim.js"></script>
 <script src="pipeline-act-now.js"></script>
+<script src="pipeline-list-select.js"></script>
 <script src="pipeline-operations-ui.js"></script>
 <script src="pipeline-parser.js"></script>
 <script src="pipeline-loader.js"></script>
@@ -1276,7 +1278,7 @@ function renderPresets(){
   var h='<div class="preset-list">',dr=distinctRows_();Object.keys(PRESETS).forEach(function(k){var n=dr.filter(function(r){return allowedInView_(r,k)&&PRESETS[k].fn(r)}).length;h+='<span class="chip'+(S.preset===k?' on':'')+(PRESETS[k].hot&&n?' hot':'')+'" data-p="'+k+'">'+PRESETS[k].label+' <span class="mono'+(PRESETS[k].hot&&n?'':' faint')+'">'+n+'</span></span>'});
   var nsel=Object.keys(S.checked).filter(function(k){return S.checked[k]}).length;
   var discoverable=filteredRows().filter(function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length}).length;
-  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar"><button id="select-visible" title="Select all rows in the current filtered view">Select visible</button>'+(nsel?'<button id="clear-selected" title="Clear all selected rows">Clear selection</button><b>'+nsel+' selected</b><button data-bulk="DECLINE">Decline selected</button><button data-bulk="MANUAL_RESEARCH">Research</button><button data-bulk="INVALID_DISCOVERY">Invalid</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
+  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar"><button id="select-visible" title="Select all rows in the current filtered view">Select visible</button>'+(nsel?'<button id="clear-selected" title="Clear all selected rows">Clear selection</button><b>'+nsel+' selected</b><label class="bulk-decision">Decision <select id="bulk-decision" aria-label="Decision for the selected rows"><option value="">Choose…</option><option value="DECLINE">Decline</option><option value="APPLIED">Applied</option><option value="MANUAL_RESEARCH">Request research</option><option value="PURSUE">Pursue</option><option value="CLOSED_DEAD">Closed / dead</option><option value="INVALID_DISCOVERY">Invalid</option></select></label><button id="bulk-apply" type="button">Apply to '+nsel+'</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
   h+='</div><div id="predicate"></div>';
   $('presets').innerHTML=h;
   $('presets').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){S.chartFilter=null;S.preset=el.getAttribute('data-p');pushHash();render()}});
@@ -1285,8 +1287,7 @@ function renderPresets(){
   $('markseen').onclick=function(){filteredRows().forEach(function(r){S.seen[r.id]=Date.now();recordReview_(r)});LS.set('seen',S.seen);LS.set('reviewed',S.reviewed);syncStateUp();render()};
   $('select-visible').onclick=function(){filteredRows().forEach(function(r){if(['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE','BLOCKED'].indexOf(r.BUCKET)>=0)S.checked[r.id]=true});renderPresets();render()};
   if($('clear-selected'))$('clear-selected').onclick=function(){S.checked={};renderPresets();render()};
-
-  $('presets').querySelectorAll('[data-bulk]').forEach(function(b){b.onclick=function(){bulkAction(b.getAttribute('data-bulk'))}});
+  if($('bulk-apply'))$('bulk-apply').onclick=function(){var k=$('bulk-decision')&&$('bulk-decision').value;if(!k){alert('Choose a decision for the selection.');return}bulkAction(k)};
 }
 /* ---------- filtering / sorting ---------- */
 function cmp(a,b){if(a===b)return 0;if(a===''||a==null)return 1;if(b===''||b==null)return -1;var na=parseFloat(a),nb=parseFloat(b);if(!isNaN(na)&&!isNaN(nb)&&/^[\d.\-]+$/.test(a)&&/^[\d.\-]+$/.test(b))return na-nb;return a<b?-1:1}
@@ -1371,9 +1372,9 @@ function render(){
 }
 /* REV-088 (perf): one table row's HTML (the cell code moved out of render() unchanged, so render and renderLight_ share it) */
 function rowHtml_(r,cols){var nSt=stickyN_();
-    var cls=(attentionFor_(r).strong?'priority-hot ':'')+(S.seen[r.id]?'seen ':'')+(S.focus===r.id?'focus':'');
+    var cls=(attentionFor_(r).strong?'priority-hot ':'')+(S.seen[r.id]?'seen ':'')+(S.checked[r.id]?'sel ':'')+(S.focus===r.id?'focus':'');
     return '<tr data-id="'+esc(r.id)+'" class="'+cls+'">'+cols.map(function(c,i){var v=val(r,c),extra='';
-      if(c==='NEW'){var changed=isChanged(r);v='<input type="checkbox" class="row-select" data-id="'+esc(r.id)+'" '+(S.checked[r.id]?'checked':'')+' onclick="event.stopPropagation()"> '+(S.pins[r.id]?'<span class="pin on">★</span> ':'')+(isNew(r)?'<span class="g new">◆</span>':'')+(changed?'<span class="changed">CHANGED</span>':'')}
+      if(c==='NEW'){var changed=isChanged(r);v='<input type="checkbox" class="row-select" data-id="'+esc(r.id)+'" '+(S.checked[r.id]?'checked':'')+'> '+(S.pins[r.id]?'<span class="pin on">★</span> ':'')+(isNew(r)?'<span class="g new">◆</span>':'')+(changed?'<span class="changed">CHANGED</span>':'')}
       else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'rule':'pend')+'">'+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'◈':'◇')+'</span>'+esc(v):''}
       else if(c==='COMPANY')v=(ruling(r)?'<span class="write-tag">'+esc(rulingState(r).s)+'</span> ':'')+(r.parseError?'<span class="g err" title="'+esc(r.parseError)+'">!</span>':'')+esc(v);
       else if(c==='BUCKET'){extra=' b-'+esc(r.BUCKET);v='<span class="bpill b-'+esc(r.BUCKET)+'" title="'+esc(v)+'">'+esc(bucketWord_(r.BUCKET))+'</span>'+(r.mismatch?' <span class="faint" title="heading says '+esc(r.section)+'">§</span>':'')}
@@ -1392,7 +1393,8 @@ function rowHtml_(r,cols){var nSt=stickyN_();
       return '<td class="'+(i<nSt?'sticky':'')+(c==='NEW'?' c-new':'')+(c==='OVERALL_RATING'?' pin-r':'')+(c==='LOCATION'?' c-loc':'')+(c==='COMPANY'?' c-co':'')+mono+extra+'" title="'+esc(val(r,c)).slice(0,300)+'">'+v+'</td>'}).join('')+'</tr>';
 }
 /* REV-088: row click and checkbox handlers (moved out of render() unchanged) */
-function bindRow_(tr){tr.onclick=function(e){/* REV-092: on the phone the whole 30 px NEW cell is the checkbox's tap target */if(phoneLayout()&&e.target&&!e.target.classList.contains('row-select')&&e.target.closest&&e.target.closest('td.c-new')){var cb0=tr.querySelector('.row-select');if(cb0){cb0.checked=!cb0.checked;S.checked[cb0.getAttribute('data-id')]=cb0.checked;renderPresets();mapSelectionChanged_()}return}if(e.target&&e.target.classList.contains('row-select')){var id=e.target.getAttribute('data-id');S.checked[id]=e.target.checked;renderPresets();mapSelectionChanged_();return}selectMapRow_(tr.getAttribute('data-id'));if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!$('drawer').classList.contains('pe-sheet'))setTimeout(function(){if($('drawer').classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}};var cb=tr.querySelector('.row-select');if(cb)cb.onchange=function(){S.checked[cb.getAttribute('data-id')]=cb.checked;renderPresets();mapSelectionChanged_()}}
+function paintChecks_(){document.querySelectorAll('#grid tbody tr[data-id]').forEach(function(tr){var on=!!S.checked[tr.getAttribute('data-id')];tr.classList.toggle('sel',on);var cb=tr.querySelector('.row-select');if(cb)cb.checked=on})}
+function bindRow_(tr){tr.onclick=function(e){/* REV-092: on the phone the whole 30 px NEW cell is the checkbox's tap target */if(phoneLayout()&&e.target&&!e.target.classList.contains('row-select')&&e.target.closest&&e.target.closest('td.c-new')){var cb0=tr.querySelector('.row-select');if(cb0){cb0.checked=!cb0.checked;S.checked[cb0.getAttribute('data-id')]=cb0.checked;S.selAnchor=cb0.getAttribute('data-id');renderPresets();mapSelectionChanged_()}return}var id=tr.getAttribute('data-id');if((e.target&&e.target.classList.contains('row-select'))||e.shiftKey||e.ctrlKey||e.metaKey){var boxClick=e.target&&e.target.classList.contains('row-select');var mods={shift:!!e.shiftKey,toggle:!!(e.ctrlKey||e.metaKey||(boxClick&&!e.shiftKey))};if(boxClick&&!e.shiftKey&&!e.ctrlKey&&!e.metaKey)mods.box=!!e.target.checked;var next=PipelineListSelect.apply({checked:S.checked,anchor:S.selAnchor},filteredRows().map(function(r){return r.id}),id,mods);S.checked=next.checked;S.selAnchor=next.anchor;paintChecks_();renderPresets();mapSelectionChanged_();return}S.selAnchor=id;selectMapRow_(id);if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!$('drawer').classList.contains('pe-sheet'))setTimeout(function(){if($('drawer').classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}};}
 /* REV-088 (perf, Tim 23:35 ET "the phone feels very slow"): opening or closing a job used to rebuild every table row (890 at
    1,872 jobs). When the visible list (same rows, same order, same columns) is unchanged, only the rows named in ids are
    rebuilt and the focus mark moved; the readout and dashboard redraw as before. Any other change takes the full render(). */
@@ -1864,17 +1866,21 @@ function bulkAction(kind){
   var ids=Object.keys(S.checked).filter(function(k){return S.checked[k]}),rows=ids.map(rowById).filter(Boolean);
   if(!rows.length)return;
   if(!hasWriter()){alert('Writer required for bulk changes.');return}
-  var allowedByKind={
-    DECLINE:['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE'],
-    MANUAL_RESEARCH:['SCOUT_INTAKE','DISCOVERY_LEAD','TIM_DECISION_REQUIRED','READY_TO_PURSUE','BLOCKED','MANUAL_RESEARCH'],
-    INVALID_DISCOVERY:['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED']
+  var specs={
+    DECLINE:{kind:'DECLINE',label:'Decline',allow:['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE']},
+    MANUAL_RESEARCH:{kind:'MANUAL_RESEARCH',label:'Request research',allow:['SCOUT_INTAKE','DISCOVERY_LEAD','TIM_DECISION_REQUIRED','READY_TO_PURSUE','BLOCKED','MANUAL_RESEARCH']},
+    INVALID_DISCOVERY:{kind:'INVALID_DISCOVERY',label:'Invalid',allow:['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED']},
+    APPLIED:{kind:'APPLIED',label:'Applied',block:['REJECTED_BY_EMPLOYER']},
+    PURSUE:{kind:'APPLY_NOW',value:'YES',label:'Pursue',block:['APPLIED','REJECTED_BY_EMPLOYER']},
+    CLOSED_DEAD:{kind:'CLOSED_DEAD',label:'Closed / dead',block:['APPLIED','REJECTED_BY_EMPLOYER']}
   };
-  var allowed=allowedByKind[kind]||[];
-  var ineligible=rows.filter(function(r){return allowed.indexOf(r.BUCKET)<0});
-  if(ineligible.length){alert('Bulk action stopped. '+kind+' is not allowed from the current state for: '+ineligible.map(function(r){return r.COMPANY+' — '+r.TITLE+' ['+r.BUCKET+']'}).join('; '));return}
+  var spec=specs[kind];
+  if(!spec){alert('Unknown decision: '+kind);return}
+  var ineligible=rows.filter(function(r){return spec.allow?spec.allow.indexOf(r.BUCKET)<0:spec.block.indexOf(r.BUCKET)>=0});
+  if(ineligible.length){alert('Bulk action stopped. '+spec.label+' is not allowed from the current state for: '+ineligible.map(function(r){return r.COMPANY+' — '+r.TITLE+' ['+r.BUCKET+']'}).join('; '));return}
   ensureCanonicalRules_().then(function(rules){
     var code='',note='';
-    if(kind==='DECLINE'){
+    if(spec.kind==='DECLINE'){
       var allowed=PipelineRules.declineReasonCodes((rules&&rules.text)||'');
       if(!allowed.length)throw new Error('No canonical decline reason codes found. Reload Rules before declining.');
       var suggested='PAY_BELOW_FLOOR';
@@ -1891,15 +1897,15 @@ function bulkAction(kind){
     var visible={};filteredRows().forEach(function(r){visible[r.id]=true});
     var offView=rows.filter(function(r){return !visible[r.id]}).length;
     if(offView)preview+='\n\n⚠ '+offView+' selected row'+(offView===1?' is':'s are')+' not in the current view.';
-    var actionLabel=kind==='DECLINE'?'DECLINE → DECLINED_BY_TIM':kind;
+    var actionLabel=spec.label+(spec.kind!==kind?' ('+spec.kind+(spec.value?' '+spec.value:'')+')':'');
     if(!confirm(actionLabel+'\n\n'+rows.length+' selected rows\n'+(code?'Reason: '+code+'\n':'')+(note?'Note: '+note+'\n':'')+'\n'+preview+'\n\nSubmit as Tim?'))return null;
-    var stamp=Date.now(),requests=rows.map(function(r,i){return {action:'ruling',ruling:{primaryId:r.PRIMARY_ID,kind:kind,code:code,note:note,actor:'TIM',requestId:'PX-BULK-'+stamp+'-'+String(i+1)+'-'+r.id.slice(-6)}}});
+    var stamp=Date.now(),requests=rows.map(function(r,i){return {action:'ruling',ruling:{primaryId:r.PRIMARY_ID,kind:spec.kind,value:spec.value||'',code:code,note:note,actor:'TIM',requestId:'PX-BULK-'+stamp+'-'+String(i+1)+'-'+r.id.slice(-6)}}});
     var chunks=[];for(var i=0;i<requests.length;i+=50)chunks.push(requests.slice(i,i+50));
     var results=[],chain=Promise.resolve();
     chunks.forEach(function(chunk){chain=chain.then(function(){return gsPostRetryBusy_({action:'batch',requests:chunk}).then(function(j){results.push(j);if(!j||!j.ok){
       var failed=((j&&j.results)||[]).filter(function(x){return x&&!x.ok}).map(function(x){var pid=((chunk[x.index]||{}).ruling||{}).primaryId,rr=rows.filter(function(r){return r.PRIMARY_ID===pid})[0];return '• '+(rr?rr.COMPANY+' — '+rr.TITLE:pid)+': '+(x.error||'failed')});
       var e=new Error(((j&&j.error)||'Writer batch '+results.length+' of '+chunks.length+' reported failures')+(failed.length?'\n'+failed.join('\n'):'')+'\nRows that verified were committed; later batches were not sent. Reloading.');e.partial=true;throw e}return j})})});
-    return chain.then(function(){S.checked={};readout('<span class="good">Bulk '+esc(kind)+' submitted: '+rows.length+' rows in '+chunks.length+' Writer batch'+(chunks.length===1?'':'es')+'</span>');reloadAfterWrite_();return results},function(e){if(e&&e.partial)reloadAfterWrite_();throw e});
+    return chain.then(function(){S.checked={};readout('<span class="good">Bulk '+esc(spec.label)+' submitted: '+rows.length+' rows in '+chunks.length+' Writer batch'+(chunks.length===1?'':'es')+'</span>');reloadAfterWrite_();return results},function(e){if(e&&e.partial)reloadAfterWrite_();throw e});
   }).catch(function(e){alert('Bulk action failed: '+e.message)});
 }
 /* User widths are session-only. On a fresh canonical load/refresh, reset to
