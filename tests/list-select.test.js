@@ -43,7 +43,8 @@ test('the job list wires ctrl, shift, and one decision menu, with no row checkbo
   assert.match(html, /value="APPLIED">Applied/);
   assert.match(html, /value="MANUAL_RESEARCH">Request research/);
   assert.match(html, /value="DECLINE">Decline/);
-  assert.match(html, /id="bulk-apply"/);
+  assert.match(html, /id="bulk-apply" class="neon" type="button">Send decision/);
+  assert.equal(html.includes('Apply to '), false);
   assert.match(html, /kind:spec\.kind,value:spec\.value\|\|''/);
   assert.equal(html.includes('class="row-select"'), false);
 });
