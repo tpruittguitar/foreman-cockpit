@@ -44,18 +44,20 @@ const operations={ok:true,store:{obligations:{}},summary:{open:[{id:'OB-1',state
   const n=+(await page.locator('#bell .nt-badge').textContent());
   assert.ok(n>=5,'badge counts blocking + action items, got '+n);
   await page.locator('#bell').click();await page.waitForSelector('#view-needs-tim.on .nt-page');await page.waitForTimeout(300);
-  const view=await page.evaluate(()=>({secs:[...document.querySelectorAll('#view-needs-tim .nt-sec h3')].map(h=>h.textContent),items:[...document.querySelectorAll('#view-needs-tim .nt-item')].map(a=>a.getAttribute('data-nt-id')),hash:decodeURIComponent(location.hash.slice(1)),tab:document.querySelector('#section-tabs button[aria-selected="true"]')&&document.querySelector('#section-tabs button[aria-selected="true"]').textContent}));
-  assert.strictEqual(view.secs.length,4);
+  const view=await page.evaluate(()=>({stats:[...document.querySelectorAll('#view-needs-tim .nt-stat span')].map(h=>h.textContent),items:[...document.querySelectorAll('#view-needs-tim .nt-item')].map(a=>a.getAttribute('data-nt-id')),hash:decodeURIComponent(location.hash.slice(1)),tab:document.querySelector('#section-tabs button[aria-selected="true"]')&&document.querySelector('#section-tabs button[aria-selected="true"]').textContent,object:document.body.textContent.indexOf('[object Object]')}));
+  assert.deepStrictEqual(view.stats,['My decisions','AI work','Incidents','History']);
   ['ask:ASK-20261018-01','ask:ASK-20261018-09','live:queue-held','live:writer-warning:QUEUE_BACKLOG','live:obligation:OB-1','lane-overdue:POSTVAL','pr:foreman-cockpit#66'].forEach(id=>assert.ok(view.items.indexOf(id)>=0,'shows '+id));
   assert.match(view.hash,/"t":"needs-tim"/);assert.strictEqual(view.tab,'Needs you','System section tab is highlighted');
+  assert.strictEqual(view.object,-1,'no literal [object Object]');
   // 3. Copy answer puts a ready-to-paste ruling on the clipboard; nothing is posted to the Writer.
   await ctx.grantPermissions(['clipboard-read','clipboard-write'],{origin:base});
-  await page.locator('[data-nt-id="ask:ASK-20261018-01"] .nt-opt',{hasText:'Change to WATCH'}).click();await page.waitForTimeout(200);
+  await page.locator('[data-nt-id="ask:ASK-20261018-01"] [data-nt-pick]').click();
+  await page.locator('#nt-detail .nt-opt',{hasText:'Change to WATCH'}).click();await page.waitForTimeout(200);
   const clip=await page.evaluate(()=>navigator.clipboard.readText());
   assert.match(clip,/^Tim ruling on ASK-20261018-01 \("Auterion: P2 or Watch\?"\): Change to WATCH\./);
   assert.ok(!posts.some(p=>/needs|ruling|ask/i.test(p||'')),'the page writes nothing');
   // 4. A job item opens the matching queue.
-  if(view.items.indexOf('live:jobs-ready')>=0){await page.locator('[data-nt-id="live:jobs-ready"] .nt-go').click();await page.waitForTimeout(300);assert.match(decodeURIComponent(await page.evaluate(()=>location.hash)),/"t":"pipeline".*"p":"APPLY_NOW"/)}
+  if(view.items.indexOf('live:jobs-ready')>=0){await page.locator('[data-nt-id="live:jobs-ready"] [data-nt-pick]').click();await page.locator('#nt-detail .nt-go').click();await page.waitForTimeout(300);assert.match(decodeURIComponent(await page.evaluate(()=>location.hash)),/"t":"pipeline".*"p":"APPLY_NOW"/)}
   if(process.env.NEEDS_TIM_SHOTS){await page.locator('#bell').click();await page.waitForTimeout(400);await page.screenshot({path:path.join(process.env.NEEDS_TIM_SHOTS,'needs-tim-desktop-2560.png')})}
   assert.deepStrictEqual(errors,[],'no page errors');await ctx.close();
   // 5. Phone: page renders, decision buttons meet 44 px, no horizontal scroll.
