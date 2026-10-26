@@ -6,7 +6,7 @@
    2. Live items the page computes from data the Explorer already holds: Writer status, unfinished-work incidents, open
       operations obligations, AI usage run-outs, and job rows waiting on a decision.
    Pure functions (Node-testable) plus html(); pipeline.html supplies the live context and wires the buttons.
-   Read-only: nothing here writes to the Writer, the master, or GitHub. */
+   Read-only except Same role and Different role, which send the held-email ruling. */
 (function (root) {
   'use strict';
   var OWNER = 'tpruittguitar', REPO = 'forge-coordination', FILE = 'attention/NEEDS_TIM.json';
@@ -22,6 +22,13 @@
   var GLYPH = { BLOCKING: '⊘', ACTION: '▸', WATCH: '○' }, WORD = { BLOCKING: 'BLOCKING', ACTION: 'ACTION', WATCH: 'WATCH' };
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function text(s) {
+    if (s == null) return '';
+    if (typeof s === 'string') return s;
+    if (typeof s === 'number' || typeof s === 'boolean') return String(s);
+    if (Array.isArray(s)) return s.map(text).filter(function (x) { return x; }).join(', ');
+    try { return JSON.stringify(s); } catch (e) { return ''; }
+  }
   function ms(v) { var t = typeof v === 'number' ? v : Date.parse(v || ''); return isFinite(t) ? t : 0; }
   function age(at, now) {
     var t = ms(at); if (!t) return '';
@@ -101,56 +108,125 @@
   function answerText(it, option) {
     return 'Tim ruling on ' + (it.askId || it.id) + ' ("' + it.title + '"): ' + (option || '<your answer>') + '. Record it in forge-coordination asks/resolved/ and carry it out.';
   }
-  function itemHtml(it, now, idx) {
+  var GROUPS = [
+    { id: 'DECISIONS', title: 'My decisions', ids: { DECIDE: 1, JOBS: 1 }, empty: 'No decisions are waiting on you.' },
+    { id: 'AI', title: 'AI work', ids: { UPKEEP: 1 }, empty: 'No AI work is waiting.' },
+    { id: 'INCIDENTS', title: 'Incidents', ids: { FAILED: 1 }, empty: 'No unresolved failures.' },
+    { id: 'HISTORY', title: 'History', ids: {}, empty: 'No resolved items in this rebuild.' }
+  ];
+  function groupOf(section) {
+    for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i].ids[section]) return GROUPS[i].id;
+    return 'AI';
+  }
+  function ownerOf(it) {
+    if (it.section === 'DECIDE' || it.section === 'JOBS') return 'Tim';
+    return text(it.raisedBy) || (it.live ? 'Writer' : 'Unassigned');
+  }
+  function typeOf(it) {
+    if (it.section === 'FAILED') return 'Incident';
+    if (it.section === 'DECIDE' || it.section === 'JOBS') return 'Tim decision';
+    return 'AI work';
+  }
+  function queueRow(it, now, on) {
+    var when = it.at ? age(it.at, now) : '';
+    var sub = [WORD[it.level] || 'WATCH', typeOf(it), ownerOf(it)].filter(Boolean).join(' · ');
+    return '<article class="nt-item nt-lv-' + String(it.level || 'watch').toLowerCase() + (on ? ' on' : '') + '" data-nt-id="' + esc(it.id) + '" data-nt-group="' + esc(groupOf(it.section)) + '">' +
+      '<button type="button" class="nt-row" data-nt-pick="' + esc(it.id) + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+      '<span class="nt-row-main"><span class="nt-row-title">' + esc(text(it.title)) + '</span>' +
+      '<span class="nt-row-sub">' + esc(sub) + '</span></span>' +
+      '<span class="nt-row-age">' + esc(when) + '</span></button></article>';
+  }
+  function detailHtml(it, now, idx) {
     var meta = [it.raisedBy, it.at ? age(it.at, now) + ' ago' : '', it.live ? 'live' : ''].filter(Boolean).join(' · ');
-    var opts = (it.options || []).map(function (o, k) { return '<button type="button" class="nt-opt" data-nt-copy="' + idx + '" data-nt-opt="' + k + '" title="Copy this answer for the AI chat">' + esc(o) + '</button>'; }).join('');
+    var opts = (it.options || []).map(function (o, k) { return '<button type="button" class="nt-opt" data-nt-copy="' + idx + '" data-nt-opt="' + k + '" title="Copy this answer for the AI chat">' + esc(text(o)) + '</button>'; }).join('');
     var links = (it.links || []).map(function (l) { return '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label || 'Link') + ' ↗</a>'; }).join('');
-    return '<article class="nt-item nt-lv-' + it.level.toLowerCase() + '" data-nt-id="' + esc(it.id) + '">' +
-      '<div class="nt-head"><span class="nt-level"><span aria-hidden="true">' + GLYPH[it.level] + '</span> ' + WORD[it.level] + '</span><h4>' + esc(it.title) + '</h4></div>' +
-      (it.detail ? '<p class="nt-detail">' + esc(it.detail) + '</p>' : '') +
-      (it.blocks ? '<p class="nt-blocks"><b>Holding up:</b> ' + esc(it.blocks) + '</p>' : '') +
-      (opts ? '<div class="nt-opts">' + opts + (it.recommended ? '<span class="nt-rec">Recommended: ' + esc(it.recommended) + '</span>' : '') + '</div>' : (it.recommended ? '<p class="nt-rec">Recommended: ' + esc(it.recommended) + '</p>' : '')) +
-      (it.action ? '<p class="nt-action"><b>What to do:</b> ' + esc(it.action) + '</p>' : '') +
-      (it.held ? '<div class="nt-opts nt-held">' + it.held.candidates.map(function (c) { return '<button type="button" class="nt-opt" data-nt-held="' + esc(it.held.id) + '" data-nt-choice="SAME" data-nt-pid="' + esc(c.primaryId) + '">Same role' + (it.held.candidates.length > 1 || c.title ? ': ' + esc([c.title, c.location].filter(Boolean).join(', ')) : '') + '</button>'; }).join('') +
-        '<button type="button" class="nt-opt" data-nt-held="' + esc(it.held.id) + '" data-nt-choice="DIFFERENT">Different role</button><span class="nt-held-status" data-nt-held-status="' + esc(it.held.id) + '"></span></div>' : '') +
+    var rows = [
+      ['Status', WORD[it.level] || ''],
+      ['Owner', ownerOf(it)],
+      ['Detected', it.at ? age(it.at, now) + ' ago' : 'Unknown'],
+      ['Affected', text(it.blocks) || '1 record'],
+      ['Next action', text(it.action) || 'None recorded'],
+      ['Verification', it.live ? 'Live read this session' : 'Repo list, rebuilt every 30 min']
+    ];
+    var lead = text(it.detail);
+    var rec = it.recommended ? '<span class="nt-rec">Recommended: ' + esc(text(it.recommended)) + '</span>' : '';
+    var held = it.held ? '<div class="nt-opts nt-held">' + it.held.candidates.map(function (c) { return '<button type="button" class="nt-opt" data-nt-held="' + esc(it.held.id) + '" data-nt-choice="SAME" data-nt-pid="' + esc(c.primaryId) + '">Same role' + (it.held.candidates.length > 1 || c.title ? ': ' + esc([c.title, c.location].filter(Boolean).join(', ')) : '') + '</button>'; }).join('') +
+      '<button type="button" class="nt-opt" data-nt-held="' + esc(it.held.id) + '" data-nt-choice="DIFFERENT">Different role</button><span class="nt-held-status" data-nt-held-status="' + esc(it.held.id) + '"></span></div>' : '';
+    return '<button type="button" class="nt-back" data-nt-back>Back to queue</button><p class="nt-kicker">Selected item</p><h3>' + esc(text(it.title)) + '</h3>' +
+      (lead ? '<p class="nt-lead">' + esc(lead) + '</p>' : '') +
+      '<div class="nt-box"><p class="nt-kicker">Evidence</p><dl class="nt-kv">' + rows.map(function (r) { return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd>'; }).join('') + '</dl></div>' +
+      (opts || held ? '<p class="nt-kicker">Options</p>' + (opts ? '<div class="nt-opts">' + opts + rec + '</div>' : rec) + held : rec) +
       '<div class="nt-foot">' +
-        (it.go ? '<button type="button" class="nt-go" data-nt-go="' + idx + '">Open →</button>' : '') +
+        (it.go ? '<button type="button" class="nt-go" data-nt-go="' + idx + '">Open</button>' : '') +
         (it.sourceUrl ? '<a href="' + esc(it.sourceUrl) + '" target="_blank" rel="noopener">Source ↗</a>' : '') + links +
         (it.askId || (!it.live && (it.section === 'DECIDE' || it.section === 'JOBS')) ? '<button type="button" class="nt-copy" data-nt-copy="' + idx + '" title="Copy an answer template for the AI chat">Copy answer</button>' : '') +
         '<span class="nt-meta">' + esc(meta) + '<span class="nt-id">' + esc(it.id) + '</span></span>' +
-      '</div></article>';
+      '</div>';
+  }
+  function historyDetail(d) {
+    return '<button type="button" class="nt-back" data-nt-back>Back to queue</button><p class="nt-kicker">Selected item</p><h3>' + esc(text(d.id)) + '</h3><div class="nt-box"><p class="nt-kicker">Evidence</p><dl class="nt-kv">' +
+      '<dt>Status</dt><dd>RESOLVED</dd>' +
+      '<dt>Owner</dt><dd>' + esc(text(d.by) || 'Recorded') + '</dd>' +
+      '<dt>Evidence</dt><dd>' + esc(text(d.reason) || 'No ruling text on this row.') + '</dd>' +
+      '<dt>Verification</dt><dd>Recorded in asks/resolved. This page does not reopen it.</dd></dl></div>';
   }
   function html(model, opts) {
-    opts = opts || {}; var now = opts.now || Date.now(), items = model.items;
-    var head = '<div class="nt-top"><div><h2>Needs you</h2><p class="nt-sub">' +
+    opts = opts || {}; var now = opts.now || Date.now(), items = model.items || [], dismissed = model.dismissed || [];
+    var buckets = { DECISIONS: [], AI: [], INCIDENTS: [] };
+    items.forEach(function (it) { buckets[groupOf(it.section)].push(it); });
+    var selected = opts.selectedId;
+    var known = {};
+    items.forEach(function (it) { known[it.id] = it; });
+    if (!known[selected] && String(selected || '').indexOf('hist:') !== 0) selected = '';
+    if (!selected) selected = (buckets.DECISIONS[0] || buckets.AI[0] || buckets.INCIDENTS[0] || items[0] || {}).id || (dismissed[0] ? 'hist:' + dismissed[0].id : '');
+    var jobsWaiting = items.some(function (it) { return it.section === 'JOBS'; });
+    var counts = { DECISIONS: buckets.DECISIONS.length, AI: buckets.AI.length, INCIDENTS: buckets.INCIDENTS.length, HISTORY: dismissed.length };
+    var head = '<div class="nt-top"><div><h2>Needs you <small>Action center</small></h2><p class="nt-sub">' +
       (model.counts.BLOCKING ? '<span class="nt-c-blocking">⊘ ' + model.counts.BLOCKING + ' blocking</span> · ' : '') +
-      '▸ ' + (model.counts.ACTION || 0) + ' to act on · ○ ' + (model.counts.WATCH || 0) + ' to watch' +
+      counts.DECISIONS + ' decisions · ' + counts.AI + ' AI work · ' + counts.INCIDENTS + ' incidents · ' + counts.HISTORY + ' history' +
       '</p><p class="nt-fresh">Repo list ' + (model.builtAt ? 'changed ' + age(model.builtAt, now) + ' ago (rebuilt every 30 min)' : (opts.repoError ? '<span class="nt-err">unavailable: ' + esc(opts.repoError) + '</span>' : 'loading…')) +
       ' · live Writer ' + (opts.writerAt ? 'checked ' + age(opts.writerAt, now) + ' ago' : 'not checked') + '</p></div>' +
       '<div class="nt-tools"><button type="button" id="nt-refresh">Refresh</button></div></div>';
-    var idx = 0, map = [];
-    var body = SECTIONS.map(function (s) {
-      var list = items.filter(function (i) { return i.section === s.id; });
-      var h = '<section class="nt-sec" data-nt-sec="' + s.id + '"><h3>' + esc(s.title) + ' <span class="nt-n">' + list.length + '</span></h3>';
-      if (!list.length) return h + '<p class="nt-empty">✓ ' + esc(s.empty) + '</p></section>';
-      return h + list.map(function (it) { map.push(it); return itemHtml(it, now, idx++); }).join('') + '</section>';
-    }).join('');
+    var stats = '<div class="nt-stats">' + GROUPS.map(function (g) {
+      var n = g.id === 'HISTORY' ? dismissed.length : counts[g.id];
+      var sub = '';
+      if (g.id === 'DECISIONS') {
+        if (!n) sub += '<small>' + esc(g.empty) + '</small>';
+        if (!jobsWaiting) sub += '<small>No jobs are waiting on you.</small>';
+      } else if (!n) sub = '<small>' + esc(g.empty) + '</small>';
+      return '<div class="nt-stat" data-nt-stat="' + g.id + '"><span>' + esc(g.title) + '</span><b>' + n + '</b>' + sub + '</div>';
+    }).join('') + '</div>';
+    var idx = 0, map = [], indexOf = {};
+    items.forEach(function (it) { indexOf[it.id] = idx; map.push(it); idx++; });
+    var queue = '<section class="nt-sec" data-nt-sec="QUEUE"><h3>Queue <span class="nt-n">priority · owner · age</span></h3>' +
+      (items.length ? items.map(function (it) { return queueRow(it, now, it.id === selected); }).join('') : '<p class="nt-empty">✓ Nothing is waiting.</p>') + '</section>';
+    var hist = '<section class="nt-sec" data-nt-sec="HISTORY"><h3>History <span class="nt-n">' + dismissed.length + '</span></h3>';
+    if (!dismissed.length) hist += '<p class="nt-empty">✓ ' + esc(GROUPS[3].empty) + '</p>';
+    else hist += dismissed.map(function (d) {
+      var id = 'hist:' + d.id, on = selected === id;
+      return '<article class="nt-item nt-lv-watch' + (on ? ' on' : '') + '" data-nt-id="' + esc(id) + '" data-nt-group="HISTORY"><button type="button" class="nt-row" data-nt-pick="' + esc(id) + '" aria-pressed="' + (on ? 'true' : 'false') + '"><span class="nt-row-main"><span class="nt-row-title">' + esc(text(d.id)) + '</span><span class="nt-row-sub">RESOLVED' + (d.by ? ' · ' + esc(text(d.by)) : '') + '</span></span><span class="nt-row-age"></span></button></article>';
+    }).join('') + '<p class="nt-note">' + plural(dismissed.length, 'resolved item') + ' from asks/resolved/ in forge-coordination.</p>';
+    hist += '</section>';
+    var chosen = known[selected];
+    var detail = chosen ? detailHtml(chosen, now, indexOf[chosen.id]) : (String(selected).indexOf('hist:') === 0 ? historyDetail(dismissed.filter(function (d) { return 'hist:' + d.id === selected; })[0] || { id: selected }) : '<button type="button" class="nt-back" data-nt-back>Back to queue</button><p class="nt-empty">Select an item.</p>');
     var lanes = model.lanes.length ? '<details class="nt-lanes"><summary>Lane heartbeat · ' + model.lanes.length + ' lanes · newest receipt per AI</summary><table><thead><tr><th>Lane</th><th>AI</th><th>Last receipt</th><th>Status</th><th>Usual gap</th><th>Runs 7 d</th></tr></thead><tbody>' +
       model.lanes.slice().sort(function (a, b) { return ms(b.lastAt) - ms(a.lastAt); }).map(function (l) {
         return '<tr' + (l.overdue ? ' class="nt-overdue"' : '') + '><td>' + esc(l.lane) + '</td><td>' + esc(l.provider) + '</td><td>' + esc(age(l.lastAt, now)) + ' ago</td><td>' + esc(String(l.lastStatus || '').replace(/_/g, ' ')) + '</td><td>' + (l.usualGapHours == null ? '—' : esc(l.usualGapHours) + ' h') + '</td><td>' + esc(l.runs7d) + '</td></tr>';
       }).join('') + '</tbody></table><p class="nt-note">A lane marked quiet has gone more than twice its usual gap without a receipt. Lanes handed to another AI count as one lane.</p></details>' : '';
-    var dis = model.dismissed.length ? '<p class="nt-note">' + plural(model.dismissed.length, 'item') + ' hidden as already done (asks/resolved/ in forge-coordination).</p>' : '';
-    return { html: '<div class="nt-page">' + head + body + lanes + dis + '<p class="nt-note">How to answer: press an option or Copy answer, paste it into your Claude chat, and Claude records the ruling. Nothing on this page writes anything by itself.</p></div>', items: map };
+    var page = '<div class="nt-page' + (opts.detailOpen ? ' nt-detail-open' : '') + '">';
+    return { html: page + head + stats + '<div class="nt-split"><div class="nt-queue">' + queue + hist + '</div><aside class="nt-detail" id="nt-detail">' + detail + '</aside></div>' + lanes + '<p class="nt-note">How to answer: press an option or Copy answer, paste it into your Claude chat, and Claude records the ruling. Nothing on this page writes a job decision by itself. Same role and Different role do write the held-email ruling.</p></div>', items: map, selectedId: selected };
   }
-  var CSS = '.nt-page{margin:8px;max-width:1180px}.nt-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid var(--line);padding:6px 2px 10px}.nt-top h2{margin:0;font-size:20px;letter-spacing:.06em;text-transform:uppercase}.nt-sub{margin:4px 0 0;font-size:14px;color:var(--text)}.nt-c-blocking{color:var(--fault);font-weight:650}.nt-fresh{margin:4px 0 0;font-size:12px;color:var(--dim)}.nt-err{color:var(--fault)}' +
-    '.nt-sec{margin:14px 0}.nt-sec h3{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:0 0 6px;font-weight:600}.nt-n{color:var(--text);margin-left:6px}.nt-empty{color:var(--dim);font-size:13px;margin:4px 2px}' +
-    '.nt-item{border:1px solid var(--line);border-left:3px solid var(--line2);background:var(--panel);padding:9px 12px;margin:6px 0}.nt-lv-blocking{border-left-color:var(--fault)}.nt-lv-action{border-left-color:var(--caution)}.nt-lv-watch{border-left-color:var(--line2)}' +
-    '.nt-head{display:flex;gap:10px;align-items:baseline}.nt-head h4{margin:0;font-size:14.5px;font-weight:600;color:var(--text)}.nt-level{font-family:var(--mono);font-size:11px;letter-spacing:.1em;white-space:nowrap;min-width:92px}.nt-lv-blocking .nt-level{color:var(--fault)}.nt-lv-action .nt-level{color:var(--caution)}.nt-lv-watch .nt-level{color:var(--dim)}' +
-    '.nt-detail,.nt-blocks,.nt-action,.nt-rec{margin:5px 0 0 102px;font-size:13px;color:var(--dim);line-height:1.45}.nt-action b,.nt-blocks b{color:var(--text);font-weight:600}.nt-opts{margin:7px 0 0 102px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}.nt-opt{text-transform:none;font-size:12.5px;padding:4px 10px;min-height:28px}.nt-rec{font-size:12.5px;color:var(--dim)}' +
-    '.nt-foot{margin:8px 0 0 102px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px}.nt-foot a{color:var(--text)}.nt-foot button{min-height:28px}.nt-meta{margin-left:auto;color:var(--dim);font-family:var(--mono);font-size:11px}.nt-id{margin-left:10px;color:var(--faint)}' +
-    '.nt-lanes{margin:16px 0;border:1px solid var(--line);padding:8px 10px;background:var(--panel)}.nt-lanes summary{cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}.nt-lanes table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}.nt-lanes th,.nt-lanes td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}.nt-lanes th{font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:500}.nt-overdue td{color:var(--caution)}.nt-note{font-size:12px;color:var(--dim)}' +
+  var CSS = '.nt-page{margin:0;max-width:none;min-height:100%;display:flex;flex-direction:column;padding:14px 16px 24px;gap:12px}.nt-top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:1px solid var(--line);padding:4px 2px 10px}.nt-top h2{margin:0;font-size:13px;letter-spacing:.14em;text-transform:uppercase}.nt-top h2 small{display:block;margin-top:3px;color:var(--dim);font-weight:500;letter-spacing:.08em}.nt-sub{margin:6px 0 0;font-size:13px;color:var(--text)}.nt-c-blocking{color:var(--fault);font-weight:650}.nt-fresh{margin:4px 0 0;font-size:12px;color:var(--dim)}.nt-err{color:var(--fault)}' +
+    '.nt-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.nt-stat{border:1px solid var(--line);background:var(--panel);padding:10px 12px;min-width:0}.nt-stat span{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}.nt-stat b{display:block;margin-top:8px;font:600 26px/1 var(--mono);color:var(--text);letter-spacing:0}.nt-stat small{display:block;margin-top:6px;color:var(--dim);font-size:12px;line-height:1.35;letter-spacing:0;text-transform:none;font-weight:400}' +
+    '.nt-split{display:grid;grid-template-columns:minmax(300px,38%) minmax(0,1fr);gap:14px;align-items:start}.nt-queue{min-width:0;display:flex;flex-direction:column;gap:10px}.nt-sec{margin:0;border:1px solid var(--line);background:var(--panel);padding:8px 8px 4px}.nt-sec h3{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 6px;font-weight:600}.nt-n{color:var(--text);margin-left:6px;letter-spacing:.06em}.nt-empty{color:var(--dim);font-size:13px;margin:4px 2px 8px}' +
+    '.nt-item{border:0;background:transparent;padding:0;margin:0 0 6px}.nt-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;width:100%;text-align:left;text-transform:none;letter-spacing:0;background:#101010;border:1px solid var(--line);border-left:3px solid var(--line2);padding:8px 10px;font-size:13px;color:var(--text);border-radius:2px}.nt-item.on .nt-row,.nt-row[aria-pressed=true]{background:#141414;box-shadow:inset 0 0 0 1px var(--caution)}.nt-lv-blocking .nt-row{border-left-color:var(--fault)}.nt-lv-action .nt-row{border-left-color:var(--caution)}.nt-lv-watch .nt-row{border-left-color:var(--line2)}' +
+    '.nt-row-main{min-width:0;display:flex;flex-direction:column;gap:3px}.nt-row-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}.nt-row-sub{color:var(--dim);font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nt-row-age{color:var(--dim);font-family:var(--mono);font-size:11px;white-space:nowrap}' +
+    '.nt-detail{border:1px solid var(--line2);background:#0c0c0c;padding:16px 18px;min-height:280px;position:sticky;top:8px}.nt-detail h3{margin:0 0 10px;font-size:18px;line-height:1.3;letter-spacing:0;text-transform:none;color:var(--text);font-weight:600}.nt-kicker{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:0 0 8px}.nt-lead{margin:0 0 12px;color:var(--text);font-size:14px;line-height:1.45}.nt-box{border:1px solid var(--line);background:#080808;padding:10px 12px;margin:0 0 14px}.nt-kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px 12px;margin:0}.nt-kv dt{color:var(--dim);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase}.nt-kv dd{margin:0;color:var(--text);font-size:13px;line-height:1.45;overflow-wrap:anywhere}' +
+    '.nt-detail button{text-transform:none;letter-spacing:0}.nt-opts{display:flex;flex-direction:column;align-items:stretch;gap:6px}.nt-opt{width:100%;text-align:left;font-size:13px;padding:8px 10px;min-height:36px}.nt-rec{font-size:12.5px;color:var(--dim)}.nt-foot{margin-top:12px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px}.nt-foot a{color:var(--text)}.nt-foot button{min-height:32px}.nt-meta{margin-left:auto;color:var(--dim);font-family:var(--mono);font-size:11px}.nt-id{margin-left:10px;color:var(--faint)}' +
+    '.nt-lanes{margin:0;border:1px solid var(--line);padding:8px 10px;background:var(--panel)}.nt-lanes summary{cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}.nt-lanes table{width:100%;border-collapse:collapse;margin-top:8px;font-size:12.5px}.nt-lanes th,.nt-lanes td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)}.nt-lanes th{font-family:var(--mono);font-size:11px;color:var(--dim);font-weight:500}.nt-overdue td{color:var(--caution)}.nt-note{font-size:12px;color:var(--dim)}' +
     '#bell{position:relative}#bell .nt-badge{position:absolute;top:-4px;right:-6px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--caution);color:#000;font:700 10px/16px var(--sans);text-align:center}#bell .nt-badge.nt-badge-blocking{background:var(--fault);color:#fff}' +
-    '@media (max-width:700px){.nt-detail,.nt-blocks,.nt-action,.nt-rec,.nt-opts,.nt-foot{margin-left:0}.nt-head{flex-direction:column;gap:2px}.nt-meta{margin-left:0;width:100%}.nt-opt,.nt-foot button{min-height:44px}}';
+    '.nt-back{display:none}@media (max-width:900px){.nt-stats{grid-template-columns:1fr 1fr}.nt-split{grid-template-columns:1fr}.nt-queue{max-height:none;overflow:visible}.nt-detail{position:static}.nt-page{padding-bottom:calc(74px + env(safe-area-inset-bottom))}.nt-row,.nt-opt,.nt-foot button,.nt-back{min-height:44px}.nt-row-title,.nt-row-sub{white-space:normal}.nt-page:not(.nt-detail-open) .nt-detail{display:none}.nt-page.nt-detail-open .nt-stats,.nt-page.nt-detail-open .nt-queue,.nt-page.nt-detail-open .nt-lanes,.nt-page.nt-detail-open>.nt-note{display:none}.nt-page.nt-detail-open .nt-back{display:inline-flex;align-items:center;margin:0 0 12px}}';
+
   var api = { load: load, liveItems: liveItems, merge: merge, badge: badge, html: html, answerText: answerText, CSS: CSS, SECTIONS: SECTIONS, URL: API };
   if (typeof module === 'object' && module.exports) module.exports = api; else root.PipelineNeedsTim = api;
 })(typeof self !== 'undefined' ? self : this);

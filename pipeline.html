@@ -596,8 +596,9 @@ function ntLoad_(force){if(NT_.busy)return Promise.resolve();var now=Date.now(),
   return Promise.all(jobs).then(function(){NT_.busy=false;ntBadge_();if(S.tab==='needs-tim')ntPaint_()},function(){NT_.busy=false})}
 function ntGo_(go){if(!go)return;if(go.action==='system'){var wb=$('writer-badge');if(wb){wb.click();return}}if(go.ops)S.pendingOpsTab=go.ops;if(go.preset){S.chartFilter=null;S.preset=go.preset}switchTab(go.tab||'automations');ntNavSync_()}
 function ntPaint_(){var v=$('view-needs-tim');if(!v)return;if(!document.getElementById('nt-css')){var st=document.createElement('style');st.id='nt-css';st.textContent=PipelineNeedsTim.CSS;document.head.appendChild(st)}
-  var out=PipelineNeedsTim.html(ntModel_(),{now:Date.now(),repoError:NT_.repoErr,writerAt:S.writerStatus&&S.writerStatus.checkedAt});NT_.items=out.items;v.innerHTML=out.html;
+  var out=PipelineNeedsTim.html(ntModel_(),{now:Date.now(),repoError:NT_.repoErr,writerAt:S.writerStatus&&S.writerStatus.checkedAt,selectedId:NT_.selectedId,detailOpen:NT_.detailOpen});NT_.items=out.items;NT_.selectedId=out.selectedId;v.innerHTML=out.html;
   var rf=$('nt-refresh');if(rf)rf.onclick=function(){ntLoad_(true);loadWriterStatus_(true)};
+  v.querySelectorAll('[data-nt-pick]').forEach(function(b){b.onclick=function(){NT_.selectedId=b.getAttribute('data-nt-pick');NT_.detailOpen=true;ntPaint_()}});var back=v.querySelector('[data-nt-back]');if(back)back.onclick=function(){NT_.detailOpen=false;ntPaint_()};
   v.querySelectorAll('[data-nt-go]').forEach(function(b){b.onclick=function(){ntGo_(NT_.items[+b.getAttribute('data-nt-go')].go)}});
   /* REV-122: one tap resolves a held email (Same role attaches it to that row; Different role gives it its own row). */
   v.querySelectorAll('[data-nt-held]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-nt-held'),st=v.querySelector('[data-nt-held-status="'+id+'"]');if(!hasWriter()){if(st)st.textContent='Writer not connected on this device.';return}

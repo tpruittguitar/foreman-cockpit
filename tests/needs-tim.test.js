@@ -71,10 +71,12 @@ test('merge sorts blocking first, badge counts only blocking + action, and html 
   assert.strictEqual(m.items[0].level,'BLOCKING');
   assert.strictEqual(NT.badge(m),2);
   const out=NT.html(m,{now:NOW,writerAt:NOW});
-  NT.SECTIONS.forEach(s=>assert.ok(out.html.indexOf(s.title.replace(/&/g,'&amp;'))>=0,s.id));
+  ['My decisions','AI work','Incidents','History'].forEach(t=>assert.ok(out.html.indexOf(t)>=0,t));
   assert.strictEqual(out.items.length,3);
-  assert.match(out.html,/⊘<\/span> BLOCKING/); assert.match(out.html,/data-nt-opt="1"/); assert.match(out.html,/Lane heartbeat/); assert.match(out.html,/1 item hidden as already done/);
-  assert.match(out.html,/No jobs are waiting on you/,'empty sections say so');
+  assert.strictEqual(out.selectedId,'ask:A');
+  assert.match(out.html,/id="nt-detail"/); assert.match(out.html,/data-nt-pick="ask:A" aria-pressed="true"/);
+  assert.match(out.html,/No jobs are waiting on you/,'empty job queue says so');
+  assert.ok(out.html.indexOf('[object Object]')<0);
   assert.match(NT.answerText(m.items[1],'Change to WATCH'),/^Tim ruling on A \("Auterion: P2 or Watch\?"\): Change to WATCH\./);
 });
 
@@ -82,6 +84,8 @@ test('html escapes text from repo files',()=>{
   const m=NT.merge({items:[{id:'x',section:'DECIDE',level:'ACTION',title:'<img src=x onerror=alert(1)>',detail:'"quoted" & <b>'}]},[],NOW);
   const out=NT.html(m,{now:NOW}).html;
   assert.ok(out.indexOf('<img src=x')<0); assert.match(out,/&lt;img src=x/);
+  const obj=NT.html(NT.merge({items:[{id:'o',section:'FAILED',level:'ACTION',title:{code:'X'},detail:{msg:'y'}}]},[],NOW),{now:NOW}).html;
+  assert.ok(obj.indexOf('[object Object]')<0); assert.ok(obj.indexOf('code')>=0);
 });
 
 test('page is wired: script, view, route, System tab, bell, badge refresh after Writer status',()=>{
