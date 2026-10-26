@@ -1287,7 +1287,7 @@ function renderPresets(){
   var selOpts='<option value="">'+(nsel?nsel+' selected':'No rows selected')+'</option><option value="__visible">Select visible</option>'+(nsel?'<option value="__clear">Clear selection</option>':'');
   if(selected.length)selOpts+='<optgroup label="In this selection">'+selected.map(function(r){return '<option value="'+esc(r.id)+'">'+selLabel_(r)+'</option>'}).join('')+'</optgroup>';
   function decOpt_(v,label){return '<option value="'+v+'"'+(picked===v?' selected':'')+'>'+label+'</option>'}
-  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar"><label class="bulk-decision">Selection <select id="bulk-selection" aria-label="Selection" title="Selected rows. Choose a row to remove it.">'+selOpts+'</select></label><button id="select-visible" title="Select all rows in the current filtered view">Select visible</button>'+(nsel?'<button id="clear-selected" title="Clear all selected rows">Clear selection</button><label class="bulk-decision">Decision <select id="bulk-decision" aria-label="Decision for the selected rows"><option value="">Choose…</option>'+decOpt_('DECLINE','Decline')+decOpt_('APPLIED','Applied')+decOpt_('MANUAL_RESEARCH','Request research')+decOpt_('PURSUE','Pursue')+decOpt_('CLOSED_DEAD','Closed / dead')+decOpt_('INVALID_DISCOVERY','Invalid')+'</select></label><button id="bulk-apply" class="neon" type="button">Send decision</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
+  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar"><label class="bulk-decision">Selection <select id="bulk-selection" aria-label="Selection" title="Selected rows. Choose a row to remove it.">'+selOpts+'</select></label><button id="select-visible" title="Select all rows in the current filtered view">Select visible</button>'+(nsel?'<button id="clear-selected" title="Clear all selected rows">Clear selection</button><label class="bulk-decision">Decision <select id="bulk-decision" aria-label="Decision for the selected rows"><option value="">Choose…</option>'+decOpt_('DECLINE','Decline')+decOpt_('APPLIED','Applied')+decOpt_('MANUAL_RESEARCH','Request research')+decOpt_('PURSUE','Pursue')+decOpt_('CLOSED_DEAD','Closed / dead')+decOpt_('INVALID_DISCOVERY','Invalid')+'</select></label><label class="bulk-decision" id="bulk-reason-wrap"'+(picked==='DECLINE'?'':' hidden')+'>Reason <select id="bulk-reason" aria-label="Decline reason"></select></label><button id="bulk-apply" class="neon" type="button">Send decision</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
   h+='</div><div id="predicate"></div>';
   $('presets').innerHTML=h;
   $('presets').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){S.chartFilter=null;S.preset=el.getAttribute('data-p');pushHash();render()}});
@@ -1297,6 +1297,9 @@ function renderPresets(){
   $('select-visible').onclick=function(){filteredRows().forEach(function(r){if(['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE','BLOCKED'].indexOf(r.BUCKET)>=0)S.checked[r.id]=true});renderPresets();render()};
   if($('clear-selected'))$('clear-selected').onclick=function(){S.checked={};renderPresets();render()};
   if($('bulk-apply'))$('bulk-apply').onclick=function(){var k=$('bulk-decision')&&$('bulk-decision').value;if(!k){alert('Choose a decision for the selection.');return}S.bulkDecision=k;bulkAction(k)};
+  if($('bulk-decision'))$('bulk-decision').onchange=function(){S.bulkDecision=this.value;var wrap=$('bulk-reason-wrap');if(wrap)wrap.hidden=this.value!=='DECLINE';syncBulkReason_()};
+  if($('bulk-reason'))$('bulk-reason').onchange=function(){S.bulkReason=this.value};
+  syncBulkReason_();
   if($('bulk-selection'))$('bulk-selection').onchange=function(){var v=this.value;if(v==='__visible'){$('select-visible').click();return}if(v==='__clear'){S.checked={};renderPresets();render();return}if(v&&S.checked[v]){delete S.checked[v];renderPresets();render()}};
 }
 /* ---------- filtering / sorting ---------- */
@@ -1872,6 +1875,20 @@ function ensureCanonicalRules_(){
   if(S.canonicalRules&&S.canonicalRules.text)return Promise.resolve(S.canonicalRules);
   return gsGet('canonical_rules').then(function(j){if(!j||!j.ok)throw new Error((j&&j.error)||'Canonical rules could not be loaded');S.canonicalRules=j;return j});
 }
+function reasonLabel_(code){return code.split('_').map(function(w){return w.charAt(0)+w.slice(1).toLowerCase()}).join(' ')}
+function syncBulkReason_(){
+  var sel=$('bulk-reason'),wrap=$('bulk-reason-wrap');
+  if(!sel||!wrap)return;
+  if($('bulk-decision')&&$('bulk-decision').value!=='DECLINE'){wrap.hidden=true;return}
+  wrap.hidden=false;
+  ensureCanonicalRules_().then(function(rules){
+    var allowed=PipelineRules.declineReasonCodes((rules&&rules.text)||'');
+    var keep=S.bulkReason&&allowed.indexOf(S.bulkReason)>=0?S.bulkReason:(allowed.indexOf('TIM_EXPLICIT_DECLINE')>=0?'TIM_EXPLICIT_DECLINE':(allowed[0]||''));
+    sel.innerHTML=allowed.map(function(c){return '<option value="'+esc(c)+'">'+esc(reasonLabel_(c))+'</option>'}).join('');
+    if(keep)sel.value=keep;
+    S.bulkReason=sel.value;
+  }).catch(function(e){alert(e.message)});
+}
 function bulkAction(kind){
   var ids=Object.keys(S.checked).filter(function(k){return S.checked[k]}),rows=ids.map(rowById).filter(Boolean);
   if(!rows.length)return;
@@ -1893,11 +1910,10 @@ function bulkAction(kind){
     if(spec.kind==='DECLINE'){
       var allowed=PipelineRules.declineReasonCodes((rules&&rules.text)||'');
       if(!allowed.length)throw new Error('No canonical decline reason codes found. Reload Rules before declining.');
-      var suggested='PAY_BELOW_FLOOR';
-      if(allowed.indexOf(suggested)<0)suggested=allowed[0];
-      code=(prompt('Decline reason code\nAllowed: '+allowed.join(', '),suggested)||'').trim().toUpperCase();
-      if(!code)return null;
-      if(allowed.indexOf(code)<0)throw new Error('Invalid decline reason code: '+code+'\nAllowed: '+allowed.join(', '));
+      var reasonSel=$('bulk-reason');
+      if(reasonSel&&!reasonSel.options.length){reasonSel.innerHTML=allowed.map(function(c){return '<option value="'+esc(c)+'">'+esc(reasonLabel_(c))+'</option>'}).join('');reasonSel.value=allowed.indexOf('TIM_EXPLICIT_DECLINE')>=0?'TIM_EXPLICIT_DECLINE':allowed[0]}
+      code=(reasonSel&&reasonSel.value)||'';
+      if(allowed.indexOf(code)<0)throw new Error('Choose a decline reason.');
       note=(prompt('Bulk decline note / reason','Approved by Tim in Pipeline Explorer bulk review')||'').trim();
     }else{
       note=(prompt('Bulk note / reason','')||'').trim();

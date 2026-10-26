@@ -44,7 +44,8 @@ test('the job list wires ctrl, shift, and one decision menu, with no row checkbo
   assert.match(html, /decOpt_\('MANUAL_RESEARCH','Request research'\)/);
   assert.match(html, /id="bulk-selection"/);
   assert.match(html, /In this selection/);
-  assert.match(html, /Send decision/);
+  assert.match(html, /id="bulk-reason"/);
+  assert.equal(html.includes("prompt('Decline reason code"), false);
   assert.equal(html.includes('Apply to '), false);
   assert.match(html, /kind:spec\.kind,value:spec\.value\|\|''/);
   assert.equal(html.includes('class="row-select"'), false);
