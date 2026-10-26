@@ -31,7 +31,7 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   await pick('V2X-299323199555');assert.equal(await label(),'600%','an ordinary location is acquired at 600%');
   // 3. Nothing checked: the Selected layer shows the single selected job, so a lone pin is not boosted.
   const shown=()=>page.locator('.map-target:not([hidden])').count(),drawn=()=>page.locator('.map-target').count();
-  const check=async(id,on)=>{const cb=page.locator('#grid tbody tr[data-id="'+id+'"] .row-select');on?await cb.check():await cb.uncheck();await page.waitForTimeout(1100)};
+  const check=async(id,on)=>{const cur=await page.evaluate(id=>!!S.checked[id],id);if(cur!==on){await page.evaluate(id=>{const tr=document.querySelector('#grid tbody tr[data-id="'+id+'"]');if(!tr)throw new Error('row not in list '+id);tr.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,ctrlKey:true}))},id);await page.waitForTimeout(1100)}};
   await pick('V2X-3EB07714AE24');assert.equal(await label(),'600%','a single job is acquired at 600%');assert.equal(await drawn(),1,'only the selected job is drawn when nothing is checked');
   // Checked jobs: every checked job is drawn and the map frames them all. Tullahoma and Huntsville are ~6 km apart, so the dense boost separates them (capped at 1000%).
   await check('V2X-A4CCD49EE686',true);const boosted=await zoom();
@@ -82,7 +82,7 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
 
   // 8. Selected layer = the explicit checkbox selection, independent of table scrolling.
   const pinOf=(name)=>page.locator('.map-target[aria-label="'+name+'"]');
-  const checkedIds=()=>page.$$eval('#grid tbody .row-select',c=>c.filter(x=>x.checked).map(x=>x.dataset.id));
+  const checkedIds=()=>page.evaluate(()=>Object.keys(S.checked).filter(k=>S.checked[k]));
   const offScreen=(id)=>page.evaluate(id=>{const w=document.getElementById('gridwrap').getBoundingClientRect(),h=document.querySelector('#grid thead').getBoundingClientRect().bottom,r=document.querySelector('#grid tbody tr[data-id="'+id+'"]').getBoundingClientRect();return r.top>=w.bottom||r.bottom<=h},id);
   const scrollTable=(top)=>page.locator('#gridwrap').evaluate((e,t)=>{e.scrollTop=t?0:e.scrollHeight},top);
   assert.deepEqual(await checkedIds(),[],'start with no checkbox selections');
@@ -115,7 +115,7 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
   assert.deepEqual(await pinState('Tullahoma, TN'),{checked:false,focused:true},'the open, unchecked job gets the focused treatment only');
   for(const n of ['Huntsville, AL','Louisville, CO','Costa Mesa, CA'])assert.deepEqual(await pinState(n),{checked:true,focused:false},n+' keeps the selected treatment');
   assert.deepEqual((await checkedIds()).sort(),before,'opening an unchecked job leaves the checkbox selection unchanged');
-  assert.equal(await page.locator('#grid tbody tr[data-id="V2X-3EB07714AE24"] .row-select').isChecked(),false);
+  assert.equal(await page.evaluate(id=>!!S.checked[id],'V2X-3EB07714AE24'),false);
   // 8.4 Clustered selection: only Huntsville + Tullahoma checked, so the boost reacts to that rendered pair.
   await check('V2X-299323199555',false);await check('V2X-F5344DCB7B12',false);await check('V2X-3EB07714AE24',true);await pick('V2X-3EB07714AE24');
   assert.equal(await drawn(),2,'the rendered set is the clustered pair');const cz=await zoom();assert(cz>6&&cz<=10.001,'crowded selected pins boost past 600% (got '+cz+')');assert.equal(await shown(),2);
