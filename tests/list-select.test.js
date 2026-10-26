@@ -39,11 +39,13 @@ test('a checkbox click keeps the other rows and follows the box', () => {
 test('the job list wires ctrl, shift, and one decision menu, with no row checkbox', () => {
   assert.match(html, /<script src="pipeline-list-select\.js"><\/script>/);
   assert.match(html, /PipelineListSelect\.apply/);
-  assert.match(html, /id="bulk-decision"/);
-  assert.match(html, /value="APPLIED">Applied/);
-  assert.match(html, /value="MANUAL_RESEARCH">Request research/);
-  assert.match(html, /value="DECLINE">Decline/);
-  assert.match(html, /id="bulk-apply"/);
+  assert.match(html, /decOpt_\('DECLINE','Decline'\)/);
+  assert.match(html, /decOpt_\('APPLIED','Applied'\)/);
+  assert.match(html, /decOpt_\('MANUAL_RESEARCH','Request research'\)/);
+  assert.match(html, /id="bulk-selection"/);
+  assert.match(html, /In this selection/);
+  assert.match(html, /Send decision/);
+  assert.equal(html.includes('Apply to '), false);
   assert.match(html, /kind:spec\.kind,value:spec\.value\|\|''/);
   assert.equal(html.includes('class="row-select"'), false);
 });
