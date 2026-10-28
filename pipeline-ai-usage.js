@@ -1,4 +1,4 @@
-/* AI usage panel: weekly and short-window limits for Claude, Grok and ChatGPT, with a projected run-out time.
+/* AI usage panel: weekly limits for Claude, Grok and ChatGPT, with a projected run-out time.
    Readings come from forge-coordination usage/AI_USAGE_READINGS.jsonl (one JSON object per line), written by the
    Claude usage-reader scheduled task that reads each provider's own usage page in Tim's Chrome.
    Projection: burn rate from the newest reading and an older reading in the same reset window (at least 2 hours apart);
@@ -22,11 +22,14 @@
     return out;
   }
 
-  /** One projection per provider+meter from the readings, newest state first. */
+  /** One weekly projection per provider; historical short-window meters are ignored. */
   function project(readings, nowMs) {
     nowMs = nowMs || Date.now();
     var groups = {};
-    readings.forEach(function (r) { var k = r.provider + '|' + r.meter; (groups[k] = groups[k] || []).push(r); });
+    readings.forEach(function (r) {
+      if (r.meter !== 'weekly' || ORDER.indexOf(r.provider) === -1) return;
+      var k = r.provider + '|' + r.meter; (groups[k] = groups[k] || []).push(r);
+    });
     return Object.keys(groups).map(function (k) {
       var g = groups[k].slice().sort(function (a, b) { return Date.parse(a.at) - Date.parse(b.at); });
       var last = g[g.length - 1], at = Date.parse(last.at), reset = Date.parse(last.resetsAt) || 0;
@@ -47,7 +50,7 @@
       p.runOutAt = at + ((100 - p.usedPct) / p.rate) * H;
       p.verdict = reset && p.runOutAt < reset ? 'BEFORE_RESET' : 'LASTS';
       return p;
-    }).sort(function (a, b) { return ORDER.indexOf(a.provider) - ORDER.indexOf(b.provider) || (a.meter === 'weekly' ? -1 : b.meter === 'weekly' ? 1 : 0); });
+    }).sort(function (a, b) { return ORDER.indexOf(a.provider) - ORDER.indexOf(b.provider); });
   }
 
   function when(ms) {

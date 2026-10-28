@@ -2,6 +2,14 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Batch 2026-10-28: three weekly AI usage meters
+
+Trigger: Tim 2026-10-28: "Remove Grok Bot and Hourly usage from each AI report. Keep the others. So only 3 (weekly usage status) results needed for each run."
+
+`pipeline-ai-usage.js` projects only `meter === "weekly"` readings for Claude, Grok and ChatGPT. The System panel shows three weekly bars even while the usage file retains session, bot and 5-hour history. Weekly percentages, reset times, run-out projections, verdicts and provider order retain their existing behavior. The companion forge-coordination change trims the reader to three 168-hour readings and reads Grok's renamed Weekly Premium Limit with label "weekly SuperGrok".
+
+Verification: `tests/ai-usage.test.js` covers mixed six-meter history rendering exactly three bars, identical weekly projections, and passed weekly resets. Existing usage history, schedules and Writer behavior are unchanged.
+
 ## Batch 2026-10-25: job-list multi-select and one decision for the selection
 
 Trigger: Tim 2026-10-25 19:27 ET: implement multi-select and group decision making on the job list. The Action Center redesign stays a mockup.

@@ -24,13 +24,35 @@ test('100% is OUT; failed reading and passed reset are flagged, never projected'
   const r = U.parse([
     line({ at: '2026-10-13T19:41:00Z', provider: 'GROK', meter: 'weekly', usedPct: 100, resetsAt: '2026-10-19T08:30:00Z' }),
     line({ at: '2026-10-13T19:41:00Z', provider: 'CHATGPT', meter: 'weekly', usedPct: 0, status: 'SIGN_IN_NEEDED', resetsAt: '' }),
-    line({ at: '2026-10-11T19:41:00Z', provider: 'CHATGPT', meter: '5-hour', usedPct: 100, windowHours: 5, resetsAt: '2026-10-11T21:00:00Z' }),
+    line({ at: '2026-10-11T19:41:00Z', provider: 'CLAUDE', meter: 'weekly', usedPct: 100, resetsAt: '2026-10-11T21:00:00Z' }),
     'not json', '',
   ].join('\n'));
   const by = Object.fromEntries(U.project(r, NOW).map(p => [p.provider + p.meter, p.verdict]));
-  assert.deepEqual(by, { GROKweekly: 'OUT', CHATGPTweekly: 'NO_READING', 'CHATGPT5-hour': 'RESET_PASSED' });
+  assert.deepEqual(by, { CLAUDEweekly: 'RESET_PASSED', CHATGPTweekly: 'NO_READING', GROKweekly: 'OUT' });
   const h = U.html(U.project(r, NOW));
   assert.match(h, /OUT/); assert.match(h, /NO READING/); assert.match(h, /100%/);
+});
+
+test('mixed legacy history renders exactly three weekly bars and preserves weekly projections', () => {
+  const weekly = ['CLAUDE', 'GROK', 'CHATGPT'].map((provider, i) => ({
+    at: '2026-10-13T19:40:00Z', provider, meter: 'weekly', label: 'weekly',
+    usedPct: i * 47, resetsAt: '2026-10-18T16:00:00Z', status: 'OK', windowHours: 168
+  }));
+  const legacy = [
+    { provider: 'CLAUDE', meter: 'session', label: 'current session', windowHours: 5 },
+    { provider: 'GROK', meter: 'bot', label: 'weekly Grok Bot', windowHours: 168 },
+    { provider: 'CHATGPT', meter: '5-hour', label: '5-hour (Codex/Work/agents)', windowHours: 5 }
+  ].map(r => Object.assign({}, weekly[0], r, { at: '2026-10-13T19:50:00Z', usedPct: null, status: 'UNREADABLE' }));
+  const readings = U.parse(weekly.concat(legacy).map(line).join('\n'));
+  assert.equal(readings.length, 6, 'history remains available without deleting legacy rows');
+  const p = U.project(readings, NOW);
+  assert.deepEqual(p, U.project(weekly, NOW), 'weekly percentages, reset times, projections and verdicts are unchanged');
+  assert.equal(p.length, 3);
+  assert.ok(p.every(r => r.meter === 'weekly'));
+  const h = U.html(p);
+  assert.equal((h.match(/class="aiu-track"/g) || []).length, 3);
+  assert.doesNotMatch(h, /current session|Grok Bot|5-hour|NO READING/);
+  assert.deepEqual(U.project(legacy, NOW), []);
 });
 
 test('rendering keeps the exact number and a text status beside every bar', () => {
