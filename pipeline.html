@@ -382,6 +382,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 </script>
 <div id="load-alert" role="alert" aria-live="assertive"></div>
 <div id="writer-alert" role="alert"></div>
+<button id="pipeline-health-alert" class="cr-global-alert" type="button" hidden aria-live="polite"></button>
 <div id="qv-panel" class="qv-panel" hidden role="dialog" aria-label="View and filters"><div class="qv-h"><b>View &amp; filters</b><button id="qv-close" class="sys-x" type="button" aria-label="Close">✕</button></div><div id="qv-tiles"></div><div class="bar" id="presets"></div></div>
 <div class="bar" id="filters" style="display:none"></div>
 <div class="bar" id="mapfilters" aria-label="Map point filters"><span>MAP POINTS</span><div class="map-prefs" role="group" aria-label="Map behaviour on selection"><label><input type="checkbox" id="map-autozoom"> Auto zoom on selection</label><label>Selection zoom <select id="map-selzoom" aria-label="Selection zoom"><option value="3">300%</option><option value="4.5">450%</option><option value="6">600%</option><option value="8">800%</option><option value="10">1000%</option></select></label><label><input type="checkbox" id="map-dense"> Dense-area boost</label></div><button data-mapfilter="selected">Selected</button><button data-mapfilter="visible">Current View</button></div>
@@ -425,6 +426,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-miniviz.js"></script>
 <script src="pipeline-throughput.js"></script>
 <script src="pipeline-writer-activity.js"></script>
+<script src="pipeline-control-room.js"></script>
 <script src="pipeline-ai-usage.js"></script>
 <script src="pipeline-needs-tim.js"></script>
 <script src="pipeline-act-now.js"></script>
@@ -2740,7 +2742,8 @@ function fmtDur(s){if(s==null)return '—';var h=Math.floor(s/3600),m=Math.floor
 function renderAutobar(){var pending=autos().filter(function(a){return !a.verified}).length;$('autobar').innerHTML='<span class="u">Operations</span> · '+autos().length+' local entries · '+pending+' unverified · browser does not run jobs or check scheduler health';}
 $('autobar').onclick=function(){switchTab('automations')};
 
-var operationsUI_=PipelineOperationsUI.create({get:gsGet,post:gsPost,escape:esc,activity:function(){return fetch('/api/writer-activity',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Receipt activity HTTP '+r.status);return r.json();});},writerStatus:function(){return S.writerStatus||null;},loadStatus:function(){return S.load||{};},connection:function(){return S.connection||{};}});
+var operationsUI_=PipelineOperationsUI.create({get:gsGet,post:gsPost,escape:esc,health:function(){return fetch('/api/pipeline-health',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Health feed HTTP '+r.status);return r.json();});},master:function(){return {rows:S.rows||[],loaded:!!((S.rows||[]).length),freshness:S.load&&S.load.freshness,checkedAt:S.connection&&S.connection.lastRead};},alert:function(text,severity){var b=$('pipeline-health-alert');b.hidden=!text;b.textContent=text;b.className='cr-global-alert '+severity;b.onclick=function(){switchTab('automations');};},activity:function(){return fetch('/api/writer-activity',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Receipt activity HTTP '+r.status);return r.json();});},writerStatus:function(){return S.writerStatus||null;},loadStatus:function(){return S.load||{};},connection:function(){return S.connection||{};}});
+operationsUI_.start();
 function renderAutomations(){operationsUI_.render($('view-automations'))}
 function renderScheduleReference_(){var v=$('view-automations');var list=autos().map(function(a){return{a:a,d:secsUntil(a.schedule)}}).sort(function(x,y){return (x.d==null?1e9:x.d)-(y.d==null?1e9:y.d)});
   var h='<div class="panel active rep"><h3>Local schedule reference · not live scheduler status</h3>'+tbl(['next in','owner','automation','purpose','schedule (ET)','source','verified'],list.map(function(x){var s=x.a.schedule;return ['<span class="mono" style="color:'+(x.d!=null&&x.d<900?'var(--nm)':'var(--ng)')+'">'+fmtDur(x.d)+'</span>',esc(x.a.owner),'<b>'+esc(x.a.name)+'</b>',esc(x.a.purpose),esc(s.type==='daily'?(s.times||[]).join(', '):'every '+s.hours+'h from '+(s.anchor||'00:00')),'<span class="faint">'+esc(x.a.source||'')+'</span>',x.a.verified?'<span style="color:var(--ng)">yes</span>':'<span style="color:var(--nm)">no</span>']}))+'<div class="tip" style="margin-top:6px">Times are ET. These browser entries are a convenience reference only; they do not run jobs or prove scheduler health. Verify actual routines from their scheduler controls, not from this page. Edit below; set verified:true only after external confirmation.</div></div>';

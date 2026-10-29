@@ -3,7 +3,7 @@
 (function(root){
   'use strict';
   function create(api){
-    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false},activity={data:null,error:''};
+    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false},activity={data:null,error:''},health={data:null,error:''},healthBusy=false,lastView=null,diagnosticsOpen=false;
     var tabLabels={dashboard:'Dashboard',backlog:'Work queue',email:'Intake coverage',recovery:'Verification & recovery',schedules:'Schedules',acceptance:'Diagnostics'};
     var esc=api.escape;
     function cell(value){return esc(value==null?'UNKNOWN':String(value));}
@@ -77,7 +77,7 @@
       var rh=runtimeReadHealth();
       return '<div class="panel"><h3>Runtime read health</h3><p class="tip">Active master must stay live. In structured production mode, the snapshot age and row count are shown here. Archive and evidence support reads must be visible and degraded, not silent.</p>'+table(['Runtime read','State','Detail'],rh.items.map(function(x){return [x.area,x.state,x.detail];}))+'<div class="row"><span class="chip">Runtime status: '+cell(rh.state)+'</span></div></div>';
     }
-    function dashboardHtml(store,summary,observed){
+    function diagnosticsHtml(store,summary,observed){
       var m=dashboardMetrics(store,summary),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return [k,m.stages[k]];});
       var h='<section class="ops-dashboard"><div class="ops-next-priority"><span class="u">Next Priority</span><b>'+cell(m.next)+'</b><small>Based on current Writer-owned supporting evidence. This does not replace canonical master state.</small></div>';
       h+='<div class="dash-grid ops-kpis">'+metricCard('Open enrichment backlog',m.open,m.total?m.done+' complete of '+m.total:'No snapshot',m.open?'warn':'')+metricCard('Completion ratio',m.total?pct(m.done,m.total)+'%':'UNKNOWN',m.total?m.done+'/'+m.total+' obligations':'Writer snapshot unavailable','',m.total&&typeof PipelineMiniViz!=='undefined'?PipelineMiniViz.progress(m.done,m.total,{title:m.done+' of '+m.total+' obligations resolved'}):'')+metricCard('Writer blocked',m.writerBlocked,m.writerBlocked?'Requires verification/recovery':'No tracked writer blockers',m.writerBlocked?'bad':'')+metricCard('Intake reviewed',m.intakeReviewed,m.intakeFound?m.intakeFound+' found · '+m.intakeUnprocessed+' unprocessed':'No email/source run coverage read')+metricCard('Oldest open age',m.oldest?ageText(m.oldest.iso):'NONE',m.oldest?m.oldest.o.id:'No open tracked obligation')+'</div>';
@@ -90,6 +90,21 @@
       h+='<div class="panel"><h3>Coverage limits</h3><p class="tip">Current dashboard can show tracked obligations, current source-window coverage, verification blockers, oldest unresolved work, and runtime read health. Historical intake-vs-enrichment trend lines require durable per-run history in the Writer snapshot; absent history remains UNKNOWN, not assumed zero.</p><div class="row"><span class="chip">Observed: '+cell(observed||'UNKNOWN')+'</span><span class="chip">Dashboard status: '+cell(error?'DEGRADED':'LIVE SNAPSHOT')+'</span></div></div></section>';
       return h;
     }
+    function roomModel(){return PipelineControlRoom.model({health:health.data,healthError:health.error,activity:activity.data,activityError:activity.error,master:api.master?api.master():{},operations:snapshot&&snapshot.store,writer:api.writerStatus?api.writerStatus():null});}
+    function dashboardHtml(store,summary,observed){
+      if(typeof PipelineControlRoom==='undefined')return diagnosticsHtml(store,summary,observed);
+      return PipelineControlRoom.html(roomModel())+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
+    }
+    function visible(){return lastView&&lastView.isConnected&&lastView.getClientRects().length&&document.visibilityState!=='hidden';}
+    async function monitor(){
+      if(healthBusy||!api.health)return;healthBusy=true;
+      try{var reads=await Promise.allSettled([api.health(),api.activity?api.activity():Promise.resolve(null)]),d=reads[0].status==='fulfilled'&&reads[0].value;if(!d||!d.ok)throw Error('No supported health evidence');health={data:d,error:''};var wa=reads[1];if(wa.status==='fulfilled'&&wa.value&&wa.value.ok)activity={data:wa.value,error:''};else if(api.activity)activity={data:activity.data,error:'Writer activity refresh failed'};}
+      catch(e){health={data:health.data,error:e.message||'Health evidence unavailable'};}
+      healthBusy=false;
+      if(typeof PipelineControlRoom!=='undefined'){var m=roomModel();if(api.alert)api.alert(PipelineControlRoom.banner(m),m.severity);}
+      if(visible()&&tab==='dashboard')paint(lastView);
+    }
+    function start(){if(!api.health)return;monitor();setInterval(function(){monitor();var el=document.activeElement,editing=el&&lastView&&lastView.contains(el)&&(/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.isContentEditable);if(visible()&&tab==='dashboard'&&!editing)refresh(lastView);},60000);document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible'){monitor();if(visible()&&tab==='dashboard')refresh(lastView);}});}
     async function refresh(view){
       if(busy)return;busy=true;paint(view);
       var progress=PipelineProgress.begin('[data-ops-refresh]','Reading Writer evidence');
@@ -109,20 +124,14 @@
       error=problems.join(' · ');loadedAt=new Date().toISOString();busy=false;paint(view);progress.finish({attention:!!error});
     }
     function paint(view){
+      lastView=view;var priorDetails=view.querySelector('[data-cr-diagnostics]');if(priorDetails)diagnosticsOpen=priorDetails.open;
       var store=snapshot&&snapshot.store,summary=store&&PipelineOperations.summary(store),observed=snapshot&&snapshot.observedAt;
-      var h='<section class="panel ops-console"><h2>AI Operations</h2><div class="row"><button data-ops-refresh'+(busy?' disabled':'')+'>Refresh evidence</button><span class="tip">'+cell(busy?'Reading Writer…':error?'BLOCKED / UNKNOWN':observed?'Writer observation '+observed:'UNKNOWN · no durable snapshot loaded')+'</span></div>';
+      var h='<section class="panel ops-console"><h2>Pipeline at a glance</h2><div class="row"><button data-ops-refresh'+(busy?' disabled':'')+'>Refresh evidence</button><span class="tip">'+cell(busy?'Reading Writer…':error?'BLOCKED / UNKNOWN':observed?'Writer observation '+observed:'UNKNOWN · no durable snapshot loaded')+'</span></div>';
       if(error)h+='<p class="ops-warning">'+cell(error)+(store?' · Last successful snapshot retained; its freshness is unverified.':'')+'</p>';
       h+='<div class="row ops-tabs" role="tablist">'+['dashboard','backlog','email','recovery','schedules','acceptance'].map(function(t){return '<button role="tab" aria-selected="'+(tab===t)+'" data-ops-tab="'+t+'">'+tabLabels[t]+'</button>';}).join('')+'</div><div role="tabpanel">';
       if(tab==='dashboard'){
         if(store)h+=dashboardHtml(store,summary,observed);
-        else{
-          var emptyStore={obligations:{},runs:{}};
-          h+='<div class="ops-next-priority"><span class="u">Next Priority</span><b>Refresh Writer evidence</b><small>No durable operations snapshot loaded yet.</small></div>';
-          if(typeof PipelineWriterActivity!=='undefined')h+=PipelineWriterActivity.html({data:activity.data,error:activity.error,loading:busy},PipelineCharts);
-      h+=throughputHtml();
-          h+=intakeProcessChartsHtml(emptyStore,{counts:{},done:0,open:[],total:0},{stages:{},openList:[],open:0,done:0,total:0});
-          h+=runtimeHealthHtml();
-        }
+        else h+=dashboardHtml({obligations:{},runs:{}},{counts:{},done:0,open:[],total:0},null);
       }else if(tab==='backlog'){
         h+='<h3>Research and verification obligations</h3><p class="tip">'+(summary?'Tracked '+summary.total+' · verified dispositions '+summary.done+' · unresolved '+summary.open.length:'UNKNOWN · tracked population has not been read')+'. This is supporting evidence, not a second job master.</p>';
         if(summary&&summary.total)h+=PipelineProgress.html('Tracked obligations independently resolved',summary.done,summary.total,'large');
@@ -157,7 +166,7 @@
       var preview=view.querySelector('[data-ops-preview]'),stage=view.querySelector('[data-ops-stage]'),draft=null;
       if(preview){var input=view.querySelector('[data-ops-task]');input.oninput=function(){draft=null;stage.disabled=true;};preview.onclick=function(){var result=view.querySelector('[data-ops-preview-result]');try{draft=JSON.parse(input.value);var proposed=PipelineScheduler.edit(schedules.manifest,draft,schedules.manifest.revision,new Date().toISOString());result.textContent=JSON.stringify({desiredOccurrences:PipelineScheduler.upcoming(draft,Date.now(),5),warnings:PipelineScheduler.warnings(proposed,Date.now()),providerStatus:'PENDING_MANUAL',applied:false},null,2);stage.disabled=false;}catch(e){draft=null;stage.disabled=true;result.textContent=e.message;}};stage.onclick=function(){if(draft)write({action:'save_schedule_proposal',task:draft,baseRevision:schedules.manifest.revision});};}
     }
-    return {render:function(view){paint(view);if(!loadedAt&&!busy)refresh(view);},refresh:refresh,metrics:dashboardMetrics};
+    return {render:function(view){paint(view);if((!loadedAt||Date.now()-Date.parse(loadedAt)>60000)&&!busy)refresh(view);},refresh:refresh,metrics:dashboardMetrics,start:start};
   }
   root.PipelineOperationsUI={create:create};
 })(window);
