@@ -3,7 +3,7 @@
 (function(root){
   'use strict';
   function create(api){
-    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false},activity={data:null,error:''},health={data:null,error:''},healthBusy=false,lastView=null,diagnosticsOpen=false;
+    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false},activity={data:null,error:''},health={data:null,error:''},healthBusy=false,lastView=null,diagnosticsOpen=false,boardHistoryOpen=false;
     var tabLabels={dashboard:'Dashboard',backlog:'Work queue',email:'Intake coverage',recovery:'Verification & recovery',schedules:'Schedules',acceptance:'Diagnostics'};
     var esc=api.escape;
     function cell(value){return esc(value==null?'UNKNOWN':String(value));}
@@ -93,7 +93,7 @@
     function roomModel(){return PipelineControlRoom.model({health:health.data,healthError:health.error,activity:activity.data,activityError:activity.error,master:api.master?api.master():{},operations:snapshot&&snapshot.store,writer:api.writerStatus?api.writerStatus():null});}
     function dashboardHtml(store,summary,observed){
       if(typeof PipelineControlRoom==='undefined')return diagnosticsHtml(store,summary,observed);
-      return PipelineControlRoom.html(roomModel())+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
+      return PipelineControlRoom.html(roomModel(),{boardHistoryOpen:boardHistoryOpen})+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
     }
     function visible(){return lastView&&lastView.isConnected&&lastView.getClientRects().length&&document.visibilityState!=='hidden';}
     async function monitor(){
@@ -125,6 +125,7 @@
     }
     function paint(view){
       lastView=view;var priorDetails=view.querySelector('[data-cr-diagnostics]');if(priorDetails)diagnosticsOpen=priorDetails.open;
+      var priorBoards=view.querySelector('.cr-board-history');if(priorBoards)boardHistoryOpen=priorBoards.open;
       var store=snapshot&&snapshot.store,summary=store&&PipelineOperations.summary(store),observed=snapshot&&snapshot.observedAt;
       var h='<section class="panel ops-console"><h2>Pipeline at a glance</h2><div class="row"><button data-ops-refresh'+(busy?' disabled':'')+'>Refresh evidence</button><span class="tip">'+cell(busy?'Reading Writer…':error?'BLOCKED / UNKNOWN':observed?'Writer observation '+observed:'UNKNOWN · no durable snapshot loaded')+'</span></div>';
       if(error)h+='<p class="ops-warning">'+cell(error)+(store?' · Last successful snapshot retained; its freshness is unverified.':'')+'</p>';
