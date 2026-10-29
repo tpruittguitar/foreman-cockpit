@@ -26,6 +26,10 @@ test('stale incident/scheduler evidence and overdue sources never certify a heal
  const f=fixture();f.health.checks.attention.at='2026-10-25T12:00:00Z';f.health.checks.boards.at='2026-10-25T12:00:00Z';f.health.checks.schedules.executionVerified=false;
  const m=C.model(f);assert.equal(m.severity,'attention');assert.ok(m.warnings.some(x=>/overdue/.test(x.title)));assert.ok(m.warnings.some(x=>/execution is not yet verified/.test(x.title)));
 });
+test('an old successful master/receipt read cannot stay healthy just because its connection says fresh',()=>{
+ const f=fixture();f.master.checkedAt='2026-10-28T12:00:00Z';f.activity.now='2026-10-28T12:00:00Z';
+ const m=C.model(f);assert.equal(m.severity,'attention');assert.ok(m.warnings.some(x=>/Master population/.test(x.title)));assert.ok(m.warnings.some(x=>/completion evidence/.test(x.title)));
+});
 test('read endpoint combines bounded fixed sources, deduplicates provisional URLs and keeps partial failures visible',async()=>{
  const file=fs.readFileSync(path.join(__dirname,'../functions/api/pipeline-health.js'),'utf8');const mod=await import('data:text/javascript;base64,'+Buffer.from(file).toString('base64'));
  const j=await mod.loadHealth(async url=>{
