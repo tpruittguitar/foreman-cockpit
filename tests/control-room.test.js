@@ -14,6 +14,14 @@ test('one intake chart combines all providers and deduplicates canonical IDs',()
  const m=C.model(f);assert.equal(m.intakeToday,4);assert.deepEqual(m.daily[6].sources,{'Email':1,'Automatic sources':1,'Manual':1,'Other / legacy':1});
  assert.equal((C.html(m).match(/<svg /g)||[]).length,1);assert.match(C.html(m),/combined/);
 });
+
+test('intake uses actual admission time in Eastern time across UTC midnight and delayed discovery',()=>{
+ const f=fixture();f.now=Date.parse('2026-10-29T03:45:00Z');
+ f.master.rows=[{...row('A','FORGE-EMAIL-CHATGPT','SCOUT_INTAKE','2026-10-29'),payload:{DATE_ADDED:'2026-10-29',MASTER_LOADED_AT:'2026-10-29T03:40:00Z',DISCOVERED_AT_ET:'2026-10-19 12:00 ET',SCOUT_RUN_ID:'FORGE-EMAIL-CHATGPT'}},row('B','MANUAL','SCOUT_INTAKE','2026-10-28'),{...row('C','LEGACY'),payload:{DATE_ADDED:'2026-10-28',MASTER_LOADED_AT:'invalid'}}];
+ const m=C.model(f);assert.equal(m.intakeToday,3);assert.equal(m.daily[6].sources.Email,1);
+ f.now=Date.parse('2026-10-29T05:15:00Z');assert.equal(C.model(f).intakeToday,0);
+ f.master.rows[0].payload.MASTER_LOADED_AT='2026-10-29T04:01:00Z';assert.equal(C.model(f).intakeToday,1);
+});
 test('missing coverage and failed refreshes are explicit unknowns, not zero or green',()=>{
  const f=fixture();f.operations.runs={};f.health.checks.sources={ok:false};f.healthError='network failure';f.activity=null;
  const m=C.model(f);assert.equal(m.severity,'attention');assert.match(C.html(m),/Not reported/);assert.ok(m.warnings.some(x=>/coverage is not reported/.test(x.title)));assert.notEqual(C.banner(m),'');
