@@ -247,3 +247,10 @@ header #search{transition:border-color 140ms ease,box-shadow 220ms var(--forge-e
 .aiu{display:grid;gap:10px;margin:4px 0 6px}.aiu-top{display:flex;align-items:baseline;gap:6px}.aiu-pct{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700}
 .aiu-track{height:10px;background:#1a2120;border:1px solid var(--forge-line);position:relative;margin:4px 0}.aiu-track i{display:block;height:100%;background:var(--forge-green)}
 .aiu-row.warn .aiu-track i{background:var(--forge-amber)}.aiu-row.bad .aiu-track i{background:var(--forge-red)}.aiu-foot{font-size:12px;line-height:1.5}.pill.warn{color:var(--forge-amber);border-color:var(--forge-amber)}
+
+/* Durable all-source Writer work: distinct from queue-only throughput. */
+.writer-activity{margin:14px 0 22px;padding:12px;border:1px solid var(--forge-line,#26312c);background:rgba(97,205,187,.025)}
+.writer-activity .ops-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
+.writer-activity .ops-kpi{min-width:0;padding:12px}.writer-activity .ops-kpi h4{margin:0 0 8px;font-size:11px;letter-spacing:.6px}.writer-activity .ops-kpi b{display:block;font-size:28px;line-height:1.15;margin-bottom:5px;color:var(--forge-cyan,#61cdbb)}
+.writer-activity .chart-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.writer-activity .chart-card{min-width:0}.writer-activity .chart-svg{max-height:280px}.writer-activity .tip{line-height:1.5}.writer-activity summary{cursor:pointer;font-size:12px;padding:8px 0}
+@media(max-width:760px){.writer-activity .ops-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.writer-activity .chart-grid{grid-template-columns:1fr}}

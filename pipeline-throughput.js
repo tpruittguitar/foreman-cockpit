@@ -86,7 +86,7 @@
   /** HTML for the throughput section. state: {stats, status, loading, error, unsupported}. */
   function html(state){
     state = state || {};
-    var head = '<div class="chart-intro ops-flow-intro throughput-intro"><h2>Writer throughput · last 24 h</h2><p>From the Writer queue log. Requests are counted when they finish; "now" points come from the live queue.</p></div>';
+    var head = '<div class="chart-intro ops-flow-intro throughput-intro"><h2>File-queue activity · last 24 h</h2><p>File-queue requests only; direct GitHub API writes appear in Writer work above. Requests are counted when they finish; "now" points come from the live queue.</p></div>';
     if (state.unsupported) return head + '<p class="ops-warning">The deployed Writer predates queue_stats (needs build 64c6043 or later).</p>';
     if (state.error && !state.stats) return head + '<p class="ops-warning">Throughput unavailable: ' + esc(state.error) + '</p>';
     if (!state.stats) return head + '<p class="tip">' + (state.loading ? 'Reading Writer queue statistics…' : 'Not loaded yet.') + '</p>';
