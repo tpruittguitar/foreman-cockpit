@@ -43,7 +43,8 @@ function recovery(cases){return {schema:'forge.receipt-recovery.v1',at:'2026-10-
 test('fresh exact recovery closes a problem flag without changing receipt history or counting a successful write',()=>{
  const e=entry('W-FAIL',[{pid:'V2I-1',op:'REPLACE',b:'b:1',a:'a:1'}],'NOT_PERSISTED'),index=fixture({old:e}),before=JSON.stringify(index),r=recovery([recoveryCase('old',e)]),d=A.aggregate(index,now,r);
  assert.equal(d.problemReceipts,0);assert.equal(d.rawProblemReceipts,1);assert.equal(d.recoveredReceipts,1);assert.equal(d.today.writes,0);assert.equal(JSON.stringify(index),before);
- assert.equal(A.aggregate(index,now+3*3600000,r).problemReceipts,1);
+ assert.equal(A.aggregate(index,now+3*3600000,r).problemReceipts,0,'a report getting old cannot undo a proven historical recovery');
+ assert.equal(A.aggregate(index,now,r).recovery.groups.length,0,'resolved cases are retained as proof, not displayed as faults');
  r.cases[0].sourceEntry={...e,s:'FALSE_COMPLETE'};assert.equal(A.aggregate(index,now,r).problemReceipts,1);
 });
 test('duplicates, incomplete snapshots, forged row proofs and unverified later changes never hide failures',()=>{

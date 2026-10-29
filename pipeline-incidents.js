@@ -130,6 +130,8 @@ function view(store,now,windowMs){
   out.recovered.sort(function(a,b){return (ms(b.resolvedAt)||0)-(ms(a.resolvedAt)||0)});out.historical.sort(function(a,b){return (ms(b.resolvedAt)||0)-(ms(a.resolvedAt)||0)});
   return out;
 }
+// UI projection only: the underlying ledger remains available to reconciliation and synchronization.
+function current(store){return Object.keys((store&&store.incidents)||{}).map(function(k){return store.incidents[k];}).filter(function(i){return i.status==='ACTIVE'||i.status==='ACKNOWLEDGED_UNRESOLVED';}).sort(function(a,b){return sevRank(a)-sevRank(b)||byLatest(a,b);});}
 /* Derive the unfinished-work register from the EXISTING incident ledger, not a
  * second independently mutable task database. A failed attempt is an open
  * obligation to reconcile its original intent even when Writer is now healthy.
@@ -165,7 +167,7 @@ function workQueue(store){
 function recurrence(store,now,config){
   now=now==null?Date.now():now;config=Object.assign({windowMs:3600000,episodes:3,clearMs:900000,experimental:true},config||{});
   var groups={};Object.keys((store&&store.incidents)||{}).forEach(function(k){var i=store.incidents[k],at=ms(i.latestAt);if(at==null||now-at>config.windowMs)return;(groups[i.group]=groups[i.group]||[]).push(i);});
-  return Object.keys(groups).filter(function(k){var list=groups[k],last=Math.max.apply(null,list.map(function(i){return ms(i.latestAt);})),healthy=(store.healthySince||{})[list[0].source];return list.length>=config.episodes&&!(healthy&&now-healthy>=config.clearMs&&healthy>last);}).map(function(k){return {group:k,episodes:groups[k].length,experimental:config.experimental};});
+  return Object.keys(groups).filter(function(k){var list=groups[k],last=Math.max.apply(null,list.map(function(i){return ms(i.latestAt);})),healthy=(store.healthySince||{})[list[0].source];return list.some(function(i){return i.status==='ACTIVE'||i.status==='ACKNOWLEDGED_UNRESOLVED';})&&list.length>=config.episodes&&!(healthy&&now-healthy>=config.clearMs&&healthy>last);}).map(function(k){return {group:k,episodes:groups[k].length,experimental:config.experimental};});
 }
 /* Health is current operability, not the number of historical failed attempts.
  * A queue failure with no independent completion proof remains VERIFICATION_REQUIRED
@@ -204,6 +206,6 @@ function merge(local,remote){
 }
 
 var api={WINDOW_MS:WINDOW_MS,normalizeOperation:normalizeOperation,normalizeFailureClass:normalizeFailureClass,normalizeText:normalizeText,
-  empty:empty,recurrence:recurrence,triage:triage,workQueue:workQueue,observe:observe,acknowledge:acknowledge,view:view,health:health,forSync:forSync,merge:merge};
+  empty:empty,recurrence:recurrence,triage:triage,workQueue:workQueue,observe:observe,acknowledge:acknowledge,view:view,current:current,health:health,forSync:forSync,merge:merge};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineIncidents=api;
 })(typeof window!=='undefined'?window:globalThis);

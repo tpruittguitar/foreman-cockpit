@@ -137,9 +137,11 @@ test('legacy acknowledged items retain unresolved health after reload',()=>{
  const i=active(s)[0];i.status='ACKNOWLEDGED';i.resolvedAt=iso(T(2));
  P.observe(s,{},T(3));assert.equal(active(s)[0].status,'ACKNOWLEDGED_UNRESOLVED');assert.equal(P.health(s).state,'LIVE');
 });
-test('recurrence degrades health until a sustained authoritative healthy interval',()=>{
+test('resolved recurrence stops degrading health immediately; a new active recurrence is still visible',()=>{
  const s=P.empty(),now=T(4);for(let n=0;n<3;n++)s.incidents['E'+n]={id:'E'+n,group:'G',source:'writer',status:'RECOVERED',latestAt:iso(now-n*600000),resolvedAt:iso(now-n*600000),severity:'warning'};
- assert.equal(P.health(s,now).state,'DEGRADED');s.healthySince={writer:now+1};assert.equal(P.health(s,now+16*60000).state,'LIVE');
+ assert.equal(P.health(s,now).state,'LIVE');assert.deepEqual(P.current(s),[]);assert.equal(Object.keys(s.incidents).length,3);
+ s.incidents.E0.status='ACTIVE';assert.equal(P.health(s,now).state,'DEGRADED');assert.equal(P.current(s).length,1);
+ s.incidents.E0.status='RECOVERED';assert.equal(P.health(s,now).state,'LIVE');assert.deepEqual(P.current(s),[]);
 });
 
 test('62 unverified past queue failures are visible for verification but do not assert 62 live faults',()=>{

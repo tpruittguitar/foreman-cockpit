@@ -59,9 +59,15 @@ test('fresh board history replaces obsolete failure counts and exposes each last
  const f=fixture();f.health.checks.boards.failedBoards=6;f.health.checks.boardHealth={ok:true,at};
  f.health.boardHealth=[{key:'fixed',companies:['MKS <fixed>'],status:'OK',lastAttemptAt:at,lastSuccessAt:at},{key:'down',companies:['Charter Steel'],status:'TEMPORARY_FAILURE',httpStatus:500,lastAttemptAt:at,lastSuccessAt:'2026-10-28T20:00:00Z',retryAt:'2026-10-29T00:15:00Z'}];
  const m=C.model(f),h=C.html(m);assert.ok(m.warnings.some(x=>x.title==='1 employer boards need another check'));assert.ok(!m.warnings.some(x=>/6 employer boards/.test(x.title)));
- assert.match(h,/last successful checks/);assert.match(h,/MKS &lt;fixed&gt;/);assert.match(h,/Charter Steel/);assert.match(h,/Employer service unavailable/);assert.match(h,/Oct 28/);
+ assert.match(h,/Last successful check/);assert.doesNotMatch(h,/MKS &lt;fixed&gt;/);assert.match(h,/Charter Steel/);assert.match(h,/Employer service unavailable/);assert.match(h,/Oct 28/);
  f.health.boardHealth[1].lastSuccessAt=null;assert.match(C.html(C.model(f)),/Not yet recorded/);
  f.health.checks.boardHealth.at='2026-10-25T00:00:00Z';assert.ok(C.model(f).warnings.some(x=>/history is unavailable or stale/.test(x.title)));assert.ok(C.model(f).warnings.some(x=>/6 employer boards/.test(x.title)));
+});
+
+test('completed recovery and successful board checks leave no historical fault panel',()=>{
+ const f=fixture();f.activity.problemReceipts=0;f.activity.recoveredReceipts=17;f.activity.recovery={status:'CURRENT',at,groups:[],deferred:0};f.health.checks.boardHealth={ok:true,at};f.health.boardHealth=[{key:'fixed',companies:['Recovered employer'],status:'OK',lastSuccessAt:at}];
+ const html=C.html(C.model(f));assert.doesNotMatch(html,/cr-recovery|proven recovered|Recovered employer|Employer boards needing attention/);
+ assert.equal(f.activity.recoveredReceipts,17,'backing recovery evidence remains available');
 });
 
 test('public health endpoint exposes bounded board history and omits paused employers',async()=>{
