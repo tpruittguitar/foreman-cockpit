@@ -584,8 +584,8 @@ function incidentsHtml_(hv,hh){
   h+='<h3 style="margin-top:12px">Unfinished work - '+obligations.length+' operation(s)</h3>'
     +'<p class="tip">Failures do not disappear because Writer is idle. Each operation remains open until its actual outcome is verified. Different failure classes and retries are grouped below.</p>'
     +outstandingWorkHtml_(obligations,5);
-  if(obligations.length>5)h+='<div class="tip">'+(obligations.length-5)+' additional operation(s) in Incident History.</div>';
-  h+='<div class="inc-history-link"><button type="button" id="open-incident-history">Review full unfinished-work queue and history</button></div>';
+  if(obligations.length>5)h+='<div class="tip">'+(obligations.length-5)+' additional operation(s) in Current incidents.</div>';
+  h+='<div class="inc-history-link"><button type="button" id="open-incident-history">Review current incidents and unfinished work</button></div>';
   return h;
 }
 /* ---------- Needs you (Tim 2026-10-18) ---------- */
@@ -614,37 +614,23 @@ function ntNavSync_(){if(window.PipelineSectionNav)setTimeout(PipelineSectionNav
 function renderNeedsTim_(){ntPaint_();ntLoad_(false);ntNavSync_()}
 function renderIncidentHistory_(){
   var host=$('view-incident-history');if(!host)return;
-  var hv=PipelineIncidents.view(S.incidents,Date.now()),all=hv.active.concat(hv.recovered,hv.historical);
+  var all=PipelineIncidents.current(S.incidents),oldQ=host.querySelector('#inc-history-search'),q=oldQ?oldQ.value:'';
   all.sort(function(a,b){return Date.parse(b.latestAt||0)-Date.parse(a.latestAt||0)});
-  var oldQ=host.querySelector('#inc-history-search'),oldStatus=host.querySelector('#inc-history-state');
-  var q=oldQ?oldQ.value:'',status=oldStatus?oldStatus.value:'ALL';
-  host.innerHTML='<section class="inc-history-page"><div class="inc-history-header"><h2>Incident History</h2><button type="button" id="history-to-system">System Health</button></div>'
-    /* REV-059: the D-3 review-records line also sits here, where a tap on the Writer tile lands on the phone (Tim 16:00 ET) */
+  var work=PipelineIncidents.workQueue(S.incidents);
+  host.innerHTML='<section class="inc-history-page"><div class="inc-history-header"><h2>Current incidents</h2><button type="button" id="history-to-system">System Health</button></div>'
     +(hasWriter()?'<div class="tip review-line"><b>Review records</b> · '+reviewStatusHtml_()+'</div>':'')
-    +'<p class="tip">History retained in available synchronized/local storage. Failed attempts remain visible after verified recovery; missing proof is not recovery. Clearing browser storage may remove locally held records.</p>'
-    +'<div class="inc-history-summary"><b>'+hv.active.filter(function(i){return i.kind!=='event'}).length+'</b> current faults <b>'+PipelineIncidents.workQueue(S.incidents).length+'</b> unfinished operations <b>'+hv.active.filter(function(i){return i.kind==='event'}).length+'</b> unverified failure classes <b>'+hv.recovered.length+'</b> recovered (24h) <b>'+hv.historical.length+'</b> older resolved</div>'
-    +'<div class="inc-history-tools"><label>Search <input id="inc-history-search" type="search" placeholder="Request ID, component, error or owner" value="'+esc(q)+'"></label>'
-    +'<label>State <select id="inc-history-state"><option value="ALL">All states</option><option value="UNRESOLVED">Unresolved / verification pending</option><option value="RECOVERED">Verified recovered</option><option value="HISTORICAL">Historical resolved</option></select></label></div>'
-    +'<h3>Unfinished work by original operation</h3><p class="tip">This is the recovery backlog, not a count of currently broken Writer processes. The entry remains until verified complete; never retry blindly.</p><div id="inc-history-work"></div><h3>Failure history</h3><div id="inc-history-items"></div><div id="inc-history-queue-results"></div></section>';
-  var work=PipelineIncidents.workQueue(S.incidents);$('inc-history-work').innerHTML=outstandingWorkHtml_(work,0);
-  $('inc-history-state').value=status;
+    +'<p class="tip">Current faults and work awaiting verification.</p>'
+    +'<div class="inc-history-summary"><b>'+all.filter(function(i){return i.kind!=='event'}).length+'</b> current faults <b>'+work.length+'</b> unfinished operations</div>'
+    +'<div class="inc-history-tools"><label>Search <input id="inc-history-search" type="search" placeholder="Request ID, component, error or owner" value="'+esc(q)+'"></label></div>'
+    +'<h3>Unfinished work by original operation</h3><div id="inc-history-work"></div><h3>Current faults and verification needs</h3><div id="inc-history-items"></div></section>';
+  $('inc-history-work').innerHTML=outstandingWorkHtml_(work,0);
   function refresh(){
-    var term=$('inc-history-search').value.trim().toLowerCase(),state=$('inc-history-state').value;
-    var filtered=all.filter(function(i){
-      if(state==='UNRESOLVED' && i.status!=='ACTIVE' && i.status!=='ACKNOWLEDGED_UNRESOLVED')return false;
-      if(state==='RECOVERED' && (i.status==='ACTIVE'||i.status==='ACKNOWLEDGED_UNRESOLVED'))return false;
-      if(state==='HISTORICAL' && (i.status==='ACTIVE'||i.status==='ACKNOWLEDGED_UNRESOLVED'||hv.historical.indexOf(i)<0))return false;
-      return !term||[i.id,i.title,i.latestError,i.latestFile,i.component,i.status,i.operation,i.resolution].join(' ').toLowerCase().indexOf(term)>=0;
-    });
-    $('inc-history-items').innerHTML=filtered.length?filtered.map(incidentHtml_).join(''):'<p class="tip">No incidents match these filters.</p>';
+    var term=$('inc-history-search').value.trim().toLowerCase();
+    var filtered=all.filter(function(i){return !term||[i.id,i.title,i.latestError,i.latestFile,i.component,i.status,i.operation].join(' ').toLowerCase().indexOf(term)>=0;});
+    $('inc-history-items').innerHTML=filtered.length?filtered.map(incidentHtml_).join(''):'<p class="tip">No current incidents match.</p>';
     $('inc-history-items').querySelectorAll('[data-ack]').forEach(function(b){b.onclick=function(){ackIncident_(b.getAttribute('data-ack'));renderIncidentHistory_()}});
   }
-  var w=S.writerStatus;
-  if(w&&w.recentRuns&&w.recentRuns.length){
-    $('inc-history-queue-results').innerHTML='<h3>Recent queue execution record</h3><p class="tip">Most recent reported Writer runs, including successful attempts. This is a bounded operational snapshot, not an exhaustive queue archive.</p><ul class="writer-runs">'
-      +w.recentRuns.slice(0,12).map(function(r){return '<li><span class="pill '+(r.terminalStatus==='SUCCESS'?'ok':'warn')+'">'+esc(r.terminalStatus||'UNKNOWN')+'</span><span>'+esc(r.file||'')+' / '+esc(buildTime_(r.finishedAt))+(r.error?' - '+esc(r.error):'')+'</span></li>'}).join('')+'</ul>';
-  }
-  $('inc-history-search').oninput=refresh;$('inc-history-state').onchange=refresh;
+  $('inc-history-search').oninput=refresh;
   $('history-to-system').onclick=function(){switchTab('automations');var wb=$('writer-badge');if(wb)wb.click()};
   refresh();
 }
@@ -3142,7 +3128,7 @@ function toggleCompare(id){var i=S.compare.indexOf(id);if(i>=0)S.compare.splice(
 function openCompare(message){var old=$('compare-dialog');if(old)old.remove();var d=document.createElement('dialog');d.id='compare-dialog';d.className='compare-dialog';var rows=S.compare.map(rowById).filter(Boolean),keys=[['Company / role',function(r){return r.COMPANY+' — '+r.TITLE}],['Canonical state',function(r){return r.BUCKET}],['Base pay',function(r){return payText_(r,'Not researched')+' · '+PipelineTrust.salary(r.payload)}],['Location',function(r){return r.LOCATION||'Not researched'}],['Degree / FLEX',function(r){return (r.payload.DEGREE_TEXT||r.payload.DEGREE_REQ||'Not researched')+' / '+(r.payload.FLEX||r.payload.FLEX_HINT||'Unknown')+' · '+PipelineTrust.flex(r.payload)}],['Floor',function(r){return r.payload.FLOOR_STATUS||r.payload.FLOOR||'Not evaluated'}],['Clearance',function(r){return r.payload.CLEARANCE||r.payload.CLEARANCE_REQ||'Not researched'}],['Blocker',function(r){return r.payload.BLOCKER||'None recorded'}],['Primary ID',function(r){return r.id}]];d.innerHTML='<div class="row"><h2 style="flex:1">Compare roles · '+rows.length+'/3</h2><button id="compare-close">Close</button></div><p class="tip">'+esc(message||'Use Compare role in a job drawer to select up to three roles. Missing evidence stays visible.')+'</p>'+(rows.length?'<div class="compare-scroll"><table><thead><tr><th>Decision factor</th>'+rows.map(function(r){return '<th>'+esc(r.COMPANY)+'<br><button data-compare-remove="'+esc(r.id)+'">Remove</button></th>'}).join('')+'</tr></thead><tbody>'+keys.map(function(k){return '<tr><th>'+k[0]+'</th>'+rows.map(function(r){return '<td>'+esc(k[1](r))+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table></div>':'');document.body.appendChild(d);$('compare-close').onclick=function(){d.close();d.remove()};d.querySelectorAll('[data-compare-remove]').forEach(function(b){b.onclick=function(){toggleCompare(b.dataset.compareRemove);openCompare()}});d.showModal()}
 $('compare-open').onclick=function(){openCompare()};$('compare-open').textContent='Compare · '+S.compare.length+'/3';$('density-toggle').textContent=S.density==='comfortable'?'Comfortable':'Compact';$('density-toggle').onclick=function(){S.density=S.density==='compact'?'comfortable':'compact';document.body.dataset.density=S.density;LS.set('density',S.density);this.textContent=S.density==='comfortable'?'Comfortable':'Compact'};
 /* ---------- tabs, hash, boot ---------- */
-var TAB_GROUP={'act-now':'pipeline',pipeline:'pipeline',quality:'discovery',intake:'discovery',companies:'discovery',map:'pipeline',reports:'pipeline',automations:'operations','incident-history':'operations','needs-tim':'operations',rules:'preferences',scoring:'preferences',documents:'preferences',columns:'preferences',settings:'operations'},TAB_LABEL={pipeline:'Pipeline',quality:'Scout results',intake:'Manual intake',companies:'Target companies',map:'Full-screen map',reports:'Trends and outcomes',automations:'Operations','incident-history':'Incident History','needs-tim':'Needs you',rules:'Advanced rules',scoring:'FLEX policy and scoring',documents:'Document library',columns:'Display and columns',settings:'Writer connection'},GROUP_LABEL={pipeline:'Pipeline',discovery:'Intake',kit:'Settings',analytics:'Pipeline',preferences:'Settings',operations:'System'};
+var TAB_GROUP={'act-now':'pipeline',pipeline:'pipeline',quality:'discovery',intake:'discovery',companies:'discovery',map:'pipeline',reports:'pipeline',automations:'operations','incident-history':'operations','needs-tim':'operations',rules:'preferences',scoring:'preferences',documents:'preferences',columns:'preferences',settings:'operations'},TAB_LABEL={pipeline:'Pipeline',quality:'Scout results',intake:'Manual intake',companies:'Target companies',map:'Full-screen map',reports:'Trends and outcomes',automations:'Operations','incident-history':'Current incidents','needs-tim':'Needs you',rules:'Advanced rules',scoring:'FLEX policy and scoring',documents:'Document library',columns:'Display and columns',settings:'Writer connection'},GROUP_LABEL={pipeline:'Pipeline',discovery:'Intake',kit:'Settings',analytics:'Pipeline',preferences:'Settings',operations:'System'};
 function setMapFull_(on){S.mapFull=!!on;document.body.classList.toggle('map-full',S.mapFull);var b=document.querySelector('[data-mapaction=expand]');if(b)b.textContent=S.mapFull?'Close map':'Expand';if(typeof applyMapView_==='function')requestAnimationFrame(applyMapView_)}
 function finishNavAction_(){if(S.pendingOpsTab&&S.tab==='automations'){var ot=document.querySelector('[data-ops-tab="'+S.pendingOpsTab+'"]');if(ot){ot.click();S.pendingOpsTab=null}}if(S.pendingNavAction){var target=S.pendingNavAction==='profile'&&S.tab==='documents'?$('doc-ats-keywords'):S.pendingNavAction==='pay-location'&&S.tab==='scoring'?document.querySelector('[data-salary="floor"]'):null;if(target){target.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});target.focus({preventScroll:true});S.pendingNavAction=null}}}
 function renderCrumb_(){var c=$('crumb');if(!c)return;var t=S.tab,g=TAB_GROUP[t]||'',parts=['<b>'+esc((GROUP_LABEL[g]||t).toUpperCase())+'</b>'];if(S.mapFull)parts.push('<span>FULL-SCREEN MAP</span>');else if(t==='pipeline'){var p=PRESETS[S.preset];parts.push('<span>'+esc((p?p.label:S.preset).toUpperCase())+'</span>')}else if(TAB_LABEL[t]&&TAB_LABEL[t].toUpperCase()!==(GROUP_LABEL[g]||'').toUpperCase())parts.push('<span>'+esc(TAB_LABEL[t].toUpperCase())+'</span>');c.innerHTML=parts.join('<i>›</i>')}
