@@ -3,7 +3,7 @@
 (function(root){
   'use strict';
   function create(api){
-    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false};
+    var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false},activity={data:null,error:''};
     var tabLabels={dashboard:'Dashboard',backlog:'Work queue',email:'Intake coverage',recovery:'Verification & recovery',schedules:'Schedules',acceptance:'Diagnostics'};
     var esc=api.escape;
     function cell(value){return esc(value==null?'UNKNOWN':String(value));}
@@ -81,6 +81,7 @@
       var m=dashboardMetrics(store,summary),stageRows=Object.keys(m.stages).sort(function(a,b){return m.stages[b]-m.stages[a];}).map(function(k){return [k,m.stages[k]];});
       var h='<section class="ops-dashboard"><div class="ops-next-priority"><span class="u">Next Priority</span><b>'+cell(m.next)+'</b><small>Based on current Writer-owned supporting evidence. This does not replace canonical master state.</small></div>';
       h+='<div class="dash-grid ops-kpis">'+metricCard('Open enrichment backlog',m.open,m.total?m.done+' complete of '+m.total:'No snapshot',m.open?'warn':'')+metricCard('Completion ratio',m.total?pct(m.done,m.total)+'%':'UNKNOWN',m.total?m.done+'/'+m.total+' obligations':'Writer snapshot unavailable','',m.total&&typeof PipelineMiniViz!=='undefined'?PipelineMiniViz.progress(m.done,m.total,{title:m.done+' of '+m.total+' obligations resolved'}):'')+metricCard('Writer blocked',m.writerBlocked,m.writerBlocked?'Requires verification/recovery':'No tracked writer blockers',m.writerBlocked?'bad':'')+metricCard('Intake reviewed',m.intakeReviewed,m.intakeFound?m.intakeFound+' found · '+m.intakeUnprocessed+' unprocessed':'No email/source run coverage read')+metricCard('Oldest open age',m.oldest?ageText(m.oldest.iso):'NONE',m.oldest?m.oldest.o.id:'No open tracked obligation')+'</div>';
+      if(typeof PipelineWriterActivity!=='undefined')h+=PipelineWriterActivity.html({data:activity.data,error:activity.error,loading:busy},PipelineCharts);
       h+=throughputHtml();
       h+=intakeProcessChartsHtml(store,summary,m);
       if(m.total)h+=PipelineProgress.html('Tracked obligations independently resolved',m.done,m.total,'large');
@@ -92,7 +93,10 @@
     async function refresh(view){
       if(busy)return;busy=true;paint(view);
       var progress=PipelineProgress.begin('[data-ops-refresh]','Reading Writer evidence');
-      var results=await Promise.allSettled([api.get('operations'),api.get('schedules'),api.get('queue_stats','&hours=24')]);
+      var results=await Promise.allSettled([api.get('operations'),api.get('schedules'),api.get('queue_stats','&hours=24'),api.activity?api.activity():Promise.resolve({ok:false,error:'Activity reader not configured'})]);
+      var ar=results[3],aj=ar.status==='fulfilled'&&ar.value;
+      if(aj&&aj.ok)activity={data:aj,error:''};
+      else activity={data:activity.data,error:aj&&aj.error||ar.reason&&ar.reason.message||'No supported receipt snapshot'};
       var qs=results[2],qj=qs.status==='fulfilled'&&qs.value;
       if(qj&&qj.ok)thr={stats:qj,error:'',unsupported:false};
       else thr={stats:thr.stats,error:qj&&qj.error||qs.reason&&qs.reason.message||'no response',unsupported:!!(qj&&/unknown action/.test(qj.error||''))};
@@ -114,7 +118,8 @@
         else{
           var emptyStore={obligations:{},runs:{}};
           h+='<div class="ops-next-priority"><span class="u">Next Priority</span><b>Refresh Writer evidence</b><small>No durable operations snapshot loaded yet.</small></div>';
-          h+=throughputHtml();
+          if(typeof PipelineWriterActivity!=='undefined')h+=PipelineWriterActivity.html({data:activity.data,error:activity.error,loading:busy},PipelineCharts);
+      h+=throughputHtml();
           h+=intakeProcessChartsHtml(emptyStore,{counts:{},done:0,open:[],total:0},{stages:{},openList:[],open:0,done:0,total:0});
           h+=runtimeHealthHtml();
         }
