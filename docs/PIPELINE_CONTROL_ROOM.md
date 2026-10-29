@@ -1,0 +1,16 @@
+# Pipeline at a glance
+
+Tim asked on October 28, 2026 for one or two graphics that combine all intake sources and make stopped work immediately visible, spanning discovery, intake, verification, enrichment and his disposition decisions.
+
+The default Operations dashboard now has two panels:
+
+1. A five-stage pipeline map plus **one combined intake chart**, with stacked Email / Automatic / Manual / Other segments for the last seven Eastern calendar days. Each canonical job ID counts once. A recorded intake date is required; missing dates are disclosed rather than guessed. Stage labels deliberately distinguish latest-pass candidates, today's new job rows, today's confirmed writes, 24-hour enrichment updates and current applied/declined stocks. These have different units and are not presented as a conversion funnel.
+2. A ranked health board, with blocking cause, age, evidence, owner-directed next action, overdue discovery reports, receipt problems, missing source coverage and missing run proof. Research remains open; it is not counted as a final applied/declined disposition.
+
+A persistent red/amber banner appears on **every page**, so an idle/healthy Writer does not hide a blocked intake lane. The public evidence feed and receipt activity refresh every minute while the application is open and immediately when the tab becomes visible again. The full Writer/queue/backlog charts remain available under a collapsed diagnostics disclosure. This is in-app monitoring, not an out-of-app push notification service.
+
+The read-only `/api/pipeline-health` route combines the canonical Needs-Tim incident feed, latest source/board reports and actual native schedule configuration readback. It returns partial-source errors explicitly. Incident reports older than 90 minutes, discovery reports older than six hours and native configuration snapshots older than one day are not shown as healthy. Schedule configuration is never treated as proof of a successful native run. Paused lanes are not silently reactivated. Source candidate counts are provisional latest-pass URL unions, not admitted jobs or exhaustive discovery totals.
+
+The live October 26 AUTO intake latch is the acceptance case: even with an empty Writer queue and ongoing enrichment, the overview/banner must show that the automatic intake path is blocked, its age, and the required Gofer reconciliation. The GUI does not clear that latch, submit work, alter Writer policy or certify a whole unresolved run from a COMPLETE receipt alone.
+
+The incident feed and snapshots can lag actual execution. Every displayed claim is bounded by its evidence; missing email/source-window records say Not reported, not zero. Applied/declined counts cover the currently loaded canonical job population, not an invented complete decision history. Exact receipt activity remains available in diagnostics, including its metadata-coverage limits.
