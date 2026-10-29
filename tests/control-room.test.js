@@ -41,3 +41,21 @@ test('read endpoint combines bounded fixed sources, deduplicates provisional URL
  assert.equal(j.candidates,1);assert.equal(j.issues[0].sourceUrl,null);assert.equal(j.checks.schedules.ok,false);assert.equal(j.checks.boards.ok,true);
  const f=fixture();f.health=j;assert.match(C.html(C.model(f)),/Intake &lt;stopped&gt;/);
 });
+
+test('fresh board history replaces obsolete failure counts and exposes each last successful check',()=>{
+ const f=fixture();f.health.checks.boards.failedBoards=6;f.health.checks.boardHealth={ok:true,at};
+ f.health.boardHealth=[{key:'fixed',companies:['MKS <fixed>'],status:'OK',lastAttemptAt:at,lastSuccessAt:at},{key:'down',companies:['Charter Steel'],status:'TEMPORARY_FAILURE',httpStatus:500,lastAttemptAt:at,lastSuccessAt:'2026-10-28T20:00:00Z',retryAt:'2026-10-29T00:15:00Z'}];
+ const m=C.model(f),h=C.html(m);assert.ok(m.warnings.some(x=>x.title==='1 employer boards need another check'));assert.ok(!m.warnings.some(x=>/6 employer boards/.test(x.title)));
+ assert.match(h,/last successful checks/);assert.match(h,/MKS &lt;fixed&gt;/);assert.match(h,/Charter Steel/);assert.match(h,/Employer service unavailable/);assert.match(h,/Oct 28/);
+ f.health.boardHealth[1].lastSuccessAt=null;assert.match(C.html(C.model(f)),/Not yet recorded/);
+ f.health.checks.boardHealth.at='2026-10-25T00:00:00Z';assert.ok(C.model(f).warnings.some(x=>/history is unavailable or stale/.test(x.title)));assert.ok(C.model(f).warnings.some(x=>/6 employer boards/.test(x.title)));
+});
+
+test('public health endpoint exposes bounded board history and omits paused employers',async()=>{
+ const file=fs.readFileSync(path.join(__dirname,'../functions/api/pipeline-health.js'),'utf8'),mod=await import('data:text/javascript;base64,'+Buffer.from(file).toString('base64'));
+ const j=await mod.loadHealth(async url=>{
+  if(url.includes('board-health'))return new Response(JSON.stringify({schema:'forge.board-health.v1',at,boards:{one:{key:'one',companies:['Radiant'],status:'OK',lastSuccessAt:at},two:{key:'two',companies:['Paused'],status:'TEMPORARY_FAILURE',paused:true}}}));
+  return new Response('missing',{status:404});
+ },now);
+ assert.equal(j.checks.boardHealth.ok,true);assert.equal(j.boardHealth.length,1);assert.equal(j.boardHealth[0].lastSuccessAt,at);assert.equal(j.boardHealth[0].companies[0],'Radiant');assert.equal(j.checks.boardHealth.pending,0);
+});
