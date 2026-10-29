@@ -30,6 +30,11 @@ test('research is open; applied and declined remain separate current decision co
  const f=fixture();f.master.rows=[row('A','', 'APPLIED'),row('B','','DECLINED_BY_TIM'),row('C','','MANUAL_RESEARCH'),row('D','','TIM_DECISION_REQUIRED')];
  const m=C.model(f),h=C.html(m);assert.match(h,/1 \/ 1/);assert.match(h,/1 jobs in the current research queue/);assert.match(h,/research stays open/);assert.equal(m.counts.APPLIED,1);
 });
+
+test('recovery distinguishes failed write incidents from aliases and exposes safe next actions without greenwashing',()=>{
+ const f=fixture();f.activity.problemReceipts=24;f.activity.problemWriteIncidents=8;f.activity.recoveredReceipts=0;f.activity.recovery={status:'CURRENT',at,groups:[{writeId:'W-OLD',receiptCount:17,status:'ESCALATED',reason:'INSUFFICIENT_ROW_EVIDENCE',nextAction:'Inspect <original> evidence; never replay',evidenceFile:'verify/recovery/escalations/'+ 'a'.repeat(64)+'.json'}]};
+ const m=C.model(f),html=C.html(m,{receiptRecoveryOpen:true});assert.equal(m.severity,'attention');assert.match(html,/8 write incidents need recovery/);assert.match(html,/24 unresolved receipt references/);assert.match(html,/Current rows do not prove the original write/);assert.match(html,/Inspect &lt;original&gt;/);assert.match(html,/Saved proof/);assert.match(html,/class="cr-recovery cr-board-history" open/);
+});
 test('stale incident/scheduler evidence and overdue sources never certify a healthy system',()=>{
  const f=fixture();f.health.checks.attention.at='2026-10-25T12:00:00Z';f.health.checks.boards.at='2026-10-25T12:00:00Z';f.health.checks.schedules.executionVerified=false;
  const m=C.model(f);assert.equal(m.severity,'attention');assert.ok(m.warnings.some(x=>/overdue/.test(x.title)));assert.ok(m.warnings.some(x=>/execution is not yet verified/.test(x.title)));

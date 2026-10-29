@@ -13,14 +13,39 @@
     return 'Other work';
   }
   function empty(){return {writes:0,inserts:0,updates:0,otherChanges:0,jobs:0};}
-  function aggregate(index,now){
+  function canonical(x){return JSON.stringify(x&&typeof x==='object'?Array.isArray(x)?x.map(function(v){return JSON.parse(canonical(v));}):Object.fromEntries(Object.keys(x).sort().map(function(k){return [k,JSON.parse(canonical(x[k]))];})):x);}
+  function recoveryStatus(index,report,now){
+    var at=Date.parse(report&&report.at||''),valid=report&&report.schema==='forge.receipt-recovery.v1'&&!report.inProgress&&report.writerSubmissions===0&&report.masterMutations===0&&report.canonicalReceiptMutations===0&&report.source&&report.source.repo==='tpruittguitar/forge-writer-state'&&report.source.path==='PIPELINE_RECEIPT_INDEX.json'&&/^[a-f0-9]{40}$/.test(report.source.sha||'')&&Array.isArray(report.cases)&&report.cases.length<=100&&report.cases.every(function(c){return c&&typeof c==='object'&&typeof c.requestId==='string';})&&new Set(report.cases.map(function(c){return c.requestId;})).size===report.cases.length&&Number.isFinite(at)&&at<=now+120000&&now-at<=2*HOUR;
+    var recovered=new Set(),cases=[],groups=new Map(),badWrites=new Set();
+    Object.values(index.requests).forEach(function(e){if(e&&e.s!=='COMPLETE'&&e.w)badWrites.add(e.w);});
+    function proves(c,e){
+      var pending=(index.pending||[]).find(function(p){return p.writeId===e.w&&(p.requestIds||[]).includes(c.requestId);}),items=e.items;if(!items&&pending&&c.pendingBinding&&canonical(c.pendingBinding.items)===canonical(pending.items)&&c.pendingBinding.writeId===pending.writeId)items=pending.items;
+      if(!e||!Array.isArray(items)||!items.length||!Array.isArray(c.rows)||c.rows.length!==items.length||!c.rows.every(function(r){return r&&typeof r.primaryId==='string';})||!items.every(function(i){return i&&typeof i.pid==='string';})||new Set(c.rows.map(function(r){return r.primaryId;})).size!==c.rows.length)return false;
+      return items.every(function(i){var r=c.rows.find(function(r){return r.primaryId===i.pid;}),time=Date.parse(r&&r.readAt||'');if(!r||r.expectedAfter!==i.a||!/^[a-f0-9]{64}$/.test(r.sha256||'')||!Number.isFinite(time)||time<=Date.parse(e.at)||time>at+120000)return false;
+        if(r.status==='EXACT_AFTER_IMAGE')return r.observedHash===i.a;
+        if(r.status!=='LATER_VERIFIED_HASH_CHAIN'||!Array.isArray(r.chain)||!r.chain.length||r.chain.length>32)return false;
+        var hash=i.a,last=Date.parse(e.at),ok=r.chain.every(function(link){var v=index.requests[link.requestId],t=Date.parse(link.at);if(!v||v.s!=='COMPLETE'||v.w!==link.writeId||v.w===e.w||badWrites.has(v.w)||v.at!==link.at||!Number.isFinite(t)||t<last||t>time||link.from!==hash||!(v.items||[]).some(function(j){return j.pid===i.pid&&j.op==='REPLACE'&&j.b===link.from&&j.a===link.to;}))return false;hash=link.to;last=t;return true;});return ok&&hash===r.observedHash;
+      });
+    }
+    if(valid)report.cases.forEach(function(c){var e=index.requests[c.requestId]||null;if(canonical(c.sourceEntry)!==canonical(e))return;
+      var proven=c.status==='PROVEN_PERSISTED'&&e&&proves(c,e);
+      if(proven&&/^(FALSE_COMPLETE|NOT_PERSISTED|NEEDS_RESOLUTION)$/.test(e.s||''))recovered.add(c.requestId);
+      var status=c.status==='PROVEN_PERSISTED'&&!proven?'ESCALATED':c.status;
+      if(!/^(PROVEN_PERSISTED|VERIFIED_RECEIPT_AND_ROWS|ESCALATED|CHECK_FAILED)$/.test(status))return;
+      var key=e&&e.w||c.requestId,g=groups.get(key);if(!g){g={writeId:key,receiptCount:0,status:status,reason:String(c.reason||'').slice(0,120),nextAction:String(c.nextAction||'').slice(0,400),evidenceFile:/^verify\/recovery\/(resolutions|escalations)\/[a-f0-9]{64}\.json$/.test(c.evidenceFile||'')?c.evidenceFile:null};groups.set(key,g);}g.receiptCount++;if(/ESCALATED|CHECK_FAILED/.test(status))g.status=status;
+      cases.push({requestId:c.requestId,status:status});
+    });
+    return {status:valid?'CURRENT':report?'STALE_OR_INVALID':'UNAVAILABLE',at:valid?report.at:null,recovered:recovered,cases:cases,groups:Array.from(groups.values()),deferred:valid?+report.deferred||0:null};
+  }
+  function aggregate(index,now,recoveryReport){
     now=now==null?Date.now():now;
     if(!index||index.version!==1||!index.requests||typeof index.requests!=='object'||Array.isArray(index.requests)||!Number.isFinite(now))throw Error('Unsupported receipt index');
+    var recovery=recoveryStatus(index,recoveryReport,now),problemGroups=new Set(),rawProblems=0;
     var cut=now-24*HOUR,start=Math.floor(cut/HOUR)*HOUR,todayKey=day(now),groups=new Map(),olderConflicts=new Set(),pending=0,problems=0,legacy=0,unplaced=0,missingWriteIds=0;
     Object.keys(index.requests).forEach(function(id){
       var e=index.requests[id];if(!e||typeof e!=='object')return;
       if(/PENDING|VERIFYING/.test(e.s||''))pending++;
-      if(/^(FALSE_COMPLETE|NOT_PERSISTED|NEEDS_RESOLUTION)$/.test(e.s||''))problems++;
+      if(/^(FALSE_COMPLETE|NOT_PERSISTED|NEEDS_RESOLUTION)$/.test(e.s||'')){rawProblems++;if(!recovery.recovered.has(id)){problems++;problemGroups.add(e.w||id);}}
       if(e.src==='LEGACY_RECEIPTS'){legacy++;return;}
       var t=Date.parse(e.at||'');
       if(!Number.isFinite(t)||t>now){if(e.s==='COMPLETE')unplaced++;return;}
@@ -47,7 +72,7 @@
       var ss=Array.from(g.sources).filter(function(s){return s!=='Other work';}),s=ss.length===1?ss[0]:'Other work';
       sources[s]=sources[s]||empty();sourceJobs[s]=sourceJobs[s]||new Set();add(sources[s],g,sourceJobs[s]);
     });
-    return {ok:true,now:new Date(now).toISOString(),indexUpdatedAt:index.updatedAt||null,from:new Date(cut).toISOString(),todayDate:todayKey,todayTimezone:'America/New_York',today:today,recent:recent,buckets:buckets,sources:sources,pendingReceipts:pending,problemReceipts:problems,coverage:{metadataGaps:metadataGaps,missingWriteIds:missingWriteIds,unplacedCompleteReceipts:unplaced,legacyReceiptsExcluded:legacy,conflictedWrites:conflicted},basis:'Current COMPLETE master-write receipts, deduplicated by write ID; inserts/updates deduplicated within each write. Not a complete historical event log.'};
+    return {ok:true,now:new Date(now).toISOString(),indexUpdatedAt:index.updatedAt||null,from:new Date(cut).toISOString(),todayDate:todayKey,todayTimezone:'America/New_York',today:today,recent:recent,buckets:buckets,sources:sources,pendingReceipts:pending,problemReceipts:problems,rawProblemReceipts:rawProblems,problemWriteIncidents:problemGroups.size,recoveredReceipts:recovery.recovered.size,recovery:{status:recovery.status,at:recovery.at,groups:recovery.groups,deferred:recovery.deferred},coverage:{metadataGaps:metadataGaps,missingWriteIds:missingWriteIds,unplacedCompleteReceipts:unplaced,legacyReceiptsExcluded:legacy,conflictedWrites:conflicted},basis:'Current COMPLETE master-write receipts, deduplicated by write ID; inserts/updates deduplicated within each write. Recovery evidence never changes throughput or canonical receipt states.'};
   }
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function html(state,charts){

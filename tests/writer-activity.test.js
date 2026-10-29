@@ -32,7 +32,28 @@ test('missing metadata is explicit and invalid schema is unavailable rather than
 test('read-only endpoint fetches fixed public source and returns aggregate without raw identities',async()=>{
  const source=fs.readFileSync(path.join(__dirname,'../functions/api/writer-activity.js'),'utf8').replace('../../pipeline-writer-activity.js',pathToFileURL(path.join(__dirname,'../pipeline-writer-activity.js')).href);
  const mod=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
- const d=await mod.loadActivity(async(url,options)=>{assert.match(url,/^https:\/\/raw.githubusercontent.com\/tpruittguitar\/forge-writer-state\/main\/PIPELINE_RECEIPT_INDEX.json\?cb=/);assert.equal(options.method,undefined);return new Response(JSON.stringify(fixture({secretId:entry('W1')})));},now);
+ const urls=[];const d=await mod.loadActivity(async(url,options)=>{urls.push(url);assert.equal(options.method,undefined);if(url.includes('/forge-coordination/'))return new Response('missing',{status:404});assert.match(url,/^https:\/\/raw.githubusercontent.com\/tpruittguitar\/forge-writer-state\/main\/PIPELINE_RECEIPT_INDEX.json\?cb=/);return new Response(JSON.stringify(fixture({secretId:entry('W1')})));},now);
  assert.equal(d.recent.writes,1);assert.doesNotMatch(JSON.stringify(d),/secretId|V2I-1/);
+ assert.equal(urls.length,2);assert.equal(d.recovery.status,'UNAVAILABLE');
  await assert.rejects(()=>mod.loadActivity(async()=>new Response('down',{status:503}),now),/unavailable/);
+});
+
+function recoveryCase(id,e){return {requestId:id,sourceEntry:e,status:'PROVEN_PERSISTED',reason:'EXACT_SAVED_WRITE_EVIDENCE',rows:e.items.map(i=>({primaryId:i.pid,expectedAfter:i.a,observedHash:i.a,sha256:'f'.repeat(64),readAt:'2026-10-28T23:58:00Z',status:'EXACT_AFTER_IMAGE'}))};}
+function recovery(cases){return {schema:'forge.receipt-recovery.v1',at:'2026-10-28T23:59:00Z',writerSubmissions:0,masterMutations:0,canonicalReceiptMutations:0,source:{repo:'tpruittguitar/forge-writer-state',path:'PIPELINE_RECEIPT_INDEX.json',sha:'a'.repeat(40)},cases};}
+test('fresh exact recovery closes a problem flag without changing receipt history or counting a successful write',()=>{
+ const e=entry('W-FAIL',[{pid:'V2I-1',op:'REPLACE',b:'b:1',a:'a:1'}],'NOT_PERSISTED'),index=fixture({old:e}),before=JSON.stringify(index),r=recovery([recoveryCase('old',e)]),d=A.aggregate(index,now,r);
+ assert.equal(d.problemReceipts,0);assert.equal(d.rawProblemReceipts,1);assert.equal(d.recoveredReceipts,1);assert.equal(d.today.writes,0);assert.equal(JSON.stringify(index),before);
+ assert.equal(A.aggregate(index,now+3*3600000,r).problemReceipts,1);
+ r.cases[0].sourceEntry={...e,s:'FALSE_COMPLETE'};assert.equal(A.aggregate(index,now,r).problemReceipts,1);
+});
+test('duplicates, incomplete snapshots, forged row proofs and unverified later changes never hide failures',()=>{
+ const e=entry('W-FAIL',[{pid:'V2I-1',op:'REPLACE',b:'b:1',a:'a:1'}],'NOT_PERSISTED'),index=fixture({old:e}),c=recoveryCase('old',e);
+ for(const mutate of [r=>r.inProgress=true,r=>r.cases.push(r.cases[0]),r=>r.cases[0].rows[0].observedHash='wrong',r=>r.cases[0].rows[0].sha256='',r=>r.cases=[null]]){const r=recovery([JSON.parse(JSON.stringify(c))]);mutate(r);assert.equal(A.aggregate(index,now,r).problemReceipts,1);}
+ const r=recovery([c]);c.rows[0]={...c.rows[0],status:'LATER_VERIFIED_HASH_CHAIN',observedHash:'c:1',chain:[{requestId:'later',writeId:'W-LATER',at:'2026-10-28T23:00:00Z',from:'a:1',to:'c:1'}]};
+ assert.equal(A.aggregate(index,now,r).problemReceipts,1);
+ index.requests.later=entry('W-LATER',[{pid:'V2I-1',op:'REPLACE',b:'a:1',a:'c:1'}],'COMPLETE','2026-10-28T23:00:00Z');assert.equal(A.aggregate(index,now,r).problemReceipts,0);
+ index.requests.conflict=entry('W-LATER',[],'NOT_PERSISTED');assert.equal(A.aggregate(index,now,r).recoveredReceipts,0);
+});
+test('shared failed-batch aliases count separate receipts but one recovery incident',()=>{
+ const e=entry('W-FAIL',[],'NOT_PERSISTED'),d=A.aggregate(fixture({alias1:e,alias2:e,alias3:e}),now,recovery([]));assert.equal(d.problemReceipts,3);assert.equal(d.problemWriteIncidents,1);assert.equal(d.recovery.status,'CURRENT');
 });
