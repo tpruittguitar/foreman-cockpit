@@ -5,7 +5,8 @@
   function create(api){
     var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false},activity={data:null,error:''},health={data:null,error:''},healthBusy=false,lastView=null,diagnosticsOpen=false,boardHistoryOpen=false,receiptRecoveryOpen=false;
     var tabLabels={dashboard:'Dashboard',backlog:'Work queue',email:'Intake coverage',recovery:'Verification & recovery',schedules:'Schedules',acceptance:'Diagnostics'};
-    var esc=api.escape,interviews={},interviewsReadAt={};
+    var esc=api.escape,interviews={},interviewsReadAt={},rateWindowHours=36;
+    try{rateWindowHours=PipelineControlRoom.rateWindow(localStorage.getItem('pipeline.constraint.rateWindowHours'));}catch(e){}
     async function saveInterviewStatus(pid,stage,progress){var requestId='interview-status-'+crypto.randomUUID(),text='PIPELINE_INTERVIEW_STATUS '+JSON.stringify({stage:stage,progress:progress});var r=await api.post({action:'interview_note',note:{primaryId:pid,text:text,actor:'TIM',requestId:requestId}});if(!r||!r.ok)throw Error(r&&r.error||'Writer did not confirm the save');var rb=await api.get('interview_notes','&primaryId='+encodeURIComponent(pid)),saved=rb&&rb.ok&&PipelineControlRoom.interviewStatus(rb.text);if(!saved||saved.stage!==stage||saved.progress!==progress)throw Error('Save reply received; status readback is not yet confirmed. Refresh before trying again.');interviews[pid]=saved;interviewsReadAt[pid]=Date.now();return saved;}
     function cell(value){return esc(value==null?'UNKNOWN':String(value));}
     function table(head,rows){return '<div class="ops-table"><table><thead><tr>'+head.map(function(v){return '<th>'+cell(v)+'</th>';}).join('')+'</tr></thead><tbody>'+rows.map(function(row){return '<tr>'+row.map(function(v){return '<td>'+cell(v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';}
@@ -95,7 +96,7 @@
     async function readInterviews(){if(typeof PipelineControlRoom==='undefined')return;var jobs=roomModel().outcomes.recruiting.jobs;await Promise.allSettled(jobs.filter(function(j){return !interviewsReadAt[j.primaryId]||Date.now()-interviewsReadAt[j.primaryId]>300000;}).map(async function(j){var r=await api.get('interview_notes','&primaryId='+encodeURIComponent(j.primaryId));if(r&&r.ok){interviews[j.primaryId]=PipelineControlRoom.interviewStatus(r.text);interviewsReadAt[j.primaryId]=Date.now();}}));}
     function dashboardHtml(store,summary,observed){
       if(typeof PipelineControlRoom==='undefined')return diagnosticsHtml(store,summary,observed);
-      return PipelineControlRoom.html(roomModel(),{boardHistoryOpen:boardHistoryOpen,receiptRecoveryOpen:receiptRecoveryOpen})+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
+      return PipelineControlRoom.html(roomModel(),{boardHistoryOpen:boardHistoryOpen,receiptRecoveryOpen:receiptRecoveryOpen,rateWindowHours:rateWindowHours})+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
     }
     function visible(){return lastView&&lastView.isConnected&&lastView.getClientRects().length&&document.visibilityState!=='hidden';}
     function masterChanged(){
@@ -170,6 +171,7 @@
         if(store)h+=table(['Criterion','State','Evidence'],Object.keys(store.acceptance||{}).map(function(id){var a=store.acceptance[id];return [id,a.state,a.evidenceRef];}));
       }
       h+='</div><p data-ops-message aria-live="polite">'+cell(message)+'</p></section>';view.innerHTML=h;
+      var rateSelect=view.querySelector('[data-cr-rate-window]');if(rateSelect)rateSelect.onchange=function(){rateWindowHours=PipelineControlRoom.rateWindow(rateSelect.value);try{localStorage.setItem('pipeline.constraint.rateWindowHours',String(rateWindowHours));}catch(e){}paint(view);var next=view.querySelector('[data-cr-rate-window]');if(next)next.focus();};
       var readyBtn=view.querySelector('[data-cr-decision-ready]');if(readyBtn&&api.openDecisionReady)readyBtn.onclick=api.openDecisionReady;
       var refreshBtn=view.querySelector('[data-ops-refresh]');if(refreshBtn)refreshBtn.onclick=function(){refresh(view);};
       view.querySelectorAll('[data-cr-interview-id]').forEach(function(form){form.onsubmit=async function(ev){ev.preventDefault();var pid=form.dataset.crInterviewId,stage=form.elements.stage.value,progress=form.elements.progress.value,output=form.querySelector('[data-cr-interview-message]'),button=form.querySelector('button');button.disabled=true;output.textContent='Saving…';try{await saveInterviewStatus(pid,stage,progress);message='Interview status saved and read back from your private job notes.';paint(view);}catch(e){output.textContent=e.message;button.disabled=false;}};});

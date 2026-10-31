@@ -286,3 +286,5 @@ header #search{transition:border-color 140ms ease,box-shadow 220ms var(--forge-e
 .cr-flow .cr-decision-block .cr-applied strong{font-size:clamp(32px,3vw,52px)}.cr-flow .cr-decision-block .cr-declined b{display:inline;font-size:18px;font-weight:500}.cr-flow .cr-decision-block .cr-note{font-size:10px;color:var(--dim)}
 
 .cr-decision-block [data-cr-decision-ready]{margin-top:12px;padding:8px 12px;border:1px solid var(--accent,#61cdbb);background:var(--panel);color:var(--text);cursor:pointer}
+
+.cr-rate-window{display:flex;align-items:center;gap:8px;font:12px var(--sans,sans-serif);color:var(--dim);margin:0 0 12px}.cr-rate-window select{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line2);padding:6px 10px;border-radius:3px}.cr-rate-window select:focus-visible{outline:2px solid var(--accent,#61cdbb);outline-offset:2px}
