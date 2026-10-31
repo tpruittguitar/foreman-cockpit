@@ -449,6 +449,8 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-review.js"></script>
 <script src="pe-icons.js"></script>
 <script src="pipeline-scoring-preview.js"></script>
+<link rel="stylesheet" href="pipeline-action-progress.css">
+<script src="pipeline-action-progress.js"></script>
 <script src="pipeline-derived-refresh.js"></script>
 <script src="pipeline-manual-intake.js"></script>
 <script src="pipeline-target-companies.js"></script>
@@ -1888,6 +1890,36 @@ function bindBulkStatus_(){var b=$('bulk-status-x');if(b)b.onclick=clearBulkStat
 function clearBulkStatus_(){S.bulkStatus=null;var el=$('bulk-status');if(el)el.remove()}
 function setBulkStatus_(text,level){S.bulkStatus={text:text,level:level||'active'};var el=$('bulk-status');if(!el){var q=$('queue-head');if(!q)return;q.insertAdjacentHTML('beforeend',bulkStatusHtml_())}else{el.className='bulk-status '+(S.bulkStatus.level||'active');el.innerHTML=esc(S.bulkStatus.text)+'<button type="button" id="bulk-status-x" aria-label="Dismiss status">✕</button>'}bindBulkStatus_()}
 function reasonLabel_(code){return code.split('_').map(function(w){return w.charAt(0)+w.slice(1).toLowerCase()}).join(' ')}
+function saveBulkProgress_(op,done){var saved=LS.get('bulkProgress',[]).filter(function(x){return x.id!==op.id});if(!done)saved.push(op);LS.set('bulkProgress',saved)}
+function pollBulkProgress_(op,popup){if((op.polls||0)>=12)return;op.polls=(op.polls||0)+1;setTimeout(function(){if(LS.get('bulkProgress',[]).some(function(x){return x.id===op.id}))verifyBulkProgress_(op,popup)},10000)}
+function verifyBulkProgress_(op,popup){
+  if(op.checking)return Promise.resolve();op.checking=true;
+  var attempted=op.requests.filter(function(r){return r.attempted}),complete={},next=0,verified=0,checked=0;
+  popup.update('Checking durable Writer receipts. Accepted does not mean confirmed.',0,op.requests.length);
+  function worker(){var r=attempted[next++];if(!r)return Promise.resolve();return gsGet('request_result','&requestId='+encodeURIComponent(r.ruling.requestId)).then(function(j){complete[r.ruling.requestId]=!!(j&&j.ok&&j.found&&j.status==='COMPLETE'&&j.durable===true);popup.update('Checking durable Writer receipts; saved-job checks follow.',++checked,op.requests.length);return worker()})}
+  return Promise.all([worker(),worker(),worker(),worker()]).then(function(){
+    popup.update('Reading the saved jobs to verify each decision…');
+    return Promise.all([gsGet('master'),gsGet('archive')]);
+  }).then(function(reads){
+    var actual=[];reads.forEach(function(j){if(!j||!j.ok||typeof j.text!=='string')throw new Error('Canonical job readback unavailable');actual=actual.concat(PipelineParser.parse(j.text).rows)});
+    attempted.forEach(function(r){if(complete[r.ruling.requestId]&&actual.some(function(row){return PipelineActionProgress.proves(row,r.ruling)})){verified++;delete S.checked[r.rowId]}});
+    popup.update('Decisions confirmed in the saved jobs',verified,op.requests.length);
+    if(verified===op.requests.length){saveBulkProgress_(op,true);popup.finish(verified+' decisions confirmed. The decision queue is refreshing.');setBulkStatus_(verified+' decisions confirmed','ok');return reloadAfterWrite_()}
+    op.checking=false;saveBulkProgress_(op,false);popup.pending(verified+' / '+op.requests.length+' confirmed. '+(op.requests.length-attempted.length)+' not sent. Remaining writes are unconfirmed or have changed since submission. Checking again only reads saved results; it never resubmits.',function(){return verifyBulkProgress_(op,popup)},verified,op.requests.length);
+    if(attempted.length===op.requests.length)pollBulkProgress_(op,popup);
+  }).catch(function(e){op.checking=false;saveBulkProgress_(op,false);popup.pending('Verification pending: '+e.message+'. Do not repeat the bulk action.',function(){return verifyBulkProgress_(op,popup)})}).finally(function(){op.checking=false});
+}
+setTimeout(function(){var pending=LS.get('bulkProgress',[]);if(!pending.length)return;var op=pending[pending.length-1],p=PipelineActionProgress.start('Unfinished bulk decision check',op.requests.length);p.pending(pending.length+' saved operation(s) need verification. No writes will be replayed.',function(){return verifyBulkProgress_(op,p)})},5000);
+var scoringUpdateBusy_=false;
+function scoringProgress_(draft){
+  var result=PipelineScoringPreview.compare(S.rows,PipelineScoring.scoreRow,scoringPolicyCfg_(S.scoringCanonical||S.scoring),scoringPolicyCfg_(draft));
+  var count=result.ratingUp+result.ratingDown+result.newlyRated+result.newlyUnrated;
+  var p=PipelineActionProgress.start('Updating scoring model',S.rows.length);
+  p.summary(count+' ratings will change · '+(result.rankUp+result.rankDown)+' ranking positions change · '+result.population+' eligible jobs compared.');p.update('Saving the shared model…');return p;
+}
+function recalculateScores_(popup){var rows=S.rows.slice(),n=0;scoreCache={fp:'',rows:{}};
+  return new Promise(function(resolve,reject){function step(){try{var end=Math.min(n+50,rows.length);while(n<end)scoreFor_(rows[n++]);popup.update('Shared model confirmed. Recalculating displayed job scores…',n,rows.length);if(n<rows.length)setTimeout(step,0);else resolve()}catch(e){reject(e)}}setTimeout(step,0)});
+}
 function syncBulkReason_(){
   var sel=$('bulk-reason'),wrap=$('bulk-reason-wrap');
   if(!sel||!wrap)return;
@@ -1901,9 +1933,13 @@ function syncBulkReason_(){
     S.bulkReason=sel.value;
   }).catch(function(e){alert(e.message)});
 }
+var bulkSending_=false;
 function bulkAction(kind){
   var ids=Object.keys(S.checked).filter(function(k){return S.checked[k]}),rows=ids.map(rowById).filter(Boolean);
   if(!rows.length)return;
+  if(bulkSending_){alert('A bulk decision is already being sent. Its progress is shown on screen.');return}
+  var pending=LS.get('bulkProgress',[]).find(function(op){return op.requests.some(function(q){return q.attempted&&rows.some(function(r){return r.PRIMARY_ID===q.ruling.primaryId})})});
+  if(pending){var oldPopup=PipelineActionProgress.start('Checking earlier decisions',pending.requests.length);return verifyBulkProgress_(pending,oldPopup)}
   if(!hasWriter()){alert('Writer required for bulk changes.');return}
   var specs={
     DECLINE:{kind:'DECLINE',label:'Decline',allow:['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE']},
@@ -1937,14 +1973,16 @@ function bulkAction(kind){
     if(offView)preview+='\n\n⚠ '+offView+' selected row'+(offView===1?' is':'s are')+' not in the current view.';
     var actionLabel=spec.label+(spec.kind!==kind?' ('+spec.kind+(spec.value?' '+spec.value:'')+')':'');
     if(!confirm(actionLabel+'\n\n'+rows.length+' selected rows\n'+(code?'Reason: '+code+'\n':'')+(note?'Note: '+note+'\n':'')+'\n'+preview+'\n\nSubmit as Tim?'))return null;
+    if(bulkSending_)return null;bulkSending_=true;
     var stamp=Date.now(),requests=rows.map(function(r,i){return {action:'ruling',ruling:{primaryId:r.PRIMARY_ID,kind:spec.kind,value:spec.value||'',code:code,note:note,actor:'TIM',requestId:'PX-BULK-'+stamp+'-'+String(i+1)+'-'+r.id.slice(-6)}}});
     var chunks=[];for(var i=0;i<requests.length;i+=50)chunks.push(requests.slice(i,i+50));
-    var results=[],sent=0,chain=Promise.resolve();
+    var results=[],sent=0,chain=Promise.resolve(),popup=PipelineActionProgress.start(spec.label+' selected jobs',rows.length);
+    var op={id:'PX-BULK-'+stamp,label:spec.label,requests:requests.map(function(r,i){return {ruling:r.ruling,rowId:rows[i].id,attempted:false}})};saveBulkProgress_(op,false);
     setBulkStatus_('Sending '+spec.label+' · 0 of '+rows.length+' · '+chunks.length+' Writer batch'+(chunks.length===1?'':'es'),'active');
-    chunks.forEach(function(chunk,idx){chain=chain.then(function(){setBulkStatus_('Sending '+spec.label+' · batch '+(idx+1)+' of '+chunks.length+' · '+sent+' of '+rows.length+' sent','active');return gsPostRetryBusy_({action:'batch',requests:chunk}).then(function(j){results.push(j);if(!j||!j.ok){
+    chunks.forEach(function(chunk,idx){chain=chain.then(function(){chunk.forEach(function(r){op.requests.find(function(x){return x.ruling.requestId===r.ruling.requestId}).attempted=true});saveBulkProgress_(op,false);popup.update('Sending decisions · '+sent+' accepted; confirmation follows',sent,rows.length);setBulkStatus_('Sending '+spec.label+' · batch '+(idx+1)+' of '+chunks.length+' · '+sent+' of '+rows.length+' sent','active');return gsPostRetryBusy_({action:'batch',requests:chunk}).then(function(j){results.push(j);if(!j||!j.ok){
       var failed=((j&&j.results)||[]).filter(function(x){return x&&!x.ok}).map(function(x){var pid=((chunk[x.index]||{}).ruling||{}).primaryId,rr=rows.filter(function(r){return r.PRIMARY_ID===pid})[0];return '• '+(rr?rr.COMPANY+' — '+rr.TITLE:pid)+': '+(x.error||'failed')});
       var e=new Error(((j&&j.error)||'Writer batch '+results.length+' of '+chunks.length+' reported failures')+(failed.length?'\n'+failed.join('\n'):'')+'\n'+sent+' rows were already accepted. Later batches were not sent.');e.partial=true;throw e}sent+=chunk.length;setBulkStatus_('Sending '+spec.label+' · '+sent+' of '+rows.length+' accepted · batch '+(idx+1)+' of '+chunks.length,'active');return j})})});
-    return chain.then(function(){S.checked={};setBulkStatus_(spec.label+' sent · '+rows.length+' rows · '+chunks.length+' Writer batch'+(chunks.length===1?'':'es')+'. The list is reloading. Open Declined or My rulings to see them.','ok');readout('<span class="good">Bulk '+esc(spec.label)+' submitted: '+rows.length+' rows in '+chunks.length+' Writer batch'+(chunks.length===1?'':'es')+'</span>');reloadAfterWrite_();return results},function(e){setBulkStatus_(spec.label+' stopped. '+(e&&e.message||'The Writer did not confirm the batch.'),'bad');if(e&&e.partial)reloadAfterWrite_();throw e});
+    return chain.then(function(){return verifyBulkProgress_(op,popup)},function(e){setBulkStatus_(spec.label+' stopped. '+e.message,'bad');popup.pending('Sending stopped: '+e.message+'. Check the original saved requests before taking further action.',function(){return verifyBulkProgress_(op,popup)})}).finally(function(){bulkSending_=false});
   }).catch(function(e){alert('Bulk action failed: '+e.message)});
 }
 /* User widths are session-only. On a fresh canonical load/refresh, reset to
@@ -2847,14 +2885,16 @@ function reviewScoring_(opts){opts=opts||{};var v=$('view-scoring'),box=$('score
   var pub=$('score-review-publish');if(pub)pub.onclick=function(){publishReviewed_()};
   box.scrollIntoView({block:'nearest'})}
 function publishReviewed_(){var rv=S.scoreReview,box=$('score-review');if(!rv||!hasWriter())return;var pub=$('score-review-publish'),cancel=$('score-review-cancel'),m=$('score-review-msg');
+  if(scoringUpdateBusy_)return;scoringUpdateBusy_=true;
   if(pub)pub.disabled=true;if(cancel)cancel.disabled=true;if(m)m.textContent='Publishing and verifying…';
   var prevMeta=S.scoringCanonicalMeta,prevModel=prevMeta&&prevMeta.model,baseRevision=(prevModel&&+prevModel.publishedRevision)||0;
   var draft=Object.assign({},rv.draft,{modelId:PipelineScoring.modelId,modelVersion:PipelineScoring.modelVersion,publishedBy:'TIM',baseRevision:baseRevision});delete draft.targetCompanies;
-  gsPost({action:'save_scoring_model',model:draft}).then(function(j){if(j&&j.mode==='REVISION_CONFLICT'){var e=new Error(j.error||'A newer revision is live.');e.conflict=true;throw e}if(!j.ok)throw new Error(j.error||'publish failed');
+  var popup=scoringProgress_(draft);
+  gsPost({action:'save_scoring_model',model:draft}).then(function(j){if(j&&j.mode==='REVISION_CONFLICT'){var e=new Error(j.error||'A newer revision is live.');e.conflict=true;throw e}if(!j.ok)throw new Error(j.error||'publish failed');popup.update('Model accepted. Independently reading back the shared revision…');return gsGet('scoring')}).then(function(j){if(!j||!j.ok||!j.exists||!scoringSameAsDraft_(j.model,dedupePointsForCompare_(draft)))throw new Error('The shared model readback does not confirm this draft');
     if(prevModel&&prevModel.publishedRevision>0)LS.set('scoringPrev',{revision:prevModel.publishedRevision,publishedAt:prevModel.publishedAt||'',model:prevModel});
     S.scoringCanonical=PipelineScoring.normalize(j.model||draft);S.scoringCanonicalMeta=j;S.scoring=S.scoringCanonical;LS.set('scoring',S.scoring);LS.set('scoringLocalEdited',false);scoreCache={fp:"",rows:{}};S.scoreReview=null;
-    var st=scoringStamp_();render();renderScoring();renderWriterStatus_();var mm=$('score-msg');if(mm)mm.textContent='Published and read back: revision '+(st?st.revision:'')+'. Every viewer and agent now uses it.'})
-   .catch(function(e){if(pub)pub.disabled=false;if(cancel)cancel.disabled=false;if(e&&e.conflict){LS.set('scoringLocalEdited',true);if(m)m.textContent='Not published · '+e.message+' Your draft is kept on this device; refreshing the published model now.';loadCanonicalScoring_().then(function(){S.scoreReview=null;var b=$('score-review');if(b){b.hidden=true;b.innerHTML=''}var mm=$('score-msg');if(mm)mm.textContent='A newer revision was published elsewhere. Your draft is kept. Review again to see it against the latest published model, then Publish.';renderScoring()});return}if(m)m.textContent='Publish failed · '+e.message+' (nothing was changed)'})}
+    return recalculateScores_(popup).then(function(){var st=scoringStamp_();render();renderScoring();renderWriterStatus_();var mm=$('score-msg');if(mm)mm.textContent='Published and read back: revision '+(st?st.revision:'')+'. Every viewer and agent now uses it.';popup.finish('Revision '+(st?st.revision:'')+' confirmed. Job ratings and decision order updated.')})})
+   .catch(function(e){popup.pending('Update not confirmed: '+e.message+'. Your draft is kept. Read the published model before retrying.');if(pub)pub.disabled=false;if(cancel)cancel.disabled=false;if(e&&e.conflict){LS.set('scoringLocalEdited',true);if(m)m.textContent='Not published · '+e.message+' Your draft is kept on this device; refreshing the published model now.';loadCanonicalScoring_().then(function(){S.scoreReview=null;var b=$('score-review');if(b){b.hidden=true;b.innerHTML=''}var mm=$('score-msg');if(mm)mm.textContent='A newer revision was published elsewhere. Your draft is kept. Review again to see it against the latest published model, then Publish.';renderScoring()});return}if(m)m.textContent='Publish failed · '+e.message+' · save not confirmed; read the published model before retrying.'}).finally(function(){scoringUpdateBusy_=false})}
 /* ---- Stored policy values: controlled refresh of FLEX_MODIFIER / ADJUSTED_FIT / PURSUIT_STATUS ----
    The Writer derives these only when it writes FLEX or fit evidence, so a policy change leaves older rows behind. This plans the rows
    that differ (mirroring the Writer's derivation), and on Tim's click sends ENRICH requests that repeat each row's stored FLEX class so the
@@ -3003,9 +3043,9 @@ function applyRefresh_(){
  * Local-only drafts were the reason edits appeared to revert, so sections no longer save to the device alone. */
 function updateBar_(host){
   if(!host)return {step:function(){},done:function(){},fail:function(){}};
-  host.hidden=false;host.className='upd-bar';host.innerHTML='<div class="upd-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div><span class="upd-label" role="status" aria-live="polite"></span>';
-  var track=host.firstChild,fill=track.firstChild,label=host.lastChild;
-  function set(pct,text,state){track.setAttribute('aria-valuenow',String(pct));fill.style.width=pct+'%';label.textContent=text;host.dataset.state=state}
+  host.hidden=false;host.className='upd-bar';host.innerHTML='<progress aria-label="Shared model update"></progress><span class="upd-label" role="status" aria-live="polite"></span>';
+  var track=host.firstChild,label=host.lastChild;
+  function set(pct,text,state){if(state==='done'){track.max=1;track.value=1}else track.removeAttribute('value');label.textContent=text;host.dataset.state=state}
   set(5,'Starting…','active');
   return {step:function(pct,text){set(pct,text,'active')},done:function(text){set(100,text,'done')},fail:function(text){set(100,text,'failed')}};
 }
@@ -3017,12 +3057,14 @@ function scoringSameAsDraft_(m,d){
 }
 function dedupePointsForCompare_(m){var seen={},c=PipelineScoring.normalize(m||{});c.geo.controlPoints=(c.geo.controlPoints||[]).filter(function(p){var k=String(p.name).toLowerCase()+'|'+(+p.lat).toFixed(4)+'|'+(+p.lon).toFixed(4);if(seen[k])return false;seen[k]=1;return true});return c}
 function updateScoringSection_(sectionLabel,barHost,draftOverride){
+  if(scoringUpdateBusy_)return Promise.resolve(null);
   var v=$('view-scoring'),bar=updateBar_(barHost);if(!v&&!draftOverride)return Promise.resolve(null);
   if(!hasWriter()){bar.fail('Not updated · the Writer is not configured on this device.');return Promise.resolve(null)}
   var draft=draftOverride?PipelineScoring.normalize(JSON.parse(JSON.stringify(draftOverride))):scoringDraftFromView_(v,PipelineScoring.normalize(S.scoring),(S.scoring&&S.scoring.weights)||{});
   if(!PipelineScoring.weightsValid(draft)){bar.fail('Not updated · ranking weights total '+PipelineScoring.weightTotal(draft)+'; they must total 100.');return Promise.resolve(null)}
   var sal=draft.salary;if(!(+sal.floor<+sal.target&&+sal.target<+sal.ceiling)){bar.fail('Not updated · salary must run floor < target < ceiling.');return Promise.resolve(null)}
   delete draft.targetCompanies;
+  var popup=scoringProgress_(draft);scoringUpdateBusy_=true;
   function attempt(retry){
     bar.step(20,'Reading the live revision…');
     return loadCanonicalScoring_().then(function(){
@@ -3032,20 +3074,20 @@ function updateScoringSection_(sectionLabel,barHost,draftOverride){
       return gsPost({action:'save_scoring_model',model:body}).then(function(j){
         if(j&&j.mode==='REVISION_CONFLICT'&&!retry)return attempt(true);
         if(!j||!j.ok)throw new Error((j&&j.error)||'the Writer did not accept the change');
-        bar.step(75,'Reading back to confirm…');
+        bar.step(75,'Reading back to confirm…');popup.update('Model accepted. Independently reading back the shared revision…');
         return gsGet('scoring').then(function(rb){
           if(!rb||!rb.ok||!rb.exists)throw new Error('readback failed');
           if(!scoringSameAsDraft_(rb.model,dedupePointsForCompare_(draft)))throw new Error('the saved model differs from what you entered');
           var prev=live&&live.publishedRevision>0?live:null;if(prev)LS.set('scoringPrev',{revision:prev.publishedRevision,publishedAt:prev.publishedAt||'',model:prev});
           S.scoringCanonical=PipelineScoring.normalize(rb.model);S.scoringCanonicalMeta=rb;S.scoring=S.scoringCanonical;LS.set('scoring',S.scoring);LS.set('scoringLocalEdited',false);scoreCache={fp:"",rows:{}};
-          var st=scoringStamp_();bar.done('Updated and confirmed · revision '+(st?st.revision:rb.model.publishedRevision)+' · '+fmtTime_(new Date().toISOString())+' · every viewer and agent now uses it.');
+          var st=scoringStamp_();
           var e=$('score-canonical-status');if(e&&st)e.textContent='Published rev '+st.revision+' · v'+(S.scoring.modelVersion||'')+' · '+fmtTime_(st.at);
-          render();if($('view-scoring')&&S.tab==='scoring')renderScoring();return rb;
+          return recalculateScores_(popup).then(function(){bar.done('Updated and confirmed · revision '+rb.model.publishedRevision);render();if($('view-scoring')&&S.tab==='scoring')renderScoring();popup.finish('Revision '+rb.model.publishedRevision+' confirmed. Job ratings and decision order updated.');return rb});
         });
       });
     });
   }
-  return attempt(false).catch(function(e){bar.fail('Not updated · '+e.message+'. Nothing changed for other viewers.');return null});
+  return attempt(false).catch(function(e){bar.fail('Update not confirmed · '+e.message+'. Read the published model before retrying.');popup.pending('Update not confirmed: '+e.message+'. Read the published model before retrying; the save may have reached the Writer.');return null}).finally(function(){scoringUpdateBusy_=false});
 }
 /* Model tester (Tim 2026-10-14): pick one job, move every scoring setting and see that job's rating, components
  * and rank change at once; one button saves the whole model as the ruling settings and re-ranks the list. */
