@@ -6,5 +6,28 @@ test('contacted jobs each get a status prompt, even without an application recei
 test('scheduled calendar interview is not converted to attendance as time passes',()=>{const m=C.recruiting(rows,[event('a','INTERVIEW_SCHEDULED',{stage:'HIRING_MANAGER',progress:'SCHEDULED',sourceType:'GOOGLE_CALENDAR'})]);a.equal(m.jobs[0].progress,'SCHEDULED');a.equal(m.stages.HIRING_MANAGER,1);a.equal(m.jobs[0].source,'Calendar');});
 test('manual status read from private notes overrides earlier automatic evidence',()=>{const note='---\nTIMESTAMP=2026-10-30T14:00:00Z\nACTOR=TIM\nNOTE=PIPELINE_INTERVIEW_STATUS {"stage":"HIRING_MANAGER","progress":"COMPLETED"}\n';const x=C.interviewStatus(note);a.equal(x.source,'TIM');const m=C.recruiting(rows,[event('a','SCREENING_INVITED')],{a:x});a.equal(m.jobs[0].progress,'COMPLETED');a.equal(m.stages.HIRING_MANAGER,1);a.equal(C.interviewStatus(note.replace('ACTOR=TIM','ACTOR=BOT')),null);});
 test('unverified or unmatched events do not inflate contact or interview counts',()=>{a.equal(C.recruiting(rows,[event('x','RECRUITER_CONTACT'),event('a','RECRUITER_CONTACT',{evidenceVerified:false})]).contacts,0);});
+
+test('completed onsite interviews survive later rejection and are attributed to Tim, including archived roles',()=>{
+  const rejected=rows.map(r=>({...r,BUCKET:'REJECTED_BY_EMPLOYER',ARCHIVED_TERMINAL:true,payload:{REJECTION_DATE:'2026-08-27'}}));
+  const m=C.model({master:{loaded:true,rows:rejected},health:{ok:true,checks:{},applicationOutcomes:{events:rejected.map(r=>event(r.PRIMARY_ID,'INTERVIEW_STATUS',{stage:'ONSITE_PANEL',progress:'COMPLETED',sourceType:'TIM_NOTE'}))}}});
+  a.equal(m.outcomes.recruiting.stages.ONSITE_PANEL,2);a.equal(m.outcomes.recruiting.needsStatus,0);
+  for(const j of m.outcomes.recruiting.jobs){a.equal(j.progress,'COMPLETED');a.equal(j.outcome,'REJECTED');a.equal(j.source,'Tim');}
+  a.match(C.html(m),/Onsite \/ panel · Completed · Later rejected · Tim/);
+});
+
+test('a verified manual interview status does not require an earlier recruiter event',()=>{
+  const n=C.interviewStatus('---\nTIMESTAMP=2026-10-31T17:00:00Z\nACTOR=TIM\nNOTE=PIPELINE_INTERVIEW_STATUS {"stage":"ONSITE_PANEL","progress":"COMPLETED"}\n');
+  const m=C.recruiting(rows,[],{a:n});a.equal(m.contacts,1);a.equal(m.stages.ONSITE_PANEL,1);a.equal(m.needsStatus,0);
+});
+
+test('email rejection total counts unique canonical jobs across archive and event evidence in the Applied block',()=>{
+  const archive={...rows[0],BUCKET:'REJECTED_BY_EMPLOYER',ARCHIVED_TERMINAL:true,payload:{REJECTION_EVIDENCE:'Gmail existing-message'}};
+  const other={...rows[1],BUCKET:'REJECTED_BY_EMPLOYER',payload:{APP_DATE:'2026-10-01'}};
+  const m=C.model({master:{loaded:true,rows:[archive,archive,other]},health:{ok:true,checks:{},applicationOutcomes:{events:[event('a','REJECTED_BY_EMPLOYER',{sourceType:'EMAIL'}),event('b','REJECTED_BY_EMPLOYER',{sourceType:'EMAIL'}),event('missing','REJECTED_BY_EMPLOYER',{sourceType:'EMAIL'}),event('b','REJECTED_BY_EMPLOYER',{sourceType:'EMAIL',evidenceVerified:false})]}}});
+  a.equal(m.outcomes.emailRejected,2);a.equal(m.outcomes.applied,1);
+  const h=C.html(m),decision=h.slice(h.indexOf('aria-label="Your decisions"'),h.indexOf('aria-label="Recruiting outcomes"'));
+  a.match(decision,/≥ 2<\/b> Email rejections/);a.match(decision,/Applied · the goal/);
+  a.doesNotMatch(h.slice(h.indexOf('aria-label="Recruiting outcomes"')),/Rejected after applying/);
+});
 test('applied count retains later rejected applications and outcomes are separate blocks',()=>{const m=C.model({master:{loaded:true,rows:[{...rows[0],BUCKET:'REJECTED_BY_EMPLOYER',payload:{APP_DATE:'2026-10-01',REJECTION_DATE:'2026-10-27'}}]},health:{ok:true,checks:{},applicationOutcomes:{events:[event('a','RECRUITER_CONTACT')]}},now:Date.parse('2026-10-31T00:00Z')});const h=C.html(m);a.equal(m.outcomes.applied,1);a.equal(m.outcomes.rejectedAfterApplying,1);a.match(h,/<li class="cr-process cr-decision-block" aria-label="Your decisions"/);a.ok(h.indexOf('aria-label="Your decisions"')<h.indexOf('</ol>'));a.ok(h.indexOf('aria-label="Recruiting outcomes"')>h.indexOf('</ol>'));a.match(h,/aria-label="Recruiting outcomes"/);a.match(h,/data-cr-interview-id="a"/);a.match(h,/Applied · the goal/);});
 test('manual status saves once through Writer and requires private-note readback',async()=>{const fs=require('fs'),vm=require('vm'),context={window:{},PipelineControlRoom:C,Date,crypto:require('crypto').webcrypto};vm.createContext(context);vm.runInContext(fs.readFileSync(require('path').join(__dirname,'../pipeline-operations-ui.js'),'utf8'),context);let posts=0,confirmed=true;const ui=context.window.PipelineOperationsUI.create({escape:x=>x,post:async b=>{posts++;a.equal(b.action,'interview_note');a.equal(b.note.actor,'TIM');return {ok:true};},get:async(action,params)=>{a.equal(action,'interview_notes');a.match(params,/primaryId=a/);return {ok:true,text:confirmed?'---\nTIMESTAMP=2026-10-31T07:00:00Z\nACTOR=TIM\nNOTE=PIPELINE_INTERVIEW_STATUS {"stage":"HIRING_MANAGER","progress":"COMPLETED"}\n':''};}});a.equal((await ui.saveInterviewStatus('a','HIRING_MANAGER','COMPLETED')).stage,'HIRING_MANAGER');a.equal(posts,1);confirmed=false;await a.rejects(ui.saveInterviewStatus('a','HIRING_MANAGER','COMPLETED'),/readback is not yet confirmed/);a.equal(posts,2,'no automatic write retries');});
