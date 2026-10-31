@@ -28,7 +28,7 @@ test('missing coverage and failed refreshes are explicit unknowns, not zero or g
 });
 test('research is open; applied and declined remain separate current decision counts',()=>{
  const f=fixture();f.master.rows=[row('A','', 'APPLIED'),row('B','','DECLINED_BY_TIM'),row('C','','MANUAL_RESEARCH'),row('D','','TIM_DECISION_REQUIRED')];
- const m=C.model(f),h=C.html(m);assert.match(h,/1 \/ 1/);assert.equal(m.counts.MANUAL_RESEARCH,1);assert.match(h,/research stays open/);assert.equal(m.counts.APPLIED,1);
+ const m=C.model(f),h=C.html(m);assert.match(h,/Applied · the goal/);assert.equal(m.outcomes.applied,1);assert.equal(m.counts.MANUAL_RESEARCH,1);assert.match(h,/research stays open/);assert.equal(m.counts.APPLIED,1);
 });
 
 test('recovery distinguishes failed write incidents from aliases and exposes safe next actions without greenwashing',()=>{
@@ -101,7 +101,7 @@ test('waiting buffers use unique job queues and fail closed on stale evidence',(
  const f=fixture();f.activity.now=at;f.activity.waitingJobs={count:3,complete:true};f.health.emailRecovery={at,awaitingIntake:12};f.health.processFlow={at,population:{total:3,reconciled:true},queues:{verification:0,enrichment:2,readyForReview:1,blockedClosed:0}};
  f.master.rows=[{PRIMARY_ID:'a',BUCKET:'SCOUT_INTAKE'},{PRIMARY_ID:'b',BUCKET:'MANUAL_RESEARCH'},{PRIMARY_ID:'c',BUCKET:'READY_TO_PURSUE'},{PRIMARY_ID:'d',BUCKET:'APPLIED'}];
  let m=C.model(f);assert.deepEqual(m.waiting.map(q=>q.count),[12,2,1]);assert.equal(m.waiting[0].partial,true);
- let h=C.html(m);assert.equal((h.match(/class="cr-buffer /g)||[]).length,3);assert.equal((h.match(/class="cr-process /g)||[]).length,4);assert.match(h,/--queue-fill:/);assert.match(h,/cr-stage-total/);
+ let h=C.html(m);assert.equal((h.match(/class="cr-buffer /g)||[]).length,3);assert.equal((h.match(/class="cr-process /g)||[]).length,3);assert.match(h,/--queue-fill:/);assert.match(h,/cr-stage-total/);
  f.activityError='HTTP 503';f.master.freshness='STALE';f.health.emailRecovery.at='2026-10-20T00:00:00Z';f.health.processFlow.at='2026-10-20T00:00:00Z';m=C.model(f);assert.deepEqual(m.waiting.map(q=>q.count),[null,null,null]);
 });
 

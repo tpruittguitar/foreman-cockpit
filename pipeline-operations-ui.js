@@ -5,7 +5,8 @@
   function create(api){
     var snapshot=null,schedules=null,error='',busy=false,tab='dashboard',loadedAt='',message='',thr={stats:null,error:'',unsupported:false},activity={data:null,error:''},health={data:null,error:''},healthBusy=false,lastView=null,diagnosticsOpen=false,boardHistoryOpen=false,receiptRecoveryOpen=false;
     var tabLabels={dashboard:'Dashboard',backlog:'Work queue',email:'Intake coverage',recovery:'Verification & recovery',schedules:'Schedules',acceptance:'Diagnostics'};
-    var esc=api.escape;
+    var esc=api.escape,interviews={},interviewsReadAt={};
+    async function saveInterviewStatus(pid,stage,progress){var requestId='interview-status-'+crypto.randomUUID(),text='PIPELINE_INTERVIEW_STATUS '+JSON.stringify({stage:stage,progress:progress});var r=await api.post({action:'interview_note',note:{primaryId:pid,text:text,actor:'TIM',requestId:requestId}});if(!r||!r.ok)throw Error(r&&r.error||'Writer did not confirm the save');var rb=await api.get('interview_notes','&primaryId='+encodeURIComponent(pid)),saved=rb&&rb.ok&&PipelineControlRoom.interviewStatus(rb.text);if(!saved||saved.stage!==stage||saved.progress!==progress)throw Error('Save reply received; status readback is not yet confirmed. Refresh before trying again.');interviews[pid]=saved;interviewsReadAt[pid]=Date.now();return saved;}
     function cell(value){return esc(value==null?'UNKNOWN':String(value));}
     function table(head,rows){return '<div class="ops-table"><table><thead><tr>'+head.map(function(v){return '<th>'+cell(v)+'</th>';}).join('')+'</tr></thead><tbody>'+rows.map(function(row){return '<tr>'+row.map(function(v){return '<td>'+cell(v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';}
     function pct(done,total){return total?Math.round(done/total*100):0;}
@@ -90,7 +91,8 @@
       h+='<div class="panel"><h3>Coverage limits</h3><p class="tip">Current dashboard can show tracked obligations, current source-window coverage, verification blockers, oldest unresolved work, and runtime read health. Historical intake-vs-enrichment trend lines require durable per-run history in the Writer snapshot; absent history remains UNKNOWN, not assumed zero.</p><div class="row"><span class="chip">Observed: '+cell(observed||'UNKNOWN')+'</span><span class="chip">Dashboard status: '+cell(error?'DEGRADED':'LIVE SNAPSHOT')+'</span></div></div></section>';
       return h;
     }
-    function roomModel(){return PipelineControlRoom.model({health:health.data,healthError:health.error,activity:activity.data,activityError:activity.error,master:api.master?api.master():{},operations:snapshot&&snapshot.store,writer:api.writerStatus?api.writerStatus():null});}
+    function roomModel(){return PipelineControlRoom.model({health:health.data,healthError:health.error,activity:activity.data,activityError:activity.error,master:api.master?api.master():{},operations:snapshot&&snapshot.store,writer:api.writerStatus?api.writerStatus():null,interviews:interviews});}
+    async function readInterviews(){if(typeof PipelineControlRoom==='undefined')return;var jobs=roomModel().outcomes.recruiting.jobs;await Promise.allSettled(jobs.filter(function(j){return !interviewsReadAt[j.primaryId]||Date.now()-interviewsReadAt[j.primaryId]>300000;}).map(async function(j){var r=await api.get('interview_notes','&primaryId='+encodeURIComponent(j.primaryId));if(r&&r.ok){interviews[j.primaryId]=PipelineControlRoom.interviewStatus(r.text);interviewsReadAt[j.primaryId]=Date.now();}}));}
     function dashboardHtml(store,summary,observed){
       if(typeof PipelineControlRoom==='undefined')return diagnosticsHtml(store,summary,observed);
       return PipelineControlRoom.html(roomModel(),{boardHistoryOpen:boardHistoryOpen,receiptRecoveryOpen:receiptRecoveryOpen})+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
@@ -121,7 +123,7 @@
         if(!j||!j.ok||!(i===0?j.store&&j.store.schema===1:j.manifest&&j.manifest.schema===1))problems.push((i===0?'Operations':'Scheduler')+': '+(j&&j.error||r.reason&&r.reason.message||'Writer does not expose a supported snapshot'));
         else if(i===0)snapshot=j;else schedules=j;
       });
-      error=problems.join(' · ');loadedAt=new Date().toISOString();busy=false;paint(view);progress.finish({attention:!!error});
+      error=problems.join(' · ');loadedAt=new Date().toISOString();await readInterviews();busy=false;paint(view);progress.finish({attention:!!error});
     }
     function paint(view){
       lastView=view;var priorDetails=view.querySelector('[data-cr-diagnostics]');if(priorDetails)diagnosticsOpen=priorDetails.open;
@@ -161,6 +163,7 @@
       }
       h+='</div><p data-ops-message aria-live="polite">'+cell(message)+'</p></section>';view.innerHTML=h;
       var refreshBtn=view.querySelector('[data-ops-refresh]');if(refreshBtn)refreshBtn.onclick=function(){refresh(view);};
+      view.querySelectorAll('[data-cr-interview-id]').forEach(function(form){form.onsubmit=async function(ev){ev.preventDefault();var pid=form.dataset.crInterviewId,stage=form.elements.stage.value,progress=form.elements.progress.value,output=form.querySelector('[data-cr-interview-message]'),button=form.querySelector('button');button.disabled=true;output.textContent='Saving…';try{await saveInterviewStatus(pid,stage,progress);message='Interview status saved and read back from your private job notes.';paint(view);}catch(e){output.textContent=e.message;button.disabled=false;}};});
       view.querySelectorAll('[data-ops-tab]').forEach(function(b){b.onclick=function(){tab=b.dataset.opsTab;paint(view);};});
       async function write(body){try{if(error)throw new Error('Refresh a complete current Writer snapshot before saving');var j=await api.post(body);if(!j||!j.ok)throw new Error(j&&j.error||j&&j.mode||'Writer request failed');message='Saved supporting state; native execution is not verified.';await refresh(view);}catch(e){message=e.message;paint(view);}}
       view.querySelectorAll('[data-ops-ack]').forEach(function(b){b.onclick=function(){write({action:'acknowledge_obligation',id:b.dataset.opsAck,baseRevision:store.revision});};});
@@ -168,7 +171,7 @@
       var preview=view.querySelector('[data-ops-preview]'),stage=view.querySelector('[data-ops-stage]'),draft=null;
       if(preview){var input=view.querySelector('[data-ops-task]');input.oninput=function(){draft=null;stage.disabled=true;};preview.onclick=function(){var result=view.querySelector('[data-ops-preview-result]');try{draft=JSON.parse(input.value);var proposed=PipelineScheduler.edit(schedules.manifest,draft,schedules.manifest.revision,new Date().toISOString());result.textContent=JSON.stringify({desiredOccurrences:PipelineScheduler.upcoming(draft,Date.now(),5),warnings:PipelineScheduler.warnings(proposed,Date.now()),providerStatus:'PENDING_MANUAL',applied:false},null,2);stage.disabled=false;}catch(e){draft=null;stage.disabled=true;result.textContent=e.message;}};stage.onclick=function(){if(draft)write({action:'save_schedule_proposal',task:draft,baseRevision:schedules.manifest.revision});};}
     }
-    return {render:function(view){paint(view);if((!loadedAt||Date.now()-Date.parse(loadedAt)>60000)&&!busy)refresh(view);},refresh:refresh,metrics:dashboardMetrics,start:start};
+    return {render:function(view){paint(view);if((!loadedAt||Date.now()-Date.parse(loadedAt)>60000)&&!busy)refresh(view);},refresh:refresh,metrics:dashboardMetrics,start:start,saveInterviewStatus:saveInterviewStatus};
   }
   root.PipelineOperationsUI={create:create};
 })(window);
