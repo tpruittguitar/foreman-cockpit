@@ -1,0 +1,11 @@
+# Decision and scoring operation feedback
+
+The decision waiting bar is the reservoir of review-ready jobs before Tim's decision process. Its count and the **View waiting jobs** button open the same canonical decision-ready filter. Scoring reorders this population; it does not create completed applications or remove jobs from the reservoir.
+
+The body-level operation popup survives view rerenders. Model updates display the comparison's rating-change and ranking-change counts separately (the two populations overlap), save the shared revision, independently GET that revision, and calculate displayed scores in counted chunks. Saving/readback is indeterminate; calculated jobs / total is measured progress. This is client rating recalculation, not a claim that master rows were rewritten.
+
+Bulk decisions preserve original request IDs locally before delivery. Accepted requests are not counted as confirmed. Read-only verification requires each child's independently durable COMPLETE receipt and a fresh master/archive row with the expected primary ID, resulting bucket and exact TIM request provenance. Four receipt reads run concurrently; pending cases are checked for up to two minutes, then retain a manual read-only check. Reload retains unfinished operations; starting another bulk action on an overlapping target checks the prior requests instead of replaying them. Independent selections can still proceed. Saved checkpoints contain no Writer credential.
+
+Success closes the popup after a short confirmation interval. Uncertainty remains visible with the reason. A later contradictory row or an unavailable archive is not presented as successful completion. Partially sent operations explicitly report unsent jobs; recovery never automatically sends them. The shared queue/snapshot refresh runs after verified completion; server snapshot publication can lag the confirmation.
+
+Validation: `npm test` and `node tests/action-progress.browser.js`. The browser suite uses a local scripted Writer and covers delayed receipt completion, persisted recovery without another POST, auto-dismiss, actual scoring recalculation and accepted-save/readback disagreement. It does not mutate production jobs or Tim's model.
