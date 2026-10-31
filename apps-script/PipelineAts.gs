@@ -79,10 +79,8 @@
   function dateMs(s) { var m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)) : 0; }
   function workable(r) { return ACTIVE.indexOf(r.BUCKET) >= 0 && !/^YES/i.test(val(r.p, 'ANTI_RESURRECTION')) && !val(r.p, 'DO_NOT_REWORK'); }
   function due(r, now) {
-    var last = dateMs(val(r.p, 'ATS_CHECK_ASOF'));
-    if (!last) return true;
-    var days = /^LIVE/.test(val(r.p, 'ATS_CHECK_RESULT')) ? RECHECK_LIVE_DAYS : RECHECK_OTHER_DAYS;
-    return now - last >= days * DAY;
+    var freshness=typeof module==='object'&&module.exports?require('./PipelinePostingFreshness.gs'):PipelinePostingFreshness;
+    return freshness.assess(r,now).due;
   }
 
   /** Rows the checker owns this run: active, ATS-detectable, due. Never-checked first, then by bucket priority and oldest check. */

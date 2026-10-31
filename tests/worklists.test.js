@@ -32,7 +32,7 @@ test('lanes select the right rows and exclude protected states', () => {
   assert.deepEqual(ids('FORGE_ENRICH_FEASIBILITY'), ['V2I-000000000001', 'V2I-000000000006', 'V2I-000000000007', 'V2I-000000000005']);
   assert.ok(!ids('FORGE_ENRICH_FEASIBILITY').includes('V2I-000000000002'));
   // fresh UNCONFIRMED (row 6) waits; stale UNCONFIRMED (row 7) and missing (row 1) are listed
-  assert.deepEqual(ids('FORGE_POSTING_VALIDATION'), ['V2I-000000000001', 'V2I-000000000007']);
+  assert.deepEqual(ids('FORGE_POSTING_VALIDATION'), ['V2I-000000000006', 'V2I-000000000007']);
   for (const lane of W.LANES) for (const id of ids(lane)) assert.ok(!['V2I-000000000003', 'V2I-000000000004'].includes(id));
 });
 

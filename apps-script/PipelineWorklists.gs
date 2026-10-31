@@ -17,7 +17,7 @@
   var LANES = {
     FORGE_ENRICH_STRATEGIC: 'Active-bucket rows with no fit score the Explorer can read (SCOPE_FIT_RAW, GROK_SCOPE_FIT_RAW and the other FIT_KEYS) and no ANALYSIS_BY/ANALYSIS_ASOF/STRATEGIC_ASOF. Priority first (Shield AI, then Director-level and up US manufacturing / operations / quality roles; Memphis last), then newest. Rows with STRATEGIC_ATTEMPT_ASOF in the last 3 days go last.',
     FORGE_ENRICH_FEASIBILITY: 'Active-bucket rows with no salary the Explorer can read (posted, estimate, midpoint or low/high) or no posting-based degree evidence (DEGREE_REQ absent and DEGREE_TEXT absent or taken from an alert). Priority first (Shield AI, then Director-level and up US manufacturing / operations / quality roles; Memphis last), then newest, then strategically analyzed. Rows with FEASIBILITY_ATTEMPT_ASOF in the last 3 days go last.',
-    FORGE_POSTING_VALIDATION: 'SCOUT_INTAKE rows whose LIVENESS is missing or UNVERIFIED, or UNCONFIRMED with LIVENESS_ASOF older than 7 days. Rows with a Workday, Greenhouse, Lever, Ashby, Oracle HCM (CX site), SmartRecruiters or BambooHR URL are left to the Writer ATS checker unless its ATS_CHECK_RESULT is not LIVE/CLOSED (blocked, error, title mismatch, not on public board). Newest first. Rows with LIVENESS_ATTEMPT_ASOF in the last 3 days go last.'
+    FORGE_POSTING_VALIDATION: 'Background posting freshness across active buckets: first check after seven days from posting date, otherwise first discovery; successful checks reused seven days. Unknown dates are flagged, not guessed. Rows with a Workday, Greenhouse, Lever, Ashby, Oracle HCM (CX site), SmartRecruiters or BambooHR URL are left to the Writer ATS checker unless its ATS_CHECK_RESULT is not LIVE/CLOSED (blocked, error, title mismatch, not on public board). Newest first. Rows with LIVENESS_ATTEMPT_ASOF in the last 3 days go last.'
   };
 
   function parsePayload(text) {
@@ -93,13 +93,8 @@
     var now = opts.now ? Date.parse(opts.now) : Date.now(), rows = parseRows(text), active = rows.filter(workable);
     var strategic = ordered(active.filter(function (r) { return !analyzed(r); }), 'STRATEGIC_ATTEMPT_ASOF', now);
     var feasibility = ordered(active.filter(function (r) { return needs(r).length; }), 'FEASIBILITY_ATTEMPT_ASOF', now, analyzed);
-    var postval = ordered(active.filter(function (r) {
-      if (r.BUCKET !== 'SCOUT_INTAKE') return false;
-      if (ats().ownedByChecker(r.p)) return false;
-      var l = val(r, 'LIVENESS');
-      if (!l || /^UNVERIFIED/i.test(l)) return true;
-      return /^UNCONFIRMED/i.test(l) && !recent(r, 'LIVENESS_ASOF', LIVENESS_RECHECK_DAYS, now);
-    }), 'LIVENESS_ATTEMPT_ASOF', now);
+    var freshness = typeof module === 'object' && module.exports ? require('./PipelinePostingFreshness.gs') : PipelinePostingFreshness;
+    var postval = ordered(active.filter(function(r){return freshness.assess(r,now).due&&!ats().ownedByChecker(r.p);}), 'LIVENESS_ATTEMPT_ASOF', now);
     return { rows: rows.length, lanes: { FORGE_ENRICH_STRATEGIC: strategic, FORGE_ENRICH_FEASIBILITY: feasibility, FORGE_POSTING_VALIDATION: postval } };
   }
   function clip(s, n) { s = String(s || '').replace(/\s+/g, ' ').replace(/\|/g, '/').trim(); return s.length > n ? s.slice(0, n - 1) + '~' : s; }

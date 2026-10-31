@@ -1,0 +1,6 @@
+const test=require('node:test'),assert=require('node:assert/strict'),P=require('../apps-script/PipelinePostingFreshness.gs');const now=Date.parse('2026-10-31T12:00:00Z'),r=p=>({BUCKET:'SCOUT_INTAKE',p});
+test('young jobs skip freshness even if liveness is absent',()=>assert.equal(P.assess(r({POSTING_DATE:'2026-10-30',DATE_ADDED:'2026-10-01'}),now).due,false));
+test('old posting dates trigger a check immediately, discovery is fallback',()=>{assert.equal(P.assess(r({POSTING_DATE:'2026-10-01',DATE_ADDED:'2026-10-30'}),now).due,true);assert.equal(P.assess(r({DATE_ADDED:'2026-10-20'}),now).due,true);});
+test('successful evidence is reused seven days',()=>assert.equal(P.assess(r({DATE_ADDED:'2026-10-01',LIVENESS:'LIVE_SECONDARY',LIVENESS_ASOF:'2026-10-30'}),now).due,false));
+test('unknown dates and protected or closed jobs never get invented freshness work',()=>{assert.equal(P.assess(r({DATE_ADDED:'UNKNOWN'}),now).state,'UNDATED');assert.equal(P.assess({BUCKET:'APPLIED',p:{DATE_ADDED:'2026-10-01'}},now).state,'PROTECTED');assert.equal(P.assess(r({DATE_ADDED:'2026-10-01',LIVENESS:'CLOSED'}),now).due,false);});
+test('background checks cover research buckets too',()=>assert.equal(P.assess({BUCKET:'MANUAL_RESEARCH',p:{DATE_ADDED:'2026-10-01'}},now).due,true));
