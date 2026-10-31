@@ -427,6 +427,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-throughput.js"></script>
 <script src="pipeline-writer-activity.js"></script>
 <script src="pipeline-control-room.js"></script>
+<script src="pipeline-products.js"></script>
 <script src="pipeline-ai-usage.js"></script>
 <script src="pipeline-needs-tim.js"></script>
 <script src="pipeline-act-now.js"></script>
@@ -1611,6 +1612,7 @@ function loadRowEvidence_(r){S.rowEvidence=S.rowEvidence||{};S.rowEvidence[r.PRI
 var CK_ICON={pin:'<path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"></path><circle cx="12" cy="10" r="2.3"></circle>',pay:'<path d="M12 3v18M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.3-4.5 3 2 2.6 4.5 3.3 4.5 1.6 4.5 3.4-2 3.3-4.5 3.3-4.5-1.4-4.5-3.1"></path>',work:'<rect x="3.5" y="7.5" width="17" height="12" rx="1.5"></rect><path d="M9 7.5V5h6v2.5M3.5 12.5h17"></path>',flex:'<path d="M2.5 9.5L12 5l9.5 4.5L12 14z"></path><path d="M6.5 11.5v4c1.5 1.5 3.5 2.2 5.5 2.2s4-.7 5.5-2.2v-4"></path>',src:'<path d="M6.5 3.5h8l3 3v14h-11z"></path><path d="M9 11h6M9 14.5h6"></path>',link:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path>'};
 function ckIcon_(k){return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+CK_ICON[k]+'</svg>'}
 // Cockpit summary at the top of Overview. Presentation only: every value is an existing field or an existing viewer helper (scoreFor_, attentionFor_, researchGaps_).
+function productHtml_(r){var x=PipelineProducts.display(r,S.productReference);return '<section class="ck-product" aria-label="Product at company location"><div class="sec-label">Product · location context</div><strong>'+esc(x?x.text:S.productError?'Product reference unavailable':'Not yet researched')+'</strong>'+(x?'<p class="tip">'+esc(x.site)+' · '+esc(x.asOf)+(x.source?' · <a href="'+esc(x.source)+'" target="_blank" rel="noopener">Product source ↗</a>':'')+'</p><small class="faint">Company/location context; the role’s specific product assignment may differ.</small>':'<p class="tip">Unmapped locations remain in the shared research worklist; no product is guessed.</p>')+'</section>';}
 function cockpitOverview_(r){var p=r.payload||{},sc=scoreFor_(r),fa=sc.assessment,ls=PipelinePolicy.links(r),pay=PipelineTrust.salaryRange(p),at=attentionFor_(r),gaps=researchGaps_(r),wa=p.WORK_ARRANGEMENT||p.REMOTE_HYBRID||'';
   var kd=[['pin',r.LOCATION?esc(r.LOCATION):'<span class="faint">Location not recorded</span>'],['pay',pay.text?esc((pay.approx?'~':'')+pay.text)+' <span class="faint">'+esc(pay.label||'')+'</span>'+payWorthLine_(sc):'<span class="faint">Pay not researched</span>'],['work',wa?esc(wa):'<span class="faint">Work arrangement not recorded</span>'],['flex',esc(fa.flex.class)+(p.DEGREE_TEXT||p.DEGREE_REQ?' <span class="faint" title="'+esc(p.DEGREE_TEXT||p.DEGREE_REQ)+'">degree text on file</span>':'')],['src',esc(p.SOURCE_PROVIDER||p.DISCOVERY_SOURCE||p.NOTIFICATION_SOURCE||'Source not recorded')],['link',ls.preferred?'<a href="'+esc(ls.preferred)+'" target="_blank" rel="noopener">View posting</a>':'<span class="faint">No usable posting link</span>']];
   var ev=['Pay','Degree FLEX','Work content','Title level','Domain'].map(function(k,i){var v=at.signals[i],sf=v===0&&at.soft&&at.soft[i];return '<li class="'+(v===1?'ok':v===-1?'bad':sf?'soft':'unk')+'" title="Viewer-derived from stored fields, not a sourced claim">'+k+'<small>'+(v===1?'favorable':v===-1?'conflict':sf?'soft':'unknown')+'</small></li>'}).join('');
@@ -1647,7 +1649,7 @@ function overviewHtml_(r){
   h+=onDemandEvidenceCard_(r);
   h+='<div class="tip">Write status: '+esc(rulingState(r)?rulingState(r).s:'No pending decision')+' · J/K navigate; 1 pursue, 2 hold, 3 decline, 4 research. Shortcuts prepare a decision; Save submits it.</div>';
   var ck=cockpitOverview_(r);
-  return '<div class="ov-top">'+scoreBlock_(r)+ck.why+ck.ev+breakdownHtml_(r)+'<div class="sec-label tight">Tim decision</div>'+decideRow_()+receiptHtml_(r)+'</div>'+form+ck.kd+h+'</div>';
+  return '<div class="ov-top">'+scoreBlock_(r)+productHtml_(r)+ck.why+ck.ev+breakdownHtml_(r)+'<div class="sec-label tight">Tim decision</div>'+decideRow_()+receiptHtml_(r)+'</div>'+form+ck.kd+h+'</div>';
 }
 function fitHtml_(r){
   var h='<div class="detail-grid">';
@@ -3187,6 +3189,7 @@ PipelineMotion.inviteDivider($('list-map-divider'),LS.get('listMapSplit',null)!=
 var workSplit_=PipelinePaneSplit.createWork({view:$('view-pipeline'),handle:$('map-drawer-divider'),load:function(){return LS.get('mapDrawerWidth',null)},save:function(w){LS.set('mapDrawerWidth',w)},onResize:function(){refitColumnsToPane_();fitRows_();applyMapView_()}});   // REV-077
 var paneSplit_=PipelinePaneSplit.create({view:$('view-pipeline'),handle:$('list-map-divider'),load:function(axis){return LS.get(axis==='x'?'listMapSplitCols':'listMapSplit',null)},save:function(ratio,axis){LS.set(axis==='x'?'listMapSplitCols':'listMapSplit',ratio)},onResize:function(){refitColumnsToPane_();fitRows_();applyMapView_()}});
 loadBuildInfo_();loadWriterStatus_();
+fetch('/api/site-products',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('Product reference unavailable');return r.json();}).then(function(j){S.productReference=j;var r=S.rows.find(function(x){return x.id===S.focus;}),el=document.activeElement;if(r&&!(el&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))renderDetail(r);}).catch(function(e){S.productError=e.message;});
 S.tab='pipeline';readHash();/* Simplify PR 1 (Tim 2026-10-20): the app opens on Act now; a link to a specific view still opens that view. */var L0=typeof location==='object'?location:{hash:'',search:''};if(S.tab==='pipeline'&&!S.pendingMap&&L0.hash.length<2&&!/[?&]open=jobs\b/.test(L0.search))S.tab='act-now';/* ?open=jobs opens the job table (table-focused tests, deep links) */ /* Tim 2026-10-18: applied, rejected and dead jobs are not shown on the opening page at the start. */if((S.tab==='pipeline'||S.tab==='act-now')&&/^(ALL|APPLIED|DECLINED|TERMINAL|TERMINAL_HISTORY|DEAD_POSTINGS)$/.test(S.preset))S.preset='OPEN';LS.set('openDefaultV1',true);switchTab(S.pendingMap?'map':S.tab);
 load();
 })();
