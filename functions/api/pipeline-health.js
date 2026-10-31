@@ -1,5 +1,5 @@
 const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/';
-const FILES={processFlow:'state/ENRICHMENT_FLOW.json',applicationOutcomes:'state/APPLICATION_OUTCOMES.json',emailRecovery:'state/EMAIL_RECOVERY_SUMMARY.json',attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
+const FILES={processStates:'state/PROCESS_COMPLETIONS.json',processFlow:'state/ENRICHMENT_FLOW.json',applicationOutcomes:'state/APPLICATION_OUTCOMES.json',emailRecovery:'state/EMAIL_RECOVERY_SUMMARY.json',attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
 async function readSnapshot(fetcher,url){
   for(let attempt=0;attempt<2;attempt++){
     try{const r=await fetcher(url,{cache:'no-store',headers:{'Accept':'application/json'},signal:AbortSignal.timeout(7000)});if(attempt===0&&[408,500,502,503,504].includes(r.status))continue;return r;}
@@ -16,7 +16,10 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
       if(!res.ok)throw Error('HTTP '+res.status);
       const text=await res.text();if(text.length>8*1024*1024)throw Error('Snapshot too large');
       const j=JSON.parse(text);
-      if(key==='processFlow'){
+      if(key==='processStates'){
+        if(j.schema!=='forge.process-completions.v1'||j.model!=='four-stage-v2'||!j.states||!Number.isFinite(Date.parse(j.at)))throw Error('Invalid readiness snapshot');
+        output.decisionReady={at:j.at,ids:Object.keys(j.states).filter(id=>j.states[id].enrichment===true&&j.states[id].closed===false)};output.checks[key]={ok:true,at:j.at};
+      }else if(key==='processFlow'){
         if(j.schema!=='forge.enrichment-flow.v1'||!Number.isFinite(Date.parse(j.at)))throw Error('Invalid process flow');output.processFlow=j;output.checks[key]={ok:true,at:j.at};
       }else if(key==='applicationOutcomes'){
         if(j.schema!=='forge.application-outcomes.v1'||!Array.isArray(j.events))throw Error('Invalid application outcomes');output.applicationOutcomes={at:j.at,events:j.events.map(e=>({primaryId:e.primaryId,type:e.type,eventDate:e.eventDate,stage:e.stage,progress:e.progress,sourceType:e.sourceType,evidenceVerified:e.evidenceVerified===true})),coverageComplete:j.coverageComplete===true};output.checks[key]={ok:true,at:j.at};
@@ -54,6 +57,7 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
     output.checks.schedules={...s,executionVerified:active.length===s.configured&&active.length>0&&new Set(active.map(x=>x.id)).size===s.configured&&active.every(x=>s.ids.includes(x.id)&&x.executionVerified===true),executionAt:e.at,unverified:active.filter(x=>x.executionVerified!==true).map(x=>x.id)};
   }
   if(reports)output.candidates=urls.size;
+  if(output.decisionReady&&(!output.processFlow||output.decisionReady.at!==output.processFlow.at||output.decisionReady.ids.length!==output.processFlow.queues.readyForReview)){output.decisionReady=null;output.checks.processStates={ok:false,error:'Readiness does not reconcile with process flow'};}
   return output;
 }
 // Resolve once per minute and pin every file to one immutable commit. Branch raw URLs can lag main.

@@ -170,6 +170,7 @@
         if(store)h+=table(['Criterion','State','Evidence'],Object.keys(store.acceptance||{}).map(function(id){var a=store.acceptance[id];return [id,a.state,a.evidenceRef];}));
       }
       h+='</div><p data-ops-message aria-live="polite">'+cell(message)+'</p></section>';view.innerHTML=h;
+      var readyBtn=view.querySelector('[data-cr-decision-ready]');if(readyBtn&&api.openDecisionReady)readyBtn.onclick=api.openDecisionReady;
       var refreshBtn=view.querySelector('[data-ops-refresh]');if(refreshBtn)refreshBtn.onclick=function(){refresh(view);};
       view.querySelectorAll('[data-cr-interview-id]').forEach(function(form){form.onsubmit=async function(ev){ev.preventDefault();var pid=form.dataset.crInterviewId,stage=form.elements.stage.value,progress=form.elements.progress.value,output=form.querySelector('[data-cr-interview-message]'),button=form.querySelector('button');button.disabled=true;output.textContent='Saving…';try{await saveInterviewStatus(pid,stage,progress);message='Interview status saved and read back from your private job notes.';paint(view);}catch(e){output.textContent=e.message;button.disabled=false;}};});
       view.querySelectorAll('[data-ops-tab]').forEach(function(b){b.onclick=function(){tab=b.dataset.opsTab;paint(view);};});
