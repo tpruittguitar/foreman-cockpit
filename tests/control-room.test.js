@@ -7,7 +7,7 @@ test('latched intake dominates idle Writer and useful updates; banner is never f
  const f=fixture();f.health.issues.push({level:'BLOCKING',title:'AUTO intake stopped',detail:'Earlier run unfinished',action:'Reconcile, never replay',at:'2026-10-26T23:08:00Z'});
  f.master.rows=[row('A','FORGE-EMAIL-X'),row('B','FORGE-SOURCE-X')];const m=C.model(f);
  assert.equal(m.severity,'blocked');assert.equal(m.intakeToday,2);assert.match(C.banner(m),/PIPELINE BLOCKED.*AUTO intake stopped.*2 d/);
- const html=C.html(m);assert.match(html,/Automatic path blocked/);assert.match(html,/7<\/b>/);assert.match(html,/Next:/);
+ const html=C.html(m);assert.match(html,/Automatic path blocked/);assert.doesNotMatch(html,/7<\/b>/);assert.match(html,/Next:/);
 });
 test('one intake chart combines all providers and deduplicates canonical IDs',()=>{
  const f=fixture();f.master.rows=[row('A','FORGE-EMAIL-CHATGPT'),row('A','FORGE-EMAIL-CHATGPT'),row('B','FORGE-SOURCE-ABC'),row('C','MANUAL-INTAKE'),row('D','LEGACY')];
@@ -28,7 +28,7 @@ test('missing coverage and failed refreshes are explicit unknowns, not zero or g
 });
 test('research is open; applied and declined remain separate current decision counts',()=>{
  const f=fixture();f.master.rows=[row('A','', 'APPLIED'),row('B','','DECLINED_BY_TIM'),row('C','','MANUAL_RESEARCH'),row('D','','TIM_DECISION_REQUIRED')];
- const m=C.model(f),h=C.html(m);assert.match(h,/1 \/ 1/);assert.match(h,/1 jobs in the current research queue/);assert.match(h,/research stays open/);assert.equal(m.counts.APPLIED,1);
+ const m=C.model(f),h=C.html(m);assert.match(h,/1 \/ 1/);assert.equal(m.counts.MANUAL_RESEARCH,1);assert.match(h,/research stays open/);assert.equal(m.counts.APPLIED,1);
 });
 
 test('recovery distinguishes failed write incidents from aliases and exposes safe next actions without greenwashing',()=>{
@@ -88,8 +88,8 @@ test('public health uses verified per-task execution, not the saved configuratio
 
 test('36-hour badges show units and unavailable history without dividing a daily stock',()=>{
  const f=fixture();f.activity.rates36={basis:'Distinct jobs',metadataGaps:0,intake:{count:72,perHour:2},verification:{count:36,perHour:1},enrichment:{count:18,perHour:.5}};
- let h=C.html(C.model(f));assert.match(h,/2 jobs\/hr/);assert.match(h,/1 jobs\/hr/);assert.match(h,/— jobs\/hr/);assert.match(h,/36 h average/);
- f.activityError='503';h=C.html(C.model(f));assert.doesNotMatch(h,/2 jobs\/hr/);
+ let h=C.html(C.model(f));assert.match(h,/2 <span class="cr-rate-unit">jobs\/hr/);assert.doesNotMatch(h,/1 <span class="cr-rate-unit">jobs\/hr/);assert.match(h,/— <span class="cr-rate-unit">jobs\/hr/);assert.match(h,/36 h average/);
+ f.activityError='503';h=C.html(C.model(f));assert.doesNotMatch(h,/2 <span class="cr-rate-unit">jobs\/hr/);
 });
 test('matching recovery replaces obsolete access fault while preserving pending work',()=>{
  const f=fixture();f.health.checks.emailCoverage={ok:true,at,sourceFile:'receipts/email.json',advertisedUnshownOccurrences:149};f.health.emailRecovery={at,supersedesReceipt:'receipts/email.json',sources:12,accessRecovered:12,accessBlocked:0,capturedUniqueJobs:405,pendingJobs:270,sourcePagesPending:11,historicalGaps:1};
@@ -98,11 +98,14 @@ test('matching recovery replaces obsolete access fault while preserving pending 
 });
 
 test('waiting buffers use unique job queues and fail closed on stale evidence',()=>{
- const f=fixture();f.activity.now=at;f.activity.waitingJobs={count:3,complete:true};f.health.emailRecovery={at,awaitingIntake:12};
+ const f=fixture();f.activity.now=at;f.activity.waitingJobs={count:3,complete:true};f.health.emailRecovery={at,awaitingIntake:12};f.health.processFlow={at,population:{total:6,reconciled:true},queues:{verification:3,enrichment:2,readyForReview:1,blockedClosed:0}};
  f.master.rows=[{PRIMARY_ID:'a',BUCKET:'SCOUT_INTAKE'},{PRIMARY_ID:'b',BUCKET:'MANUAL_RESEARCH'},{PRIMARY_ID:'c',BUCKET:'READY_TO_PURSUE'},{PRIMARY_ID:'d',BUCKET:'APPLIED'}];
  let m=C.model(f);assert.deepEqual(m.waiting.map(q=>q.count),[12,3,2,1]);assert.equal(m.waiting[0].partial,true);
  let h=C.html(m);assert.equal((h.match(/class="cr-buffer /g)||[]).length,4);assert.equal((h.match(/class="cr-process /g)||[]).length,5);assert.match(h,/--queue-fill:/);assert.match(h,/cr-stage-total/);
- f.activityError='HTTP 503';f.master.freshness='STALE';f.health.emailRecovery.at='2026-10-20T00:00:00Z';m=C.model(f);assert.deepEqual(m.waiting.map(q=>q.count),[null,null,null,null]);
+ f.activityError='HTTP 503';f.master.freshness='STALE';f.health.emailRecovery.at='2026-10-20T00:00:00Z';f.health.processFlow.at='2026-10-20T00:00:00Z';m=C.model(f);assert.deepEqual(m.waiting.map(q=>q.count),[null,null,null,null]);
 });
 
 test('missing pending job identities cannot look like an empty verification queue',()=>{const f=fixture();f.activity.now=at;f.activity.waitingJobs={count:0,complete:false};f.activity.pendingReceipts=1;assert.equal(C.model(f).waiting[1].count,null);});
+
+test('inconsistent population cannot certify flow counts',()=>{const f=fixture();f.health.processFlow={at,population:{total:21,reconciled:true},queues:{verification:17,enrichment:3,readyForReview:0,blockedClosed:0}};assert.equal(C.model(f).flow,null);});
+test('job completions exclude Writer updates and decisions have no processing rate',()=>{const f=fixture();f.activity.sources={'Pay enrichment':{updates:56}};f.health.processFlow={at,population:{total:21,reconciled:true},queues:{verification:4,enrichment:7,readyForReview:10,blockedClosed:0},completion:{verification:{countsAvailable:true,last24h:17,available:false},enrichment:{countsAvailable:true,last24h:10,available:false}}};const h=C.html(C.model(f));assert.doesNotMatch(h,/56<\/b>/);assert.match(h,/≥ 10/);assert.equal((h.match(/class="cr-rate-unit"/g)||[]).length,4);assert.match(h,/21 open-record jobs accounted for/);assert.match(h,/10 ready for review/);});
