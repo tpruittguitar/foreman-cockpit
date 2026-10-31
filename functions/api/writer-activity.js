@@ -1,17 +1,23 @@
-import activity from '../../pipeline-writer-activity.js';
-
-const SOURCE='https://raw.githubusercontent.com/tpruittguitar/forge-writer-state/main/PIPELINE_RECEIPT_INDEX.json';
-const RECOVERY='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/verify/recovery/latest.json';
+// Read a bounded background-built summary. Never parse the full growing receipt ledger on a web request.
+const SOURCE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/state/WRITER_ACTIVITY.json';
 const headers={'Content-Type':'application/json','Cache-Control':'public, max-age=60'};
 export async function loadActivity(fetcher=fetch,now=Date.now()){
-  const res=await fetcher(SOURCE+'?cb='+Math.floor(now/60000),{signal:AbortSignal.timeout(15000),headers:{Accept:'application/json'}});
-  if(!res.ok)throw Error('Receipt source unavailable ('+res.status+')');
-  const text=await res.text();if(text.length>8*1024*1024)throw Error('Receipt snapshot exceeds supported size');
-  let recovery=null;
-  try{const r=await fetcher(RECOVERY+'?cb='+Math.floor(now/60000),{signal:AbortSignal.timeout(10000),headers:{Accept:'application/json','Cache-Control':'no-cache'}});if(r.ok){const t=await r.text();if(t.length<=2*1024*1024)recovery=JSON.parse(t);}}catch{}
-  return activity.aggregate(JSON.parse(text),now,recovery);
+ let res;
+ for(let attempt=0;attempt<2;attempt++){
+  res=await fetcher(SOURCE+'?cb='+Math.floor(now/60000)+'&attempt='+attempt,{signal:AbortSignal.timeout(10000),headers:{Accept:'application/json','Cache-Control':'no-cache'}});
+  if(res.ok)break;if(res.status<500)break;
+ }
+ if(!res.ok)throw Error('Receipt summary unavailable ('+res.status+')');
+ if(Number(res.headers.get('Content-Length'))>256*1024)throw Error('Receipt summary exceeds size budget');
+ const reader=res.body.getReader(),decoder=new TextDecoder();let text='',bytes=0;
+ try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>256*1024)throw Error('Receipt summary exceeds size budget');text+=decoder.decode(value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();}
+ const j=JSON.parse(text),at=Date.parse(j.publishedAt),indexAt=Date.parse(j.indexUpdatedAt);
+ if(j.schema!=='forge.writer-activity.v1'||j.ok!==true||j.source?.repo!=='tpruittguitar/forge-writer-state'||!/^[a-f0-9]{40}$/.test(j.source.sha||'')||!j.today||!j.recent||!Array.isArray(j.buckets)||!Number.isFinite(at)||!Number.isFinite(indexAt)||at>now+120000||now-at>30*60000||now-indexAt>40*60000||indexAt>at+120000)throw Error('Receipt summary stale or invalid');
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now));
+ if(j.todayDate!==today)throw Error('Receipt summary awaits Eastern day rollover');
+ return {...j,servedAt:new Date(now).toISOString(),summaryAgeSeconds:Math.max(0,Math.floor((now-at)/1000))};
 }
 export async function onRequestGet(){
-  try{return new Response(JSON.stringify(await loadActivity()),{headers});}
-  catch(e){return new Response(JSON.stringify({ok:false,error:'Durable receipt activity unavailable'}),{status:503,headers:{...headers,'Cache-Control':'no-store'}});}
+ try{return new Response(JSON.stringify(await loadActivity()),{headers});}
+ catch(e){return new Response(JSON.stringify({ok:false,error:'Durable receipt activity unavailable: '+e.message}),{status:503,headers:{...headers,'Cache-Control':'no-store'}});}
 }

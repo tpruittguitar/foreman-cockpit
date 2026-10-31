@@ -29,13 +29,19 @@ test('missing metadata is explicit and invalid schema is unavailable rather than
  const h=A.html({data:d},{columns:()=>'<svg/>',bars:()=>'<svg/>'});assert.match(h,/Coverage incomplete/);assert.match(h,/New job inserts/);assert.match(h,/not added/);
  assert.match(A.html({error:'network <bad>'}),/network &lt;bad&gt;/);assert.doesNotMatch(A.html({error:'failed'}),/<b>0/);
 });
-test('read-only endpoint fetches fixed public source and returns aggregate without raw identities',async()=>{
- const source=fs.readFileSync(path.join(__dirname,'../functions/api/writer-activity.js'),'utf8').replace('../../pipeline-writer-activity.js',pathToFileURL(path.join(__dirname,'../pipeline-writer-activity.js')).href);
+test('endpoint serves a bounded precomputed summary and fails honestly on stale or oversized data',async()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../functions/api/writer-activity.js'),'utf8');
  const mod=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
- const urls=[];const d=await mod.loadActivity(async(url,options)=>{urls.push(url);assert.equal(options.method,undefined);if(url.includes('/forge-coordination/'))return new Response('missing',{status:404});assert.match(url,/^https:\/\/raw.githubusercontent.com\/tpruittguitar\/forge-writer-state\/main\/PIPELINE_RECEIPT_INDEX.json\?cb=/);return new Response(JSON.stringify(fixture({secretId:entry('W1')})));},now);
- assert.equal(d.recent.writes,1);assert.doesNotMatch(JSON.stringify(d),/secretId|V2I-1/);
- assert.equal(urls.length,2);assert.equal(d.recovery.status,'UNAVAILABLE');
+ const summary={...A.aggregate(fixture({secretId:entry('W1')}),now),schema:'forge.writer-activity.v1',publishedAt:new Date(now).toISOString(),source:{repo:'tpruittguitar/forge-writer-state',sha:'a'.repeat(40)}};
+ let calls=0;
+ const d=await mod.loadActivity(async(url)=>{calls++;assert.match(url,/forge-coordination\/main\/state\/WRITER_ACTIVITY.json/);return new Response(JSON.stringify(summary));},now);
+ assert.equal(d.recent.writes,1);assert.equal(calls,1);assert.doesNotMatch(JSON.stringify(d),/secretId|V2I-1/);
  await assert.rejects(()=>mod.loadActivity(async()=>new Response('down',{status:503}),now),/unavailable/);
+ await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+31*60000),/stale/);
+ await assert.rejects(()=>mod.loadActivity(async()=>new Response('x'.repeat(256*1024+1)),now),/size budget/);
+ await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify({...summary,todayDate:'2026-10-27'})),now),/rollover/);
+ let attempts=0;assert.equal((await mod.loadActivity(async()=>++attempts===1?new Response('temporary',{status:503}):new Response(JSON.stringify(summary)),now)).ok,true);
+ assert.equal(attempts,2);
 });
 
 function recoveryCase(id,e){return {requestId:id,sourceEntry:e,status:'PROVEN_PERSISTED',reason:'EXACT_SAVED_WRITE_EVIDENCE',rows:e.items.map(i=>({primaryId:i.pid,expectedAfter:i.a,observedHash:i.a,sha256:'f'.repeat(64),readAt:'2026-10-28T23:58:00Z',status:'EXACT_AFTER_IMAGE'}))};}
