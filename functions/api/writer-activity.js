@@ -14,7 +14,7 @@ export async function loadActivity(fetcher=fetch,now=Date.now(),revision='main')
  const reader=res.body.getReader(),decoder=new TextDecoder();let text='',bytes=0;
  try{while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>256*1024)throw Error('Receipt summary exceeds size budget');text+=decoder.decode(value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();}
  const j=JSON.parse(text),at=Date.parse(j.publishedAt),indexAt=Date.parse(j.indexUpdatedAt);
- if(j.schema!=='forge.writer-activity.v1'||j.ok!==true||j.source?.repo!=='tpruittguitar/forge-writer-state'||!/^[a-f0-9]{40}$/.test(j.source.sha||'')||!j.today||!j.recent||!Array.isArray(j.buckets)||!Number.isFinite(at)||!Number.isFinite(indexAt)||at>now+120000||now-at>30*60000||now-indexAt>40*60000||indexAt>at+120000)throw Error('Receipt summary stale or invalid');
+ if(j.schema!=='forge.writer-activity.v1'||j.ok!==true||j.source?.repo!=='tpruittguitar/forge-writer-state'||!/^[a-f0-9]{40}$/.test(j.source.sha||'')||!j.today||!j.recent||!Array.isArray(j.buckets)||!Number.isFinite(at)||!Number.isFinite(indexAt)||at>now+120000||now-at>30*60000||indexAt>at+120000)throw Error('Receipt summary stale or invalid');
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(now));
  if(j.todayDate!==today)throw Error('Receipt summary awaits Eastern day rollover');
  return {...j,servedAt:new Date(now).toISOString(),summaryAgeSeconds:Math.max(0,Math.floor((now-at)/1000))};

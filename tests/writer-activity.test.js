@@ -42,6 +42,7 @@ test('endpoint serves a bounded precomputed summary and fails honestly on stale 
  await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify({...summary,todayDate:'2026-10-27'})),now),/rollover/);
  let attempts=0;assert.equal((await mod.loadActivity(async()=>++attempts===1?new Response('temporary',{status:503}):new Response(JSON.stringify(summary)),now)).ok,true);
  assert.equal(attempts,2);
+ const idle={...summary,indexUpdatedAt:'2026-10-20T00:00:00Z'};assert.equal((await mod.loadActivity(async()=>new Response(JSON.stringify(idle)),now)).ok,true,'a freshly read unchanged index is valid on an idle Writer');
  const sha='b'.repeat(40);await mod.loadActivity(async url=>{assert.ok(url.includes('/'+sha+'/state/WRITER_ACTIVITY.json'));return new Response(JSON.stringify(summary));},now,sha);
  await assert.rejects(()=>mod.loadActivity(async()=>{throw Error('must not fetch');},now,'bad/revision'),/Invalid evidence revision/);
 });
