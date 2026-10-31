@@ -76,3 +76,11 @@ test('36-hour rates include the older 12 hours, deduplicate jobs and exclude fut
  const d=A.aggregate(fixture({old:entry('OLD',[{...item,op:'INSERT'}],'COMPLETE',new Date(now-35*3600000).toISOString()),alias:entry('OLD',[{...item,op:'INSERT'}],'COMPLETE',new Date(now-35*3600000).toISOString()),'FORGE-ENRICH_ATS-ATSBOT-A':entry('E1'),'FORGE-ENRICH_ATS-ATSBOT-B':entry('E2'),outside:entry('OUT',[{...item,pid:'OUT'}],'COMPLETE',new Date(now-36*3600000-1).toISOString()),future:entry('F',[{...item,pid:'F'}],'COMPLETE',new Date(now+1).toISOString()),bad:entry('BAD',[{...item,pid:'BAD'}],'NOT_PERSISTED')}),now);
  assert.equal(d.rates36.hours,36);assert.equal(d.rates36.intake.count,1);assert.equal(d.rates36.verification.count,1);assert.equal(d.rates36.enrichment.count,1);assert.equal(d.rates36.verification.perHour,1/36);assert.equal(d.recent.inserts,0);
 });
+
+test('waiting jobs deduplicate receipt aliases and mark missing identities incomplete',()=>{
+ const e=entry('W-WAIT',[{...item,pid:'ONE'}],'PENDING');
+ let d=A.aggregate(fixture({a:e,b:e,c:entry('OTHER',[{...item,pid:'TWO'}],'VERIFYING')}),now);
+ assert.deepEqual(d.waitingJobs,{count:2,complete:true});
+ d=A.aggregate(fixture({a:e,missing:entry('MISSING',[],'NOT_PERSISTED')}),now);
+ assert.deepEqual(d.waitingJobs,{count:1,complete:false});
+});

@@ -1,5 +1,5 @@
 const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/';
-const FILES={attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
+const FILES={emailRecovery:'state/EMAIL_RECOVERY_SUMMARY.json',attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
 async function readSnapshot(fetcher,url){
   for(let attempt=0;attempt<2;attempt++){
     try{const r=await fetcher(url,{cache:'no-store',headers:{'Accept':'application/json'},signal:AbortSignal.timeout(7000)});if(attempt===0&&[408,500,502,503,504].includes(r.status))continue;return r;}
@@ -16,7 +16,10 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
       if(!res.ok)throw Error('HTTP '+res.status);
       const text=await res.text();if(text.length>8*1024*1024)throw Error('Snapshot too large');
       const j=JSON.parse(text);
-      if(key==='attention'){
+      if(key==='emailRecovery'){
+        if(j.schema!=='forge.email-recovery-summary.v1'||!Number.isFinite(Date.parse(j.at))||!Number.isInteger(j.capturedUniqueJobs)||j.capturedUniqueJobs<0||!Number.isInteger(j.pendingJobs)||j.pendingJobs<0)throw Error('Invalid recovery summary');
+        output.emailRecovery=j;output.checks[key]={ok:true,at:j.at};
+      }else if(key==='attention'){
         if(j.schema!=='forge.needs-tim.v1'||!Array.isArray(j.items))throw Error('Unsupported incident feed');
         output.checks[key]={ok:true,at:j.builtAt};
         output.issues=j.items.filter(x=>x&&['BLOCKING','ACTION'].includes(x.level)).map(x=>({id:String(x.id||''),section:x.section||'',level:x.level,title:String(x.title||''),detail:String(x.detail||''),action:String(x.action||''),at:x.at||null,sourceUrl:/^https:\/\/github.com\/tpruittguitar\//.test(x.sourceUrl||'')?x.sourceUrl:null}));
