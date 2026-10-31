@@ -1,6 +1,6 @@
 # Decisions and recruiting outcomes
 
-The processing line ends at evidence-complete, finally scored jobs waiting for Tim. The independent Your decisions block emphasizes cumulative distinct recorded applications; employer rejection does not subtract an application. Declines are secondary. Recruiting outcomes is the final separate block: personal recruiter contact, rejection after applying and latest known interview stage per contacted job.
+Your decisions sits inline after Discovery, Intake and Enrichment, connected by the ready-for-review waiting buffer. It has no jobs/hour metric. The Your decisions block emphasizes cumulative distinct recorded applications; employer rejection does not subtract an application. Declines are secondary. Recruiting outcomes is the final separate block: personal recruiter contact, rejection after applying and latest known interview stage per contacted job.
 
 Stages: recruiter screen, hiring manager, onsite/panel, offer. Progress is separate: invited, awaiting scheduling, scheduled, completed, received. A past or accepted appointment never proves attendance. Counts are known minimums while historical email/calendar coverage is incomplete. A contact without a saved application receipt still gets a status prompt when linked to an existing canonical job.
 
