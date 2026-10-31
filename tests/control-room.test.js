@@ -88,7 +88,7 @@ test('public health uses verified per-task execution, not the saved configuratio
 
 test('36-hour badges show units and unavailable history without dividing a daily stock',()=>{
  const f=fixture();f.activity.rates36={basis:'Distinct jobs',metadataGaps:0,intake:{count:72,perHour:2},verification:{count:36,perHour:1},enrichment:{count:18,perHour:.5}};
- let h=C.html(C.model(f));assert.match(h,/2 <span class="cr-rate-unit">jobs\/hr/);assert.doesNotMatch(h,/1 <span class="cr-rate-unit">jobs\/hr/);assert.match(h,/— <span class="cr-rate-unit">jobs\/hr/);assert.match(h,/36 h average/);
+ let h=C.html(C.model(f));assert.match(h,/2 <span class="cr-rate-unit">jobs\/hr/);assert.doesNotMatch(h,/1 <span class="cr-rate-unit">jobs\/hr/);assert.match(h,/0 <span class="cr-rate-unit">jobs\/hr/);assert.match(h,/36 h average/);
  f.activityError='503';h=C.html(C.model(f));assert.doesNotMatch(h,/2 <span class="cr-rate-unit">jobs\/hr/);
 });
 test('matching recovery replaces obsolete access fault while preserving pending work',()=>{
@@ -109,3 +109,5 @@ test('missing pending job identities cannot look like an empty verification queu
 
 test('inconsistent population cannot certify flow counts',()=>{const f=fixture();f.health.processFlow={at,population:{total:21,reconciled:true},queues:{verification:17,enrichment:3,readyForReview:0,blockedClosed:0}};assert.equal(C.model(f).flow,null);});
 test('job completions exclude Writer updates and decisions have no processing rate',()=>{const f=fixture();f.activity.sources={'Pay enrichment':{updates:56}};f.health.processFlow={at,population:{total:21,reconciled:true},queues:{verification:4,enrichment:7,readyForReview:10,blockedClosed:0},completion:{verification:{countsAvailable:true,last24h:17,available:false},enrichment:{countsAvailable:true,last24h:10,available:false}}};const h=C.html(C.model(f));assert.doesNotMatch(h,/56<\/b>/);assert.match(h,/≥ 10/);assert.equal((h.match(/class="cr-rate-unit"/g)||[]).length,4);assert.match(h,/21 open-record jobs accounted for/);assert.match(h,/10 ready for review/);});
+
+test('observed zero completions are numeric and qualify as a constraint with pending jobs',()=>{const f=fixture();f.health.processFlow={at,population:{total:30,reconciled:true},queues:{verification:20,enrichment:10,readyForReview:0,blockedClosed:0},completion:{verification:{countsAvailable:true,last24h:0,available:true,perHour:0,count36:0,partial:true,startedAt:at},enrichment:{countsAvailable:true,last24h:2,available:true,perHour:2/36,count36:2,partial:true,startedAt:at}}};f.health.emailRecovery={at,awaitingIntake:2};f.activity.rates36={intake:{perHour:7}};const h=C.html(C.model(f));assert.match(h,/CONSTRAINT: Verification/);assert.match(h,/0 <span class="cr-rate-unit">jobs\/hr/);assert.doesNotMatch(h,/— <span class="cr-rate-unit">/);});
