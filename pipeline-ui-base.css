@@ -278,3 +278,5 @@ header #search{transition:border-color 140ms ease,box-shadow 220ms var(--forge-e
 .cr-flow .cr-rate-unit{font-size:50%;font-weight:400}.cr-flow .cr-hidden{display:none}.cr-outcomes>b{font-size:24px}.cr-outcomes small{display:block;font-size:10px}.cr-outcomes p{font-size:12px;margin:10px 0}.cr-outcomes strong{font-size:18px}
 
 .cr-flow-accounting{margin:16px 0;padding:12px;border:1px solid #333;background:#111;font-size:12px;overflow-x:auto}.cr-flow-accounting p{margin:6px 0;color:#bbb}.cr-flow-accounting table{width:100%;border-collapse:collapse;white-space:nowrap}.cr-flow-accounting th,.cr-flow-accounting td{padding:8px;text-align:right;border-bottom:1px solid #333}.cr-flow-accounting th:first-child{text-align:left}
+
+.cr-flow .cr-process.cr-constraint{border:2px solid #ff5c65;box-shadow:0 0 0 2px #ff5c6533;background:#141414}.cr-constraint .cr-rate{color:#ff7a82}.cr-constraint-label{display:inline-block;background:#b32632;color:#fff;font-size:11px;font-weight:800;letter-spacing:.12em;padding:4px 8px;margin-bottom:8px}.cr-constraint-note{font-size:12px;color:#c9aa77}
