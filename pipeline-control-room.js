@@ -9,6 +9,7 @@
   function model(input){
     input=input||{};var now=input.now||Date.now(),h=input.health,checks=h&&h.ok&&h.checks||{},warnings=[],blocks=[],rows=null,counts={},daily=[],byId=new Map(),undated=0;
     function warn(title,detail,action){warnings.push({title:title,detail:detail||'',action:action||'Check the evidence before trusting this stage',level:'UNKNOWN'});}
+    if(checks.revision&&checks.revision.ok===false)warn('Live evidence revision is unverified','Saved branch snapshots may lag current main','Retry the GitHub revision check before trusting source status');
     var att=checks.attention,attFresh=att&&att.ok&&now-Date.parse(att.at||'')<90*60000&&now>=Date.parse(att.at||'');
     if(!attFresh||input.healthError)warn('Incident feed is not current',input.healthError||'No fresh incident readback; absence of alerts does not mean healthy');
     (h&&h.issues||[]).forEach(function(i){if(i.level==='BLOCKING'){var b=Object.assign({},i,{stale:!attFresh});if(/^auto-intake-latched:/.test(i.id||'')){b.title='Automatic intake is stopped';b.detail='A previous intake write still needs reconciliation. Later automatic runs stop before submitting new jobs; email intake can still contribute.';b.action='ChatGPT Gofer: verify the earlier write and reconcile the unfinished run. Do not submit it again.';b.owner='ChatGPT Gofer';}blocks.push(b);}});
