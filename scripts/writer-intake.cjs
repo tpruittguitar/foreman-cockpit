@@ -17,7 +17,7 @@ async function main(args){
   const checkpoint=path.join(args[2],crypto.createHash('sha256').update(request.requestId).digest('hex')+'.json');
   const adapter={
     load:async()=>fs.existsSync(checkpoint)?JSON.parse(fs.readFileSync(checkpoint,'utf8')):null,
-    persist:async item=>{const temporary=checkpoint+'.tmp';fs.writeFileSync(temporary,JSON.stringify(item,null,2)+'\n',{mode:0o600});const fd=fs.openSync(temporary,'r');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}fs.renameSync(temporary,checkpoint);},
+    persist:async item=>{const temporary=checkpoint+'.tmp';fs.writeFileSync(temporary,JSON.stringify(item,null,2)+'\n',{mode:0o600});const fd=fs.openSync(temporary,'r+');try{fs.fsyncSync(fd);}finally{fs.closeSync(fd);}fs.renameSync(temporary,checkpoint);},
     post:async body=>json(endpoint,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({...body,key:config.key})}),
     result:async id=>get('request_result',{requestId:id}),
     master:async()=>{const j=await get('master');if(!j.ok||typeof j.text!=='string')throw new Error('FRESH_MASTER_UNAVAILABLE');return Parser.parse(j.text).rows;},

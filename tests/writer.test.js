@@ -4,7 +4,7 @@ const W = require('../apps-script/Code.gs');
 let fails = 0; const ok = (c, m) => { if (!c) { fails++; console.log('FAIL', m); } else console.log('ok  ', m); };
 const P = require('../pipeline-parser.js');
 const fx = fs.readFileSync(path.join(__dirname, 'fixtures/master.sample.txt'), 'utf8');
-const lines = fx.split('\n');
+const lines = fx.split(/\r?\n/);
 const ready = lines.find(l => /^\d+ \| / .test(l) && l.split(' | ')[4] === 'READY_TO_PURSUE');
 const eleven = lines.find(l => /^\d+ \| /.test(l) && l.split(' | ').length === 11);
 const applied = lines.find(l => /^\d+ \| /.test(l) && l.split(' | ')[4] === 'APPLIED');
