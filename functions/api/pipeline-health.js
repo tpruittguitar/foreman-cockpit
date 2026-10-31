@@ -19,7 +19,7 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
       if(key==='processFlow'){
         if(j.schema!=='forge.enrichment-flow.v1'||!Number.isFinite(Date.parse(j.at)))throw Error('Invalid process flow');output.processFlow=j;output.checks[key]={ok:true,at:j.at};
       }else if(key==='applicationOutcomes'){
-        if(j.schema!=='forge.application-outcomes.v1'||!Array.isArray(j.events))throw Error('Invalid application outcomes');output.applicationOutcomes={at:j.at,events:j.events.map(e=>({primaryId:e.primaryId,type:e.type,evidenceVerified:e.evidenceVerified===true})),coverageComplete:j.coverageComplete===true};output.checks[key]={ok:true,at:j.at};
+        if(j.schema!=='forge.application-outcomes.v1'||!Array.isArray(j.events))throw Error('Invalid application outcomes');output.applicationOutcomes={at:j.at,events:j.events.map(e=>({primaryId:e.primaryId,type:e.type,eventDate:e.eventDate,stage:e.stage,progress:e.progress,sourceType:e.sourceType,evidenceVerified:e.evidenceVerified===true})),coverageComplete:j.coverageComplete===true};output.checks[key]={ok:true,at:j.at};
       }else if(key==='emailRecovery'){
         if(j.schema!=='forge.email-recovery-summary.v1'||!Number.isFinite(Date.parse(j.at))||!Number.isInteger(j.capturedUniqueJobs)||j.capturedUniqueJobs<0||!Number.isInteger(j.pendingJobs)||j.pendingJobs<0)throw Error('Invalid recovery summary');
         output.emailRecovery=j;output.checks[key]={ok:true,at:j.at};
