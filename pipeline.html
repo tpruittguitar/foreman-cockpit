@@ -719,7 +719,12 @@ function requestProgress_(promise,action,writing){
   var labels={master:'Reading current master',canonical_rules:'Reading governing rules',scoring:'Reading shared scoring',documents:'Reading document library',document_text:'Reading document',archive:'Reading archived rows',operations:'Reading work evidence',schedules:'Reading schedules',ping:'Testing Writer connection'};
   return PipelineProgress.track(promise,{label:writing?'Sending '+action.replace(/_/g,' ')+' request':labels[action]||'Reading '+action.replace(/_/g,' '),fallback:action==='master'?'#refresh':null,queued:writing&&action==='data_discovery'});
 }
-function gsGet(action,extra){var requestKey=S.cfg.key;var u=S.cfg.url+(S.cfg.url.indexOf('?')<0?'?':'&')+'action='+encodeURIComponent(action)+'&key='+encodeURIComponent(S.cfg.key)+(extra||'');return requestProgress_(fetch(u,{redirect:'follow',cache:'no-store'}).then(function(r){return r.json()}).then(function(j){if(S.cfg.key!==requestKey)throw new Error('Writer credentials changed during request');return j}),action,false)}
+function gsGet(action,extra){
+  var requestKey=S.cfg.key,standard=/^https:\/\/script\.google\.com\/macros\/s\/AKfycbwShspSkto70NeFWjgTuyIf-W3EDgUmKmoWevE-jZq95pm6SAulrJYHX1HmiPg8tx3i\/exec\/?$/.test(S.cfg.url);
+  var u=standard?'/api/writer-read?action='+encodeURIComponent(action)+(extra||''):S.cfg.url+(S.cfg.url.indexOf('?')<0?'?':'&')+'action='+encodeURIComponent(action)+'&key='+encodeURIComponent(requestKey)+(extra||'');
+  var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort()},65000);
+  return requestProgress_(fetch(u,{redirect:'follow',cache:'no-store',headers:standard?{'x-writer-key':requestKey}:{},signal:ctl.signal}).then(function(r){return r.text().then(function(t){var j;try{j=JSON.parse(t)}catch(e){throw new Error('Writer read HTTP '+r.status+' returned non-JSON')};if(!r.ok)throw new Error(j.error||('Writer read HTTP '+r.status));return j;});}).then(function(j){if(S.cfg.key!==requestKey)throw new Error('Writer credentials changed during request');return j;}).finally(function(){clearTimeout(timer)}),action,false);
+}
 function requestIdForBody_(body){
   if(!body||body.action==='state')return'';
   var nestedKey={ruling:'ruling',upsert_application:'event',interview_note:'note',approve_resume:'selection',save_rules:'rules',save_scoring_model:'model',undo_ruling:'undo'}[body.action];
@@ -901,6 +906,8 @@ function loadStructuredRuntime_(q){
        re-score and full redraw (2-3 s of main thread on the live site) are skipped and only the freshness stamps move. */
     if(S.master&&S.text===j.text){S.meta=Object.assign(meta,{fromCache:false});S.structuredSame=(S.structuredSame||0)+1;renderLoadAlert_();renderReadout()}
     else apply(j.text,meta,false);renderLoadAlert_();renderReadout();
+    MASTER_CACHE_.write({text:j.text,meta:meta});
+    if(typeof operationsUI_!=='undefined'&&operationsUI_)operationsUI_.masterChanged();
     S.structuredBase=base;
     if(S.cfg.key&&!S.structuredSyncing&&!structuredSyncDeferred_()&&Date.now()-(S.structuredSyncedAt||0)>60000){S.structuredSyncing=true;structuredSync_(base).then(function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now();if(seq===S.loadSeq)load()},function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now()})}
     return S.load;
@@ -948,7 +955,7 @@ function loadWriter_(){
   if(hasWriter()){syncStateDown();loadScoringGovernance_();gsGet('runs').then(function(j){if(j.ok){S.runs=j.runs||[];if(S.tab==='quality')renderQuality()}}).catch(function(){});gsGet('documents').then(function(j){if(j.ok){S.docs=j;if(S.tab==='documents')renderDocuments()}}).catch(function(){})}
   var seq=S.loadSeq=(S.loadSeq||0)+1,lastText=null;S.loadRetry=null;
   // Three separate reads merged in the browser (PipelineLoader); the canonical master alone decides freshness.
-  return PipelineLoader.load({get:gsGet,onRetry:function(r){if(seq!==S.loadSeq)return;S.loadRetry=r;if(r.action==='master'||!S.master||(S.load&&S.load.freshness==='LOADING'))readout('<b>fetching…</b> retry '+r.attempt+' of '+r.of+' ('+esc(r.action)+': '+esc(r.reason)+')');else renderReadout()},cache:{read:MASTER_CACHE_.read,write:MASTER_CACHE_.write},onUpdate:function(v){
+  return PipelineLoader.load({get:gsGet,onRetry:function(r){if(seq!==S.loadSeq)return;S.loadRetry=r;if(r.action==='master'||!S.master||(S.load&&S.load.freshness==='LOADING'))readout('<b>fetching…</b> retry '+r.attempt+' of '+r.of+' ('+esc(r.action)+': '+esc(r.reason)+')');else renderReadout()},cache:{read:function(){return MASTER_CACHE_.read().then(function(v){return v||(S.text&&S.meta?{text:S.text,meta:S.meta}:null)})},write:MASTER_CACHE_.write},onUpdate:function(v){
     if(seq!==S.loadSeq)return;
     S.load=v;
     if(v.freshness==='LIVE'){S.connection.state='Connected';S.connection.lastRead=v.meta.fetchedAt||new Date().toISOString();S.connection.error=''}
@@ -974,6 +981,7 @@ function freshnessLabel_(){var v=S.load||{};if(v.freshness==='STALE')return '<sp
 function apply(text,meta,fromCache){
   var m=PipelineParser.parse(text);S.master=m;S.text=text;S.meta=meta||{};S.meta.fromCache=!!fromCache;
   scoreCache={fp:"",rows:{}};S.rows=m.rows.map(decorate);
+  if(typeof operationsUI_!=='undefined'&&operationsUI_)operationsUI_.masterChanged();
   // First visit ever on this device: everything already in the master counts as shown now, except rows added within the NEW window.
   if(!LS.get('baselined',false)){var t=Date.now();S.rows.forEach(function(r){var recent=r.dateAdded&&(t-r.dateAdded.getTime())/864e5<=S.newDays;if(!recent)S.seen[r.id]=t});LS.set('seen',S.seen);LS.set('baselined',true)}
   Object.keys(S.rulings).forEach(function(id){var ru=S.rulings[id],row=S.rows.find(function(r){return r.id===id});if(ru.writeStatus==='READBACK_PENDING'||ru.writeStatus==='READBACK_UNCONFIRMED'&&ru.receipt){ru.writeStatus=!fromCache&&PipelineTrust.matches(row,ru)?'VERIFIED':'READBACK_UNCONFIRMED';if(ru.writeStatus==='VERIFIED'){ru.verifiedAt=new Date().toISOString();LS.set('writeError','');S.lastWrite={at:ru.verifiedAt,id:id,requestId:ru.requestId};LS.set('lastWrite',S.lastWrite)}}});LS.set('rulings',S.rulings);

@@ -98,9 +98,17 @@
       return PipelineControlRoom.html(roomModel(),{boardHistoryOpen:boardHistoryOpen,receiptRecoveryOpen:receiptRecoveryOpen})+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
     }
     function visible(){return lastView&&lastView.isConnected&&lastView.getClientRects().length&&document.visibilityState!=='hidden';}
+    function masterChanged(){
+      if(!visible()||tab!=='dashboard')return;
+      var el=document.activeElement;
+      if(el&&lastView.contains(el)&&(/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)||el.isContentEditable))return;
+      paint(lastView);
+      readInterviews().then(function(){if(visible()&&tab==='dashboard'&&!(document.activeElement&&lastView.contains(document.activeElement)))paint(lastView);});
+    }
     async function monitor(){
       if(healthBusy||!api.health)return;healthBusy=true;
-      try{var reads=await Promise.allSettled([api.health(),api.activity?api.activity():Promise.resolve(null),api.refreshMaster?api.refreshMaster():Promise.resolve(null)]),d=reads[0].status==='fulfilled'&&reads[0].value;if(!d||!d.ok)throw Error('No supported health evidence');if(!d.checks.emailCoverage&&d.checks.execution&&d.checks.execution.ok===false&&health.data&&health.data.checks.emailCoverage){d.checks.emailCoverage=Object.assign({},health.data.checks.emailCoverage,{refreshError:'Execution evidence refresh failed; showing last verified coverage'});}health={data:d,error:''};var wa=reads[1];if(wa.status==='fulfilled'&&wa.value&&wa.value.ok)activity={data:wa.value,error:''};else if(api.activity)activity={data:activity.data,error:'Writer activity refresh failed'};}
+      if(api.refreshMaster)Promise.resolve().then(function(){return api.refreshMaster();}).then(masterChanged,function(){});
+      try{var reads=await Promise.allSettled([api.health(),api.activity?api.activity():Promise.resolve(null)]),d=reads[0].status==='fulfilled'&&reads[0].value;if(!d||!d.ok)throw Error('No supported health evidence');if(!d.checks.emailCoverage&&d.checks.execution&&d.checks.execution.ok===false&&health.data&&health.data.checks.emailCoverage){d.checks.emailCoverage=Object.assign({},health.data.checks.emailCoverage,{refreshError:'Execution evidence refresh failed; showing last verified coverage'});}health={data:d,error:''};var wa=reads[1];if(wa.status==='fulfilled'&&wa.value&&wa.value.ok)activity={data:wa.value,error:''};else if(api.activity)activity={data:activity.data,error:'Writer activity refresh failed'};}
       catch(e){health={data:health.data,error:e.message||'Health evidence unavailable'};}
       healthBusy=false;
       if(typeof PipelineControlRoom!=='undefined'){var m=roomModel();if(api.alert)api.alert(PipelineControlRoom.banner(m),m.severity);}
@@ -171,7 +179,7 @@
       var preview=view.querySelector('[data-ops-preview]'),stage=view.querySelector('[data-ops-stage]'),draft=null;
       if(preview){var input=view.querySelector('[data-ops-task]');input.oninput=function(){draft=null;stage.disabled=true;};preview.onclick=function(){var result=view.querySelector('[data-ops-preview-result]');try{draft=JSON.parse(input.value);var proposed=PipelineScheduler.edit(schedules.manifest,draft,schedules.manifest.revision,new Date().toISOString());result.textContent=JSON.stringify({desiredOccurrences:PipelineScheduler.upcoming(draft,Date.now(),5),warnings:PipelineScheduler.warnings(proposed,Date.now()),providerStatus:'PENDING_MANUAL',applied:false},null,2);stage.disabled=false;}catch(e){draft=null;stage.disabled=true;result.textContent=e.message;}};stage.onclick=function(){if(draft)write({action:'save_schedule_proposal',task:draft,baseRevision:schedules.manifest.revision});};}
     }
-    return {render:function(view){paint(view);if((!loadedAt||Date.now()-Date.parse(loadedAt)>60000)&&!busy)refresh(view);},refresh:refresh,metrics:dashboardMetrics,start:start,saveInterviewStatus:saveInterviewStatus};
+    return {render:function(view){paint(view);if((!loadedAt||Date.now()-Date.parse(loadedAt)>60000)&&!busy)refresh(view);},refresh:refresh,masterChanged:masterChanged,metrics:dashboardMetrics,start:start,saveInterviewStatus:saveInterviewStatus};
   }
   root.PipelineOperationsUI={create:create};
 })(window);
