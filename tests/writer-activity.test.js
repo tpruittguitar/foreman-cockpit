@@ -42,6 +42,8 @@ test('endpoint serves a bounded precomputed summary and fails honestly on stale 
  await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify({...summary,todayDate:'2026-10-27'})),now),/rollover/);
  let attempts=0;assert.equal((await mod.loadActivity(async()=>++attempts===1?new Response('temporary',{status:503}):new Response(JSON.stringify(summary)),now)).ok,true);
  assert.equal(attempts,2);
+ const sha='b'.repeat(40);await mod.loadActivity(async url=>{assert.ok(url.includes('/'+sha+'/state/WRITER_ACTIVITY.json'));return new Response(JSON.stringify(summary));},now,sha);
+ await assert.rejects(()=>mod.loadActivity(async()=>{throw Error('must not fetch');},now,'bad/revision'),/Invalid evidence revision/);
 });
 
 function recoveryCase(id,e){return {requestId:id,sourceEntry:e,status:'PROVEN_PERSISTED',reason:'EXACT_SAVED_WRITE_EVIDENCE',rows:e.items.map(i=>({primaryId:i.pid,expectedAfter:i.a,observedHash:i.a,sha256:'f'.repeat(64),readAt:'2026-10-28T23:58:00Z',status:'EXACT_AFTER_IMAGE'}))};}
