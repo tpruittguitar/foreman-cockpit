@@ -78,3 +78,10 @@ test('public health endpoint exposes bounded board history and omits paused empl
  },now);
  assert.equal(j.checks.boardHealth.ok,true);assert.equal(j.boardHealth.length,1);assert.equal(j.boardHealth[0].lastSuccessAt,at);assert.equal(j.boardHealth[0].companies[0],'Radiant');assert.equal(j.checks.boardHealth.pending,0);
 });
+
+test('current immutable email coverage replaces missing operations telemetry without claiming hidden work finished',()=>{
+ const f=fixture();f.operations={runs:{},obligations:{}};f.health.checks.emailCoverage={ok:true,at,bodiesRead:6,verifiedInserted:24,advertisedUnshownOccurrences:22,sourceFile:'receipts/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-20261030-1902ET.json'};const m=C.model(f);assert.equal(m.coverageRuns,1);assert.ok(!m.warnings.some(x=>/coverage is not reported/.test(x.title)));assert.ok(m.warnings.some(x=>/recommendations could not be opened/.test(x.title)));f.health.checks.emailCoverage.at='2026-10-25T00:00:00Z';assert.ok(C.model(f).warnings.some(x=>/coverage is not reported/.test(x.title)));
+});
+test('public health uses verified per-task execution, not the saved configuration flag',async()=>{
+ const file=fs.readFileSync(path.join(__dirname,'../functions/api/pipeline-health.js'),'utf8'),mod=await import('data:text/javascript;base64,'+Buffer.from(file).toString('base64'));const fetcher=async url=>new Response(JSON.stringify(url.includes('EXECUTION')?{schema:'forge.automation-evidence.v1',at,executions:[],schedules:{active:[{id:'email',executionVerified:true}]},emailCoverage:{at,writerProofsVerified:true,sourceFile:'receipts/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-20261030-1902ET.json'}}:url.includes('SCHEDULE')?{schema:'forge.schedule-readback.v1',at,local:[{id:'email',status:'ACTIVE'}],executionVerified:false}:url.includes('NEEDS_TIM')?{schema:'forge.needs-tim.v1',builtAt:at,items:[]}:{summary:{at},new_roles:[]}));const h=await mod.loadHealth(fetcher,now);assert.equal(h.checks.schedules.executionVerified,true);assert.equal(h.checks.emailCoverage.ok,true);
+});

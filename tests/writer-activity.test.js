@@ -58,3 +58,7 @@ test('duplicates, incomplete snapshots, forged row proofs and unverified later c
 test('shared failed-batch aliases count separate receipts but one recovery incident',()=>{
  const e=entry('W-FAIL',[],'NOT_PERSISTED'),d=A.aggregate(fixture({alias1:e,alias2:e,alias3:e}),now,recovery([]));assert.equal(d.problemReceipts,3);assert.equal(d.problemWriteIncidents,1);assert.equal(d.recovery.status,'CURRENT');
 });
+
+test('retired failed obligations disappear without adding successful throughput or rewriting original failures',()=>{
+ const e=entry('W-bad',[item],'NOT_PERSISTED','2026-10-20T00:00:00Z'),index=fixture({OLD:e}),report={schema:'forge.receipt-recovery.v1',at:'2026-10-28T23:55:00Z',source:{repo:'tpruittguitar/forge-writer-state',path:'PIPELINE_RECEIPT_INDEX.json',sha:'a'.repeat(40)},writerSubmissions:0,masterMutations:0,canonicalReceiptMutations:0,cases:[{requestId:'OLD',sourceEntry:e,status:'CLOSED_NO_ACTIVE_WORK',closure:{kind:'CURRENT_OBLIGATION_SATISFIED'},rows:[{primaryId:'V2I-1',sha256:'b'.repeat(64),readAt:'2026-10-28T23:54:00Z',bucket:'DECLINED_BY_TIM',status:'TERMINAL_NO_REWORK'}]}]};const d=A.aggregate(index,now,report);assert.equal(d.problemReceipts,0);assert.equal(d.closedObligations,1);assert.equal(d.rawProblemReceipts,1);assert.equal(d.recent.writes,0);assert.equal(index.requests.OLD.s,'NOT_PERSISTED');report.cases[0].rows[0].bucket='SCOUT_INTAKE';assert.equal(A.aggregate(index,now,report).problemReceipts,1);
+});

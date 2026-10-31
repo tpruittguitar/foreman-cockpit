@@ -16,7 +16,7 @@
   function canonical(x){return JSON.stringify(x&&typeof x==='object'?Array.isArray(x)?x.map(function(v){return JSON.parse(canonical(v));}):Object.fromEntries(Object.keys(x).sort().map(function(k){return [k,JSON.parse(canonical(x[k]))];})):x);}
   function recoveryStatus(index,report,now){
     var at=Date.parse(report&&report.at||''),valid=report&&report.schema==='forge.receipt-recovery.v1'&&!report.inProgress&&report.writerSubmissions===0&&report.masterMutations===0&&report.canonicalReceiptMutations===0&&report.source&&report.source.repo==='tpruittguitar/forge-writer-state'&&report.source.path==='PIPELINE_RECEIPT_INDEX.json'&&/^[a-f0-9]{40}$/.test(report.source.sha||'')&&Array.isArray(report.cases)&&report.cases.length<=100&&report.cases.every(function(c){return c&&typeof c==='object'&&typeof c.requestId==='string';})&&new Set(report.cases.map(function(c){return c.requestId;})).size===report.cases.length&&Number.isFinite(at)&&at<=now+120000;
-    var fresh=valid&&now-at<=2*HOUR,recovered=new Set(),cases=[],groups=new Map(),badWrites=new Set();
+    var fresh=valid&&now-at<=2*HOUR,recovered=new Set(),closedRequests=new Set(),cases=[],groups=new Map(),badWrites=new Set();
     Object.values(index.requests).forEach(function(e){if(e&&e.s!=='COMPLETE'&&e.w)badWrites.add(e.w);});
     function proves(c,e){
       var pending=(index.pending||[]).find(function(p){return p.writeId===e.w&&(p.requestIds||[]).includes(c.requestId);}),items=e.items;if(!items&&pending&&c.pendingBinding&&canonical(c.pendingBinding.items)===canonical(pending.items)&&c.pendingBinding.writeId===pending.writeId)items=pending.items;
@@ -30,13 +30,26 @@
     if(valid)report.cases.forEach(function(c){var e=index.requests[c.requestId]||null;if(canonical(c.sourceEntry)!==canonical(e))return;
       var proven=c.status==='PROVEN_PERSISTED'&&e&&proves(c,e);
       if(proven&&/^(FALSE_COMPLETE|NOT_PERSISTED|NEEDS_RESOLUTION)$/.test(e.s||''))recovered.add(c.requestId);
+      // Closing an obsolete work obligation does not turn its failed write into a success.
+      var closed=c.status==='CLOSED_NO_ACTIVE_WORK'&&e&&/^(FALSE_COMPLETE|NOT_PERSISTED|NEEDS_RESOLUTION)$/.test(e.s||'')&&c.closure&&(
+        c.closure.kind==='CONFIRMED_NO_MASTER_WRITE'&&e.s==='NOT_PERSISTED'&&c.closure.error==='INTENT_READBACK_FAILED: no master write attempted'||
+        c.closure.kind==='CURRENT_OBLIGATION_SATISFIED'&&Array.isArray(c.rows)&&c.rows.length>0&&c.rows.every(function(r){
+          if(!r||!/^V2[A-Z]-/.test(r.primaryId||'')||!/^[a-f0-9]{64}$/.test(r.sha256||'')||!(Date.parse(r.readAt)>Date.parse(e.at)))return false;
+          if(r.status==='TERMINAL_NO_REWORK')return /^(APPLIED|REJECTED_BY_EMPLOYER|DECLINED_BY_TIM|CLOSED_DEAD|DUPLICATE)$/.test(r.bucket||'');
+          if(!/^(CURRENT_INTENT_ALREADY_PRESENT|SUPERSEDED_BY_VERIFIED_REFRESH)$/.test(r.status)||!r.fieldProofs||!Object.keys(r.fieldProofs).length||!Object.values(r.fieldProofs).every(function(v){return v===true;}))return false;
+          if(r.status==='SUPERSEDED_BY_VERIFIED_REFRESH'){var peer=index.requests[r.successor&&r.successor.requestId];return peer&&peer.s==='COMPLETE'&&peer.w===r.successor.writeId&&Date.parse(peer.at)>Date.parse(e.at);}
+          return true;
+        }));
+      if(closed){closedRequests.add(c.requestId);return;}
       var status=c.status==='PROVEN_PERSISTED'&&!proven?'ESCALATED':c.status;
       if(!/^(PROVEN_PERSISTED|VERIFIED_RECEIPT_AND_ROWS|ESCALATED|CHECK_FAILED)$/.test(status))return;
       if(status==='PROVEN_PERSISTED'||status==='VERIFIED_RECEIPT_AND_ROWS')return;
+      // An envelope without a canonical transaction is a legacy lookup obligation, not a failed write incident.
+      if(!e||! /^(FALSE_COMPLETE|NOT_PERSISTED|NEEDS_RESOLUTION|PENDING|PENDING_DELIVERY|VERIFYING)$/.test(e.s||''))return;
       var key=e&&e.w||c.requestId,g=groups.get(key);if(!g){g={writeId:key,receiptCount:0,status:status,reason:String(c.reason||'').slice(0,120),nextAction:String(c.nextAction||'').slice(0,400),evidenceFile:/^verify\/recovery\/(resolutions|escalations)\/[a-f0-9]{64}\.json$/.test(c.evidenceFile||'')?c.evidenceFile:null};groups.set(key,g);}g.receiptCount++;if(/ESCALATED|CHECK_FAILED/.test(status))g.status=status;
       cases.push({requestId:c.requestId,status:status});
     });
-    return {status:fresh?'CURRENT':valid?'STALE':report?'STALE_OR_INVALID':'UNAVAILABLE',at:valid?report.at:null,recovered:recovered,cases:cases,groups:Array.from(groups.values()),deferred:valid?+report.deferred||0:null};
+    return {status:fresh?'CURRENT':valid?'STALE':report?'STALE_OR_INVALID':'UNAVAILABLE',at:valid?report.at:null,recovered:recovered,closed:closedRequests,cases:cases,groups:Array.from(groups.values()),deferred:valid?+report.deferred||0:null};
   }
   function aggregate(index,now,recoveryReport){
     now=now==null?Date.now():now;
@@ -46,7 +59,7 @@
     Object.keys(index.requests).forEach(function(id){
       var e=index.requests[id];if(!e||typeof e!=='object')return;
       if(/PENDING|VERIFYING/.test(e.s||''))pending++;
-      if(/^(FALSE_COMPLETE|NOT_PERSISTED|NEEDS_RESOLUTION)$/.test(e.s||'')){rawProblems++;if(!recovery.recovered.has(id)){problems++;problemGroups.add(e.w||id);}}
+      if(/^(FALSE_COMPLETE|NOT_PERSISTED|NEEDS_RESOLUTION)$/.test(e.s||'')){rawProblems++;if(!recovery.recovered.has(id)&&!recovery.closed.has(id)){problems++;problemGroups.add(e.w||id);}}
       if(e.src==='LEGACY_RECEIPTS'){legacy++;return;}
       var t=Date.parse(e.at||'');
       if(!Number.isFinite(t)||t>now){if(e.s==='COMPLETE')unplaced++;return;}
@@ -73,7 +86,7 @@
       var ss=Array.from(g.sources).filter(function(s){return s!=='Other work';}),s=ss.length===1?ss[0]:'Other work';
       sources[s]=sources[s]||empty();sourceJobs[s]=sourceJobs[s]||new Set();add(sources[s],g,sourceJobs[s]);
     });
-    return {ok:true,now:new Date(now).toISOString(),indexUpdatedAt:index.updatedAt||null,from:new Date(cut).toISOString(),todayDate:todayKey,todayTimezone:'America/New_York',today:today,recent:recent,buckets:buckets,sources:sources,pendingReceipts:pending,problemReceipts:problems,rawProblemReceipts:rawProblems,problemWriteIncidents:problemGroups.size,recoveredReceipts:recovery.recovered.size,recovery:{status:recovery.status,at:recovery.at,groups:recovery.groups,deferred:recovery.deferred},coverage:{metadataGaps:metadataGaps,missingWriteIds:missingWriteIds,unplacedCompleteReceipts:unplaced,legacyReceiptsExcluded:legacy,conflictedWrites:conflicted},basis:'Current COMPLETE master-write receipts, deduplicated by write ID; inserts/updates deduplicated within each write. Recovery evidence never changes throughput or canonical receipt states.'};
+    return {ok:true,now:new Date(now).toISOString(),indexUpdatedAt:index.updatedAt||null,from:new Date(cut).toISOString(),todayDate:todayKey,todayTimezone:'America/New_York',today:today,recent:recent,buckets:buckets,sources:sources,pendingReceipts:pending,problemReceipts:problems,rawProblemReceipts:rawProblems,problemWriteIncidents:problemGroups.size,recoveredReceipts:recovery.recovered.size,closedObligations:recovery.closed.size,recovery:{status:recovery.status,at:recovery.at,groups:recovery.groups,deferred:recovery.deferred},coverage:{metadataGaps:metadataGaps,missingWriteIds:missingWriteIds,unplacedCompleteReceipts:unplaced,legacyReceiptsExcluded:legacy,conflictedWrites:conflicted},basis:'Current COMPLETE master-write receipts, deduplicated by write ID; inserts/updates deduplicated within each write. Recovery evidence never changes throughput or canonical receipt states.'};
   }
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function html(state,charts){
@@ -94,3 +107,4 @@
   }
   return {aggregate:aggregate,html:html,source:source};
 });
+

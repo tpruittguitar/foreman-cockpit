@@ -1,5 +1,5 @@
 const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/';
-const FILES={attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json'};
+const FILES={attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
 export async function loadHealth(fetcher=fetch,now=Date.now()){
   const output={ok:true,observedAt:new Date(now).toISOString(),checks:{},issues:[],candidates:null};
   const urls=new Set();let reports=0;
@@ -13,13 +13,19 @@ export async function loadHealth(fetcher=fetch,now=Date.now()){
         if(j.schema!=='forge.needs-tim.v1'||!Array.isArray(j.items))throw Error('Unsupported incident feed');
         output.checks[key]={ok:true,at:j.builtAt};
         output.issues=j.items.filter(x=>x&&['BLOCKING','ACTION'].includes(x.level)).map(x=>({id:String(x.id||''),section:x.section||'',level:x.level,title:String(x.title||''),detail:String(x.detail||''),action:String(x.action||''),at:x.at||null,sourceUrl:/^https:\/\/github.com\/tpruittguitar\//.test(x.sourceUrl||'')?x.sourceUrl:null}));
+      }else if(key==='execution'){
+        if(j.schema!=='forge.automation-evidence.v1'||!Array.isArray(j.executions)||!Array.isArray(j.schedules?.active)||!Number.isFinite(Date.parse(j.at)))throw Error('Unsupported execution evidence');
+        output.execution=j;
+        output.checks[key]={ok:true,at:j.at};
+        const c=j.emailCoverage;
+        if(c&&c.writerProofsVerified===true&&Number.isFinite(Date.parse(c.at))&&/^receipts\/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-/.test(c.sourceFile||''))output.checks.emailCoverage={ok:true,...c};
       }else if(key==='boardHealth'){
         if(j.schema!=='forge.board-health.v1'||!j.boards||Array.isArray(j.boards))throw Error('Unsupported board history');
         output.boardHealth=Object.values(j.boards).filter(x=>x&&!x.paused&&typeof x.key==='string').map(x=>({key:x.key,companies:Array.isArray(x.companies)?x.companies.slice(0,10).map(c=>String(c).slice(0,150)):[],status:String(x.status||'UNKNOWN'),error:String(x.error||'').slice(0,150),httpStatus:Number.isInteger(x.httpStatus)?x.httpStatus:null,lastAttemptAt:x.lastAttemptAt||null,lastSuccessAt:x.lastSuccessAt||null,retryAt:x.retryAt||null,consecutiveFailures:Math.max(0,+x.consecutiveFailures||0)}));
         output.checks[key]={ok:true,at:j.at,tracked:output.boardHealth.length,pending:output.boardHealth.filter(x=>x.status!=='OK').length};
       }else if(key==='schedules'){
         if(j.schema!=='forge.schedule-readback.v1'||!Array.isArray(j.local))throw Error('Unsupported schedule readback');
-        output.checks[key]={ok:true,at:j.at,configured:j.local.filter(x=>x.status==='ACTIVE').length,executionVerified:j.executionVerified===true};
+        output.checks[key]={ok:true,at:j.at,configured:j.local.filter(x=>x.status==='ACTIVE').length,ids:j.local.filter(x=>x.status==='ACTIVE').map(x=>x.id),executionVerified:j.executionVerified===true};
       }else{
         if(!j.summary||!j.summary.at||!Array.isArray(j.new_roles))throw Error('Unsupported discovery report');
         output.checks[key]={ok:true,at:j.summary.at,failedBoards:j.summary.boards?.failed||0,candidates:j.new_roles.length};
@@ -27,6 +33,12 @@ export async function loadHealth(fetcher=fetch,now=Date.now()){
       }
     }catch(e){output.checks[key]={ok:false,error:key==='schedules'?'Schedule execution not reported':'Could not read '+key+' evidence'};}
   }));
+  // Configuration and execution are different evidence. Never promote configuration alone.
+  const e=output.execution,s=output.checks.schedules;
+  if(e&&s?.ok&&now-Date.parse(e.at)<90*60000&&now>=Date.parse(e.at)){
+    const active=e.schedules.active;
+    output.checks.schedules={...s,executionVerified:active.length===s.configured&&active.length>0&&new Set(active.map(x=>x.id)).size===s.configured&&active.every(x=>s.ids.includes(x.id)&&x.executionVerified===true),executionAt:e.at,unverified:active.filter(x=>x.executionVerified!==true).map(x=>x.id)};
+  }
   if(reports)output.candidates=urls.size;
   return output;
 }
