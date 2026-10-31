@@ -1248,7 +1248,11 @@ function historyPreset_(key){return key==='TERMINAL'||key==='TERMINAL_HISTORY'||
 var DECISION_VIEWS_={DECIDED:1,RULED:1,APPLIED:1,DECLINED:1,TERMINAL:1,TERMINAL_HISTORY:1,INTERVIEWS:1,PINNED:1};
 function actRule_(r){return PipelineActNow.rule(r,ruling(r),(scoreFor_(r)||{}).overall)}
 function allowedInView_(r,key){return !terminalJob_(r)||historyPreset_(key)}
+var decisionReady_={at:null,ids:new Set()};
+function setDecisionReady_(health){var d=health&&health.decisionReady;if(!d||!Array.isArray(d.ids)||Date.now()-Date.parse(d.at)>30*60000)return;decisionReady_={at:d.at,ids:new Set(d.ids)};if(S.master){renderPresets();if(S.preset==='DECISION_READY')render();}}
+function openDecisionReady_(){S.preset='DECISION_READY';S.search='';S.filters={};S.chartFilter=null;switchTab('pipeline');renderPresets();}
 var PRESETS={
+  DECISION_READY:{label:'Waiting for my decision',hot:true,text:'Same evidence-complete, finally scored job identities as the pipeline waiting queue; not an application recommendation',fn:function(r){return decisionReady_.ids.has(r.PRIMARY_ID)&&r.BUCKET!=='APPLIED'}},
   ACTIVE:{label:'Actionable',text:'Ready to pursue or requiring your decision',fn:function(r){return ['READY_TO_PURSUE','TIM_DECISION_REQUIRED'].includes(r.BUCKET)}},
   RESEARCH_QUEUE:{label:'Research queue',text:'Research, blocked and unanalysed discoveries',fn:function(r){return ['BLOCKED','MANUAL_RESEARCH','SCOUT_INTAKE','DISCOVERY_LEAD'].includes(r.BUCKET)}},
   WORK_IN_PROGRESS:{label:'Work in progress',text:'All actionable and research work',fn:function(r){return PRESETS.ACTIVE.fn(r)||PRESETS.RESEARCH_QUEUE.fn(r)}},
@@ -2750,7 +2754,7 @@ function refreshHealthMaster_(){
   healthMasterRead_=Promise.resolve(q.get('src')==='local'?loadLocalSqlite_(q):loadWriter_()).finally(function(){healthMasterRead_=null;});
   return healthMasterRead_;
 }
-var operationsUI_=PipelineOperationsUI.create({get:gsGet,post:gsPost,escape:esc,refreshMaster:refreshHealthMaster_,health:function(){return fetch('/api/pipeline-health',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Health feed HTTP '+r.status);return r.json();});},master:function(){return {rows:S.rows||[],loaded:!!((S.rows||[]).length),freshness:S.load&&S.load.freshness,checkedAt:S.connection&&S.connection.lastRead};},alert:function(text,severity){var b=$('pipeline-health-alert');b.hidden=!text;b.textContent=text;b.className='cr-global-alert '+severity;b.onclick=function(){switchTab('automations');};},activity:function(){return fetch('/api/writer-activity',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Receipt activity HTTP '+r.status);return r.json();});},writerStatus:function(){return S.writerStatus||null;},loadStatus:function(){return S.load||{};},connection:function(){return S.connection||{};}});
+var operationsUI_=PipelineOperationsUI.create({get:gsGet,post:gsPost,escape:esc,refreshMaster:refreshHealthMaster_,health:function(){return fetch('/api/pipeline-health',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Health feed HTTP '+r.status);return r.json();}).then(function(j){setDecisionReady_(j);return j;});},openDecisionReady:openDecisionReady_,master:function(){return {rows:S.rows||[],loaded:!!((S.rows||[]).length),freshness:S.load&&S.load.freshness,checkedAt:S.connection&&S.connection.lastRead};},alert:function(text,severity){var b=$('pipeline-health-alert');b.hidden=!text;b.textContent=text;b.className='cr-global-alert '+severity;b.onclick=function(){switchTab('automations');};},activity:function(){return fetch('/api/writer-activity',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Receipt activity HTTP '+r.status);return r.json();});},writerStatus:function(){return S.writerStatus||null;},loadStatus:function(){return S.load||{};},connection:function(){return S.connection||{};}});
 operationsUI_.start();
 function renderAutomations(){operationsUI_.render($('view-automations'))}
 function renderScheduleReference_(){var v=$('view-automations');var list=autos().map(function(a){return{a:a,d:secsUntil(a.schedule)}}).sort(function(x,y){return (x.d==null?1e9:x.d)-(y.d==null?1e9:y.d)});
