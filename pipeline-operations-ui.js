@@ -98,7 +98,7 @@
     function visible(){return lastView&&lastView.isConnected&&lastView.getClientRects().length&&document.visibilityState!=='hidden';}
     async function monitor(){
       if(healthBusy||!api.health)return;healthBusy=true;
-      try{var reads=await Promise.allSettled([api.health(),api.activity?api.activity():Promise.resolve(null)]),d=reads[0].status==='fulfilled'&&reads[0].value;if(!d||!d.ok)throw Error('No supported health evidence');health={data:d,error:''};var wa=reads[1];if(wa.status==='fulfilled'&&wa.value&&wa.value.ok)activity={data:wa.value,error:''};else if(api.activity)activity={data:activity.data,error:'Writer activity refresh failed'};}
+      try{var reads=await Promise.allSettled([api.health(),api.activity?api.activity():Promise.resolve(null),api.refreshMaster?api.refreshMaster():Promise.resolve(null)]),d=reads[0].status==='fulfilled'&&reads[0].value;if(!d||!d.ok)throw Error('No supported health evidence');if(!d.checks.emailCoverage&&d.checks.execution&&d.checks.execution.ok===false&&health.data&&health.data.checks.emailCoverage){d.checks.emailCoverage=Object.assign({},health.data.checks.emailCoverage,{refreshError:'Execution evidence refresh failed; showing last verified coverage'});}health={data:d,error:''};var wa=reads[1];if(wa.status==='fulfilled'&&wa.value&&wa.value.ok)activity={data:wa.value,error:''};else if(api.activity)activity={data:activity.data,error:'Writer activity refresh failed'};}
       catch(e){health={data:health.data,error:e.message||'Health evidence unavailable'};}
       healthBusy=false;
       if(typeof PipelineControlRoom!=='undefined'){var m=roomModel();if(api.alert)api.alert(PipelineControlRoom.banner(m),m.severity);}
