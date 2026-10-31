@@ -1,11 +1,17 @@
 const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/';
 const FILES={attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
+async function readSnapshot(fetcher,url){
+  for(let attempt=0;attempt<2;attempt++){
+    try{const r=await fetcher(url,{cache:'no-store',headers:{'Accept':'application/json'},signal:AbortSignal.timeout(7000)});if(attempt===0&&[408,500,502,503,504].includes(r.status))continue;return r;}
+    catch(e){if(attempt)throw e;}
+  }
+}
 export async function loadHealth(fetcher=fetch,now=Date.now()){
   const output={ok:true,observedAt:new Date(now).toISOString(),checks:{},issues:[],candidates:null};
   const urls=new Set();let reports=0;
   await Promise.all(Object.entries(FILES).map(async([key,file])=>{
     try{
-      const res=await fetcher(BASE+file+'?cb='+Math.floor(now/60000),{signal:AbortSignal.timeout(15000)});
+      const res=await readSnapshot(fetcher,BASE+file+'?cb='+Math.floor(now/60000));
       if(!res.ok)throw Error('HTTP '+res.status);
       const text=await res.text();if(text.length>8*1024*1024)throw Error('Snapshot too large');
       const j=JSON.parse(text);
