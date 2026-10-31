@@ -104,3 +104,5 @@ test('waiting buffers use unique job queues and fail closed on stale evidence',(
  let h=C.html(m);assert.equal((h.match(/class="cr-buffer /g)||[]).length,4);assert.equal((h.match(/class="cr-process /g)||[]).length,5);assert.match(h,/--queue-fill:/);assert.match(h,/cr-stage-total/);
  f.activityError='HTTP 503';f.master.freshness='STALE';f.health.emailRecovery.at='2026-10-20T00:00:00Z';m=C.model(f);assert.deepEqual(m.waiting.map(q=>q.count),[null,null,null,null]);
 });
+
+test('missing pending job identities cannot look like an empty verification queue',()=>{const f=fixture();f.activity.now=at;f.activity.waitingJobs={count:0,complete:false};f.activity.pendingReceipts=1;assert.equal(C.model(f).waiting[1].count,null);});
