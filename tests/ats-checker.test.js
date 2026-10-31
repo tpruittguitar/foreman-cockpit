@@ -3,7 +3,7 @@ const A = require('../apps-script/PipelineAts.gs');
 const W = require('../apps-script/PipelineWorklists.gs');
 
 const NOW = '2026-10-13T19:00:00.000Z';
-const row = (p, title = 'Director of Manufacturing', bucket = 'SCOUT_INTAKE', id = 'V2I-000000000001') => ({ PRIMARY_ID: id, TITLE: title, BUCKET: bucket, INV_NUM: 1, COMPANY: 'Co', p });
+const row = (p, title = 'Director of Manufacturing', bucket = 'SCOUT_INTAKE', id = 'V2I-000000000001') => ({ PRIMARY_ID: id, TITLE: title, BUCKET: bucket, INV_NUM: 1, COMPANY: 'Co', p: {DATE_ADDED:'2026-09-01',...p} });
 
 test('detects each provider from stored URLs, byte-for-byte host and slug', () => {
   const wd = A.detectUrl('https://entegris.wd1.myworkdayjobs.com/EntegrisCareers/job/Aurora-IL/Vice-President--Operations--North-America_REQ-11621');
@@ -122,7 +122,7 @@ test('selection: active, detectable, due; never-checked and READY first; capped'
   const gh = n => 'COMPANY_SOURCE_URL=https://job-boards.greenhouse.io/acme/jobs/100000' + n;
   const rows = [
     Object.assign(row({ COMPANY_SOURCE_URL: 'https://job-boards.greenhouse.io/acme/jobs/1000001', ATS_CHECK_ASOF: '2026-10-13T10:00:00Z', ATS_CHECK_RESULT: 'LIVE' }), { PRIMARY_ID: 'A' }),
-    Object.assign(row({ COMPANY_SOURCE_URL: 'https://job-boards.greenhouse.io/acme/jobs/1000002', ATS_CHECK_ASOF: '2026-10-09T10:00:00Z', ATS_CHECK_RESULT: 'LIVE' }), { PRIMARY_ID: 'B' }),
+    Object.assign(row({ COMPANY_SOURCE_URL: 'https://job-boards.greenhouse.io/acme/jobs/1000002', ATS_CHECK_ASOF: '2026-10-05T10:00:00Z', ATS_CHECK_RESULT: 'LIVE' }), { PRIMARY_ID: 'B' }),
     Object.assign(row({ COMPANY_SOURCE_URL: 'https://job-boards.greenhouse.io/acme/jobs/1000003' }, 'Director', 'READY_TO_PURSUE'), { PRIMARY_ID: 'C' }),
     Object.assign(row({ COMPANY_SOURCE_URL: 'https://job-boards.greenhouse.io/acme/jobs/1000004' }), { PRIMARY_ID: 'D' }),
     Object.assign(row({ COMPANY_SOURCE_URL: 'https://job-boards.greenhouse.io/acme/jobs/1000005' }, 'Director', 'APPLIED'), { PRIMARY_ID: 'E' }),
@@ -137,11 +137,11 @@ test('posting-validation worklist leaves checker-owned rows to the checker, keep
   const head = 'V2_CURRENT_POPULATION_MASTER\nCOUNTS: TOTAL=0\n================================================================\n';
   const line = (inv, id, payload) => `${inv} | ${id} | Co | Director of Manufacturing | SCOUT_INTAKE | OPEN | - | R1 | Austin, TX | ${payload}`;
   const text = head + [
-    line(1, 'V2I-0000000000A1', 'SOURCE_URL=https://www.linkedin.com/jobs/view/1; DATE_ADDED=2026-10-12'),
-    line(2, 'V2I-0000000000A2', 'SOURCE_URL=https://job-boards.greenhouse.io/acme/jobs/1234567; DATE_ADDED=2026-10-12'),
-    line(3, 'V2I-0000000000A3', 'SOURCE_URL=https://job-boards.greenhouse.io/acme/jobs/7654321; ATS_CHECK_RESULT=ERROR_403; ATS_CHECK_ASOF=2026-10-13T10:00:00Z; DATE_ADDED=2026-10-11'),
-    line(4, 'V2I-0000000000A4', 'SOURCE_URL=https://jobs.ashbyhq.com/acme/34413f8d-26bf-4bbc-8ade-eb309a0e2245; ATS_CHECK_RESULT=NOT_IN_PUBLIC_BOARD; DATE_ADDED=2026-10-10'),
+    line(1, 'V2I-0000000000A1', 'SOURCE_URL=https://www.linkedin.com/jobs/view/1; DATE_ADDED=2026-09-12'),
+    line(2, 'V2I-0000000000A2', 'SOURCE_URL=https://job-boards.greenhouse.io/acme/jobs/1234567; DATE_ADDED=2026-09-12'),
+    line(3, 'V2I-0000000000A3', 'SOURCE_URL=https://job-boards.greenhouse.io/acme/jobs/7654321; ATS_CHECK_RESULT=ERROR_403; ATS_CHECK_ASOF=2026-10-13T10:00:00Z; DATE_ADDED=2026-09-11'),
+    line(4, 'V2I-0000000000A4', 'SOURCE_URL=https://jobs.ashbyhq.com/acme/34413f8d-26bf-4bbc-8ade-eb309a0e2245; ATS_CHECK_RESULT=NOT_IN_PUBLIC_BOARD; DATE_ADDED=2026-09-10'),
   ].join('\n') + '\n';
   const ids = W.build(text, { now: NOW }).lanes.FORGE_POSTING_VALIDATION.map(r => r.PRIMARY_ID);
-  assert.deepEqual(ids, ['V2I-0000000000A1', 'V2I-0000000000A3', 'V2I-0000000000A4']);
+  assert.deepEqual(ids, ['V2I-0000000000A1', 'V2I-0000000000A4']);
 });
