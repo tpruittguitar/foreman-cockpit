@@ -1,4 +1,4 @@
-const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/';
+const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/';
 const FILES={attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
 async function readSnapshot(fetcher,url){
   for(let attempt=0;attempt<2;attempt++){
@@ -6,12 +6,13 @@ async function readSnapshot(fetcher,url){
     catch(e){if(attempt)throw e;}
   }
 }
-export async function loadHealth(fetcher=fetch,now=Date.now()){
-  const output={ok:true,observedAt:new Date(now).toISOString(),checks:{},issues:[],candidates:null};
+export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
+  if(revision!=='main'&&!/^[a-f0-9]{40}$/.test(revision))throw Error('Invalid evidence revision');
+  const output={ok:true,sourceRevision:revision,observedAt:new Date(now).toISOString(),checks:{},issues:[],candidates:null};
   const urls=new Set();let reports=0;
   await Promise.all(Object.entries(FILES).map(async([key,file])=>{
     try{
-      const res=await readSnapshot(fetcher,BASE+file+'?cb='+Math.floor(now/60000));
+      const res=await readSnapshot(fetcher,BASE+revision+'/'+file+'?cb='+Math.floor(now/60000));
       if(!res.ok)throw Error('HTTP '+res.status);
       const text=await res.text();if(text.length>8*1024*1024)throw Error('Snapshot too large');
       const j=JSON.parse(text);
@@ -48,6 +49,27 @@ export async function loadHealth(fetcher=fetch,now=Date.now()){
   if(reports)output.candidates=urls.size;
   return output;
 }
+// Resolve once per minute and pin every file to one immutable commit. Branch raw URLs can lag main.
+let revisionMemo=null,revisionPending=null,revisionFailureUntil=0;
+export async function currentRevision(fetcher=fetch,cache=null,now=Date.now()){
+  const valid=x=>x&&/^[a-f0-9]{40}$/.test(x.sha||'')&&Number.isFinite(Date.parse(x.at))&&now>=Date.parse(x.at)&&now-Date.parse(x.at)<60000;
+  if(valid(revisionMemo))return revisionMemo.sha;
+  if(revisionPending)return revisionPending;
+  if(now<revisionFailureUntil)throw Error('Evidence revision check is temporarily unavailable');
+  revisionPending=(async()=>{
+    const key=new Request('https://foreman-cockpit.pages.dev/__health_source_revision');
+    if(cache)try{const hit=await cache.match(key),saved=hit&&await hit.json();if(valid(saved)){revisionMemo=saved;return saved.sha;}}catch{}
+    const r=await fetcher('https://api.github.com/repos/tpruittguitar/forge-coordination/git/ref/heads/main',{headers:{Accept:'application/vnd.github+json','User-Agent':'forge-pipeline-health'},cache:'no-store',signal:AbortSignal.timeout(7000)});
+    if(!r.ok)throw Error('Evidence revision HTTP '+r.status);const j=await r.json();
+    if(j.ref!=='refs/heads/main'||j.object?.type!=='commit'||!/^[a-f0-9]{40}$/.test(j.object?.sha||''))throw Error('Invalid main revision');
+    revisionMemo={sha:j.object.sha,at:new Date(now).toISOString()};
+    if(cache)try{await cache.put(key,new Response(JSON.stringify(revisionMemo),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=60'}}));}catch{}
+    return revisionMemo.sha;
+  })();
+  try{return await revisionPending;}catch(e){revisionFailureUntil=now+60000;throw e;}finally{revisionPending=null;}
+}
 export async function onRequestGet(){
-  return new Response(JSON.stringify(await loadHealth()),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=60'}});
+  let revision='main',error='';try{revision=await currentRevision(fetch,globalThis.caches?.default||null);}catch(e){error='Could not verify current main revision';}
+  const result=await loadHealth(fetch,Date.now(),revision);result.checks.revision={ok:!error,sha:error?null:revision,error:error||undefined};
+  return new Response(JSON.stringify(result),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=60'}});
 }
