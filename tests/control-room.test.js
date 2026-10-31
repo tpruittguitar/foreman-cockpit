@@ -88,6 +88,6 @@ test('public health uses verified per-task execution, not the saved configuratio
 
 test('36-hour badges show units and unavailable history without dividing a daily stock',()=>{
  const f=fixture();f.activity.rates36={basis:'Distinct jobs',metadataGaps:0,intake:{count:72,perHour:2},verification:{count:36,perHour:1},enrichment:{count:18,perHour:.5}};
- let h=C.html(C.model(f));assert.match(h,/2.00 jobs\/hr/);assert.match(h,/0.50 jobs\/hr/);assert.match(h,/— auto candidates\/hr/);assert.match(h,/36 h average/);
+ let h=C.html(C.model(f));assert.match(h,/2.00 jobs\/hr/);assert.match(h,/0.50 jobs\/hr/);assert.match(h,/— jobs\/hr/);assert.match(h,/36 h average/);
  f.activityError='503';h=C.html(C.model(f));assert.doesNotMatch(h,/2.00 jobs\/hr/);
 });
