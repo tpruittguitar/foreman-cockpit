@@ -96,3 +96,11 @@ test('matching recovery replaces obsolete access fault while preserving pending 
  let html=C.html(C.model(f));assert.doesNotMatch(html,/Some email recommendations could not be opened/);assert.match(html,/405 distinct jobs captured/);assert.match(html,/270 awaiting disposition/);assert.match(html,/no longer exposes its original results/);
  f.health.emailRecovery.supersedesReceipt='receipts/older.json';assert.match(C.html(C.model(f)),/Some email recommendations could not be opened/);
 });
+
+test('waiting buffers use unique job queues and fail closed on stale evidence',()=>{
+ const f=fixture();f.activity.now=at;f.activity.waitingJobs={count:3,complete:true};f.health.emailRecovery={at,awaitingIntake:12};
+ f.master.rows=[{PRIMARY_ID:'a',BUCKET:'SCOUT_INTAKE'},{PRIMARY_ID:'b',BUCKET:'MANUAL_RESEARCH'},{PRIMARY_ID:'c',BUCKET:'READY_TO_PURSUE'},{PRIMARY_ID:'d',BUCKET:'APPLIED'}];
+ let m=C.model(f);assert.deepEqual(m.waiting.map(q=>q.count),[12,3,2,1]);assert.equal(m.waiting[0].partial,true);
+ let h=C.html(m);assert.equal((h.match(/class="cr-buffer /g)||[]).length,4);assert.equal((h.match(/class="cr-process /g)||[]).length,5);assert.match(h,/--queue-fill:/);assert.match(h,/cr-stage-total/);
+ f.activityError='HTTP 503';f.master.freshness='STALE';f.health.emailRecovery.at='2026-10-20T00:00:00Z';m=C.model(f);assert.deepEqual(m.waiting.map(q=>q.count),[null,null,null,null]);
+});
