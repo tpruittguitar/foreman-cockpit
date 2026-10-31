@@ -85,3 +85,9 @@ test('current immutable email coverage replaces missing operations telemetry wit
 test('public health uses verified per-task execution, not the saved configuration flag',async()=>{
  const file=fs.readFileSync(path.join(__dirname,'../functions/api/pipeline-health.js'),'utf8'),mod=await import('data:text/javascript;base64,'+Buffer.from(file).toString('base64'));const fetcher=async url=>new Response(JSON.stringify(url.includes('EXECUTION')?{schema:'forge.automation-evidence.v1',at,executions:[],schedules:{active:[{id:'email',executionVerified:true}]},emailCoverage:{at,writerProofsVerified:true,sourceFile:'receipts/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-20261030-1902ET.json'}}:url.includes('SCHEDULE')?{schema:'forge.schedule-readback.v1',at,local:[{id:'email',status:'ACTIVE'}],executionVerified:false}:url.includes('NEEDS_TIM')?{schema:'forge.needs-tim.v1',builtAt:at,items:[]}:{summary:{at},new_roles:[]}));const h=await mod.loadHealth(fetcher,now);assert.equal(h.checks.schedules.executionVerified,true);assert.equal(h.checks.emailCoverage.ok,true);
 });
+
+test('36-hour badges show units and unavailable history without dividing a daily stock',()=>{
+ const f=fixture();f.activity.rates36={basis:'Distinct jobs',metadataGaps:0,intake:{count:72,perHour:2},verification:{count:36,perHour:1},enrichment:{count:18,perHour:.5}};
+ let h=C.html(C.model(f));assert.match(h,/2.00 jobs\/hr/);assert.match(h,/0.50 jobs\/hr/);assert.match(h,/— auto candidates\/hr/);assert.match(h,/36 h average/);
+ f.activityError='503';h=C.html(C.model(f));assert.doesNotMatch(h,/2.00 jobs\/hr/);
+});

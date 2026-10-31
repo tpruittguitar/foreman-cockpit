@@ -63,21 +63,25 @@
       if(e.src==='LEGACY_RECEIPTS'){legacy++;return;}
       var t=Date.parse(e.at||'');
       if(!Number.isFinite(t)||t>now){if(e.s==='COMPLETE')unplaced++;return;}
-      if(e.s==='COMPLETE'&&!e.w){if(t>=cut||day(t)===todayKey)missingWriteIds++;return;}
+      if(e.s==='COMPLETE'&&!e.w){if(t>=now-36*HOUR)missingWriteIds++;return;}
       if(!e.w)return;
-      if(t<now-26*HOUR){if(e.s!=='COMPLETE')olderConflicts.add(e.w);return;}
+      if(t<now-36*HOUR){if(e.s!=='COMPLETE')olderConflicts.add(e.w);return;}
       var g=groups.get(e.w);
       if(!g){g={at:t,complete:true,items:new Map(),sources:new Set(),metadata:false};groups.set(e.w,g);}
       g.at=Math.max(g.at,t);g.complete=g.complete&&e.s==='COMPLETE';g.sources.add(source(id));
-      if(t>=now-26*HOUR&&Array.isArray(e.items)){g.metadata=true;e.items.forEach(function(i){if(i&&i.pid&&i.op)g.items.set(JSON.stringify([i.pid,i.op,i.b||'',i.a||'']),i);});}
+      if(t>=now-36*HOUR&&Array.isArray(e.items)){g.metadata=true;e.items.forEach(function(i){if(i&&i.pid&&i.op)g.items.set(JSON.stringify([i.pid,i.op,i.b||'',i.a||'']),i);});}
     });
     var buckets=[];for(var t=start;t<=now;t+=HOUR)buckets.push(Object.assign({start:new Date(t).toISOString()},empty()));
+    var rateJobs=new Set(),rateEnrichment=new Set(),rateInserts=new Set(),rateMissing=0;
     var recent=empty(),today=empty(),sources={},sourceJobs={},bucketJobs={},recentJobs=new Set(),todayJobs=new Set(),metadataGaps=0,conflicted=0;
     function add(sum,g,jobs){sum.writes++;g.items.forEach(function(i){jobs.add(i.pid);if(i.op==='INSERT')sum.inserts++;else if(i.op==='REPLACE')sum.updates++;else sum.otherChanges++;});sum.jobs=jobs.size;}
     groups.forEach(function(g,writeId){
-      if(g.at<now-26*HOUR)return;
+      if(g.at<now-36*HOUR)return;
       if(!g.complete||olderConflicts.has(writeId)){if(g.at>=cut)conflicted++;return;}
-      var inRecent=g.at>=cut,inToday=day(g.at)===todayKey;if(!inRecent&&!inToday)return;
+      var inRecent=g.at>=cut,inToday=day(g.at)===todayKey;
+      if(!g.metadata)rateMissing++;
+      g.items.forEach(function(i){rateJobs.add(i.pid);if(i.op==='INSERT')rateInserts.add(i.pid);if(i.op==='REPLACE'&&Array.from(g.sources).some(function(s){return /enrichment/i.test(s);}))rateEnrichment.add(i.pid);});
+      if(!inRecent&&!inToday)return;
       if(!g.metadata)metadataGaps++;
       if(inToday)add(today,g,todayJobs);
       if(!inRecent)return;
@@ -86,7 +90,7 @@
       var ss=Array.from(g.sources).filter(function(s){return s!=='Other work';}),s=ss.length===1?ss[0]:'Other work';
       sources[s]=sources[s]||empty();sourceJobs[s]=sourceJobs[s]||new Set();add(sources[s],g,sourceJobs[s]);
     });
-    return {ok:true,now:new Date(now).toISOString(),indexUpdatedAt:index.updatedAt||null,from:new Date(cut).toISOString(),todayDate:todayKey,todayTimezone:'America/New_York',today:today,recent:recent,buckets:buckets,sources:sources,pendingReceipts:pending,problemReceipts:problems,rawProblemReceipts:rawProblems,problemWriteIncidents:problemGroups.size,recoveredReceipts:recovery.recovered.size,closedObligations:recovery.closed.size,recovery:{status:recovery.status,at:recovery.at,groups:recovery.groups,deferred:recovery.deferred},coverage:{metadataGaps:metadataGaps,missingWriteIds:missingWriteIds,unplacedCompleteReceipts:unplaced,legacyReceiptsExcluded:legacy,conflictedWrites:conflicted},basis:'Current COMPLETE master-write receipts, deduplicated by write ID; inserts/updates deduplicated within each write. Recovery evidence never changes throughput or canonical receipt states.'};
+    return {rates36:{hours:36,from:new Date(now-36*HOUR).toISOString(),to:new Date(now).toISOString(),verification:{count:rateJobs.size,perHour:rateJobs.size/36},intake:{count:rateInserts.size,perHour:rateInserts.size/36},enrichment:{count:rateEnrichment.size,perHour:rateEnrichment.size/36},metadataGaps:rateMissing+missingWriteIds,basis:'Distinct job IDs in COMPLETE writes within 36 elapsed hours; repeated writes and receipt aliases count once per stage. Enrichment covers identified enrichment lanes.'},ok:true,now:new Date(now).toISOString(),indexUpdatedAt:index.updatedAt||null,from:new Date(cut).toISOString(),todayDate:todayKey,todayTimezone:'America/New_York',today:today,recent:recent,buckets:buckets,sources:sources,pendingReceipts:pending,problemReceipts:problems,rawProblemReceipts:rawProblems,problemWriteIncidents:problemGroups.size,recoveredReceipts:recovery.recovered.size,closedObligations:recovery.closed.size,recovery:{status:recovery.status,at:recovery.at,groups:recovery.groups,deferred:recovery.deferred},coverage:{metadataGaps:metadataGaps,missingWriteIds:missingWriteIds,unplacedCompleteReceipts:unplaced,legacyReceiptsExcluded:legacy,conflictedWrites:conflicted},basis:'Current COMPLETE master-write receipts, deduplicated by write ID; inserts/updates deduplicated within each write. Recovery evidence never changes throughput or canonical receipt states.'};
   }
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function html(state,charts){
