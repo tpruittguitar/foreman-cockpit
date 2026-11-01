@@ -2488,6 +2488,12 @@ function matchExisting(rec, idx, opts) {
   opts = opts || {};
   var ne = normEmployer(rec.COMPANY), nt = normTitle(rec.TITLE), nl = normLocation(rec.LOCATION);
   var rc = reqCore(rec.REQ_ID || ''), cu = canonUrl(rec.SOURCE_URL || '');
+  var employerKnown = !/^(confidential|undisclosed|unknown|not stated)$/.test(ne);
+  function localState(value) {
+    if (/remote|hybrid|\bor\b|\/|greater|metro|region|area|unknown|not.stated/i.test(String(value || ''))) return '';
+    var site = normLocation(value), m = site.match(/^(.+) ([a-z]{2})$/);
+    return m && Object.keys(US_STATE_ABBR_).some(function(k){return US_STATE_ABBR_[k]===m[2];}) ? m[2] : '';
+  }
   function verdict(kind, rows, by) { return { kind:kind, rows:rows, by:by,
     compared:{employer:ne, requisition:rc, title:nt, location:nl, sourceUrl:rec.SOURCE_URL || ''} }; }
   function compatible(r) { return ne && (r.ne === ne || (rec.EMPLOYER_RELATIONSHIP_EVIDENCE && PipelinePolicy.validUrl(rec.EMPLOYER_RELATIONSHIP_URL) && String(rec.EMPLOYER_ALIASES||'').split(',').some(function(alias){return normEmployer(alias)===r.ne;}))); }
@@ -2499,12 +2505,12 @@ function matchExisting(rec, idx, opts) {
     if (byKey.some(function (r) { return !compatible(r) || conflictingReq(r); })) return verdict('conflict', byKey, 'INTAKE_KEY_IDENTITY_CONFLICT');
     return verdict(byKey.length === 1 ? 'exact' : 'ambiguous', byKey, 'INTAKE_KEY');
   }
-  if (rc && rc.length >= 5) {
+  if (employerKnown && rc && rc.length >= 5) {
     var byReqEmp = idx.filter(function (r) { return compatible(r) && (r.reqCores.indexOf(rc) >= 0 || (r.atsIds || []).indexOf(rc) >= 0); });
     if (byReqEmp.length) return verdict(byReqEmp.length === 1 ? 'exact' : 'ambiguous', byReqEmp, 'REQ_ID');
   }
   var recAts = atsJobIds([rec.SOURCE_URL, rec.INITIATING_URL, rec.COMPANY_SOURCE_URL].join(' ')).filter(function (x) { return x !== rc; });
-  if (recAts.length) {
+  if (employerKnown && recAts.length) {
     var byAts = idx.filter(function (r) { return compatible(r) && recAts.some(function (j) { return r.reqCores.indexOf(j) >= 0 || (r.atsIds || []).indexOf(j) >= 0; }); });
     if (byAts.length) return verdict(byAts.length === 1 ? 'exact' : 'ambiguous', byAts, 'ATS_JOB_ID');
   }
@@ -2517,7 +2523,7 @@ function matchExisting(rec, idx, opts) {
       return verdict('ambiguous', byUrl, 'SOURCE_URL_NEEDS_IDENTITY_EVIDENCE');
     }
   }
-  if (ne && nt) {
+  if (employerKnown && ne && nt) {
     var byId = idx.filter(function (r) { return compatible(r) && r.nt === nt && !conflictingReq(r); });
     if (byId.length) {
       var sameLoc = byId.filter(function (r) { return nl && r.nl && r.nl === nl; });
@@ -2527,6 +2533,13 @@ function matchExisting(rec, idx, opts) {
         if (opts.holdRelistedProtected && sameLoc[0].protectedIdentity && (cu.length > 12 || rc || recAts.length)) return verdict('conflict', sameLoc, 'PROTECTED_IDENTITY_RELISTED');
         return verdict('exact', sameLoc, 'EMPLOYER_TITLE_LOCATION');
       }
+      // The agency is not its undisclosed client. A generic title advertised in
+      // another explicit state is a separate placement opportunity; do not make
+      // an unrelated client's application/decline block it. Unknown, remote,
+      // regional and same-state locations remain unresolved, never guessed.
+      var state = localState(rec.LOCATION);
+      if (!sameLoc.length && String(rec.EMPLOYER_PRIMARY_BUSINESS || '').toUpperCase() === 'RECRUITING_AGENCY' && state && byId.every(function(r){var other=localState(r.location);return other && other!==state;}))
+        return verdict('none', [], 'AGENCY_DISTINCT_STATES');
       return verdict('ambiguous', sameLoc.length ? sameLoc : byId, 'EMPLOYER_TITLE_NEEDS_LOCATION');
     }
     // Same employer, title and location as a protected row, kept apart only by a differing requisition: hold for Tim.
