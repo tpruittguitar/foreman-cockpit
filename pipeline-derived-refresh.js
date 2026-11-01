@@ -58,7 +58,7 @@ function requests(stale,policyIdValue,note){
     note:pay?'Refresh PAY_WORTH, pay status and city location to the current scoring (Pipeline Explorer, Tim-approved REV-039)':note||'Refresh policy-derived FLEX values to the current canonical policy (Pipeline Explorer, Tim-approved)',
     requestId:(pay?'PX-PAYWORTH-'+(s.payId||policyIdValue):'PX-REFRESH-'+policyIdValue)+'-'+s.primaryId}}});
 }
-function payId(scoring,policy){var c=Scoring.normalize(scoring||{});return hash6(JSON.stringify([Scoring.payWorthCfg(c),c.geo&&c.geo.controlPoints,policyId(policy)]))}
+function payId(scoring,policy){var c=Scoring.normalize(scoring||{});return hash6(JSON.stringify(['2026-11-01-low-confidence-v1',Scoring.payWorthCfg(c),c.geo&&c.geo.controlPoints,policyId(policy)]))}
 function needsLookup(r){var p=r.payload||{},loc=str(r.LOCATION||p.LOCATION);return !!loc&&!(str(p.LATITUDE)&&str(p.LONGITUDE))&&!str(p.GEOCODE_STATUS)&&!/\bremote\b|\/|;|\||\s+or\s+/i.test(loc)&&!Scoring.isNonUs(loc)}
 /* rows: parsed rows. scoring: the published scoring model. policyRaw: canonical FLEX policy. skip: primary ids already planned. */
 function payPlan(rows,scoring,policyRaw,skip){

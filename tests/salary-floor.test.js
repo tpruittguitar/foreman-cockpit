@@ -76,7 +76,7 @@ test('PAY_WORTH ignores the browser geocode cache, so viewer and Writer agree', 
 test('an agent-written FLOOR_STATUS stands; the Writer refreshes only its own', () => {
   const a = fl('Nashville, TN', { SALARY_BASE_EST: '$170,000', FLOOR_STATUS: 'CLEARS_NASHVILLE' });
   assert.deepEqual([a.status, a.derived], ['CLEARS_NASHVILLE', false]);
-  const w = fl('Chicago, IL', { SALARY_BASE_EST: '$170,000', FLOOR_STATUS: 'PASS_RING_0_150_180K', FLOOR_BASIS: 'WRITER_DERIVED · old' });
+  const w = fl('Chicago, IL', { SALARY_BASE_EST: '$170,000', SALARY_CONF:'MED', FLOOR_STATUS: 'PASS_RING_0_150_180K', FLOOR_BASIS: 'WRITER_DERIVED · old' });
   assert.deepEqual([w.status, w.derived], ['BELOW_PAY_WORTH_3', true]);
 });
 
@@ -90,18 +90,18 @@ test('PASS regex is anchored: UNCLEAR is not a pass', () => {
 test('decision and score: estimated pay counts the same as posted; PAY_WORTH is the compensation part', () => {
   const row = pay => ({ COMPANY: 'Acme', TITLE: 'Plant Director', LOCATION: 'Nashville, TN', payload: Object.assign({ DEGREE_TEXT: 'Bachelor degree preferred or equivalent experience', TITLE_RULE_STATUS: 'PASS', SCOPE_FIT_RAW: '85' }, pay) });
   const cfg = Object.assign({}, MAP, { flexPolicy: policy });
-  const e = S.scoreRow(row({ SALARY_BASE_EST: '$190,000', SALARY_CONF: 'LOW' }), cfg), p = S.scoreRow(row({ SALARY_BASE_POSTED: '$190,000' }), cfg);
+  const e = S.scoreRow(row({ SALARY_BASE_EST: '$190,000', SALARY_CONF: 'MED' }), cfg), p = S.scoreRow(row({ SALARY_BASE_POSTED: '$190,000' }), cfg);
   assert.equal(e.assessment.decision, 'PURSUE_CANDIDATE');
   assert.deepEqual([e.overall, e.parts.compensation.score, e.payWorth.score], [p.overall, p.parts.compensation.score, p.payWorth.score]);
-  assert.equal(S.scoreRow(row({ SALARY_BASE_EST: '$120,000' }), cfg).assessment.decision, 'PAY_OR_TITLE_HOLD');
-  assert.equal(S.scoreRow(row({ SALARY_BASE_EST: '$160,000' }), cfg).assessment.decision, 'CHECK_PAY_AND_TITLE', 'below need but not clearly low: keeps moving');
+  assert.equal(S.scoreRow(row({ SALARY_BASE_EST: '$120,000', SALARY_CONF:'MED' }), cfg).assessment.decision, 'PAY_OR_TITLE_HOLD');
+  assert.equal(S.scoreRow(row({ SALARY_BASE_EST: '$160,000', SALARY_CONF:'MED' }), cfg).assessment.decision, 'CHECK_PAY_AND_TITLE', 'below need but not clearly low: keeps moving');
   assert.equal(S.scoreRow(row({}), cfg).assessment.decision, 'CHECK_PAY_AND_TITLE');
 });
 
 test('Writer: writes PAY_WORTH, FLOOR_STATUS + FLOOR_BASIS it derived; agents cannot set PAY_WORTH; an agent floor value is left alone', () => {
   const pol = Object.assign({}, policy, { _SCORING_MODEL: MAP });
   const run = Pl => { const out = Object.assign({}, Pl); W.deriveWriterScores_(['', '', 'Acme', 'Plant Director', 'READY_TO_PURSUE', '', '', '', 'Nashville, TN'], Pl, (k, v) => { out[k] = v; }, pol); return out; };
-  const d = run({ SALARY_BASE_EST: '$190,000', DEGREE_TEXT: 'Bachelor degree preferred or equivalent experience', TITLE_RULE_STATUS: 'PASS', SCOPE_FIT_RAW: '85' });
+  const d = run({ SALARY_BASE_EST: '$190,000', SALARY_CONF:'MED', DEGREE_TEXT: 'Bachelor degree preferred or equivalent experience', TITLE_RULE_STATUS: 'PASS', SCOPE_FIT_RAW: '85' });
   assert.equal(d.PAY_WORTH, '83');
   assert.equal(d.FLOOR_STATUS, 'PASS_PAY_WORTH_83');
   assert.match(d.FLOOR_BASIS, /^WRITER_DERIVED · PAY_WORTH 83 · base mid \$190,000 from SALARY_BASE_EST vs need \$192k at Nashville, TN \(geo 90\)/);
