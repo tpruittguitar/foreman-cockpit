@@ -37,7 +37,8 @@ test('endpoint serves a bounded precomputed summary and fails honestly on stale 
  const d=await mod.loadActivity(async(url)=>{calls++;assert.match(url,/forge-coordination\/main\/state\/WRITER_ACTIVITY.json/);return new Response(JSON.stringify(summary));},now);
  assert.equal(d.recent.writes,1);assert.equal(calls,1);assert.doesNotMatch(JSON.stringify(d),/secretId|V2I-1/);
  await assert.rejects(()=>mod.loadActivity(async()=>new Response('down',{status:503}),now),/unavailable/);
- await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+31*60000),/stale/);
+ assert.equal((await mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+31*60000)).publicationStatus,'DELAYED');
+ await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+91*60000),/stale/);
  await assert.rejects(()=>mod.loadActivity(async()=>new Response('x'.repeat(256*1024+1)),now),/size budget/);
  await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify({...summary,todayDate:'2026-10-27'})),now),/rollover/);
  let attempts=0;assert.equal((await mod.loadActivity(async()=>++attempts===1?new Response('temporary',{status:503}):new Response(JSON.stringify(summary)),now)).ok,true);
