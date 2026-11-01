@@ -2419,13 +2419,13 @@ var US_STATE_ABBR_ = {alabama:'al',alaska:'ak',arizona:'az',arkansas:'ar',califo
 // Full state names become postal codes so "Costa Mesa, California, United States" and "Costa Mesa, CA" compare equal (2026-10-13).
 function normLocation(s) { s = String(s || '').toLowerCase(); if (!s || /not_stated|not stated|unknown|^-$/.test(s)) return ''; s = s.replace(/\b(metropolitan area|metro area|area|united states|usa|us)\b/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); return s.replace(/\b(new hampshire|new jersey|new mexico|new york|north carolina|north dakota|rhode island|south carolina|south dakota|west virginia|[a-z]+)$/, function (m) { return US_STATE_ABBR_[m] || m; }); }
 /** ATS job numbers carried in a posting URL (Greenhouse job id, gh_jid, Workday R-number). They are the same identity as a GH-/R- requisition token on an older row (2026-10-13 Anduril duplicates). */
-function atsJobIds(text) { var out = []; String(text || '').replace(/https?:\/\/[^\s"<>|;]+/gi, function (u) { var m; if ((m = u.match(/greenhouse\.io\/[^\/?#]+\/jobs\/(\d{6,})/i)) || (m = u.match(/[?&]gh_jid=(\d{6,})/i)) || (m = u.match(/myworkdayjobs\.com\/[^?#]*_R-?(\d{4,})/i))) { if (out.indexOf(m[1]) < 0) out.push(m[1]); } }); return out; }
+function atsJobIds(text) { var out = []; String(text || '').replace(/https?:\/\/[^\s"<>|;]+/gi, function (u) { var m; if ((m = u.match(/greenhouse\.io\/[^\/?#]+\/jobs\/(\d{6,})/i)) || (m = u.match(/[?&]gh_jid=(\d{6,})/i)) || (m = u.match(/myworkdayjobs\.com\/[^?#]*_(?:JR|R)-?(\d{4,})/i))) { if (out.indexOf(m[1]) < 0) out.push(m[1]); } }); return out; }
 function reqTokens(s) { var out = []; String(s || '').replace(/[A-Za-z]*[-_ ]?\d{5,}[A-Za-z0-9-]*/g, function (m) { out.push(m.replace(/[^A-Za-z0-9]/g, '').toUpperCase()); }); return out; }
 function reqCore(s) { var t = reqTokens(s); return t.length ? t[0].replace(/^(LI|GH|WD|JR|R|REQ)/, '') : ''; }
 /* Job-board posting numbers (LinkedIn job view, Indeed jk, Glassdoor listing) name a board listing, not an employer
    requisition. Copied into REQ they must never make a record look like a different job (2026-10-22: a LinkedIn job id
    in REQ_ID re-admitted Anduril Fury, archived REJECTED_BY_EMPLOYER with ANTI_RESURRECTION=YES). */
-function boardJobIds(canonUrls) { var out = []; (canonUrls || []).forEach(function (u) { var m = String(u || '').match(/^(?:linkedin\.com\/jobs\/view|indeed\.com\/jk|glassdoor\.com\/job)\/([a-z0-9]+)$/i); if (m) out.push(m[1].toUpperCase()); }); return out; }
+function boardJobIds(canonUrls) { var out = []; (canonUrls || []).forEach(function (u) { var m = String(u || '').match(/^(?:linkedin\.com\/jobs\/view|indeed\.com\/jk|glassdoor\.com\/job)\/([a-z0-9]+)$/i); if (m) out.push(m[1].toUpperCase()); var jl=String(u||'').match(/^(?:www\.)?jobleads\.com\/job\/([a-z0-9-]{8,80})$/i); if(jl){out.push(jl[1].toUpperCase());reqTokens(jl[1]).forEach(function(t){out.push(t.replace(/^(LI|GH|WD|JR|R|REQ)/,''));});} }); return out; }
 function employerReqCores(tokens, boardIds) {
   return (tokens || []).filter(function (t) { return !/^LI\d/.test(t) && (boardIds || []).indexOf(t.replace(/^(LI|GH|WD|JR|R|REQ)/, '')) < 0; })
     .map(function (t) { return t.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); });
@@ -2441,7 +2441,7 @@ function canonUrl(u) {
   u = String(u || '').trim(); if (!/^https?:\/\//i.test(u)) return '';
   var m = u.match(/^https?:\/\/([^\/?#]+)([^?#]*)/i); if (!m) return '';
   var host = m[1].toLowerCase().replace(/^www\./, ''), path = (m[2] || '/').replace(/\/+$/, '').toLowerCase();
-  var lj = u.match(/linkedin\.com\/jobs\/view\/(?:[^\/?#]*-)?(\d{6,})/i); if (lj) return 'linkedin.com/jobs/view/' + lj[1];
+  var lj = u.match(/linkedin\.com\/(?:comm\/)?jobs\/view\/(?:[^\/?#]*-)?(\d{6,})/i); if (lj) return 'linkedin.com/jobs/view/' + lj[1];
   var ij = u.match(/indeed\.com\/.*[?&]jk=([a-z0-9]+)/i); if (ij) return 'indeed.com/jk/' + ij[1];
   // Indeed sponsored/alert click redirects (pagead/clk, rc/clk) without jk= carry only a per-click ad token: host+path names
   // every sponsored job, so the URL is no identity and dedupe falls back to employer/title/location.
