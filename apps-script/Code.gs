@@ -2549,6 +2549,14 @@ function matchExisting(rec, idx, opts) {
       var mode=String(rec.REMOTE_HYBRID||'');var state = /remote|hybrid/i.test(mode)?'':localState(rec.LOCATION,/on.?site/i.test(mode));
       if (!sameLoc.length && String(rec.EMPLOYER_PRIMARY_BUSINESS || '').toUpperCase() === 'RECRUITING_AGENCY' && state && byId.every(function(r){var other=recoveredState(r);return other && other!==state;}))
         return verdict('none', [], 'AGENCY_DISTINCT_STATES');
+      // Tim 2026-11-01: proven separate onsite facilities are distinct even
+      // when the older employer requisition was never captured. This narrow
+      // path requires quoted facility scope and a bound prior posting, not
+      // merely a new board ID or an assertion that the cities differ.
+      var scopeSource=canonUrl(rec.OPERATING_SCOPE_SOURCE_URL||''),scopeUrl=canonUrl(rec.COMPANY_SOURCE_URL||rec.SOURCE_URL||'');
+      var localRole=/^(general manager|plant manager|facility manager|site manager|director of plant operations)$/.test(nt);
+      if(!sameLoc.length&&state&&localRole&&String(rec.OPERATING_SCOPE||'').toUpperCase()==='SINGLE_FACILITY'&&scopeSource&&scopeSource===scopeUrl&&/\b(facility|plant|site)\b/i.test(String(rec.OPERATING_SCOPE_EVIDENCE||''))&&/\b(facility|plant|site)\b/i.test(String(rec.IDENTITY_PRIOR_SCOPE_EVIDENCE||''))&&/^on.?site$/i.test(String(rec.REMOTE_HYBRID||''))&&/^on.?site$/i.test(String(rec.IDENTITY_SITE_MODE||''))&&byId.every(function(r){var source=canonUrl(rec.IDENTITY_SITE_SOURCE_URL||''),other=recoveredState(r);return r.urls.indexOf(source)>=0&&!/remote|hybrid/i.test(r.workMode||'')&&other&&other!==state;}))
+        return verdict('none', [], 'PROVEN_DISTINCT_FACILITIES');
       return verdict('ambiguous', sameLoc.length ? sameLoc : byId, 'EMPLOYER_TITLE_NEEDS_LOCATION');
     }
     // Same employer, title and location as a protected row, kept apart only by a differing requisition: hold for Tim.
@@ -2667,7 +2675,7 @@ function classifyNeverConsider(rec, R) {
 var INTAKE_FACT_KEYS = ['PAY_POSTED', 'SALARY_BASE_POSTED', 'SALARY_BASE_EST', 'SALARY_BASIS', 'SALARY_CONF', 'SALARY_SOURCE', 'SALARY_ASOF', 'SALARY_NOTE', 'SALARY_BASE_LOW', 'SALARY_BASE_HIGH', 'SALARY_MIDPOINT', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
-  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'IDENTITY_SITE_SOURCE_URL', 'IDENTITY_SITE_VALUE', 'IDENTITY_SITE_EVIDENCE', 'IDENTITY_SITE_MODE', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });
+  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'IDENTITY_SITE_SOURCE_URL', 'IDENTITY_SITE_VALUE', 'IDENTITY_SITE_EVIDENCE', 'IDENTITY_SITE_MODE', 'OPERATING_SCOPE', 'OPERATING_SCOPE_SOURCE_URL', 'OPERATING_SCOPE_EVIDENCE', 'IDENTITY_PRIOR_SCOPE_EVIDENCE', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });
   var unk = rec.INITIAL_UNKNOWN_FIELDS; out.INITIAL_UNKNOWN_FIELDS = Array.isArray(unk) ? unk.map(clean_).filter(Boolean).join(',') : clean_(unk || '');
   out.SOURCE_URL=PipelinePolicy.links(out).preferred;
   if (out.SOURCE_URL && !/^https?:\/\//i.test(out.SOURCE_URL)) out.SOURCE_URL = '';
