@@ -2479,7 +2479,7 @@ function indexExisting(lines) {
     // Every URL field the Writer reads or writes on a row takes part in dedupe; SOURCE is the legacy reader (22 live rows).
     var urls = urlsIn(c[7]).concat(urlsIn(pp.payload.SOURCE || ''), urlsIn(pp.payload.SOURCE_URL || ''), urlsIn(pp.payload.INITIATING_URL || ''), urlsIn(pp.payload.COMPANY_SOURCE_URL || ''), urlsIn(pp.payload.INTAKE_SOURCE_URL || ''));
     var atsText = [c[7], pp.payload.SOURCE, pp.payload.SOURCE_URL, pp.payload.INITIATING_URL, pp.payload.COMPANY_SOURCE_URL, pp.payload.INTAKE_SOURCE_URL].join(' ');
-    rows.push({ timRuled: c[4] === 'APPLIED' && timRuledApplied_(pp.payload, c[6] === '-' ? [] : c[6].split(';').map(function (x) { return x.trim(); })), inv: parseInt(c[0], 10), id: c[1].trim(), company: c[2], title: c[3], bucket: c[4], location: c[8], reqTokens: reqTokens([c[7], pp.payload.REQ_ID || ''].join(' ')), reqCores: reqTokens([c[7], pp.payload.REQ_ID || ''].join(' ')).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), employerReqCores: employerReqCores(reqTokens(pp.payload.REQ_ID || c[7]), boardJobIds(urls)), protectedIdentity: protectedIdentity_(c[4], pp.payload), atsIds: atsJobIds(atsText), urls: urls, ne: normEmployer(c[2]), nt: normTitle(c[3]), nl: normLocation(c[8]), intakeKey: pp.payload.INTAKE_KEY || '' });
+    rows.push({ timRuled: c[4] === 'APPLIED' && timRuledApplied_(pp.payload, c[6] === '-' ? [] : c[6].split(';').map(function (x) { return x.trim(); })), inv: parseInt(c[0], 10), id: c[1].trim(), company: c[2], title: c[3], bucket: c[4], location: c[8], workMode: pp.payload.REMOTE_HYBRID || '', reqTokens: reqTokens([c[7], pp.payload.REQ_ID || ''].join(' ')), reqCores: reqTokens([c[7], pp.payload.REQ_ID || ''].join(' ')).map(function (x) { return x.replace(/^(LI|GH|WD|JR|R|REQ)/, ''); }), employerReqCores: employerReqCores(reqTokens(pp.payload.REQ_ID || c[7]), boardJobIds(urls)), protectedIdentity: protectedIdentity_(c[4], pp.payload), atsIds: atsJobIds(atsText), urls: urls, ne: normEmployer(c[2]), nt: normTitle(c[3]), nl: normLocation(c[8]), intakeKey: pp.payload.INTAKE_KEY || '' });
   }
   return rows;
 }
@@ -2489,10 +2489,19 @@ function matchExisting(rec, idx, opts) {
   var ne = normEmployer(rec.COMPANY), nt = normTitle(rec.TITLE), nl = normLocation(rec.LOCATION);
   var rc = reqCore(rec.REQ_ID || ''), cu = canonUrl(rec.SOURCE_URL || '');
   var employerKnown = !/^(confidential|undisclosed|unknown|not stated)$/.test(ne);
-  function localState(value) {
+  function localState(value, onsiteStateOnly) {
     if (/remote|hybrid|\bor\b|\/|greater|metro|region|area|unknown|not.stated/i.test(String(value || ''))) return '';
     var site = normLocation(value), m = site.match(/^(.+) ([a-z]{2})$/);
+    if(!m && onsiteStateOnly && Object.keys(US_STATE_ABBR_).some(function(k){return US_STATE_ABBR_[k]===site;}))return site;
     return m && Object.keys(US_STATE_ABBR_).some(function(k){return US_STATE_ABBR_[k]===m[2];}) ? m[2] : '';
+  }
+  function recoveredState(r) {
+    if(/remote|hybrid/i.test(String(r.workMode||'')))return '';var known=localState(r.location);if(known)return known;
+    var src=canonUrl(rec.IDENTITY_SITE_SOURCE_URL||''),li=src.match(/^linkedin\.com\/jobs\/view\/(\d+)$/),bound=src&&r.urls.indexOf(src)>=0;
+    if(li)bound=bound||r.reqTokens.some(function(t){return /^(LI|LINKEDIN)\d/.test(t)&&t.replace(/^(LINKEDIN|LI)/,'')===li[1];});
+    var value=String(rec.IDENTITY_SITE_VALUE||''),fact=String(rec.IDENTITY_SITE_EVIDENCE||''),norm=function(x){return x.toLowerCase().replace(/[^a-z0-9]/g,'');};
+    if(!bound||!value||!fact||norm(fact).indexOf(norm(value))<0)return '';
+    return localState(value,/on.?site/i.test(String(rec.IDENTITY_SITE_MODE||'')));
   }
   function verdict(kind, rows, by) { return { kind:kind, rows:rows, by:by,
     compared:{employer:ne, requisition:rc, title:nt, location:nl, sourceUrl:rec.SOURCE_URL || ''} }; }
@@ -2537,8 +2546,8 @@ function matchExisting(rec, idx, opts) {
       // another explicit state is a separate placement opportunity; do not make
       // an unrelated client's application/decline block it. Unknown, remote,
       // regional and same-state locations remain unresolved, never guessed.
-      var state = localState(rec.LOCATION);
-      if (!sameLoc.length && String(rec.EMPLOYER_PRIMARY_BUSINESS || '').toUpperCase() === 'RECRUITING_AGENCY' && state && byId.every(function(r){var other=localState(r.location);return other && other!==state;}))
+      var mode=String(rec.REMOTE_HYBRID||'');var state = /remote|hybrid/i.test(mode)?'':localState(rec.LOCATION,/on.?site/i.test(mode));
+      if (!sameLoc.length && String(rec.EMPLOYER_PRIMARY_BUSINESS || '').toUpperCase() === 'RECRUITING_AGENCY' && state && byId.every(function(r){var other=recoveredState(r);return other && other!==state;}))
         return verdict('none', [], 'AGENCY_DISTINCT_STATES');
       return verdict('ambiguous', sameLoc.length ? sameLoc : byId, 'EMPLOYER_TITLE_NEEDS_LOCATION');
     }
@@ -2658,7 +2667,7 @@ function classifyNeverConsider(rec, R) {
 var INTAKE_FACT_KEYS = ['PAY_POSTED', 'SALARY_BASE_POSTED', 'SALARY_BASE_EST', 'SALARY_BASIS', 'SALARY_CONF', 'SALARY_SOURCE', 'SALARY_ASOF', 'SALARY_NOTE', 'SALARY_BASE_LOW', 'SALARY_BASE_HIGH', 'SALARY_MIDPOINT', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
-  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });
+  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'IDENTITY_SITE_SOURCE_URL', 'IDENTITY_SITE_VALUE', 'IDENTITY_SITE_EVIDENCE', 'IDENTITY_SITE_MODE', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });
   var unk = rec.INITIAL_UNKNOWN_FIELDS; out.INITIAL_UNKNOWN_FIELDS = Array.isArray(unk) ? unk.map(clean_).filter(Boolean).join(',') : clean_(unk || '');
   out.SOURCE_URL=PipelinePolicy.links(out).preferred;
   if (out.SOURCE_URL && !/^https?:\/\//i.test(out.SOURCE_URL)) out.SOURCE_URL = '';
