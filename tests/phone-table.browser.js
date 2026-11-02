@@ -3,6 +3,10 @@
    scroll and stays there while the other columns scroll; TITLE shrinks first (>= 140 px, ellipsis), leaving a 96 px
    window. 390 x 844, 402 x 874, landscape 874 x 402; desktop not pinned. (b) the ring label rule is never under 11 px.
    Run: node tests/phone-table.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
+// Kept (Grok Bot GUI, Stage 3 review): the phone shell's Jobs fields are checked by tests/mobile-jobs.browser.js; this test is
+// the only check on the old layout that touch tablets (768-980 px) still use. TODO(tablet follow-up): retire when tablets get the new layout.
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

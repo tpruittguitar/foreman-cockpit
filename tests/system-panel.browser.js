@@ -3,6 +3,8 @@
    Checked at 2560x1440, 1440x900 and 390x844 (phone) with long content appended: no horizontal overflow, nothing past its box,
    no ellipsis, no text under 11 px (L-1), close button size, phone panel above the bottom bar.
    Run: node tests/system-panel.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/mobile.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

@@ -1,5 +1,6 @@
 /* Browser checks for the Explorer master-loading path (fail closed on freshness). Requests go to a local test-only writer.
    Run: node tests/master-load.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/ui.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..'),W=require('../apps-script/Code.gs');

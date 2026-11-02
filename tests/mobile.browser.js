@@ -1,6 +1,7 @@
 /* Browser checks for iPhone Safari use: the job table is reachable, the map works by touch, inputs do not trigger
    Safari's focus zoom, and the Desktop/Mobile layout switch (and Safari's "Request Desktop Website") take effect.
    Run: node tests/mobile.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/ui.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

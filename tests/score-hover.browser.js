@@ -1,6 +1,7 @@
 /* REV-063 (spec v1.5.2 B-1 / B-2, Grok Bot V-19): the score hover names the percentile band, rank, N and time; the old
    band() label (PRIORITY / STRONG / WATCH / WEAK / NO-GO) never shows. Fixture + mocked Writer (harness from
    review-delta.browser.js). Run: node tests/score-hover.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');
@@ -39,7 +40,7 @@ const JOB='V2X-A4CCD49EE686';
     const titles=await page.$$eval('#grid tbody tr[data-id] .score-badge',els=>els.map(e=>e.title));
     assert(titles.length>20,'score cells: '+titles.length);
     const BAD=/\b(PRIORITY|STRONG|WATCH|WEAK|NO-GO)\b/;
-    titles.forEach(t=>{assert.doesNotMatch(t,BAD,'no band() word: '+t);assert.match(t,/^(▲ TOP|◆ UPPER|● MID|▽ LOW) · \d+ · #\d+ of \d+ eligible open · (\d\d:\d\d|—)$|^\d+ · ⊘ HOLD · outside the bands$|^\d+ · not ranked \(applied or closed\)$/,'V-19 format: '+t)});
+    titles.forEach(t=>{assert.doesNotMatch(t,BAD,'no band() word: '+t);assert.match(t,/^(▲ TOP|◆ UPPER|● MID|▼ LOW) · \d+ · #\d+ of \d+ eligible open · (\d\d:\d\d|—)$|^\d+ · ⊘ HOLD · outside the bands$|^\d+ · not ranked \(applied or closed\)$/,'V-19 format: '+t)});
     assert(titles.some(t=>/eligible open/.test(t)),'ranked rows present');console.log('sample hover: '+titles.find(t=>/eligible open/.test(t)));
     await page.locator('#grid tbody tr[data-id]').first().click();await page.waitForTimeout(800);
     const ring=await page.locator('#drawer .ws-ring').getAttribute('title');assert.doesNotMatch(ring,BAD,'ring title: '+ring);assert.match(ring,/^Opportunity rating · viewer-derived from the scoring model · /);

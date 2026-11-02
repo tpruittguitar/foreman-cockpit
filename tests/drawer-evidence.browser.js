@@ -1,6 +1,7 @@
 /* REV-066 (spec v1.5.2 B-4 / B-5, Grok Bot R-3 + E-10 re-ruling): soft evidence lines show ≈ + "soft" in amber, apart
    from "?" unknown; Research / Blocked bucket words in Secondary; "Screen gate FAIL" keeps the word without ▸.
    2560 x 1440, fixture + mocked Writer (harness from review-delta.browser.js). Run: node tests/drawer-evidence.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

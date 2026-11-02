@@ -6,7 +6,7 @@
    Quantiles and minN are tokens (tokens.css --pe-band-rank-* / --pe-band-min-n); the caller passes them in. */
 (function(root){
   'use strict';
-  var GLYPH = { TOP: '▲', UPPER: '◆', MID: '●', LOW: '▽', HOLD: '⊘', NONE: '—' };
+  var GLYPH = { TOP: '▲', UPPER: '◆', MID: '●', LOW: '▼', HOLD: '⊘', NONE: '—' };   /* LOW is filled, like TOP (Tim, 2026-11-02) */
   var LABEL = { TOP: 'TOP 10%', UPPER: 'UPPER 25%', MID: 'MID 45%', LOW: 'LOW 20%', HOLD: 'HOLD', NONE: 'NOT RANKED' };
   var DEFAULTS = { top: 0.90, upper: 0.65, low: 0.20, minN: 40 };
 

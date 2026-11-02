@@ -2,6 +2,7 @@
    collapsed, while the hover opens (+60 ms), once it has opened, and with keyboard focus; only the label column is revealed.
    Checked at 2560x1440 and 1440x900. L-1: inset 2 px focus ring, labels >= 11 px uppercase in both states.
    Run: node tests/rail.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/mobile.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

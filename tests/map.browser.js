@@ -1,4 +1,5 @@
 /* Map acquisition, preferences and wheel zoom (PR #65), plus the display-only first-load selection. Local test-only writer. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

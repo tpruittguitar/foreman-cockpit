@@ -1,5 +1,6 @@
 'use strict';
 const fs=require('fs'),path=require('path'),http=require('http'),assert=require('node:assert/strict');
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE||'playwright');
 const repo=path.resolve(__dirname,'..'),out=process.env.PIPELINE_UI_ARTIFACTS||'/tmp/pipeline-motion';fs.mkdirSync(out,{recursive:true});
 const fixture=require('./gen_population').generate(600,70);

@@ -1,6 +1,7 @@
 /* PAY WORTH drawer chip (Tim 2026-10-19 02:17 ET): "PAY_WORTH n · <area> score n · needs $Xk", same number as the shared scoring,
    full text (no ellipsis), >= 11 px, state also in words when held. Run: node tests/pay-worth.browser.js
    (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/mobile.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

@@ -1,0 +1,287 @@
+/* Mobile shell (handoff "pipeline-explorer-mobile-handoff", gray targeting-OS tokens). Every rule is scoped to html.m-shell
+   inside the phone media query, so desktop (>= 768px) and touch tablets keep their current layout pixel for pixel.
+   Fonts: Inter and IBM Plex Mono from /fonts (the handoff's named mono fallback); no external font fetch. */
+@media (max-width:767px),(max-width:932px) and (max-height:520px) and (pointer:coarse){
+html.m-shell{
+  --m-bg:#0B0B0B;--m-panel:#151515;--m-raised:#1E1E1E;--m-border:#2E2E2E;--m-line:#4A4A4A;--m-badge-bg:#111111;
+  --m-text:#E8E8E8;--m-text-2:#A6A6A6;--m-accent:#D9D9D9;--m-on-accent:#0B0B0B;
+  --m-ok:#6FBF4A;--m-ok-border:#35552a;--m-caution:#E3C341;--m-caution-border:#5f5424;
+  --m-attn:#E8862A;--m-attn-border:#6a4220;--m-attn-tint:#1c1610;--m-fault:#DE5E5A;   /* spec #D9534F was 4.21:1 on the raised top card; this passes 4.5:1 on every phone surface */--m-fault-border:#6b2a28;
+  --m-sans:Inter,system-ui,-apple-system,sans-serif;--m-mono:"IBM Plex Mono",ui-monospace,monospace;
+  --m-radius:4px;--m-tap:44px;--m-header-h:52px;--m-tabbar-h:64px;
+  --m-dur:200ms;--m-dur-settle:220ms;--m-dur-highlight:250ms;
+  --m-safe-top:env(safe-area-inset-top,0px);--m-safe-bottom:env(safe-area-inset-bottom,0px);
+  background:var(--m-bg);
+}
+/* The desktop cockpit stays loaded underneath but is not shown (this also keeps its queue filter bar, drawer and alert
+   banners off the phone: known issues 1, 3, 5, 6). A desktop view from More shows it until "Mobile" is tapped. */
+html.m-shell:not(.m-legacy) body>#rail,html.m-shell:not(.m-legacy) body>#app,html.m-shell:not(.m-legacy) body>#pop{display:none!important}
+html.m-shell.m-legacy #m-root>:not(.m-return){display:none!important}
+html.m-shell:not(.m-legacy) body{display:block;margin:0;background:var(--m-bg);color:var(--m-text);font:400 15px/1.45 var(--m-sans);-webkit-text-size-adjust:100%;overflow-x:hidden}
+#m-root{position:relative;width:100%;min-height:100vh;min-height:100dvh}
+#m-root *{box-sizing:border-box}
+#m-root button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#m-root :focus-visible{outline:2px solid var(--m-accent);outline-offset:2px}
+.m-label{font:600 12px/1.3 var(--m-mono);letter-spacing:.6px;text-transform:uppercase;color:var(--m-text-2)}
+.m-texture::after{content:"";position:fixed;inset:0;pointer-events:none;opacity:.035;z-index:0;
+  background:repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px),linear-gradient(90deg,rgba(255,255,255,.4) 1px,transparent 1px) 0 0/24px 24px}
+
+/* Header: 52px, fixed, hides on scroll down after 60px and returns on scroll up. */
+.m-hd{position:fixed;top:0;left:0;right:0;z-index:40;height:calc(var(--m-header-h) + var(--m-safe-top));padding:var(--m-safe-top) 4px 0 12px;
+  display:flex;align-items:center;gap:4px;background:var(--m-panel);border-bottom:1px solid var(--m-border);transition:transform var(--m-dur) ease}
+.m-hd.m-hide{transform:translateY(-100%)}
+#m-root .m-brand{font:600 16px/1 var(--m-mono);letter-spacing:2px;color:var(--m-text);margin-right:auto}
+#m-root .m-sys{display:inline-flex;align-items:center;gap:8px;min-height:var(--m-tap);padding:0 8px;font:600 12px/1 var(--m-mono);letter-spacing:.6px;color:var(--m-text-2)}
+.m-sys .m-dot{width:8px;height:8px;background:currentColor;flex:none}
+.m-sys svg{flex:none}
+/* State colors need the #m-root prefix to beat the button reset; every state also carries a glyph and a word. */
+#m-root .m-sys.m-nowriter{color:var(--m-attn)}#m-root .m-sys.m-qdown{color:var(--m-attn)}   /* decision queue down: orange, warning glyph */
+#m-root .m-alert.m-nowriter-note{margin:0 0 12px;padding:10px 12px;border:1px solid var(--m-attn-border);background:var(--m-attn-tint);color:var(--m-attn);border-radius:var(--m-radius);align-items:flex-start}
+#m-root .m-nowriter-note .m-g{margin-top:2px}
+#m-root .m-inline-link{display:inline;min-height:0;padding:0;color:inherit;font:inherit;text-transform:none;letter-spacing:normal;text-decoration:underline;text-underline-offset:2px}
+#m-root .m-inline-link::after{content:"";position:absolute;inset:-12px -6px}   /* 44px hit area */
+#m-root .m-inline-link{position:relative}
+#m-root .m-sys.m-ok{color:var(--m-ok)}#m-root .m-sys.m-delayed{color:var(--m-caution)}#m-root .m-sys.m-fault{color:var(--m-fault)}#m-root .m-sys.m-loading{color:var(--m-text-2)}
+#m-root .m-ic{width:var(--m-tap);height:var(--m-tap);display:inline-flex;align-items:center;justify-content:center;color:var(--m-text);border-radius:var(--m-radius)}
+
+/* Content: the page scrolls (no inner scroll box); room for header, tab bar and safe areas. */
+.m-main{position:relative;z-index:1;padding:calc(var(--m-header-h) + var(--m-safe-top) + 12px) 12px calc(var(--m-tabbar-h) + var(--m-safe-bottom) + 16px)}
+.m-pane[hidden]{display:none}
+.m-empty{padding:48px 12px;text-align:center;color:var(--m-text-2)}
+#m-root .m-empty p{margin:0 0 8px;text-align:center}
+.m-skel i{display:block;height:148px;margin-bottom:12px;background:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius)}
+
+/* Bottom tab bar: 64px, three tabs, icon + uppercase mono label; active = light gray + 1px top indicator. */
+.m-tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;height:calc(var(--m-tabbar-h) + var(--m-safe-bottom));padding-bottom:var(--m-safe-bottom);
+  display:grid;grid-template-columns:repeat(3,1fr);background:var(--m-panel);border-top:1px solid var(--m-border)}
+#m-root .m-tabs button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:var(--m-tap);
+  color:var(--m-text-2);font:600 12px/1 var(--m-mono);letter-spacing:.6px;text-transform:uppercase}
+#m-root .m-tabs button[aria-selected="true"]{color:var(--m-accent)}
+#m-root .m-tabs button[aria-selected="true"]::before{content:"";position:absolute;top:-1px;left:20%;right:20%;height:2px;background:var(--m-accent)}
+
+/* More sheet. */
+.m-scrim{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.4)}
+.m-sheet{position:fixed;left:0;right:0;bottom:0;z-index:61;max-height:85vh;overflow:auto;background:var(--m-raised);border-top:1px solid var(--m-border);
+  border-radius:14px 14px 0 0;padding:0 0 calc(12px + var(--m-safe-bottom))}
+.m-grab{width:36px;height:4px;margin:8px auto 4px;border-radius:2px;background:var(--m-line)}
+.m-sheet-h{display:flex;align-items:center;gap:12px;padding:0 4px 0 16px;min-height:52px;border-bottom:1px solid var(--m-border)}
+#m-root .m-sheet-h b{font:600 16px/1.2 var(--m-sans);text-transform:none;letter-spacing:normal}
+.m-sheet-h .m-x{margin-left:auto}
+#m-root .m-sheet-h .m-label{font-weight:400}
+.m-list{list-style:none;margin:0;padding:0}
+#m-root .m-list button{display:flex;flex-direction:column;justify-content:center;width:100%;min-height:52px;padding:8px 16px;text-align:left;border-bottom:1px solid var(--m-border)}
+/* Sentence case: titles 16px primary, descriptions 14px gray (the cockpit's own b/small rules would capitalize them). */
+#m-root .m-list b{display:block;font:600 16px/1.3 var(--m-sans);color:var(--m-text);text-transform:none;letter-spacing:normal}
+#m-root .m-list small{display:block;font:400 14px/1.35 var(--m-sans);color:var(--m-text-2);text-transform:none;letter-spacing:normal}
+#m-root .m-list .m-leave b{color:var(--m-text-2)}
+
+/* ---- Stage 3: Decide ---- */
+#m-root p{margin:0}
+.m-num{font-family:var(--m-mono);font-variant-numeric:tabular-nums}
+.m-g{flex:none;vertical-align:-2px;margin-right:4px}
+.m-count{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 10px}
+.m-count p{font:500 15px/1.3 var(--m-sans);color:var(--m-text-2)}
+#m-root .m-count b{font-size:22px;font-weight:600;margin-right:4px}
+#m-root .m-attn{color:var(--m-attn)}
+.m-chips{display:flex;gap:8px;margin:0 0 12px;flex-wrap:nowrap}
+#m-root .m-chip{min-height:36px;padding:0 12px;border:1px solid var(--m-border);border-radius:var(--m-radius);background:var(--m-panel);color:var(--m-text-2);
+  font:600 12px/1 var(--m-mono);letter-spacing:.6px;text-transform:uppercase;position:relative}
+#m-root .m-chip::after{content:"";position:absolute;inset:-4px 0}   /* 44px hit area around a 36px chip */
+#m-root .m-chip{transition:none}
+#m-root .m-chip[aria-pressed="true"]{background:var(--m-accent);color:var(--m-on-accent);border-color:var(--m-accent)}
+.m-stack{display:flex;flex-direction:column;gap:12px}
+.m-card{position:relative;background-color:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius);padding:14px;touch-action:pan-y;user-select:none;-webkit-user-select:none;
+  transition:transform var(--m-dur) ease,opacity var(--m-dur) ease}
+.m-card.m-top{background-color:var(--m-raised)}
+.m-card.m-drag{transition:none}
+.m-card.m-gone.m-right{transform:translateX(110%) rotate(6deg);opacity:0}
+.m-card.m-gone.m-left{transform:translateX(-110%) rotate(-6deg);opacity:0}
+.m-brackets{--bk:var(--m-line);background-image:linear-gradient(var(--bk),var(--bk)),linear-gradient(var(--bk),var(--bk)),linear-gradient(var(--bk),var(--bk)),linear-gradient(var(--bk),var(--bk)),linear-gradient(var(--bk),var(--bk)),linear-gradient(var(--bk),var(--bk)),linear-gradient(var(--bk),var(--bk)),linear-gradient(var(--bk),var(--bk));
+  background-repeat:no-repeat;background-size:10px 1px,1px 10px,10px 1px,1px 10px,10px 1px,1px 10px,10px 1px,1px 10px;background-position:0 0,0 0,100% 0,100% 0,0 100%,0 100%,100% 100%,100% 100%}
+.m-card.m-top.m-brackets{--bk:var(--m-accent)}
+.m-hint{position:absolute;top:14px;font:700 12px/1 var(--m-mono);letter-spacing:.6px;padding:6px 8px;border-radius:var(--m-radius);pointer-events:none;opacity:0}
+.m-hint-r{left:14px;color:var(--m-ok);border:1px solid var(--m-ok-border);opacity:var(--m-hint-r,0)}
+.m-hint-l{right:14px;color:var(--m-fault);border:1px solid var(--m-fault-border);opacity:var(--m-hint-l,0)}
+#m-root .m-card-open{display:flex;gap:12px;width:100%;text-align:left;align-items:flex-start}
+.m-card-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+#m-root .m-title{font:600 16px/1.3 var(--m-sans);color:var(--m-text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:normal}
+#m-root .m-sub{font:400 14px/1.35 var(--m-sans);color:var(--m-text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:none}
+.m-score{display:flex;flex-direction:column;align-items:flex-end;flex:none}
+#m-root .m-score b{font:600 30px/1 var(--m-mono);font-variant-numeric:tabular-nums;color:var(--m-text);display:flex;align-items:center}
+#m-root .m-score.m-b-top b{color:var(--m-ok)}#m-root .m-score.m-b-upper b{color:var(--m-caution)}#m-root .m-score.m-b-mid b{color:var(--m-text-2)}#m-root .m-score.m-b-low b{color:var(--m-fault)}
+#m-root .m-score b[data-g]::before{content:attr(data-g);font-size:.5em;margin-right:4px}   /* band glyph beside the number: never colour alone */
+#m-root .m-reason{margin:10px 0 0;font:600 12px/1.35 var(--m-mono);letter-spacing:.5px;text-transform:uppercase;color:var(--m-text-2)}
+#m-root .m-reason.ok,#m-root .m-pay.ok{color:var(--m-ok)}#m-root .m-reason.caution,#m-root .m-pay.caution{color:var(--m-caution)}#m-root .m-reason.fault,#m-root .m-pay.fault{color:var(--m-fault)}
+.m-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.m-b{text-transform:none;display:inline-flex;align-items:center;height:24px;padding:0 7px;border:1px solid var(--m-border);border-radius:var(--m-radius);background:var(--m-badge-bg);
+  font:500 12px/1 var(--m-mono);font-variant-numeric:tabular-nums;color:var(--m-text);white-space:nowrap}
+.m-b .m-g{width:12px;height:12px}
+.m-b.ok{color:var(--m-ok);border-color:var(--m-ok-border)}.m-b.caution{color:var(--m-caution);border-color:var(--m-caution-border)}
+.m-b.attn{color:var(--m-attn);border-color:var(--m-attn-border)}.m-b.fault{color:var(--m-fault);border-color:var(--m-fault-border)}
+.m-b.m-i{font-style:italic}
+.m-actions{display:flex;gap:8px;margin-top:12px;align-items:stretch}
+#m-root .m-btn{display:inline-flex;align-items:center;justify-content:center;gap:2px;min-height:44px;min-width:44px;padding:0 12px;flex:none;white-space:nowrap;border-radius:var(--m-radius);
+  font:600 15px/1 var(--m-sans);border:1px solid transparent;text-transform:none;letter-spacing:normal}
+#m-root .m-primary{background:var(--m-accent);color:var(--m-on-accent);flex:1 1 auto;min-width:0}
+#m-root .m-quiet{background:var(--m-raised);color:var(--m-text);border-color:var(--m-border)}
+#m-root .m-card.m-top .m-quiet{background:var(--m-panel)}
+#m-root .m-danger{color:var(--m-fault);border-color:var(--m-fault)}
+#m-root .m-dots{padding:0 10px;font-size:18px}
+#m-root .m-actions .m-danger,#m-root .m-dbar .m-danger{margin-left:auto}   /* pushed right; the ⋯ / Research gap is at least 16px (destructive neighbour, past the 8px floor) */
+#m-root .m-actions .m-dots,#m-root .m-dbar .m-research{margin-right:8px}
+.m-menu{margin-top:8px;border:1px solid var(--m-border);border-radius:var(--m-radius);background:var(--m-bg)}
+#m-root .m-menu button{display:flex;flex-direction:column;align-items:flex-start;width:100%;min-height:52px;padding:8px 12px;text-align:left;font:600 15px/1.3 var(--m-sans)}
+#m-root .m-menu button+button{border-top:1px solid var(--m-border)}
+#m-root .m-menu small{font:400 13px/1.3 var(--m-sans);color:var(--m-text-2)}
+#m-root .m-alert{margin-top:10px;display:flex;align-items:center;gap:8px;color:var(--m-fault);font:600 13px/1.3 var(--m-sans)}
+#m-root .m-say{margin-top:6px;font:400 13px/1.35 var(--m-sans);color:var(--m-text-2)}
+#m-root .m-say:empty{display:none}
+.m-done{text-align:center;padding:48px 16px;color:var(--m-text-2)}
+.m-done .m-g{width:28px;height:28px;color:var(--m-ok);display:block;margin:0 auto 8px}
+#m-root .m-done.m-pending .m-g{color:var(--m-caution)}#m-root .m-done.m-down .m-g{color:var(--m-attn)}   /* queue down: orange ⚠, same as the header */
+#m-root .m-done b{display:block;font:600 17px/1.3 var(--m-sans);color:var(--m-text);margin-bottom:6px}
+#m-root .m-done p{margin-bottom:16px}
+
+/* Undo toast: 5s with a countdown bar, above the tab bar. */
+.m-toast{position:fixed;left:12px;right:12px;bottom:calc(var(--m-tabbar-h) + var(--m-safe-bottom) + 12px);z-index:70;display:flex;align-items:center;gap:12px;
+  padding:10px 10px 12px 14px;background:var(--m-raised);border:1px solid var(--m-line);border-radius:var(--m-radius);overflow:hidden}
+.m-toast[hidden]{display:none}
+.m-toast p{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+#m-root .m-toast b{font:600 15px/1.3 var(--m-sans);color:var(--m-text);display:flex;align-items:center}
+.m-toast b .m-g{color:var(--m-ok)}
+#m-root .m-toast-say{font:400 13px/1.3 var(--m-sans);color:var(--m-text-2)}
+.m-bar{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--m-accent);transform-origin:left}
+.m-toast.m-run .m-bar{animation:m-countdown 5s linear forwards}
+@keyframes m-countdown{to{transform:scaleX(0)}}
+
+/* Job detail: full-screen sheet above everything (nothing from the page behind can show through: known issue 1). */
+html.m-detail-open body{overflow:hidden}
+.m-detail{position:fixed;inset:0;z-index:80;background:var(--m-bg);display:flex;flex-direction:column;transition:transform var(--m-dur) ease}
+.m-detail[hidden]{display:none}
+.m-dh{flex:none;background:var(--m-panel);border-bottom:1px solid var(--m-border);padding:var(--m-safe-top) 12px 10px 4px;touch-action:none}
+.m-dh-row{display:flex;align-items:flex-start;gap:4px}
+.m-dh-t{flex:1;min-width:0;padding-top:10px}
+#m-root .m-d-title{margin:0 0 4px;font:600 17px/1.3 var(--m-sans);color:var(--m-text);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-transform:none;letter-spacing:normal}
+.m-db{flex:1;overflow:auto;padding:12px 12px 16px;-webkit-overflow-scrolling:touch}
+.m-verdict{display:flex;gap:14px;align-items:center;padding:14px;background-color:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius)}
+.m-ring{flex:none;color:var(--m-text-2)}   /* bands off / not ranked / hold: neutral gray arc */
+/* Score ring and card scores by percentile band (pipeline-bands.js): TOP green, UPPER yellow, MID gray (as desktop; orange stays
+   for constraints and QUEUE DOWN), LOW red; the ring track stays gray. */
+#m-root .m-ring.m-b-top,#m-root .m-band-l.m-b-top{color:var(--m-ok)}#m-root .m-ring.m-b-upper,#m-root .m-band-l.m-b-upper{color:var(--m-caution)}
+#m-root .m-ring.m-b-mid,#m-root .m-band-l.m-b-mid{color:var(--m-text-2)}#m-root .m-ring.m-b-low,#m-root .m-band-l.m-b-low{color:var(--m-fault)}
+#m-root .m-band-l{margin:4px 0 0;font:600 12px/1.3 var(--m-mono);letter-spacing:.6px;color:var(--m-text-2)}
+/* One fill on open: the arc grows from empty in 250ms; no motion under reduced motion. */
+@keyframes m-ring-fill{from{stroke-dasharray:0 999}}
+#m-root .m-ring-in .m-ring-arc{animation:m-ring-fill 250ms ease-out 1}
+@media (prefers-reduced-motion:reduce){#m-root .m-ring-in .m-ring-arc{animation:none}}
+.m-ring-n{font:600 20px var(--m-mono);fill:var(--m-text)}
+#m-root .m-verdict-t{font:500 15px/1.4 var(--m-sans);color:var(--m-text)}
+#m-root .m-pay{margin-top:6px;font:500 14px/1.35 var(--m-sans);color:var(--m-text-2);display:flex;align-items:flex-start}
+#m-root .m-pay .m-g{margin-top:3px}
+.m-sec{margin-top:12px;border:1px solid var(--m-border);border-radius:var(--m-radius);background:var(--m-panel)}
+#m-root .m-sec summary{min-height:48px;display:flex;align-items:center;padding:0 14px;font:600 12px/1 var(--m-mono);letter-spacing:.6px;text-transform:uppercase;color:var(--m-text);cursor:pointer;list-style:none}
+.m-sec summary::-webkit-details-marker{display:none}
+.m-sec summary::after{content:"+";margin-left:auto;color:var(--m-text-2)}
+.m-sec[open] summary::after{content:"−"}
+.m-sec-b{padding:0 14px 14px;font:400 15px/1.45 var(--m-sans);color:var(--m-text)}
+.m-kv{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--m-border);font-size:15px}
+.m-kv span{color:var(--m-text-2)}
+.m-faint{color:var(--m-text-2)}
+#m-root .m-link{color:var(--m-text);text-decoration:underline;display:inline-flex;min-height:44px;align-items:center}
+.m-dbar{flex:none;display:flex;gap:8px;padding:10px 12px calc(10px + var(--m-safe-bottom));background:var(--m-panel);border-top:1px solid var(--m-border)}
+/* Detail action bar fits Pursue / Hold / Research / Decline without clipping down to 360px (CI 2026-11-02: Pursue had 0px to spare
+   at 390 and was clipped at 375; the CI runner's wider text then overflowed 360 by 7px, hence 14px text and 7px padding at <=380). Tighter side padding; the 16px Research-Decline gap stays; Pursue never shrinks below its label. */
+#m-root .m-dbar .m-btn{padding:0 10px}
+#m-root .m-dbar .m-primary{min-width:max-content}
+@media (max-width:380px){#m-root .m-dbar .m-btn{padding:0 7px;font-size:14px}#m-root .m-dbar{gap:6px;padding-left:10px;padding-right:10px}#m-root .m-dbar .m-research{margin-right:10px}}   /* 6px gap + 10px keeps Research-Decline at 16px */
+
+
+/* ---- Stage 4: Jobs ---- */
+.m-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.m-search{position:relative;display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;margin:4px 0 10px;background:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius);color:var(--m-text-2)}
+.m-search svg{flex:none;width:18px;height:18px}
+#m-root .m-search input{flex:1;min-width:0;height:42px;background:none;border:0;outline:0;color:var(--m-text);font:400 16px/1 var(--m-sans);padding:0;text-transform:none;letter-spacing:normal}
+.m-search:focus-within{outline:2px solid var(--m-accent);outline-offset:2px}
+.m-jobchips{gap:6px}
+#m-root .m-jobchips .m-chip{padding:0 10px}
+.m-chip-gap{flex:1}
+#m-root .m-jobcount{margin:0 0 8px}
+.m-rows{list-style:none;margin:0;padding:0;background:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius)}
+.m-rows li+li{border-top:1px solid var(--m-border)}
+#m-root .m-row{text-transform:none;letter-spacing:normal;display:flex;flex-direction:column;gap:4px;width:100%;min-height:76px;padding:10px 12px;text-align:left}
+.m-row-1{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;width:100%}
+#m-root .m-row .m-score b{font-size:22px}
+#m-root .m-row .m-badges{margin-top:4px}
+.m-more-rows{display:flex;justify-content:center;padding:12px}
+#m-root .m-empty-line{padding:32px 12px;text-align:center;color:var(--m-text-2)}
+/* Landscape phone: a real table, Title column and header sticky; the table scrolls sideways inside its own box only if
+   the columns do not fit (the page itself never scrolls sideways). */
+.m-table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--m-border);border-radius:var(--m-radius);background:var(--m-panel)}
+.m-table{border-collapse:separate;border-spacing:0;width:100%;font:400 14px/1.3 var(--m-sans);color:var(--m-text)}
+.m-table th,.m-table td{padding:4px 5px;text-align:left;border-bottom:1px solid var(--m-border);white-space:nowrap;vertical-align:middle}
+.m-table thead th{position:sticky;top:0;z-index:2;background:var(--m-raised);font:600 12px/1.2 var(--m-mono);letter-spacing:.6px;text-transform:uppercase;color:var(--m-text-2)}
+.m-table .m-sticky{position:sticky;left:0;z-index:1;background:var(--m-panel);max-width:160px;min-width:120px;padding-left:8px;white-space:normal}
+.m-clip{display:block;max-width:112px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-table thead .m-sticky{z-index:3;background:var(--m-raised)}
+.m-clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#m-root .m-link-row{display:flex;align-items:center;min-height:44px;text-align:left;font:600 14px/1.25 var(--m-sans);color:var(--m-text);text-transform:none;letter-spacing:normal}
+.m-table td.m-num{font:600 16px/1 var(--m-mono);font-variant-numeric:tabular-nums}   /* same weight as the portrait score: the sort key */
+.m-jobcount-l{display:none}
+.m-table td.m-okc{color:var(--m-ok)}
+/* Fields sheet switches. */
+#m-root .m-toggle{flex-direction:row!important;align-items:center;justify-content:space-between!important}
+.m-toggle i{position:relative;flex:none;width:44px;height:26px;border-radius:13px;background:var(--m-border);border:1px solid var(--m-line);transition:background var(--m-dur) ease}
+.m-toggle i::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--m-text-2);transition:transform var(--m-dur) ease}
+.m-toggle[aria-checked="true"] i{background:var(--m-accent)}
+.m-toggle[aria-checked="true"] i::after{transform:translateX(18px);background:var(--m-on-accent)}
+
+/* ---- Stage 4: Status ---- */
+#m-root .m-sec-l{margin:4px 0 10px}
+.m-flow{list-style:none;margin:0;padding:0}
+.m-stage{display:flex;align-items:center;gap:12px;padding:12px 14px;background-color:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius)}
+.m-stage.m-constraint{background-color:var(--m-attn-tint);border-color:var(--m-attn);--bk:var(--m-attn)}
+.m-stage.m-flash{animation:m-flash var(--m-dur-highlight) ease}
+@keyframes m-flash{0%{box-shadow:0 0 0 0 var(--m-accent)}50%{box-shadow:0 0 0 3px var(--m-accent)}100%{box-shadow:0 0 0 0 var(--m-accent)}}
+#m-root .m-stage-n{font-size:12px;color:var(--m-text-2);flex:none}
+.m-stage-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+#m-root .m-stage-t b{font:600 15px/1.3 var(--m-sans);color:var(--m-text)}
+#m-root .m-stage-r{font-size:13px;color:var(--m-text-2)}
+#m-root .m-stage-s{flex:none;display:flex;align-items:center;font:600 12px/1 var(--m-mono);letter-spacing:.6px;text-transform:uppercase;color:var(--m-text-2)}
+#m-root .m-stage-s.ok,#m-root .m-legend .ok,#m-root .m-fresh.ok{color:var(--m-ok)}
+#m-root .m-stage-s.caution,#m-root .m-legend .caution,#m-root .m-fresh.caution,#m-root .m-cau{color:var(--m-caution)}
+#m-root .m-stage-s.attn,#m-root .m-legend .attn{color:var(--m-attn)}
+#m-root .m-legend .fault,#m-root .m-fresh.fault{color:var(--m-fault)}
+.m-flow .m-wait{position:relative;margin-left:26px;padding:10px 0 10px 18px;border-left:2px solid var(--m-line)}
+#m-root .m-flow .m-wait span{font-size:13px;color:var(--m-text-2)}
+#m-root .m-cr-note{margin:10px 0 0;font:400 13px/1.4 var(--m-sans);color:var(--m-text-2)}
+.m-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.m-tile{padding:12px;background:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius);display:flex;flex-direction:column;gap:6px}
+#m-root .m-tile b{font-size:22px;font-weight:600;color:var(--m-text)}
+.m-legend{display:flex;flex-wrap:wrap;gap:6px 14px;list-style:none;margin:16px 0 0;padding:0}
+#m-root .m-legend li{display:flex;align-items:center;font:600 12px/1 var(--m-mono);letter-spacing:.6px;text-transform:uppercase}
+#m-root .m-fresh{margin-top:14px;display:flex;align-items:center;flex-wrap:wrap;gap:2px;font:600 12px/1.4 var(--m-mono);letter-spacing:.6px;color:var(--m-text-2)}
+#m-root .m-caution-note{color:var(--m-caution)}
+#m-root .m-down-note{color:var(--m-attn)}   /* queue down banner: orange, same as the header's QUEUE DOWN */
+#m-root .m-alert.m-stale{margin:0 0 12px;padding:10px 12px;border:1px solid var(--m-caution-border);border-radius:var(--m-radius);align-items:flex-start}
+#m-root .m-alert.m-stale .m-g{margin-top:2px}
+
+/* Landscape phone (Grok Bot GUI, Stage 4 review): at least four job rows at 844x390. */
+@media (max-height:520px) and (orientation:landscape){
+  html.m-shell{--m-tabbar-h:44px}
+  html.m-shell #m-root .m-tabs button span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}   /* label kept for screen readers */
+  html.m-shell #m-root .m-main{padding-top:calc(var(--m-header-h) + var(--m-safe-top) + 4px)}
+  html.m-shell #m-root .m-search:not(.m-open){display:none}
+  html.m-shell #m-root .m-jobchips{margin-bottom:6px;align-items:center}
+  html.m-shell #m-root .m-jobcount{display:none}
+  html.m-shell #m-root .m-jobcount-l{display:inline-flex;align-items:center;margin-left:6px}
+}
+
+/* Return from a desktop view. */
+#m-root .m-return{position:fixed;left:12px;bottom:calc(12px + var(--m-safe-bottom));z-index:200;display:inline-flex;align-items:center;gap:6px;min-height:var(--m-tap);
+  padding:0 14px 0 8px;background:var(--m-accent);color:var(--m-on-accent)!important;border-radius:var(--m-radius);font:600 12px/1 var(--m-mono)!important;letter-spacing:.6px;text-transform:uppercase}
+.m-return[hidden]{display:none}
+}
+@media (max-width:767px) and (prefers-reduced-motion:reduce),(max-width:932px) and (max-height:520px) and (pointer:coarse) and (prefers-reduced-motion:reduce){
+  html.m-shell{--m-dur:0ms;--m-dur-settle:0ms;--m-dur-highlight:0ms}
+  html.m-shell #m-root,html.m-shell #m-root *{animation:none!important;transition:none!important}
+}

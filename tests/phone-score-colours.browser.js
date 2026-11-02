@@ -1,6 +1,10 @@
 /* REV-068 (Track M step 2; Grok Bot 18:57 / 19:28 ET): on the phone, score colours come from the percentile bands as on
    desktop: table scores and the drawer ring. 390 x 844 and landscape 874 x 402, 141 open jobs (bands on); fixture
    (bands off) keeps Secondary. Run: node tests/phone-score-colours.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
+// Kept (Grok Bot GUI, Stage 3 review): the phone shell's score-colour check is tests/mobile-decide.browser.js; this test is
+// the only check on the old layout that touch tablets (768-980 px) still use. TODO(tablet follow-up): retire when tablets get the new layout.
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

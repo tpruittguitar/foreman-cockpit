@@ -5,6 +5,7 @@
    (or "+k MORE"). Phone: first tap opens a sheet above the bottom bar with Open job per job; empty-map tap closes; Open job opens it.
    Fixture, ?src=writer, offline geocode (state centroids). 2560x1440, 1440x900, 390x844 touch.
    Run: node tests/map-popup.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/mobile.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

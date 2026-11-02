@@ -1,5 +1,6 @@
 'use strict';
 const fs=require('fs'),path=require('path'),http=require('http'),assert=require('node:assert/strict');
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE||'playwright');
 const O=require('../pipeline-operations'),repo=path.resolve(__dirname,'..'),out=process.env.PIPELINE_UI_ARTIFACTS||'/tmp/pipeline-progress';
 const fixture=require('./gen_population').generate(600,70),rules=fs.readFileSync(repo+'/tests/fixtures/TIM_PIPELINE_RULES_CANONICAL.sample.txt','utf8');

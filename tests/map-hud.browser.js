@@ -2,6 +2,7 @@
    band) and BUILD 2 (four corner brackets drawn, every overlay clear of their arms, 3:1 against the map), plus L-1 (no map text under
    11 px, HUD text uppercase, pins carry a glyph). Filtered view at 100% and the selected job zoomed, at 2560x1440 and 1440x900.
    Run: node tests/map-hud.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/mobile.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

@@ -3,6 +3,7 @@
    re-triggered the body MutationObserver), so the Done button never received a click, and the saved editing flag
    put the app straight back into layout mode after a restart.
    Run: node tests/workspace-layout.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/mobile.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

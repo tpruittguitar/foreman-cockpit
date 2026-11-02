@@ -3,6 +3,13 @@
    request, and a held email resolves from Needs you with one tap.
    Run: node tests/act-now.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the other browser tests)
    ACT_NOW_SHOTS=<dir> also writes phone and desktop screenshots. */
+require('./helpers/block-production-writer.cjs');   // no request to the production Writer
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
+// Kept (Claude, Stage 3-4 review 2026-11-02): missed when Stage 2 moved the old phone tests onto the helper, so it failed at
+// 390x844 / 402x874 because phones now open the mobile shell's Decide tab, not the old Act now view. The phone shell's
+// Act now chip is checked by tests/mobile-decide.browser.js (count, at most 10, pressed state) but NOT for these list rules
+// (Shield AI first, Memphis and decided roles out), which reach it only through the shared actNowIds() source.
+// TODO(tablet follow-up): retire the phone contexts here when tablets get the new layout.
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');
@@ -124,6 +131,9 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
   }
   // 7 (Grok QA #182). "master changed; retry" (BATCH_RULING_RETRY) returns PLANNED items as ok:true with nothing written:
   //    none may be marked saved; all go to the outbox and are resent with the same requestIds until a batch commits.
+  //    A commit then reloads the live master. This fixture never changes, so the readback does not match and the ruling
+  //    settles at READBACK_UNCONFIRMED (same saved states as section 5). READBACK_PENDING is only the moment before that
+  //    reload; waiting for it alone loses the race once the local master answers quickly (CI, 2026-11-02).
   {
     let retries=1;
     ({ctx,page,errors,posts}=await open(phone(390,844),{post:b=>{if(b.action!=='batch')return {ok:true};const res=b.requests.map((q,i)=>({index:i,ok:true,mode:'PLANNED',primaryId:q.ruling.primaryId,requestId:q.ruling.requestId}));
@@ -138,7 +148,8 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
     const batches=()=>posts.filter(p=>p.action==='batch');
     const rids=batches()[0].requests.map(q=>q.ruling.requestId).sort();
     await page.evaluate(()=>{document.dispatchEvent(new Event('visibilitychange'))});
-    await page.waitForFunction(()=>{try{return Object.values(JSON.parse(localStorage.getItem('px.rulings'))).every(r=>r.writeStatus==='READBACK_PENDING'||r.writeStatus==='VERIFIED')}catch(e){return false}},null,{timeout:40000});
+    await page.waitForFunction(()=>{try{const rows=Object.values(JSON.parse(localStorage.getItem('px.rulings')));return rows.length>=3&&rows.every(r=>/^(READBACK_PENDING|READBACK_UNCONFIRMED|VERIFIED)$/.test(r.writeStatus)&&!(r.outbox&&r.outbox.auto))}catch(e){return false}},null,{timeout:40000});
+    assert.ok(batches().length>=2,'the outbox resent the batch');
     const last=batches()[batches().length-1];assert.deepStrictEqual(last.requests.map(q=>q.ruling.requestId).sort(),rids,'resent with the same requestIds');
     assert.deepStrictEqual(errors,[]);await ctx.close();
   }

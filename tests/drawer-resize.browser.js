@@ -1,5 +1,7 @@
 /* REV-077 (Tim 21:26 ET): wide desktop (three columns) map / drawer resize handle, and the decision row on one line even
    with a classic scrollbar in the drawer. Run: node tests/drawer-resize.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

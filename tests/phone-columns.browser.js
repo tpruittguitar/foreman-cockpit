@@ -2,6 +2,7 @@
    / 402; COMPANY and LOCATION mono 11 px Secondary with an ellipsis; header-edge resize (44 px target) saved per device and kept
    after a reload; minimums; double-tap resets; a tap still opens the header menu; desktop unchanged.
    Run: node tests/phone-columns.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

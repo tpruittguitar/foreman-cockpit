@@ -144,5 +144,17 @@
   function boardStatus(s){return {OK:'Successful',PARTIAL:'Partly checked',TEMPORARY_FAILURE:'Employer service unavailable',ACCESS_RESTRICTED:'Access restricted / possible maintenance',ADDRESS_OR_REQUEST_ERROR:'Address or request needs repair',INVALID_RESPONSE:'Unrecognized employer response'}[s]||'Unknown';}
   function recoveryLabel(s){return {PROVEN_PERSISTED:'Persistence proven',VERIFIED_RECEIPT_AND_ROWS:'Verified receipt and exact rows',ESCALATED:'Needs investigation',CHECK_FAILED:'Evidence read failed — retry queued',SAVED_AFTER_IMAGE_BINDING_MISSING:'Original row proof is missing',INSUFFICIENT_ROW_EVIDENCE:'Current rows do not prove the original write',NO_CANONICAL_REQUEST_BINDING:'Original or child request ID needs reconciliation',COMPLETE_RECEIPT_WITHOUT_EXACT_IDS:'Accepted row IDs need recovery',CURRENT_AND_ARCHIVE_ROWS_NOT_PROVEN:'Exact current/archive rows were not proven',EXACT_SAVED_WRITE_EVIDENCE:'Exact saved write evidence',DURABLE_COMPLETE_AND_EXACT_IDS:'Durable receipt and exact row identities'}[s]||String(s||'Unknown').replace(/_/g,' ');}
   function boardTime(t){return t&&Number.isFinite(Date.parse(t))?new Date(t).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not yet recorded';}
-  return {qualityHtml:qualityHtml,rateWindow:rateWindow,constraint:constraint,model:model,html:html,banner:banner,recordedDay:recordedDay,interviewStatus:interviewStatus,recruiting:recruiting};
+  /* Phone Status tab (pipeline-mobile.js, Tim 2026-11-02): the same stage rates, waiting queues and constraint as html(), as
+     plain data. Unknown stays null (never zero). html() is unchanged. */
+  function summary(m,options){
+    options=options||{};var hours=rateWindow(options.rateWindowHours),a=m.activity;
+    var completed=m.flow&&(m.flow.completionByWindow&&m.flow.completionByWindow[hours]||(hours===36?m.flow.completion:null)),rates=m.upstream?(m.upstream.ratesByWindow&&m.upstream.ratesByWindow[hours]||(hours===36?m.upstream.rates:null)):(hours===36?a&&a.rates36:null),en=completed&&completed.enrichment;if(m.evidenceDelayed){rates=null;completed=null;en=null;}
+    var per=function(r){return r&&r.available!==false&&Number.isFinite(r.perHour)?r.perHour:null;},bn=constraint([rates&&rates.discovery,rates&&rates.intake,en],[null,m.waiting[0].count,m.waiting[1].count],hours);
+    var stages=['Discovery','Intake','Enrichment'].map(function(name,i){return {name:name,perHour:per(i===2?en:rates&&(i===0?rates.discovery:rates.intake)),constraint:bn.indices.indexOf(i)>=0};}).concat([{name:'Your decisions',manual:true,constraint:false}]);
+    var st=m.outcomes&&m.outcomes.recruiting&&m.outcomes.recruiting.stages;
+    return {hours:hours,stages:stages,waiting:[0,1,2].map(function(i){var q=m.waiting&&m.waiting[i];return {count:q&&q.count!=null?q.count:null,partial:!!(q&&q.partial)};}),constraintReason:bn.reason,
+      needDecision:m.flow?m.flow.queues.readyForReview:null,applied:m.rowsKnown?m.outcomes.applied:null,interviews:m.contactsKnown&&st?Object.keys(st).reduce(function(t,k){return t+(st[k]||0);},0):null,
+      severity:m.severity||'',evidenceDelayed:!!m.evidenceDelayed,details:(function(){try{return flowAccounting(m,hours).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();}catch(e){return '';}})()};
+  }
+  return {summary:summary,qualityHtml:qualityHtml,rateWindow:rateWindow,constraint:constraint,model:model,html:html,banner:banner,recordedDay:recordedDay,interviewStatus:interviewStatus,recruiting:recruiting};
 });

@@ -183,7 +183,7 @@
       var preview=view.querySelector('[data-ops-preview]'),stage=view.querySelector('[data-ops-stage]'),draft=null;
       if(preview){var input=view.querySelector('[data-ops-task]');input.oninput=function(){draft=null;stage.disabled=true;};preview.onclick=function(){var result=view.querySelector('[data-ops-preview-result]');try{draft=JSON.parse(input.value);var proposed=PipelineScheduler.edit(schedules.manifest,draft,schedules.manifest.revision,new Date().toISOString());result.textContent=JSON.stringify({desiredOccurrences:PipelineScheduler.upcoming(draft,Date.now(),5),warnings:PipelineScheduler.warnings(proposed,Date.now()),providerStatus:'PENDING_MANUAL',applied:false},null,2);stage.disabled=false;}catch(e){draft=null;stage.disabled=true;result.textContent=e.message;}};stage.onclick=function(){if(draft)write({action:'save_schedule_proposal',task:draft,baseRevision:schedules.manifest.revision});};}
     }
-    return {render:function(view){paint(view);if((!loadedAt||Date.now()-Date.parse(loadedAt)>60000)&&!busy)refresh(view);},refresh:refresh,masterChanged:masterChanged,metrics:dashboardMetrics,start:start,saveInterviewStatus:saveInterviewStatus};
+    return {room:roomModel,rateWindowHours:function(){return rateWindowHours;},render:function(view){paint(view);if((!loadedAt||Date.now()-Date.parse(loadedAt)>60000)&&!busy)refresh(view);},refresh:refresh,masterChanged:masterChanged,metrics:dashboardMetrics,start:start,saveInterviewStatus:saveInterviewStatus};
   }
   root.PipelineOperationsUI={create:create};
 })(window);
