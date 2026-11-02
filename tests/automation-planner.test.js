@@ -23,3 +23,10 @@ test('stale, future and unsupported evidence cannot become clear-window advice',
  a.throws(()=>P.ruleMatch('RRULE:FREQ=MONTHLY',new Date(now),'UTC'));
  a.throws(()=>P.cronMatch('bad cron',new Date(now)));
 });
+
+test('planning duration adapts to recent main-run evidence, excluding failures and other branches',()=>{
+ const task={file:'work.yml',durationMinutes:360};
+ const run=n=>({path:'.github/workflows/work.yml',head_branch:'main',conclusion:'success',run_started_at:'2026-11-02T10:00Z',updated_at:new Date(Date.parse('2026-11-02T10:00Z')+n*60000).toISOString()});
+ a.equal(P.withObservedDuration(task,[run(1),run(2)]).durationMinutes,360);
+ a.equal(P.withObservedDuration(task,[run(1),run(2),run(5),{...run(100),head_branch:'feature'}]).durationMinutes,6);
+});

@@ -32,7 +32,12 @@ function workflow(text,file,repo){
  const group=(text.match(/^\s*group:\s*(.+)$/m)||[])[1]||'No workflow concurrency group';
  return {name:name.replace(/^['"]|['"]$/g,''),file,repo,crons,status:'ACTIVE',manual:/^\s*workflow_dispatch\s*:/m.test(text),durationMinutes:minutes.reduce((a,b)=>a+b,0)+Math.max(0,jobs.length-minutes.length)*360||360,durationBasis:'sum of job timeouts; unspecified jobs reserve the GitHub default six hours',group,cancels:/cancel-in-progress:\s*true/.test(text),inputs:/^\s+inputs:\s*$/m.test(text)};
 }
+function withObservedDuration(task,runs){
+ const samples=runs.filter(r=>r.path==='.github/workflows/'+task.file&&r.head_branch==='main'&&r.conclusion==='success').map(r=>(Date.parse(r.updated_at)-Date.parse(r.run_started_at))/MIN).filter(n=>Number.isFinite(n)&&n>0).sort((a,b)=>a-b);
+ if(samples.length<3)return task;
+ return {...task,durationMinutes:Math.max(1,Math.ceil(samples[Math.ceil(samples.length*.9)-1]*1.2)),durationBasis:'recent successful main runs: P90 + 20% ('+samples.length+' samples); planning estimate, not a runtime guarantee'};
+}
 function native(task,readback){const schedule=task.rrule||(/^Hourly :(\d{2})/.test(task.schedule||'')?'RRULE:FREQ=HOURLY;BYMINUTE='+Number(task.schedule.match(/:(\d{2})/)[1])+';BYSECOND=0':null);return {...task,name:task.name||task.taskKey,rrule:schedule,timezone:task.timezone||readback.timezone||'America/New_York',observedAt:task.observedAt||readback.at,durationMinutes:null};}
 function fresh(at,now,maxHours=24){const age=now-Date.parse(at);return Number.isFinite(age)&&age>=-5*MIN&&age<=maxHours*60*MIN;}
-const api={field,cronMatch,ruleMatch,occurrences,windows,workflow,native,fresh};if(typeof module==='object'&&module.exports)module.exports=api;else root.AutomationPlanner=api;
+const api={field,cronMatch,ruleMatch,occurrences,windows,workflow,withObservedDuration,native,fresh};if(typeof module==='object'&&module.exports)module.exports=api;else root.AutomationPlanner=api;
 })(typeof self!=='undefined'?self:this);
