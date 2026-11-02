@@ -25,7 +25,8 @@
     ok: '<path d="M5 12.5l4.5 4.5L19 7"/>',
     delayed: '<path d="M9.2 9a3 3 0 1 1 4.2 2.8c-.9.4-1.4 1.1-1.4 2.1v.6"/><path d="M12 18h.01"/>',
     fault: '<path d="M6 6l12 12M18 6L6 18"/>',
-    loading: '<circle cx="12" cy="12" r="1.6"/>'
+    loading: '<circle cx="12" cy="12" r="1.6"/>',
+    warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>'
   };
   function svg(k, size) { size = size || 22; return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (size < 20 ? 2.4 : 1.6) + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[k] + '</svg>'; }
 
@@ -56,7 +57,9 @@
         return '<li><button type="button" data-m-desk="' + m[0] + '"><b>' + m[1] + '</b><small>' + m[2] + '</small></button></li>';
       }).join('') + (d.classList.contains('touch-phone') ? '<li><button type="button" class="m-leave" data-m-layout="desktop"><b>Desktop layout ↗</b><small>Leaves the mobile view; use the full desktop cockpit on this phone</small></button></li>' : '') +
       '</ul></div>' +
-      '<button type="button" class="m-return" id="m-return" hidden>' + svg('back') + '<span>Mobile</span></button>';
+      '<button type="button" class="m-return" id="m-return" hidden>' + svg('back') + '<span>Mobile</span></button>' +
+      '<div class="m-detail" id="m-detail" role="dialog" aria-modal="true" aria-labelledby="m-d-title" hidden></div>' +
+      '<div class="m-toast" id="m-toast" role="status" aria-live="polite" hidden></div>';
   }
 
   function placeholder(name, stage) {
@@ -79,21 +82,250 @@
     var word = { OK: 'SYS OK', DELAYED: 'SYS DELAYED', FAULT: 'SYS FAULT', LOADING: 'SYS …' }[h.state] || 'SYS …';
     var el = $('m-sys'); if (!el) return;
     var k = { OK: 'ok', DELAYED: 'delayed', FAULT: 'fault' }[h.state] || 'loading';
+    /* No Writer connection set on purpose: that outranks system health, because nothing can be sent. */
+    if (h.state !== 'LOADING' && h.writer === false) { el.className = 'm-sys m-nowriter'; $('m-sys-word').textContent = 'NO WRITER'; $('m-sys-ic').innerHTML = svg('warn', 14); el.setAttribute('aria-label', 'Writer not connected: decisions cannot be sent from this device. Open Status.'); return; }
     el.className = 'm-sys m-' + k; $('m-sys-word').textContent = word; $('m-sys-ic').innerHTML = svg(k, 14);
     el.setAttribute('aria-label', 'System status: ' + word.replace('SYS ', '').toLowerCase() + '. Open Status.');
   }
 
+  /* Repaint once per frame; never while a card is being dragged or animated (the paint waits for it). */
+  var busy = 0, pending = false;
   function refresh() {
     if (!mounted || raf) return;
+    if (busy) { pending = true; return; }
     raf = root.requestAnimationFrame(function () {
       raf = 0; renderSys();
       var b = B(), loaded = b && b.ready();
-      $('m-pane-decide').innerHTML = loaded ? placeholder('Decide', 3) : skeleton();
+      renderDecide(loaded);
       $('m-pane-jobs').innerHTML = loaded ? placeholder('Jobs', 4) : skeleton();
       $('m-pane-status').innerHTML = loaded ? placeholder('Status', 4) : skeleton();
+      if (detailId) renderDetail();
     });
   }
+  function settle() { busy = Math.max(0, busy - 1); if (!busy && pending) { pending = false; refresh(); } }
   function skeleton() { return '<div class="m-skel" aria-busy="true" aria-label="Loading"><i></i><i></i><i></i></div>'; }
+
+  /* ---- Stage 3: badges, Decide cards, decisions with Undo, swipe, detail sheet ---------------------------------- */
+  var STALE_DAYS = 21, FIT_BORDER = 70, SCORE_OK = 85;
+  var G = {   // 14px semantic glyphs; the word or number always sits next to them (never colour alone)
+    ok: '<path d="M5 12.5l4.5 4.5L19 7"/>', caution: '<path d="M9.2 9a3 3 0 1 1 4.2 2.8c-.9.4-1.4 1.1-1.4 2.1v.6"/><path d="M12 18h.01"/>',
+    down: '<path d="M12 5v14M6 13l6 6 6-6"/>', no: '<path d="M6 6l12 12M18 6L6 18"/>', home: '<path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/>',
+    globe: '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.5 2.5 2.5 13.5 0 16M12 4c-2.5 2.5-2.5 13.5 0 16"/>', warn: '<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/>'
+  };
+  function gl(k) { return '<svg class="m-g" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + G[k] + '</svg>'; }
+  function k$(n) { return '$' + Math.round(n / 1000) + 'K'; }
+  function ageDays(v) { return v.added ? Math.max(0, Math.floor((Date.now() - v.added) / 864e5)) : null; }
+
+  /* Salary: green ✓ if the top of the range meets the pay this place needs, red ↓ if below, yellow ? when missing.
+     "~" marks an estimate (not employer-verified). */
+  function payState(v) {
+    if (!v.salary.text) return 'missing';
+    if (v.need == null || v.salary.top == null) return 'unknown';
+    return v.salary.top >= v.need ? 'ok' : 'below';
+  }
+  function badges(v, opt) {
+    var out = [], ps = payState(v), st = v.salary.text ? (v.salary.approx ? '~' : '') + v.salary.text.replace(/k/g, 'K') : '';
+    if (ps === 'ok') out.push(['ok', gl('ok') + esc(st), 'Salary ' + st + ', meets the pay you need']);
+    else if (ps === 'below') out.push(['fault', gl('down') + esc(st), 'Salary ' + st + ', below the pay you need']);
+    else if (ps === 'missing') out.push(['caution m-i', gl('caution') + '— est. pending', 'Salary estimate pending']);
+    else out.push(['', esc(st), 'Salary ' + st]);
+    if (v.fit == null) out.push(['caution', gl('caution') + 'Fit', 'Fit not measured']);
+    else if (v.fit < FIT_BORDER) out.push(['caution', '~ Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit) + ', borderline']);
+    else out.push(['', 'Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit)]);
+    out.push(flexBadge(v.flex));
+    var a = ageDays(v);
+    if (opt && opt.skipAge) return out;
+    if (a == null) out.push(['caution', gl('caution') + 'Age', 'Age unknown']);
+    else if (a > STALE_DAYS) out.push(['caution', gl('caution') + a + 'd', a + ' days old, stale']);
+    else out.push(['', a + 'd', a + ' days old']);
+    return out;
+  }
+  /* Flex classes from the scoring model (Grok Bot GUI, Stage 1): Strict is red, No flex orange, unknown yellow. */
+  function flexBadge(c) {
+    return { HIGH_FLEX: ['ok', gl('globe') + 'High flex', 'High flex'], SOFT_FLEX: ['ok', gl('home') + 'Soft flex', 'Soft flex'],
+      NO_FLEX: ['attn', gl('no') + 'No flex', 'No flex'], STRICT: ['fault', gl('no') + 'Strict', 'Strict, no flex'] }[c] || ['caution', gl('caution') + 'Flex', 'Flex not recorded'];
+  }
+  function badgeRow(v, opt) { return '<div class="m-badges">' + badges(v, opt).map(function (b) { return '<span class="m-b ' + b[0] + '" title="' + esc(b[2]) + '" aria-label="' + esc(b[2]) + '">' + b[1] + '</span>'; }).join('') + '</div>'; }
+
+  /* Reason line: one mono line, coloured by meaning, always with its glyph. */
+  function reason(v) {
+    var ps = payState(v), a = ageDays(v);
+    if (ps === 'below') return ['fault', gl('down') + 'Pay below need · ' + k$(v.need) + (v.needArea ? ' for ' + esc(v.needArea) : '')];
+    if (ps === 'missing') return ['caution', gl('caution') + 'Salary not posted'];
+    if (a != null && a > STALE_DAYS) return ['caution', gl('caution') + 'Aging · posted ' + a + 'd ago', 'age'];
+    if (v.fit != null && v.fit < FIT_BORDER) return ['caution', gl('caution') + 'Stretch · fit ' + Math.round(v.fit)];
+    if (ps === 'ok') return ['ok', gl('ok') + 'Pay meets target'];
+    return ['', 'Pay vs need not known'];
+  }
+  function scoreHtml(v, big) {
+    if (v.score == null) return '<div class="m-score"><b class="m-num">—</b><span class="m-label">Unscored</span></div>';
+    var ok = v.score >= SCORE_OK;
+    return '<div class="m-score' + (ok ? ' ok' : '') + '" aria-label="Score ' + Math.round(v.score) + (ok ? ', strong' : '') + '"><b class="m-num">' + (ok ? gl('ok') : '') + Math.round(v.score) + '</b><span class="m-label">Score</span></div>';
+  }
+
+  var decideFilter = 'all', menuFor = null, swipeX = 0, toastTimer = 0, lastDecision = null, holdTimer = 0;
+  function queue() {
+    var b = B(), rows = b.decideRows(), ids = decideFilter === 'act' ? b.actNowIds() : null;
+    if (ids) rows = rows.filter(function (r) { return ids.indexOf(r.id) >= 0; });
+    return rows.map(function (r) { return b.view(r); }).sort(function (a, c) { return (c.score == null ? -1 : c.score) - (a.score == null ? -1 : a.score) || String(a.id).localeCompare(String(c.id)); });
+  }
+  function cardHtml(v, top) {
+    var rs = reason(v), ns = B().notSaved(v.id);
+    return '<article class="m-card' + (top ? ' m-top m-brackets' : '') + '" data-m-card="' + esc(v.id) + '" aria-label="' + esc(v.title + ', ' + v.company) + '">' +
+      (top ? '<div class="m-hint m-hint-r" aria-hidden="true">' + gl('ok') + 'PURSUE</div><div class="m-hint m-hint-l" aria-hidden="true">' + gl('no') + 'DECLINE</div>' : '') +
+      '<button type="button" class="m-card-open" data-m-open="' + esc(v.id) + '"><span class="m-card-t"><b class="m-title">' + esc(v.title) + '</b><span class="m-sub">' + esc([v.company, v.location].filter(Boolean).join(' · ')) + '</span></span>' + scoreHtml(v) + '</button>' +
+      '<p class="m-reason ' + rs[0] + '">' + rs[1] + '</p>' + badgeRow(v, { skipAge: rs[2] === 'age' }) +
+      (ns ? '<p class="m-alert" role="alert">' + gl('no') + 'Decision not saved <button type="button" class="m-btn m-quiet" data-m-retry="' + esc(v.id) + '">Retry</button></p>' : '') +
+      '<div class="m-actions"><button type="button" class="m-btn m-primary" data-m-do="pursue" data-id="' + esc(v.id) + '">' + gl('ok') + 'Pursue</button>' +
+      '<button type="button" class="m-btn m-quiet" data-m-do="hold" data-id="' + esc(v.id) + '">Hold</button>' +
+      '<button type="button" class="m-btn m-quiet m-dots" data-m-menu="' + esc(v.id) + '" aria-haspopup="menu" aria-expanded="' + (menuFor === v.id) + '" aria-label="More actions">⋯</button>' +
+      '<button type="button" class="m-btn m-danger" data-m-do="decline" data-id="' + esc(v.id) + '">' + gl('no') + 'Decline</button></div>' +
+      (menuFor === v.id ? menuHtml(v.id) : '') + '<p class="m-say" role="status" data-m-say="' + esc(v.id) + '"></p></article>';
+  }
+  function menuHtml(id) {
+    return '<div class="m-menu" role="menu"><button type="button" role="menuitem" data-m-do="research" data-id="' + esc(id) + '">Research<small>Ask for more research before deciding</small></button>' +
+      '<button type="button" role="menuitem" data-m-open="' + esc(id) + '">Open details<small>Posting, fit and score, my application</small></button></div>';
+  }
+  function renderDecide(loaded) {
+    var p = $('m-pane-decide');
+    if (!loaded) { p.innerHTML = skeleton(); return; }
+    var q = queue(), rows = B().decideRows(), all = rows.length, ids = B().actNowIds(), act = rows.filter(function (r) { return ids.indexOf(r.id) >= 0; }).length;
+    var head = '<div class="m-count"><p><b class="m-num m-attn">' + all + '</b> need you</p><span class="m-label">Sort: score ↓</span></div>' +
+      '<div class="m-chips" role="group" aria-label="Decide filter"><button type="button" class="m-chip" data-m-filter="all" aria-pressed="' + (decideFilter === 'all') + '">All · ' + all + '</button>' +
+      '<button type="button" class="m-chip" data-m-filter="act" aria-pressed="' + (decideFilter === 'act') + '" title="Act Now: up to 10 roles to act on first (Director and up, US, scored)">Act now · ' + act + '</button></div>';
+    var h = B().health();
+    if (h.writer === false) head = '<p class="m-alert m-nowriter-note" role="status">' + gl('warn') + '<span>Writer not connected · decisions can’t be sent from this device. Save a connection in <button type="button" class="m-inline-link" data-m-settings>Settings</button>.</span></p>' + head;
+    p.innerHTML = head + (q.length ? '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>' :
+      '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision' + (decideFilter === 'act' ? ' in Act Now' : '') + '. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>');
+    bindDecide(p);
+  }
+  function say(id, t) { document.querySelectorAll('[data-m-say="' + id + '"]').forEach(function (e) { e.textContent = t; }); var ts = $('m-toast-say'); if (ts && lastDecision && lastDecision.id === id) ts.textContent = t; }
+
+  /* A decision: queued in the existing ruling sender first; only then does the card leave and the Undo toast appear. */
+  var WORD = { pursue: 'Pursue', hold: 'Hold', research: 'Research', decline: 'Decline' };
+  function decide(id, kind, card) {
+    var res = B().decide(id, kind, function (t) { say(id, t); });
+    if (!res || !res.ok) { say(id, (res && res.msg) || 'Not saved.'); if (card) { card.classList.remove('m-gone'); card.style.transform = ''; } return false; }
+    menuFor = null; lastDecision = { id: id, kind: kind };
+    var done = function () { toast(WORD[kind] + ' queued', id); settle(); };
+    if (card && !reduced()) { busy++; card.classList.add('m-gone', kind === 'decline' ? 'm-left' : 'm-right'); setTimeout(done, 200); } else { busy++; done(); }
+    if (detailId === id) closeDetail(true);
+    return true;
+  }
+  function reduced() { return root.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  function toast(text, id) {
+    var t = $('m-toast'); clearTimeout(toastTimer);
+    t.innerHTML = '<p><b>' + gl('ok') + esc(text) + '</b><span id="m-toast-say" class="m-toast-say"></span></p><button type="button" class="m-btn m-quiet" id="m-undo">Undo</button><i class="m-bar"></i>';
+    t.hidden = false; t.classList.remove('m-run'); void t.offsetWidth; t.classList.add('m-run');
+    $('m-undo').onclick = function () { undo(id); };
+    toastTimer = setTimeout(function () { t.hidden = true; }, 5000);
+  }
+  function undo(id) {
+    clearTimeout(toastTimer); var t = $('m-toast');
+    t.innerHTML = '<p><b>Undoing…</b><span id="m-toast-say" class="m-toast-say"></span></p>';
+    B().undo(id, function (m) { var s = $('m-toast-say'); if (s) s.textContent = m; });
+    toastTimer = setTimeout(function () { t.hidden = true; }, 3000);
+    lastDecision = null; refresh();
+  }
+
+  /* Swipe the top card: right past 100px = Pursue, left = Decline. The buttons do the same thing. */
+  function swipe(card) {
+    var id = card.getAttribute('data-m-card'), x0 = 0, y0 = 0, on = false, dx = 0;
+    card.addEventListener('pointerdown', function (e) { if (e.button || e.target.closest('button')) return; x0 = e.clientX; y0 = e.clientY; on = true; dx = 0; });
+    card.addEventListener('pointermove', function (e) {
+      if (!on) return; dx = e.clientX - x0;
+      if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(e.clientY - y0)) return;
+      if (!card.classList.contains('m-drag')) { card.classList.add('m-drag'); busy++; try { card.setPointerCapture(e.pointerId); } catch (x) {} }
+      card.style.transform = 'translateX(' + dx + 'px) rotate(' + (dx / 40) + 'deg)';
+      card.style.setProperty('--m-hint-r', Math.max(0, Math.min(1, dx / 100))); card.style.setProperty('--m-hint-l', Math.max(0, Math.min(1, -dx / 100)));
+    });
+    function end() {
+      if (!on) return; on = false; if (!card.classList.contains('m-drag')) return;
+      card.classList.remove('m-drag'); card.style.removeProperty('--m-hint-r'); card.style.removeProperty('--m-hint-l');
+      if (Math.abs(dx) > 100) { settle(); decide(id, dx > 0 ? 'pursue' : 'decline', card); } else { card.style.transform = ''; settle(); }
+    }
+    card.addEventListener('pointerup', end); card.addEventListener('pointercancel', end);
+  }
+  function bindDecide(p) {
+    p.querySelectorAll('[data-m-filter]').forEach(function (b) { b.onclick = function () { decideFilter = b.getAttribute('data-m-filter'); refresh(); }; });
+    p.querySelectorAll('[data-m-do]').forEach(function (b) { b.onclick = function () { decide(b.getAttribute('data-id'), b.getAttribute('data-m-do'), b.closest('.m-card')); }; });
+    p.querySelectorAll('[data-m-menu]').forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-m-menu'); menuFor = menuFor === id ? null : id; refresh(); }; });
+    p.querySelectorAll('[data-m-open]').forEach(function (b) { b.onclick = function () { if (holdTimer === -1) { holdTimer = 0; return; } menuFor = null; openDetail(b.getAttribute('data-m-open')); }; });
+    p.querySelectorAll('[data-m-retry]').forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-m-retry'), r = B().retry(id, function (t) { say(id, t); }); if (!r.ok) say(id, r.msg); }; });
+    var br = p.querySelector('[data-m-browse]'); if (br) br.onclick = function () { setTab('jobs'); };
+    var st = p.querySelector('[data-m-settings]'); if (st) st.onclick = function () { openDesktop('settings'); };
+    /* Long-press a card (500ms) for the same menu as ⋯ (Research in two taps or fewer). */
+    p.querySelectorAll('.m-card').forEach(function (c) {
+      var id = c.getAttribute('data-m-card');
+      c.addEventListener('pointerdown', function (e) { if (e.target.closest('.m-actions,.m-menu')) return; clearTimeout(holdTimer); holdTimer = setTimeout(function () { holdTimer = -1; menuFor = id; refresh(); }, 500); });
+      ['pointerup', 'pointercancel', 'pointermove'].forEach(function (ev) { c.addEventListener(ev, function (e) { if (ev === 'pointermove' && Math.abs(e.movementX) + Math.abs(e.movementY) < 4) return; if (holdTimer > 0) { clearTimeout(holdTimer); holdTimer = 0; } }); });
+      c.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    });
+    var top = p.querySelector('.m-card.m-top'); if (top) swipe(top);
+  }
+
+  /* Job detail: full-screen sheet. Back arrow, swipe down on the handle (> 120px), Escape and browser/phone Back close it. */
+  var detailId = null, detailFocus = null;
+  function ring(score) {
+    var r = 30, c = 2 * Math.PI * r, f = score == null ? 0 : Math.max(0, Math.min(100, score)) / 100;
+    return '<svg class="m-ring" width="88" height="88" viewBox="0 0 88 88" aria-hidden="true"><g transform="translate(44 44)">' +
+      '<circle r="' + r + '" fill="none" stroke="#2E2E2E" stroke-width="6"/><circle r="' + r + '" fill="none" stroke="currentColor" stroke-width="6" stroke-dasharray="' + (c * f).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90)"/>' +
+      '<circle r="22" fill="none" stroke="#4A4A4A" stroke-width="1" stroke-dasharray="2 4"/>' +
+      '<path d="M0 -42v8M42 0h-8M0 42v-8M-42 0h8" stroke="#4A4A4A" stroke-width="1.5"/>' +
+      '<text y="7" text-anchor="middle" class="m-ring-n">' + (score == null ? '—' : Math.round(score)) + '</text></g></svg>';
+  }
+  function detailHtml(v) {
+    var ps = payState(v), a = ageDays(v);
+    var pay = v.salary.text ? 'Pays ' + (v.salary.approx ? '~' : '') + esc(v.salary.text.replace(/k/g, 'K')) + (v.need ? ' · you need ' + k$(v.need) + (v.needArea ? ' for ' + esc(v.needArea) : '') : '') : 'Salary estimate pending' + (v.need ? ' · you need ' + k$(v.need) + (v.needArea ? ' for ' + esc(v.needArea) : '') : '');
+    var payCls = ps === 'below' ? 'fault' : ps === 'missing' ? 'caution' : ps === 'ok' ? 'ok' : '';
+    var payGl = ps === 'below' ? gl('down') : ps === 'missing' ? gl('caution') : ps === 'ok' ? gl('ok') : '';
+    var verdict = ps === 'below' ? 'Pay is below what this location needs.' : ps === 'missing' ? 'Salary not known yet; check the posting before deciding.' : v.score != null && v.score >= SCORE_OK ? 'Strong match: worth pursuing.' : v.fit != null && v.fit < FIT_BORDER ? 'A stretch on fit; check the posting.' : 'Decent match; decide on the details.';
+    function sec(t, body) { return '<details class="m-sec"><summary>' + t + '</summary><div class="m-sec-b">' + body + '</div></details>'; }
+    function kv(k, val) { return '<div class="m-kv"><span>' + k + '</span><b>' + val + '</b></div>'; }
+    return '<div class="m-dh" id="m-dh"><div class="m-grab" aria-hidden="true"></div><div class="m-dh-row"><button type="button" class="m-ic" id="m-d-back" aria-label="Back to the list">' + svg('back') + '</button>' +
+      '<div class="m-dh-t"><h2 class="m-d-title" id="m-d-title">' + esc(v.title) + '</h2><p class="m-sub">' + esc([v.company, v.location].filter(Boolean).join(' · ')) + '</p></div></div></div>' +
+      '<div class="m-db"><section class="m-verdict m-brackets">' + ring(v.score) + '<div><p class="m-verdict-t">' + esc(verdict) + '</p>' + (ps === 'missing' ? '' : '<p class="m-pay ' + payCls + '">' + payGl + pay + '</p>') + '</div></section>' +
+      badgeRow(v) +
+      sec('Posting', (v.why ? '<p>' + esc(v.why) + '</p>' : '<p class="m-faint">No fit summary recorded.</p>') + (v.url ? '<p><a class="m-link" href="' + esc(v.url) + '" target="_blank" rel="noopener">Open the posting ↗</a></p>' : '')) +
+      sec('Fit &amp; score', kv('Raw fit', v.fit == null ? '? not measured' : Math.round(v.fit)) + kv('Pay vs target', ps === 'ok' ? '✓ meets need' : ps === 'below' ? '↓ below need' : ps === 'missing' ? '? pending' : 'not known') +
+        kv('Flex', esc(flexBadge(v.flex)[2])) + kv('Recency', a == null ? '? unknown' : a + ' days') + kv('Final score', v.score == null ? 'unscored' : Math.round(v.score))) +
+      sec('My application', v.applied ? kv('Applied', esc(v.applied.date || 'yes')) : '<p class="m-faint">No application recorded.</p>') + (v.ruling ? kv('Decision', esc(v.ruling)) : '') +
+      '<p class="m-say" role="status" data-m-say="' + esc(v.id) + '"></p></div>' +
+      '<div class="m-dbar"><button type="button" class="m-btn m-primary" data-m-do="pursue" data-id="' + esc(v.id) + '">' + gl('ok') + 'Pursue</button>' +
+      '<button type="button" class="m-btn m-quiet" data-m-do="hold" data-id="' + esc(v.id) + '">Hold</button>' +
+      '<button type="button" class="m-btn m-quiet m-research" data-m-do="research" data-id="' + esc(v.id) + '">Research</button>' +
+      '<button type="button" class="m-btn m-danger" data-m-do="decline" data-id="' + esc(v.id) + '">' + gl('no') + 'Decline</button></div>';
+  }
+  function openDetail(id) {
+    var b = B(), r = b.rows().filter(function (x) { return x.id === id; })[0]; if (!r) return;
+    detailId = id; detailFocus = document.activeElement;
+    var d = $('m-detail'); d.hidden = false; renderDetail(); document.documentElement.classList.add('m-detail-open');
+    try { history.pushState({ mDetail: id }, ''); } catch (e) {}
+    var bk = $('m-d-back'); if (bk) bk.focus();
+  }
+  function renderDetail() {
+    var d = $('m-detail'), r = B().rows().filter(function (x) { return x.id === detailId; })[0]; if (!r) { closeDetail(true); return; }
+    var open = [].map.call(d.querySelectorAll('details'), function (x) { return x.open; });
+    d.innerHTML = detailHtml(B().view(r)); d.querySelectorAll('details').forEach(function (x, i) { if (open[i]) x.open = true; });
+    $('m-d-back').onclick = function () { closeDetail(); };
+    d.querySelectorAll('[data-m-do]').forEach(function (b) { b.onclick = function () { decide(b.getAttribute('data-id'), b.getAttribute('data-m-do'), null); }; });
+    dragClose($('m-dh'), d);
+  }
+  /* how === 'pop': the phone/browser Back already removed our history entry. Any other close (back arrow, swipe, Escape,
+     after a decision) removes the entry openDetail pushed, so Back never reopens a closed sheet. */
+  function closeDetail(how) {
+    if (!detailId) return; detailId = null;
+    var d = $('m-detail'); d.hidden = true; d.innerHTML = ''; d.style.transform = ''; document.documentElement.classList.remove('m-detail-open');
+    if (how !== 'pop') { try { if (history.state && history.state.mDetail) history.back(); } catch (e) {} }
+    if (detailFocus && detailFocus.focus && document.contains(detailFocus)) detailFocus.focus();
+  }
+  function dragClose(handle, sheetEl) {
+    var y0 = 0, on = false, dy = 0;
+    handle.addEventListener('pointerdown', function (e) { if (e.target.closest('button')) return; on = true; y0 = e.clientY; dy = 0; try { handle.setPointerCapture(e.pointerId); } catch (x) {} });
+    handle.addEventListener('pointermove', function (e) { if (!on) return; dy = Math.max(0, e.clientY - y0); sheetEl.style.transform = 'translateY(' + dy + 'px)'; });
+    function end() { if (!on) return; on = false; if (dy > 120) closeDetail(); else sheetEl.style.transform = ''; }
+    handle.addEventListener('pointerup', end); handle.addEventListener('pointercancel', end);
+  }
 
   /* More sheet: a bottom sheet over a scrim; Escape or the scrim closes it. */
   var lastFocus = null;
@@ -133,7 +365,11 @@
     document.querySelectorAll('[data-m-desk]').forEach(function (b) { b.onclick = function () { openDesktop(b.getAttribute('data-m-desk')); }; });
     var lay = document.querySelector('[data-m-layout]');
     if (lay) lay.onclick = function () { try { localStorage.setItem('px.layout', 'desktop'); } catch (e) {} location.reload(); };
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && d.classList.contains('m-shell')) sheet(false); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !d.classList.contains('m-shell')) return;
+      if (!$('m-more-sheet').hidden) sheet(false); else if (detailId) closeDetail(); else if (menuFor) { menuFor = null; refresh(); }
+    });
+    root.addEventListener('popstate', function () { if (detailId) closeDetail('pop'); });
     root.addEventListener('scroll', onScroll, { passive: true });
   }
 

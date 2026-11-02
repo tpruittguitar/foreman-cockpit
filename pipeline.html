@@ -31,7 +31,7 @@ header{flex:none;border-bottom:1px solid var(--line);background:linear-gradient(
 .brand{font-weight:700;letter-spacing:3px;font-size:12px;color:var(--white)}.brand small{display:block;font-weight:400;letter-spacing:1px;font-size:10.8px;color:var(--faint)}
 .build-identity{position:relative;flex:none}.build-badge{font:10.8px var(--mono);text-transform:none;letter-spacing:0;padding:3px 6px;color:var(--dim);border-color:var(--line2);white-space:nowrap}.build-badge.latest{color:var(--ok);border-color:var(--ok)}.build-badge.behind{color:var(--caution);border-color:var(--caution)}.build-badge.unknown{color:var(--dim);border-color:var(--line2)}
 .build-panel{position:absolute;right:0;top:calc(100% + 6px);z-index:50;min-width:310px;max-width:min(430px,90vw);padding:9px;background:#080808;border:1px solid var(--line2);box-shadow:0 8px 30px #000;color:var(--text);font:11.3px/1.45 var(--sans)}.build-panel[hidden]{display:none}.build-panel h3{margin:0 0 7px;font-size:10.8px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}.build-panel .build-row{display:grid;grid-template-columns:105px minmax(0,1fr);gap:4px 8px;margin:3px 0}.build-panel .build-key{color:var(--faint);font-family:var(--mono);text-transform:uppercase;font-size:10.8px}.build-panel .build-value{min-width:0;overflow-wrap:anywhere}.build-panel .build-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}.build-panel .build-status{margin-top:7px;color:var(--dim)}
-.writer-identity{position:relative;flex:none}.writer-badge{display:inline-flex;align-items:center;gap:6px}.writer-badge.ok{color:var(--ok);border-color:var(--ok)}.writer-badge.warn{color:var(--caution);border-color:var(--caution)}.writer-badge.critical{color:#fff;background:var(--fault);border-color:var(--fault)}.sys-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none;box-shadow:0 0 0 2px var(--panel)}.sys-dot.FAULT{background:var(--fault)}.sys-dot.DEGRADED,.sys-dot.CAUTION{background:var(--caution)}.sys-dot.NOTICE{background:var(--dim)}.writer-badge.critical .sys-dot{background:#fff}
+.writer-identity{position:relative;flex:none}.writer-badge{display:inline-flex;align-items:center;gap:6px}.writer-badge.ok{color:var(--ok);border-color:var(--ok)}.writer-badge.warn{color:var(--caution);border-color:var(--caution)}.writer-badge.off{color:#E8862A;border-color:#E8862A}header .hcell.hs-nowriter small,header .hcell.hs-nowriter b,.writer-badge.off small,.writer-badge.off b{color:#E8862A!important}header .hcell.hs-nowriter b{white-space:nowrap}.writer-badge.critical{color:#fff;background:var(--fault);border-color:var(--fault)}.sys-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none;box-shadow:0 0 0 2px var(--panel)}.sys-dot.FAULT{background:var(--fault)}.sys-dot.DEGRADED,.sys-dot.CAUTION{background:var(--caution)}.sys-dot.NOTICE{background:var(--dim)}.writer-badge.critical .sys-dot{background:#fff}
 .writer-runs{margin:4px 0 0;padding:0;list-style:none}.writer-runs li{display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px;margin:2px 0}.writer-runs .pill{font-size:10.2px;text-align:center}.pill.warn{border-color:var(--caution);color:var(--caution)}.pill.notice{border-color:var(--line2);color:var(--dim)}
 #load-alert,#writer-alert{display:none;align-items:center;gap:10px;padding:7px 10px;font:11.7px/1.45 var(--sans);color:var(--text);background:#1a1507;border-bottom:1px solid var(--caution);border-left:4px solid var(--caution);animation:strip-in 220ms var(--ease) both}#load-alert.on,#writer-alert.on{display:flex}#load-alert.fault,#writer-alert.fault{background:#2a1215;border-color:var(--fault)}#load-alert .lvl,#writer-alert .lvl{font:10.2px var(--mono);letter-spacing:1.6px;color:#f0cf7a;flex:none}.fault .lvl{color:#ff8a8e!important}#load-alert .msg,#writer-alert .msg{flex:1;min-width:0}#load-alert b,#writer-alert b{font:11px var(--mono);letter-spacing:1px;margin-right:6px}#load-alert button,#writer-alert button{font-size:10.8px;padding:1px 6px;flex:none}.strip-x{background:transparent!important;border:0!important;color:var(--dim)!important;font-size:14px!important;padding:0 4px!important;line-height:1}.strip-x:hover{color:var(--text)!important}body[data-freshness=stale] #readout,body[data-freshness=none] #readout{color:var(--caution)}@keyframes strip-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 /* #writer-alert shares #load-alert styling (severity strips) */
@@ -496,7 +496,12 @@ var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
 var mapView={fitPending:true,userZoomed:false,tapPin:null,zoom:1,x:480,y:255,focus:null,hasFocused:false,animation:0,request:0,found:[],active:null,overview:null,returnView:null};
 var scoreCache={fp:"",rows:{}};
 var S={anSnooze:LS.get('anSnooze',{}),anCollapsed:LS.get('anCollapsed',false),changeOk:{},held:null,cfg:LS.get('cfg',PipelineConnection),master:null,rows:[],text:'',meta:{},preset:'OPEN',sort:{col:'OVERALL_RATING',dir:'desc'},filters:{},seen:LS.get('seen',{}),reviewed:LS.get('reviewed',{}),reviewDirty:{},sessionStart:Date.now(),rulings:LS.get('rulings',{}),incidents:LS.get('incidents',null)||PipelineIncidents.empty(),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:(function(m){return m==='selected'||m==='visible'?m:'visible'})(LS.get('mapMode','selected')),chartsArchive:!!LS.get('chartsArchive',false),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,buildInfo:null,buildLatest:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,targetCompanies:null,events:{},interview:{}};
-if(!S.cfg.url){S.cfg=Object.assign({},PipelineConnection);LS.set('cfg',S.cfg)}else if(!S.cfg.key&&S.cfg.url===PipelineConnection.url){S.cfg.key=PipelineConnection.key;LS.set('cfg',S.cfg)}
+/* Writer connection set on purpose (Tim 2026-11-02, after a test showed an empty URL silently fell back to the production
+   Writer and could send decisions). The built-in defaults remain for READING only. cfg.deliberate:false marks a connection
+   nobody chose (first visit, the empty-URL refill, Clear): it reads but never sends (canSend, gsPost). Settings → Save sets
+   true; a connection saved before this change has no flag and keeps sending. */
+if(S.cfg===PipelineConnection)S.cfg=Object.assign({},PipelineConnection,{deliberate:false});
+if(!S.cfg.url){S.cfg=Object.assign({},PipelineConnection,{deliberate:false});LS.set('cfg',S.cfg)}else if(!S.cfg.key&&S.cfg.url===PipelineConnection.url){S.cfg.key=PipelineConnection.key;LS.set('cfg',S.cfg)}
 function buildTime_(value){if(!value)return 'not recorded';var d=new Date(value);return isNaN(d.getTime())?String(value):d.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
 function buildCommitUrl_(commit){return commit&&commit!=='local'?'https://github.com/tpruittguitar/foreman-cockpit/commit/'+encodeURIComponent(commit):'https://github.com/tpruittguitar/foreman-cockpit/commits/main';}
 function buildStatusHtml_(){var x=S.buildLatest||{};if(x.status==='latest')return '<span class="pill ok">LATEST MAIN</span>';if(x.status==='behind')return '<span class="pill bad">BEHIND MAIN</span>';if(x.status==='preview')return '<span class="pill" style="color:var(--nm);border-color:var(--nm)">PREVIEW / NOT MAIN</span>';return '<span class="pill">CHECK UNAVAILABLE</span>';}
@@ -655,7 +660,8 @@ function renderWriterStatus_(){
   observeIncidents_();var hv=PipelineIncidents.view(S.incidents,Date.now()),hh=PipelineIncidents.health(S.incidents),top=hh.critical||hh.recurring.length?'FAULT':hh.warning?'CAUTION':'';
   var info=all.filter(function(n){return n.level==='NOTICE'&&n.source!=='queue'&&!RUN_CODES_.test(String(n.code||'').toUpperCase())});
   var strip=hv.active.filter(function(i){return i.kind!=='event'&&i.severity==='critical'&&i.component!=='master-load'&&!dis['inc:'+i.id]}).map(function(i){return {key:'inc:'+i.id,level:'FAULT',title:i.title,text:' '+(i.latestError||'')}})[0];
-  if(!hasWriter()){label='not configured';}
+  if(!hasWriter()){label='not configured';lvl='off';}
+  else if(!canSend()){label='off';lvl='off';}   // reads work, sending is off on this device: one Writer state, orange (red stays for faults)
   else if(!w){label='checking';}
   else if(w.unsupported){label='monitor unavailable';lvl='warn';}
   else if(w.fetchError){label='unreachable';lvl='critical';}
@@ -724,7 +730,8 @@ var ManualIntake=createManualIntake({$: $,esc:esc,hasWriter:hasWriter,S:S,rowByI
 var TargetCompanies=PipelineTargetCompanies.create({$: $,esc:esc,gsGet:gsGet,gsPost:gsPost,S:S});
 
 /* ---------- data source adapters (read-only; manual refresh only; no polling) ---------- */
-function hasWriter(){return !!(S.cfg.url&&S.cfg.key)}
+function hasWriter(){return !!(S.cfg.url&&S.cfg.key)}   // configured: reads work (the built-in defaults count)
+function canSend(){return hasWriter()&&S.cfg.deliberate!==false}   // writes: only a connection set on purpose (see the cfg migration above)
 function requestProgress_(promise,action,writing){
   if(action==='state'||action==='request_result'||action==='writer_status')return promise;
   var labels={master:'Reading current master',canonical_rules:'Reading governing rules',scoring:'Reading shared scoring',documents:'Reading document library',document_text:'Reading document',archive:'Reading archived rows',operations:'Reading work evidence',schedules:'Reading schedules',ping:'Testing Writer connection'};
@@ -756,6 +763,7 @@ function recoverWriteResult_(rid,attempt){
 }
 var GS_POST_TIMEOUT_MS=(typeof window!=='undefined'&&window.PX_TEST_POST_TIMEOUT_MS)||150000;
 function gsPost(body){
+  if(!canSend())return Promise.resolve({ok:false,error:'Writer not connected on this device; nothing sent. Save a Writer connection in Settings to send decisions.'});   // last check before any write
   if(!S.load||S.load.freshness!=='LIVE')return Promise.resolve({ok:false,error:'Writes are disabled: the current canonical master is not loaded'+(S.load&&S.load.error?' ('+S.load.error+')':'')+'. Refresh first.'});
   body=JSON.parse(JSON.stringify(body||{}));
   var rid=requestIdForBody_(body);
@@ -985,7 +993,7 @@ function renderLoadAlert_(){
   el.className='on '+(n.level==='FAULT'?'fault':'degraded');el.innerHTML=stripHtml_(n,true);var b=$('load-retry');if(b)b.onclick=function(){load()};bindDismiss_(el);
 }
 function renderHeaderStatus_(){var h=$('hstat');if(!h)return;var w=S.writerStatus,q=w&&w.queue,n=q?(q.pending||0)+((q.processing||[]).length):null,v=S.load||{},lr=S.connection&&S.connection.lastRead,mins=lr?Math.max(0,Math.round((Date.now()-new Date(lr).getTime())/60000)):null,stale=v.freshness==='STALE';
-  h.innerHTML='<span class="hcell"><small>Queue</small><b>'+(n==null?'—':n)+'</b></span><span class="hcell'+(stale?' bad':'')+'" title="Last verified master read"><small>Last sync</small><b>'+(stale?'stale':mins==null?'—':mins<1?'now':mins<60?mins+'m':Math.round(mins/60)+'h')+'</b></span>'}
+  h.innerHTML=(canSend()?'':'<span class="hcell hs-nowriter" role="status" title="This device sends no decisions until a Writer connection is saved in Settings"><small>Writer</small><b><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:4px"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>not connected</b></span>')+'<span class="hcell"><small>Queue</small><b>'+(n==null?'—':n)+'</b></span><span class="hcell'+(stale?' bad':'')+'" title="Last verified master read"><small>Last sync</small><b>'+(stale?'stale':mins==null?'—':mins<1?'now':mins<60?mins+'m':Math.round(mins/60)+'h')+'</b></span>'}
 function freshnessLabel_(){var v=S.load||{};if(v.freshness==='STALE')return '<span class="bad">STALE · FETCH FAILED · cached '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+'</span>';if(v.freshness==='LOADING')return 'Loading current master…';
   var parts=[esc(S.connection.state)];if(v.archive&&v.archive.state==='PENDING'||v.evidence&&v.evidence.state==='PENDING')parts.push('loading archive/evidence…'+(S.loadRetry&&S.loadRetry.action!=='master'?' (retrying '+esc(S.loadRetry.action)+' '+S.loadRetry.attempt+'/'+S.loadRetry.of+')':''));if(v.archive&&v.archive.state==='FAILED')parts.push('<span class="bad">ARCHIVE UNAVAILABLE</span>');if(v.evidence&&v.evidence.state==='FAILED')parts.push('<span class="bad">EVIDENCE UNAVAILABLE</span>');
   return parts.join(' · ')+' · read '+esc(S.connection.lastRead?new Date(S.connection.lastRead).toLocaleTimeString():'not verified');}
@@ -1191,7 +1199,7 @@ function reviewRetry_(j){if(!Object.keys(S.reviewDirty||{}).length||S.reviewRetr
    with 1,432 records waiting. The next piece (300 ms) and the 5 s retry could both fire while a piece was still being written, so
    this device's own writes queued behind each other on the Writer lock. A sync asked for while a write is in flight now runs
    once that write answers. */
-function syncStateUp(delay){if(!hasWriter())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){if(S.stateSending){S.stateSendAgain=true;return}var at=Date.now(),sent={},rv={};
+function syncStateUp(delay){if(!canSend())return;clearTimeout(syncTimer);syncTimer=setTimeout(function(){if(S.stateSending){S.stateSendAgain=true;return}var at=Date.now(),sent={},rv={};
     // D-3: only the review records changed since the last good send (the Writer merges by job id, larger t wins)
     // REV-056: at most REVIEW_CHUNK_ records per send (a phone's first baseline is ~1,800); the rest follow once this one is kept
     Object.keys(S.reviewDirty||{}).filter(function(k){return S.reviewed[k]}).slice(0,REVIEW_CHUNK_).forEach(function(k){rv[k]=S.reviewed[k];sent[k]=S.reviewed[k].t});
@@ -1810,7 +1818,7 @@ var OUTBOX_={inflight:{},timer:0,busy:false};
 function outboxRetryable_(ru){if(!ru||!ru.requestId||ru.undone)return false;var s=ru.writeStatus;return s==='RESULT_UNKNOWN'||(s==='WRITE_FAILED'&&OUTBOX_RETRY_RE_.test(String(ru.error||'')))||(s==='SUBMITTING'&&!OUTBOX_.inflight[ru.requestId])}
 function outboxMark_(ru){var o=ru.outbox||{tries:0};if(outboxRetryable_(ru)){o.auto=true;o.nextAt=Date.now()+OUTBOX_DELAYS_[Math.min(o.tries||0,OUTBOX_DELAYS_.length-1)];ru.outbox=o}else if(ru.outbox){ru.outbox.auto=false;ru.outbox.nextAt=0}}
 function outboxDue_(force){var now=Date.now();return Object.keys(S.rulings).filter(function(k){var ru=S.rulings[k];return outboxRetryable_(ru)&&(force||!ru.outbox||!ru.outbox.nextAt||ru.outbox.nextAt<=now)})}
-function outboxTick_(force){if(OUTBOX_.busy||!hasWriter()||!S.load||S.load.freshness!=='LIVE')return;var due=outboxDue_(force);if(!due.length){outboxSchedule_();return}
+function outboxTick_(force){if(OUTBOX_.busy||!canSend()||!S.load||S.load.freshness!=='LIVE')return;var due=outboxDue_(force);if(!due.length){outboxSchedule_();return}
   if(due.length>1){   // REV-132: several waiting → ask request_result for each (reads, no lock), then one batch for the rest
     OUTBOX_.busy=true;due=due.slice(0,RULING_BATCH_.MAX);
     var held=due.map(function(k){return S.rulings[k]});
@@ -1834,7 +1842,7 @@ function actNowHtml_(){if(!S.master||typeof PipelineActNow==='undefined')return 
   return PipelineActNow.html(actNowModel_(),{collapsed:S.anCollapsed,posting:function(r){return PipelinePolicy.links(r).preferred||''},why:function(r){var p=r.payload||{};return String(p.WHY_FIT||p.FIT_SUMMARY||p.FIT_EVIDENCE||p.SCOPE_FIT_NOTE||'').slice(0,160)}})}
 function actNowSay_(id,t){var c=document.querySelector('#act-now [data-an-id="'+id+'"]');if(!c)return;var m=c.querySelector('.an-say');if(!m){m=document.createElement('div');m.className='an-why an-say';m.setAttribute('role','status');c.appendChild(m)}m.textContent=t}
 function actDecide_(id,kind,code){var r=rowById(id);if(!r)return;var cur=ruling(r);if(cur&&PipelineActNow.DECIDING[cur.kind]&&PipelineActNow.saveState(cur)==='NOT_SAVED'){actNowSay_(id,'Your earlier decision did not save. Tap “Decision not saved · tap to retry” to resend that same decision.');return}var prior=PipelineActNow.alreadyDecided(r,cur);if(prior){actNowSay_(id,'Already decided: '+prior.label+(prior.date?', '+prior.date:'')+'. Open the job to change the decision.');return}
-  if(!hasWriter()){actNowSay_(id,'Writer not connected on this device; nothing saved.');return}
+  if(!canSend()){actNowSay_(id,'Writer not connected on this device; nothing saved.');return}
   var ts=new Date().toISOString(),ru={writeStatus:'LOCAL_DRAFT',kind:kind,value:'',code:code||'',dupOf:'',note:kind==='APPLIED'?'Applied (Act now)':'',ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,actor:'TIM',requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,17)+'-'+r.id.slice(-6)+'-'+Math.random().toString(36).slice(2,6).toUpperCase()};
   ru.decisionSnap=PipelineActNow.snapshot(r,(scoreFor_(r)||{}).overall);S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
   postRuling_(r,ru,function(t){actNowSay_(id,t)})}
@@ -1861,7 +1869,7 @@ function saveTimDecision(r){
   if(kind==='REJECTED_BY_EMPLOYER'){ru.evidence=$('edit-evidence').value.trim()||note;ru.eventDate=$('edit-event-date').value}
   ru.decisionSnap=PipelineActNow.snapshot(r,(scoreFor_(r)||{}).overall);delete S.changeOk[r.id];
   S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
-  if(!hasWriter()){$('edit-status').textContent='Local draft only · master unchanged. Connect writer and save to submit.';render();return}
+  if(!canSend()){$('edit-status').textContent='Local draft only · master unchanged. Writer not connected on this device; save a connection in Settings to submit.';render();return}
   postRuling_(r,ru,function(t){setText_('edit-status',t)});
 
 }
@@ -1959,7 +1967,7 @@ function bulkAction(kind){
   if(bulkSending_){alert('A bulk decision is already being sent. Its progress is shown on screen.');return}
   var pending=LS.get('bulkProgress',[]).find(function(op){return op.requests.some(function(q){return q.attempted&&rows.some(function(r){return r.PRIMARY_ID===q.ruling.primaryId})})});
   if(pending){var oldPopup=PipelineActionProgress.start('Checking earlier decisions',pending.requests.length);return verifyBulkProgress_(pending,oldPopup)}
-  if(!hasWriter()){alert('Writer required for bulk changes.');return}
+  if(!canSend()){alert('Writer not connected on this device; bulk changes are not sent.');return}
   var specs={
     DECLINE:{kind:'DECLINE',label:'Decline',allow:['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE']},
     MANUAL_RESEARCH:{kind:'MANUAL_RESEARCH',label:'Request research',allow:['SCOUT_INTAKE','DISCOVERY_LEAD','TIM_DECISION_REQUIRED','READY_TO_PURSUE','BLOCKED','MANUAL_RESEARCH']},
@@ -3204,8 +3212,9 @@ function renderSettings(){var v=$('view-settings');v.innerHTML='<div class="pane
  '<div class="tip" style="margin-top:8px">Connection: '+esc(S.connection.state)+' · Last successful read: '+esc(S.connection.lastRead||'none')+'<br>Last verified write: '+esc((LS.get('lastWrite',{})||{}).at||'none on this device')+'<br>Last write error: '+esc(LS.get('writeError','')||'none')+'<br>Writes run as Tim through the authorized writer. Local drafts do not change master state.<br>Last read error: '+esc(S.connection.error||'none')+'</div></div>'+diagnostics()+
  '<div class="panel"><h3>Receipts</h3><div class="row"><button id="cfg-receipts">Load receipts from Drive</button></div><pre id="cfg-rc" class="mono" style="white-space:pre-wrap;font-size:11.1px;color:var(--dim)"></pre></div>';
  $('cfg-test').onclick=function(){var u=$('cfg-url').value.trim(),k=$('cfg-key').value.trim();var old=S.cfg;S.cfg={url:u,key:k};$('cfg-msg').textContent='testing…';gsGet('ping').then(function(j){$('cfg-msg').textContent=j.ok?'OK · script answers · master '+(j.master||'').slice(0,12)+'…':'script says: '+(j.error||'not ok');S.cfg=old;S.connection.state=j.ok?'Connected':'Read failed';S.connection.error=j.ok?'':j.error||'Rejected'}).catch(function(e){$('cfg-msg').textContent='no answer: '+e.message;S.cfg=old;S.connection.state='Unreachable';S.connection.error=e.message})};
- $('cfg-save').onclick=function(){S.cfg={url:$('cfg-url').value.trim(),key:$('cfg-key').value.trim()};LS.set('cfg',S.cfg);renderSettings();load();loadWriterStatus_(true)};
- $('cfg-clear').onclick=function(){S.cfg={url:'',key:''};LS.set('cfg',S.cfg);S.writerStatus=null;renderWriterStatus_();LS.set('cache',null);MASTER_CACHE_.write(null);S.master=null;S.rows=[];S.text='';S.focus=null;S.docs=null;S.canonicalRules=null;S.runs=[];$('drawer').classList.remove('on');$('d-body').innerHTML='';document.querySelectorAll('.view').forEach(function(v){if(!['view-pipeline','view-settings'].includes(v.id))v.innerHTML=''});$('readout').textContent='Protected master · not connected';S.connection={state:'Not configured',error:'',lastRead:null};$('dash').innerHTML='';$('grid').querySelector('tbody').innerHTML='';renderSettings()};
+ $('cfg-save').onclick=function(){S.cfg={url:$('cfg-url').value.trim(),key:$('cfg-key').value.trim()};S.cfg.deliberate=!!(S.cfg.url&&S.cfg.key);LS.set('cfg',S.cfg);renderSettings();renderHeaderStatus_();load();loadWriterStatus_(true)};
+ $('cfg-clear').onclick=function(){if(!confirm('Stop sending decisions from this device?\n\nThis clears the saved Writer connection and the cached master here. Nothing is sent from this device until a connection is saved again.'))return;
+  S.cfg={url:'',key:'',deliberate:false};setTimeout(function(){renderHeaderStatus_();if(window.PEMobile)PEMobile.refresh()},0);LS.set('cfg',S.cfg);S.writerStatus=null;renderWriterStatus_();LS.set('cache',null);MASTER_CACHE_.write(null);S.master=null;S.rows=[];S.text='';S.focus=null;S.docs=null;S.canonicalRules=null;S.runs=[];$('drawer').classList.remove('on');$('d-body').innerHTML='';document.querySelectorAll('.view').forEach(function(v){if(!['view-pipeline','view-settings'].includes(v.id))v.innerHTML=''});$('readout').textContent='Protected master · not connected';S.connection={state:'Not configured',error:'',lastRead:null};$('dash').innerHTML='';$('grid').querySelector('tbody').innerHTML='';renderSettings()};
  $('cfg-structured-import').onclick=function(){var msg=$('cfg-structured-msg');if(!hasWriter()){msg.textContent='writer not configured';return}msg.textContent='seeding structured runtime…';fetch('/api/structured/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(r){return r.json().then(function(j){if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('HTTP '+r.status));return j})}).then(function(j){msg.textContent='seeded structured runtime · '+(j.jobs||0)+' jobs; stored='+(j.stored===true?'true':'false');if(j.stored!==true){msg.textContent+=' · KV not updated; live Writer read still works on this device'};if(new URLSearchParams(location.search).get('src')==='structured')load()}).catch(function(e){msg.textContent='structured seed failed: '+e.message})};
  $('cfg-receipts').onclick=function(){if(!hasWriter()){$('cfg-rc').textContent='writer not configured';return}gsGet('receipts').then(function(j){$('cfg-rc').textContent=j.ok?(j.text||'(no receipts yet)'):(j.error||'error')}).catch(function(e){$('cfg-rc').textContent=e.message})};
 }
@@ -3271,9 +3280,38 @@ window.PEMobileBridge={
   rows:function(){return S.rows},
   health:function(){if(!S.master)return {state:'LOADING'};var hh=PipelineIncidents.health(S.incidents),v=S.load||{},lr=S.connection&&S.connection.lastRead;
     var st=hh.critical||hh.recurring.length?'FAULT':hh.warning||v.freshness==='STALE'||S.meta.fromCache?'DELAYED':'OK';
-    return {state:st,lastRead:lr||S.meta.fetchedAt||null,freshness:v.freshness||null,critical:hh.critical,warning:hh.warning}},
+    return {state:st,writer:canSend(),lastRead:lr||S.meta.fetchedAt||null,freshness:v.freshness||null,critical:hh.critical,warning:hh.warning}},
   openDesktop:function(k){if(k==='rulings'){S.chartFilter=null;S.search='';S.preset='RULED';switchTab('pipeline');return}
-    if(k==='compare'){switchTab('pipeline');var c=$('compare-open');if(c)c.click();return}switchTab(k)}
+    if(k==='compare'){switchTab('pipeline');var c=$('compare-open');if(c)c.click();return}switchTab(k)},
+  /* Stage 3. One job as the phone shows it; every value comes from the same accessors the desktop table uses. */
+  view:function(r){var sc=scoreFor_(r)||{},a=sc.assessment||{},p=r.payload||{},sr=PipelineTrust.salaryRange(p),ev=PipelineEvidence.salary(p),b=sc.payWorth&&sc.payWorth.best;
+    var nums=(ev.source==='SALARY_MIDPOINT'||ev.source==='SALARY_BASE_LOW/HIGH'?[p.SALARY_BASE_LOW,p.SALARY_BASE_HIGH]:[p[ev.source]]).reduce(function(o,v){return o.concat(PipelineEvidence.moneyNumbers(v))},[]).filter(function(n){return n>=1000});
+    return {id:r.id,title:r.TITLE||'',company:r.COMPANY||'',location:r.LOCATION||'',bucket:String(r.BUCKET||'').toUpperCase(),
+      score:typeof sc.overall==='number'?sc.overall:null,fit:typeof a.rawFit==='number'?a.rawFit:null,flex:String((a.flex&&a.flex.class)||'').toUpperCase(),
+      salary:{text:sr.text,approx:sr.approx,label:sr.label,top:nums.length?Math.max.apply(null,nums):null},need:b&&b.need||null,needArea:b&&b.area||'',
+      added:r.dateAdded?r.dateAdded.getTime():null,why:String(p.WHY_FIT||p.FIT_SUMMARY||p.FIT_EVIDENCE||p.SCOPE_FIT_NOTE||''),url:PipelinePolicy.links(r).preferred||'',
+      applied:applicationEvidence_(r),ruling:rulingState(r)&&rulingState(r).s||''}},
+  /* The Decide queue: open needs-decision jobs, minus ones Tim already ruled on (same decision rule as Act now: a ruling
+     hides the job until it fails to save or the job changes materially). */
+  decideRows:function(){if(!S.master)return [];return distinctRows_().filter(function(r){
+      if(String(r.BUCKET||'').toUpperCase()!=='TIM_DECISION_REQUIRED'||terminalJob_(r))return false;
+      var ru=ruling(r);if(!ru||ru.undone||!/^(APPLY_NOW|MANUAL_RESEARCH|DECLINE)$/.test(ru.kind)&&!PipelineActNow.DECIDING[ru.kind])return true;
+      return PipelineActNow.saveState(ru)==='NOT_SAVED'||PipelineActNow.changes(r,ru,(scoreFor_(r)||{}).overall).length>0})},
+  notSaved:function(id){var r=rowById(id),ru=r&&ruling(r);return !!(ru&&!ru.undone&&PipelineActNow.saveState(ru)==='NOT_SAVED')},
+  actNowIds:function(){return S.master?actNowModel_().items.map(function(it){return it.r.id}):[]},
+  /* A phone decision: the same guards and the same ruling record as the Act now buttons, sent by postRuling_ (batched
+     outbox). ok:true only once the request is in the ruling queue; say() then reports its save state. */
+  decide:function(id,kind,say){var r=rowById(id),K={pursue:['APPLY_NOW','YES','',''],hold:['MANUAL_RESEARCH','','','Hold · from the phone'],research:['MANUAL_RESEARCH','','','Research requested by Tim · from the phone'],decline:['DECLINE','','TIM_EXPLICIT_DECLINE','']}[kind];
+    if(!r||!K)return {ok:false,msg:'Job not found.'};if(!canSend())return {ok:false,msg:'Writer not connected on this device; nothing saved.'};
+    var cur=ruling(r);if(cur&&!cur.undone&&PipelineActNow.saveState(cur)==='NOT_SAVED')return {ok:false,msg:'Your earlier decision on this job did not save. Retry it first.'};
+    var prior=PipelineActNow.alreadyDecided(r,cur);if(prior)return {ok:false,msg:'Already decided: '+prior.label+(prior.date?', '+prior.date:'')+'.'};
+    var appEv=applicationEvidence_(r);if(appEv&&(r.BUCKET==='APPLIED'||r.BUCKET==='REJECTED_BY_EMPLOYER'))return {ok:false,msg:'Already applied'+(appEv.date?' on '+appEv.date:'')+'; an applied job keeps its record.'};
+    var ts=new Date().toISOString(),ru={writeStatus:'LOCAL_DRAFT',kind:K[0],value:K[1],code:K[2],dupOf:'',note:K[3],ts:ts,snap:{BUCKET:r.BUCKET,DISPOSITION:r.DISPOSITION},company:r.COMPANY,title:r.TITLE,req:r.REQ,primaryId:r.PRIMARY_ID,actor:'TIM',requestId:'PX-'+ts.replace(/[-:.TZ]/g,'').slice(0,17)+'-'+r.id.slice(-6)+'-'+Math.random().toString(36).slice(2,6).toUpperCase()};
+    ru.decisionSnap=PipelineActNow.snapshot(r,(scoreFor_(r)||{}).overall);S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
+    postRuling_(r,ru,say||function(){});
+    return RULING_BATCH_.q.some(function(x){return x.ru.requestId===ru.requestId})?{ok:true,requestId:ru.requestId}:{ok:false,msg:ru.error||'The decision was not queued; nothing was sent.'}},
+  retry:function(id,say){var r=rowById(id),ru=r&&ruling(r);if(!r||!ru)return {ok:false,msg:'Nothing to retry.'};if(!canSend())return {ok:false,msg:'Writer not connected on this device.'};postRuling_(r,ru,say||function(){});return {ok:true}},
+  undo:function(id,say){var r=rowById(id);if(!r)return null;return undoRuling_(r,say||function(){})}
 };
 load();
 })();
