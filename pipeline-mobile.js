@@ -82,6 +82,19 @@
     var k = { OK: 'ok', DELAYED: 'delayed', FAULT: 'fault' }[h.state] || 'loading';
     /* No Writer connection set on purpose: that outranks system health, because nothing can be sent. */
     if (h.state !== 'LOADING' && h.writer === false) { el.className = 'm-sys m-nowriter'; $('m-sys-word').textContent = 'NO WRITER'; $('m-sys-ic').innerHTML = svg('warn', 14); el.setAttribute('aria-label', 'Writer not connected: decisions cannot be sent from this device. Open Status.'); return; }
+    /* Decision queue failing (Tim, Stage 5 review): the header must not say "SYS OK" while Decide cannot load its queue.
+       Down (nothing loaded) is orange with the warning glyph; stale (an older queue on screen) is yellow with "?". A system
+       FAULT and NO WRITER still outrank it. */
+    if (h.state !== 'FAULT' && h.state !== 'LOADING' && b.ready && b.ready()) {
+      var qv = queueState().view;
+      if (qv === 'unavailable' || qv === 'stale') {
+        var down = qv === 'unavailable';
+        el.className = 'm-sys ' + (down ? 'm-qdown' : 'm-delayed'); $('m-sys-word').textContent = down ? 'QUEUE DOWN' : 'QUEUE STALE';
+        $('m-sys-ic').innerHTML = svg(down ? 'warn' : 'delayed', 14);   // header icon set: 'delayed' is the "?" glyph
+        el.setAttribute('aria-label', down ? 'Decision queue down: it could not be loaded. Open Status.' : 'Decision queue stale: showing an older queue because the refresh failed. Open Status.');
+        return;
+      }
+    }
     el.className = 'm-sys m-' + k; $('m-sys-word').textContent = word; $('m-sys-ic').innerHTML = svg(k, 14);
     el.setAttribute('aria-label', 'System status: ' + word.replace('SYS ', '').toLowerCase() + '. Open Status.');
   }
@@ -205,12 +218,18 @@
     var p = $('m-pane-decide');
     if (!loaded) { p.innerHTML = skeleton(); return; }
     var q = queue(), rows = B().decideRows(), all = rows.length, ids = B().actNowIds(), act = rows.filter(function (r) { return ids.indexOf(r.id) >= 0; }).length;
+    var qs0 = queueState(), unknown = qs0.view === 'unavailable';   // queue failed to load: the counts are not known, so say "—" (Tim, Stage 5 review)
+    if (unknown) all = act = '—';
     var head = '<div class="m-count"><p><b class="m-num m-attn">' + all + '</b> need you</p><span class="m-label">' + (decideFilter === 'act' ? 'Order: Act now' : 'Sort: score ↓') + '</span></div>' +
       '<div class="m-chips" role="group" aria-label="Decide filter"><button type="button" class="m-chip" data-m-filter="all" aria-pressed="' + (decideFilter === 'all') + '">All · ' + all + '</button>' +
       '<button type="button" class="m-chip" data-m-filter="act" aria-pressed="' + (decideFilter === 'act') + '" title="Act Now: up to 10 roles to act on first (Director and up, US, scored)">Act now · ' + act + '</button></div>';
     var h = B().health(), qs = queueState();
     if ((qs.view === 'loading' || qs.view === 'unavailable') && q.length) head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue ' + (qs.view === 'loading' ? 'loading' : 'unavailable') + ': showing only jobs marked Needs decision.' + (qs.view === 'unavailable' ? retryNote(qs) + ' ' + retryBtn('m-inline-link') : '') + '</span></p>' + head;
-    if (qs.view === 'stale') head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue from ' + esc(qs.when) + '; the latest refresh failed.' + retryNote(qs) + ' ' + retryBtn('m-inline-link') + '</span></p>' + head;
+    /* Stale: "Showing queue from 8:53 AM ET. Refresh failed (server error). Retry" (Tim, Stage 5 review). After a failed
+       retry: "... Retry failed at 9:40 AM ET (server error). Retry"; the queue time already says when it last loaded. */
+    if (qs.view === 'stale') head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Showing queue from ' + esc(qs.when) + '. ' +
+      (queueRetry.failedAt && !queueRetry.busy ? '<span data-m-retry-note>Retry failed at ' + esc(etTime(queueRetry.failedAt)) + ' (' + esc(why(queueRetry.error)) + ').</span>' : 'Refresh failed (' + esc(why(qs.error)) + ').') +
+      ' ' + retryBtn('m-inline-link') + '</span></p>' + head;
     if (h.writer === false) head = '<p class="m-alert m-nowriter-note" role="status">' + gl('warn') + '<span>Writer not connected · decisions can’t be sent from this device. Save a connection in <button type="button" class="m-inline-link" data-m-settings>Settings</button>.</span></p>' + head;
     var changed = setHtml(p, head + (q.length ? '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>' :
       (qs.view === 'loading' ? '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Decision queue loading</b><p>Jobs that need your decision come from the pipeline evidence, which has not loaded yet. This updates on its own.</p></div>' :
@@ -225,11 +244,20 @@
      a disabled "Retrying…"; once the request settles the button is "Retry" again, and a failed retry says so, with the
      time of the last successful load (ET). */
   var queueRetry = { busy: false, failedAt: null, error: '' };
+  /* A short, plain reason for a failed load: "server error" for HTTP 5xx, "no connection" when the request never got an answer,
+     "not found" for 404, "queue data did not check out" when the snapshot fails validation, else "HTTP <code>". */
+  function why(err) {
+    var e = String(err || ''), m = e.match(/HTTP (\d{3})/);
+    if (m) return +m[1] >= 500 ? 'server error' : m[1] === '404' ? 'not found' : 'HTTP ' + m[1];
+    if (/fetch|network|load failed/i.test(e)) return 'no connection';
+    if (/reconcile|unavailable or do not match|snapshot did not load/i.test(e)) return 'queue data did not check out';
+    return e ? 'error' : 'unknown error';
+  }
   function etTime(ms) { return new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) + ' ET'; }
   function retryBtn(cls) { return '<button type="button" class="' + cls + '" data-m-retry-queue' + (queueRetry.busy ? ' disabled aria-busy="true">Retrying…' : '>Retry') + '</button>'; }
   function retryNote(qs) {
     if (queueRetry.busy || !queueRetry.failedAt) return '';
-    return ' <span class="m-retry-note" data-m-retry-note>Retry failed at ' + esc(etTime(queueRetry.failedAt)) + (queueRetry.error ? ' (' + esc(queueRetry.error) + ')' : '') + '. Last successful load: ' + esc(qs.when) + '.</span>';
+    return ' <span class="m-retry-note" data-m-retry-note>Retry failed at ' + esc(etTime(queueRetry.failedAt)) + ' (' + esc(why(queueRetry.error)) + '). Last successful load: ' + esc(qs.when) + '.</span>';
   }
   function retryQueue() {
     if (queueRetry.busy) return;
@@ -479,7 +507,7 @@
     var sync = h.lastRead ? new Date(h.lastRead).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : 'unknown';
     setHtml(p, '<p class="m-label m-sec-l">Pipeline constraint</p><ol class="m-flow" aria-label="Pipeline stages">' + flow + '</ol>' +
       '<p class="m-cr-note">' + esc(s.constraintReason) + '</p>' +
-      '<div class="m-tiles">' + tile('Need decision', b.decideRows().length) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
+      '<div class="m-tiles">' + tile('Need decision', queueState().view === 'unavailable' ? null : b.decideRows().length) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
       '<ul class="m-legend" aria-label="Legend"><li class="ok">' + gl('ok') + 'OK</li><li class="caution">' + gl('caution') + 'Caution</li><li class="attn">' + gl('warn') + 'Constraint</li><li class="fault">' + gl('no') + 'Fault</li></ul>' +
       '<p class="m-fresh ' + hs[0] + '">' + hs[1] + hs[2] + ' · SYNC ' + esc(sync) + (h.writer === false ? ' · ' + gl('warn') + 'NO WRITER' : '') + '</p>' +
       (s.details ? '<details class="m-sec"><summary>Details</summary><div class="m-sec-b"><p>' + esc(s.details) + '</p></div></details>' : ''));

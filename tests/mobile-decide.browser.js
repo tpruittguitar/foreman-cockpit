@@ -69,6 +69,10 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   assert.ok(fits.some(f=>parseInt(f.t.replace(/\D+/g,''),10)>=70),'test data has a strong fit');
   fits.forEach(f=>{assert.ok(f.g||/^~/.test(f.t),'fit badge has a glyph or "~": '+JSON.stringify(f));const n=parseInt(f.t.replace(/\D+/g,''),10);
     if(n>=70){assert.strictEqual(f.cls,'m-b ok','strong fit is green: '+JSON.stringify(f));assert.ok(f.g,'strong fit has the check glyph')}});
+  // One close-up for review: a card whose fit is 70+ (green ✓), next to cards with a borderline "~" fit.
+  if(shots){const strong=await page.$$('#m-pane-decide .m-card');for(const c of strong){if(await c.$$eval('.m-b.ok',bs=>bs.some(b=>/Fit \d+/.test(b.textContent)&&parseInt(b.textContent.replace(/\D+/g,''),10)>=70))){
+    await c.scrollIntoViewIfNeeded();await c.screenshot({path:path.join(shots,'stage5-fit-strong-card-390.png')});break}}
+    await page.evaluate(()=>scrollTo(0,0));}
   const sizes=await page.evaluate(()=>{const small=[],taps=[];document.querySelectorAll('#m-root *').forEach(e=>{if(!e.offsetParent&&getComputedStyle(e).position!=='fixed')return;
       if([...e.childNodes].some(x=>x.nodeType===3&&x.textContent.trim())&&parseFloat(getComputedStyle(e).fontSize)<12)small.push(e.textContent.trim().slice(0,30))});
     document.querySelectorAll('#m-pane-decide button').forEach(b=>{const r=b.getBoundingClientRect();if(r.width&&(r.height<44||r.width<44)&&!b.classList.contains('m-chip'))taps.push(b.textContent.trim()+' '+Math.round(r.width)+'x'+Math.round(r.height))});

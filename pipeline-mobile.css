@@ -35,7 +35,7 @@ html.m-shell:not(.m-legacy) body{display:block;margin:0;background:var(--m-bg);c
 .m-sys .m-dot{width:8px;height:8px;background:currentColor;flex:none}
 .m-sys svg{flex:none}
 /* State colors need the #m-root prefix to beat the button reset; every state also carries a glyph and a word. */
-#m-root .m-sys.m-nowriter{color:var(--m-attn)}
+#m-root .m-sys.m-nowriter{color:var(--m-attn)}#m-root .m-sys.m-qdown{color:var(--m-attn)}   /* decision queue down: orange, warning glyph */
 #m-root .m-alert.m-nowriter-note{margin:0 0 12px;padding:10px 12px;border:1px solid var(--m-attn-border);background:var(--m-attn-tint);color:var(--m-attn);border-radius:var(--m-radius);align-items:flex-start}
 #m-root .m-nowriter-note .m-g{margin-top:2px}
 #m-root .m-inline-link{display:inline;min-height:0;padding:0;color:inherit;font:inherit;text-transform:none;letter-spacing:normal;text-decoration:underline;text-underline-offset:2px}
