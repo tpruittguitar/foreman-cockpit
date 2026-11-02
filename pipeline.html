@@ -3293,7 +3293,7 @@ window.PEMobileBridge={
       score:typeof sc.overall==='number'?sc.overall:null,fit:typeof a.rawFit==='number'?a.rawFit:null,flex:String((a.flex&&a.flex.class)||'').toUpperCase(),
       salary:{text:sr.text,approx:sr.approx,label:sr.label,top:nums.length?Math.max.apply(null,nums):null},need:b&&b.need||null,needArea:b&&b.area||'',
       added:r.dateAdded?r.dateAdded.getTime():null,why:String(p.WHY_FIT||p.FIT_SUMMARY||p.FIT_EVIDENCE||p.SCOPE_FIT_NOTE||''),url:PipelinePolicy.links(r).preferred||'',
-      applied:applicationEvidence_(r),ruling:rulingState(r)&&rulingState(r).s||''}},
+      applied:applicationEvidence_(r),ruling:rulingState(r)&&rulingState(r).s||'',band:bandOf_(r).band}},   /* percentile band (pipeline-bands.js): TOP / UPPER / MID / LOW, HOLD, or NONE (bands off or not ranked) */
   /* The Decide queue: the desktop "Waiting for my decision" jobs (DECISION_READY: evidence-complete, finally scored
      identities from the pipeline waiting-queue index) plus any TIM_DECISION_REQUIRED row, minus applied / terminal jobs
      and ones Tim already ruled on (same decision rule as Act now: a ruling hides the job until it fails to save or the job

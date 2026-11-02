@@ -344,10 +344,16 @@
 
   /* Job detail: full-screen sheet. Back arrow, swipe down on the handle (> 120px), Escape and browser/phone Back close it. */
   var detailId = null, detailFocus = null;
-  function ring(score) {
-    var r = 30, c = 2 * Math.PI * r, f = score == null ? 0 : Math.max(0, Math.min(100, score)) / 100;
-    return '<svg class="m-ring" width="88" height="88" viewBox="0 0 88 88" aria-hidden="true"><g transform="translate(44 44)">' +
-      '<circle r="' + r + '" fill="none" stroke="#2E2E2E" stroke-width="6"/><circle r="' + r + '" fill="none" stroke="currentColor" stroke-width="6" stroke-dasharray="' + (c * f).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90)"/>' +
+  /* Score ring coloured by the app's own percentile band (pipeline-bands.js, the desktop score colours): TOP green, UPPER yellow,
+     MID orange, LOW red (phone tokens); gray when bands are off, on HOLD or not ranked. The number stays neutral light gray and
+     a text label names the band, so colour never carries meaning alone (Tim, 2026-11-02). The fill animates once per opened
+     sheet (<= 250ms; none under reduced motion, see pipeline-mobile.css): renderDetail drops the class from the live element when
+     the fill ends, so the stored markup is unchanged and later refreshes neither repaint the sheet nor replay the fill. */
+  var BAND = { TOP: ['top', '▲ TOP 10%'], UPPER: ['upper', '◆ UPPER 25%'], MID: ['mid', '● MID 45%'], LOW: ['low', '▽ LOW 20%'], HOLD: ['hold', '⊘ HOLD · outside the bands'] };
+  function ring(score, band, animate) {
+    var r = 30, c = 2 * Math.PI * r, f = score == null ? 0 : Math.max(0, Math.min(100, score)) / 100, k = (BAND[band] || [])[0] || 'none';
+    return '<svg class="m-ring m-b-' + k + (animate ? ' m-ring-in' : '') + '" data-band="' + esc(band || 'NONE') + '" width="88" height="88" viewBox="0 0 88 88" aria-hidden="true"><g transform="translate(44 44)">' +
+      '<circle r="' + r + '" fill="none" stroke="#2E2E2E" stroke-width="6"/><circle class="m-ring-arc" r="' + r + '" fill="none" stroke="currentColor" stroke-width="6" stroke-dasharray="' + (c * f).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90)"/>' +
       '<circle r="22" fill="none" stroke="#4A4A4A" stroke-width="1" stroke-dasharray="2 4"/>' +
       '<path d="M0 -42v8M42 0h-8M0 42v-8M-42 0h8" stroke="#4A4A4A" stroke-width="1.5"/>' +
       '<text y="7" text-anchor="middle" class="m-ring-n">' + (score == null ? '—' : Math.round(score)) + '</text></g></svg>';
@@ -362,7 +368,8 @@
     function kv(k, val) { return '<div class="m-kv"><span>' + k + '</span><b>' + val + '</b></div>'; }
     return '<div class="m-dh" id="m-dh"><div class="m-grab" aria-hidden="true"></div><div class="m-dh-row"><button type="button" class="m-ic" id="m-d-back" aria-label="Back to the list">' + svg('back') + '</button>' +
       '<div class="m-dh-t"><h2 class="m-d-title" id="m-d-title">' + esc(v.title) + '</h2><p class="m-sub">' + esc([v.company, v.location].filter(Boolean).join(' · ')) + '</p></div></div></div>' +
-      '<div class="m-db"><section class="m-verdict m-brackets">' + ring(v.score) + '<div><p class="m-verdict-t">' + esc(verdict) + '</p>' + (ps === 'missing' ? '' : '<p class="m-pay ' + payCls + '">' + payGl + pay + '</p>') + '</div></section>' +
+      '<div class="m-db"><section class="m-verdict m-brackets">' + ring(v.score, v.band, true) + '<div><p class="m-verdict-t">' + esc(verdict) + '</p>' +
+        (BAND[v.band] ? '<p class="m-band-l m-b-' + BAND[v.band][0] + '" data-m-band>' + BAND[v.band][1] + (v.band === 'HOLD' ? '' : ' of open jobs') + '</p>' : '') + (ps === 'missing' ? '' : '<p class="m-pay ' + payCls + '">' + payGl + pay + '</p>') + '</div></section>' +
       badgeRow(v) +
       sec('Posting', (v.why ? '<p>' + esc(v.why) + '</p>' : '<p class="m-faint">No fit summary recorded.</p>') + (v.url ? '<p><a class="m-link" href="' + esc(v.url) + '" target="_blank" rel="noopener">Open the posting ↗</a></p>' : '')) +
       sec('Fit &amp; score', kv('Raw fit', v.fit == null ? '? not measured' : Math.round(v.fit)) + kv('Pay vs target', ps === 'ok' ? '✓ meets need' : ps === 'below' ? '↓ below need' : ps === 'missing' ? '? pending' : 'not known') +
@@ -384,6 +391,7 @@
   function renderDetail() {
     var d = $('m-detail'), r = B().rows().filter(function (x) { return x.id === detailId; })[0]; if (!r) { closeDetail(true); return; }
     if (!setHtml(d, detailHtml(B().view(r)))) return;   // unchanged: keep focus, open sections and handlers as they are
+    var rg = d.querySelector('.m-ring-in'); if (rg) rg.addEventListener('animationend', function () { rg.classList.remove('m-ring-in'); }, { once: true });
     $('m-d-back').onclick = function () { closeDetail(); };
     d.querySelectorAll('[data-m-do]').forEach(function (b) { b.onclick = function () { decide(b.getAttribute('data-id'), b.getAttribute('data-m-do'), null); }; });
     dragClose($('m-dh'), d);
