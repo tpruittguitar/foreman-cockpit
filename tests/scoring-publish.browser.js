@@ -1,4 +1,5 @@
 /* Scoring: review before publish, restore previous revision, revision stamp in the System panel. Scripted local Writer only. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

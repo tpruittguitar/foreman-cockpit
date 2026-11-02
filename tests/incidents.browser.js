@@ -1,4 +1,5 @@
 /* System drawer incident model and top-level health, end to end against a scripted Writer. Local test-only writer. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

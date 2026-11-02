@@ -6,6 +6,7 @@
    Every request outside the local server is aborted and every POST is recorded: none may leave a device without a
    deliberate connection.
    Run: node tests/writer-connection.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the other browser tests) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..'),shots=process.env.MOBILE_SHOTS;   // MOBILE_SHOTS=<dir> also writes screenshots

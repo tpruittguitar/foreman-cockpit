@@ -5,6 +5,7 @@
    two taps; the job detail sheet closes by back arrow, Escape, browser Back and swipe-down, and nothing bleeds over it.
    Run: node tests/mobile-decide.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the other browser tests)
    MOBILE_SHOTS=<dir> also writes screenshots. */
+require('./helpers/block-production-writer.cjs');   // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');
@@ -55,6 +56,18 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   let {ctx,page,errors,posts}=await open();
   const c0=await cards(page);assert.ok(c0.length>=4,'several cards ('+c0.length+')');
   const nums=c0.map(c=>parseInt(c.score,10)).filter(x=>!isNaN(x));assert.deepStrictEqual(nums,[...nums].sort((a,b)=>b-a),'sorted by score, high first');
+  // Card scores use the same percentile band as the detail ring (not a fixed >=85 rule). Middle is gray, never orange.
+  // The band's words stay in the detail sheet; the card shows the number, a glyph, and the word Score.
+  const scoreBands=await page.evaluate(()=>{const root=document.getElementById('m-root');
+    const tok=v=>{const d=document.createElement('i');d.style.color='var('+v+')';root.appendChild(d);const c=getComputedStyle(d).color;d.remove();return c};
+    const attn=tok('--m-attn'),gray=tok('--m-text-2'),glyph={TOP:'▲',UPPER:'◆',MID:'●',LOW:'▽'};
+    return {attn,gray,rows:[...document.querySelectorAll('#m-pane-decide .m-score')].map(s=>{const b=s.querySelector('b');
+      return {band:s.getAttribute('data-band'),color:getComputedStyle(b).color,g:b.getAttribute('data-g'),label:s.querySelector('.m-label').textContent.trim(),want:glyph[s.getAttribute('data-band')]||null}})}});
+  assert.ok(scoreBands.rows.length>=4,'scored cards to check');
+  scoreBands.rows.forEach(s=>{assert.notStrictEqual(s.color,scoreBands.attn,'a score is never orange '+JSON.stringify(s));
+    assert.ok(s.label==='Score'||s.label==='Unscored','the band words stay off the card ('+JSON.stringify(s)+')');
+    if(s.band==='MID')assert.strictEqual(s.color,scoreBands.gray,'middle band is neutral gray '+JSON.stringify(s));
+    if(s.want)assert.strictEqual(s.g,s.want,'band glyph beside the number '+JSON.stringify(s))});
   assert.strictEqual(parseInt(await page.textContent('.m-count b'),10),c0.length,'counter matches the cards');
   const first=await page.evaluate(()=>{const b=document.querySelector('.m-card.m-top [data-m-do="pursue"]').getBoundingClientRect();return {top:b.top,bottom:b.bottom,ih:innerHeight}});
   assert.ok(first.bottom<first.ih-64,'Pursue on the first card is on screen: one tap to decide');

@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const { chromium } = require(process.env.PIPELINE_PLAYWRIGHT_MODULE||'playwright');
 const repo = path.resolve(__dirname,'..');
 const out = process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir();

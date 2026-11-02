@@ -1,6 +1,7 @@
 /* REV-093 (perf, Grok 00:26 ET: cut the live load): an unchanged structured re-read after the background Writer re-import does
    not rebuild the table; a changed one is applied; parallel geocode results all persist (none asked again on the next visit);
    geocoder misses are remembered for 7 days. Run: node tests/load-perf.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

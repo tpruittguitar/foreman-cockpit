@@ -349,7 +349,8 @@
   /* Job detail: full-screen sheet. Back arrow, swipe down on the handle (> 120px), Escape and browser/phone Back close it. */
   var detailId = null, detailFocus = null;
   /* Score ring coloured by the app's own percentile band (pipeline-bands.js, the desktop score colours): TOP green, UPPER yellow,
-     MID orange, LOW red (phone tokens); gray when bands are off, on HOLD or not ranked. The number stays neutral light gray and
+     MID neutral gray, LOW red (phone tokens). Orange stays for constraints and QUEUE DOWN. Gray also when bands are off,
+     on HOLD or not ranked. The number stays neutral light gray and
      a text label names the band, so colour never carries meaning alone (Tim, 2026-11-02). The fill animates once per opened
      sheet (<= 250ms; none under reduced motion, see pipeline-mobile.css): renderDetail drops the class from the live element when
      the fill ends, so the stored markup is unchanged and later refreshes neither repaint the sheet nor replay the fill. */

@@ -4,6 +4,7 @@
    The old layout's checks of the same rules are tests/act-now.browser.js (touch tablets).
    Run: node tests/mobile-act-now.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the other browser tests)
    MOBILE_SHOTS=<dir> also writes a screenshot. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

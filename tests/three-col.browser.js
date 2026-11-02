@@ -7,6 +7,7 @@
    2048x1152 and 1440x900: stacked list over map unchanged (horizontal splitter, px.listMapSplit).
    390x844 touch: phone layout unchanged (no splitter, no three-column class).
    Run: node tests/three-col.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/mobile.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

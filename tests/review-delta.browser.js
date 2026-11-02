@@ -5,6 +5,7 @@
    2. Baseline once: jobs already seen get bl records (sent once); a reload does not baseline again.
    3. No published scoring model: nothing is recorded and the strip says it is waiting.
    2560x1440. Run: node tests/review-delta.browser.js (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/mobile.browser.js) */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

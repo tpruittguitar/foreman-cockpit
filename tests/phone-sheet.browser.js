@@ -1,6 +1,7 @@
 /* REV-083 (Tim 22:58 ET, option A; p42 item 15): on the phone an open job is a full-screen sheet over the header, banner and
    tabs, ending at the bottom nav; decision row pinned at the sheet bottom; phone Back and "‹ Queue" close it; desktop unchanged.
    Run: node tests/phone-sheet.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

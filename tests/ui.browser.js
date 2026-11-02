@@ -1,4 +1,5 @@
 /* Browser regression checks; requests use a local test-only writer. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert');
 const repo=require('path').resolve(__dirname,'..'),artifacts=process.env.PIPELINE_UI_ARTIFACTS || require('os').tmpdir();

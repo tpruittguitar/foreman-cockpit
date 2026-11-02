@@ -7,6 +7,7 @@
    key numbers, legend and freshness line; when the constraint moves, the new stage gets the highlight ring.
    Run: node tests/mobile-jobs.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the other browser tests)
    MOBILE_SHOTS=<dir> also writes screenshots. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..'),shots=process.env.MOBILE_SHOTS;

@@ -1,6 +1,7 @@
 /* REV-067 (Track M step 1, HF-13; Grok Q9-c): the "Since your last review" strip on the phone. 390 x 844, 402 x 874 and
    landscape 874 x 402: strip inside the screen, four 44 px tap targets at 13 px, 11 px label, cause example hidden, no
    sideways scroll, a tap filters the queue. Desktop strip unchanged. Run: node tests/phone-strip.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
 // Kept (Grok Bot GUI, Stage 3 review): the phone shell's Jobs fields are checked by tests/mobile-jobs.browser.js; this test is
 // the only check on the old layout that touch tablets (768-980 px) still use. TODO(tablet follow-up): retire when tablets get the new layout.

@@ -3,6 +3,7 @@
    and closes, desktop and touch tablets never get the shell, and crossing the breakpoint switches without a reload.
    Run: node tests/mobile-shell.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the other browser tests)
    MOBILE_SHOTS=<dir> also writes screenshots. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

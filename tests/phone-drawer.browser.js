@@ -9,6 +9,7 @@
    band text right), decision row pinned to the drawer bottom (52 px, no key hints, Pursue · Hold · Research │ Decline),
    evidence rows (44 px, 3 px state bar, glyph, 11 px word), materials after the drawer body (44 px, >= 11 px). 390 / 402.
    Run: node tests/phone-drawer.browser.js */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

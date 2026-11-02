@@ -1,6 +1,7 @@
 /* Needs you page and opening-page rule, end to end against a scripted Writer and a scripted attention list.
    Run: node tests/needs-tim.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/ui.browser.js)
    NEEDS_TIM_SHOTS=<dir> also writes desktop and phone screenshots of the page. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');

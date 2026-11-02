@@ -1,10 +1,12 @@
 /* Mobile job detail: the radial score ring is coloured by the app's percentile score band (pipeline-bands.js, the same bands as
-   the desktop score colours): TOP green, UPPER yellow, MID orange, LOW red (phone tokens --m-ok / --m-caution / --m-attn /
-   --m-fault). The track stays gray, the number stays neutral light gray, a text label names the band (no colour-only meaning),
+   the desktop score colours): TOP green, UPPER yellow, MID neutral gray, LOW red (phone tokens --m-ok / --m-caution /
+   --m-text-2 / --m-fault). Orange is not a score colour. The track stays gray, the number stays neutral light gray, a text
+   label names the band (no colour-only meaning),
    the ring passes 3:1 against its panel, and the fill animates once on open (<= 250ms; none under reduced motion). Decide card
    scores use the same band colour, with the band glyph beside the number (Tim 2026-11-02).
    Tim, 2026-11-02. Run: node tests/mobile-score-ring.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the
    other browser tests). MOBILE_SHOTS=<dir> also writes screenshots. */
+require('./helpers/block-production-writer.cjs');   // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');
@@ -103,6 +105,20 @@ const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math
   await openDetail(page,(await page.evaluate(()=>PEMobileBridge.decideRows()[0].id)));r=await ringInfo(page);
   assert.strictEqual(r.anim,'none','no ring animation under reduced motion');
   assert.deepStrictEqual(errors,[],'no page errors (reduced motion)');await ctx.close();
+
+  // Full phone frames (exactly 390x844 CSS pixels) of one Decide card per band, and the detail sheet on the middle band.
+  if(shots){
+    ({ctx,page}=await open({deviceScaleFactor:1}));
+    const again=await page.evaluate(()=>{const b=PEMobileBridge;return b.decideRows().map(r=>b.view(r)).map(v=>({id:v.id,band:v.band}))});
+    const shot={};again.forEach(v=>{if(TOKEN[v.band]&&!shot[v.band]&&v.id!==BELOW)shot[v.band]=v.id});
+    for(const band of ['TOP','UPPER','MID','LOW']){
+      await page.evaluate(id=>{document.querySelector('.m-card[data-m-card="'+id+'"]').scrollIntoView({block:'center'})},shot[band]);
+      await page.screenshot({path:path.join(shots,'decide-card-'+band.toLowerCase()+'-390x844.png')});
+    }
+    await openDetail(page,shot.MID);
+    await page.screenshot({path:path.join(shots,'detail-ring-mid-390x844.png')});
+    await ctx.close();
+  }
 
   await browser.close();server.close();console.log('mobile score ring browser: PASS');
 })().catch(e=>{console.error(e);process.exit(1)});

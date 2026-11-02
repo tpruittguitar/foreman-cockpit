@@ -8,6 +8,7 @@
      bar), and reduced motion turns every one of them off.
    Run: node tests/mobile-a11y.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the other browser tests)
    A11Y_REPORT=<file> also writes the measured contrast pairs and motion inventory as JSON. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

@@ -1,4 +1,5 @@
 /* Local scripted Writer only: delayed acceptance, durable readback and reload recovery. */
+require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require('playwright'),fs=require('fs'),path=require('path'),assert=require('node:assert/strict');
 const Scoring=require('../pipeline-scoring');
 const repo=path.resolve(__dirname,'..'),fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8'),rules=fs.readFileSync(repo+'/tests/fixtures/TIM_PIPELINE_RULES_CANONICAL.sample.txt','utf8');
