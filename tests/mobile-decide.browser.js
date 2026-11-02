@@ -12,13 +12,20 @@ const MIME={'.js':'application/javascript','.css':'text/css','.html':'text/html'
 const shots=process.env.MOBILE_SHOTS;
 // Open rows become needs-decision with varied pay / fit so every badge state appears (the shared fixture has one).
 let n=0;
+const MEMPHIS='V2X-TESTMEMPHIS01';
 const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').split('\n').map(l=>{
   const c=l.split(' | ');if(c.length<10||!/^\d+$/.test(c[0]))return l;
   if(!/^(READY_TO_PURSUE|MANUAL_RESEARCH|SCOUT_INTAKE|DISCOVERY_LEAD|TIM_DECISION_REQUIRED)$/.test(c[4]))return l;
   c[4]='TIM_DECISION_REQUIRED';const i=n++;
   const pay=[['190000','230000'],['250000','320000'],null,['150000','180000']][i%4];
   return c.join(' | ')+'; SCOPE_FIT_RAW='+(55+i*4)+'; FIT_CONF=MED'+(pay?'; SALARY_BASE_LOW='+pay[0]+'; SALARY_BASE_HIGH='+pay[1]+'; SALARY_BASIS=FORGE-ESTIMATE':'');
-}).join('\n');
+}).join('\n')+'\n'+(()=>{
+  // One needs-decision job that is NOT Act Now (Grok Bot GUI, Stage 5 review 2026-11-02): a scored Director role in Memphis,
+  // which the Act Now rule leaves out, so the Act now chip has to narrow the list (count below All, this card gone).
+  const c=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').split('\n').find(l=>l.startsWith('455 | ')).split(' | ');
+  c[0]='9455';c[1]=MEMPHIS;c[2]='Company-20';c[4]='TIM_DECISION_REQUIRED';c[7]='R-0000001';c[8]='Memphis, TN';
+  return c.join(' | ').replace('example.invalid/job/32c9afb4','example.invalid/job/memphis01')+'; SCOPE_FIT_RAW=30; FIT_CONF=MED; SALARY_BASE_LOW=150000; SALARY_BASE_HIGH=170000; SALARY_BASIS=FORGE-ESTIMATE'   // lowest score in the set, so earlier steps (which decide the top card) leave it in place;
+})();
 (async()=>{
   const server=require('http').createServer((req,res)=>{const u=new URL(req.url,'http://localhost'),f=repo+u.pathname;try{res.setHeader('Content-Type',MIME[path.extname(f)]||'text/plain');res.end(fs.readFileSync(f))}catch(e){res.statusCode=404;res.end()}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
@@ -128,8 +135,13 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   await page.click('.m-card.m-top [data-m-open]');await page.click('#m-detail [data-m-do="hold"]');await page.waitForSelector('#m-toast:not([hidden])');
   assert.ok(await page.isHidden('#m-detail'),'deciding in the sheet closes it');r=rulings(posts);await page.waitForTimeout(500);r=rulings(posts);assert.strictEqual(r[r.length-1].primaryId,d1);
   // 8. Act Now 10 chip narrows the list.
+  const all8=await cards(page),chip8=parseInt((await page.textContent('[data-m-filter="act"]')).replace(/\D+/g,' ').trim().split(' ').pop(),10);
+  assert.ok(all8.some(c=>c.id===MEMPHIS),'the Memphis job (not Act Now) is in All');
   await page.click('[data-m-filter="act"]');await page.waitForTimeout(150);const act=await cards(page);assert.ok(act.length<=10,'Act Now shows at most 10');
   assert.strictEqual(await page.getAttribute('[data-m-filter="act"]','aria-pressed'),'true');
+  assert.ok(!act.some(c=>c.id===MEMPHIS),'Act now leaves the Memphis job out');assert.ok(act.length<all8.length,'Act now narrows the list ('+act.length+' of '+all8.length+')');
+  assert.strictEqual(act.length,chip8,'the chip count is the number of cards Act now shows');
+  if(shots)await page.screenshot({path:path.join(shots,'stage3-decide-act-now-390x844.png')});
   assert.deepStrictEqual(errors,[],'no page errors');await ctx.close();
 
   // 9. No Writer: nothing is queued, no success toast, the card stays and says why.
