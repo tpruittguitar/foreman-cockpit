@@ -143,7 +143,7 @@
     else out.push(['', esc(st), 'Salary ' + st]);
     if (v.fit == null) out.push(['caution', gl('caution') + 'Fit unknown', 'Fit not measured']);
     else if (v.fit < FIT_BORDER) out.push(['caution', '~ Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit) + ', borderline']);
-    else out.push(['', 'Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit)]);
+    else out.push(['ok', gl('ok') + 'Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit) + ', strong']);   // every fit badge carries a glyph (Grok Bot GUI, Stage 5 review)
     out.push(flexBadge(v.flex));
     var a = ageDays(v);
     if (opt && opt.skipAge) return out;
@@ -401,7 +401,7 @@
   }
   /* In the table the column header names the field, so a cell drops the repeated word: "Fit 46" -> "46",
      "? Age unknown" -> "? unknown". The glyph, colour and the full wording in the label stay. */
-  function tableCell(x) { return x && [x[0], x[1].replace(/(Fit|Age|Flex) unknown$/, 'unknown').replace(/^(~ )?Fit (\d+)$/, '$1$2').replace('~ Fit ', '~'), x[2]]; }
+  function tableCell(x) { return x && [x[0], x[1].replace(/(Fit|Age|Flex) unknown$/, 'unknown').replace(/(^|>)(~ )?Fit (\d+)$/, '$1$2$3').replace('~ Fit ', '~'), x[2]]; }
   function jobTableHtml(list, f) {
     var cols = [['Title', 1], ['Company', f.company], ['Location', f.location], ['Salary', f.salary], ['Fit', f.fit], ['Flex', f.flex], ['Score', 1], ['Age', f.age]].filter(function (c) { return c[1]; });
     return '<div class="m-table-wrap"><table class="m-table"><thead><tr>' + cols.map(function (c, i) { return '<th scope="col"' + (i === 0 ? ' class="m-sticky"' : '') + '>' + c[0] + '</th>'; }).join('') + '</tr></thead><tbody>' +

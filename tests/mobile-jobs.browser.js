@@ -130,6 +130,12 @@ function activity(){return {ok:true,now:new Date().toISOString(),today:{writes:2
       search:document.querySelector('.m-search').getBoundingClientRect().height,count:document.getElementById('m-jobcount-l').getBoundingClientRect().height>0,chipRow:Math.round(document.querySelector('.m-jobchips').getBoundingClientRect().height),
       scoreWeight:getComputedStyle(sc).fontWeight,city:document.querySelector('.m-table tbody .m-clip[title*=","]')?document.querySelector('.m-table tbody .m-clip[title*=","]').textContent:''}});
   assert.ok(ls.full>=4,'landscape shows at least 4 full job rows at rest ('+ls.full+')');assert.strictEqual(ls.tabH,44,'landscape tab bar 44px');
+  // Fit cells keep their glyph in the table (the cell drops the word "Fit", not the meaning): strong fits are "✓ 79", not a bare "79".
+  const fitCells=await page.evaluate(()=>{const i=[...document.querySelectorAll('.m-table thead th')].findIndex(t=>t.textContent==='Fit');
+    return [...document.querySelectorAll('.m-table tbody tr')].map(r=>r.children[i]).filter(c=>c&&c.textContent.trim()).map(c=>({t:c.textContent.trim(),g:!!c.querySelector('svg.m-g'),cls:(c.querySelector('.m-b')||{}).className}))});
+  assert.ok(fitCells.length,'the table shows fit cells');
+  fitCells.forEach(c=>{assert.ok(c.g||/^~/.test(c.t),'fit cell has a glyph or "~": '+JSON.stringify(c));assert.ok(!/Fit/.test(c.t),'the cell drops the word Fit: '+c.t);
+    if(/^\d+$/.test(c.t)&&+c.t>=70)assert.strictEqual(c.cls,'m-b ok','strong fit cell is green: '+JSON.stringify(c))});
   assert.deepStrictEqual(ls.names,['Decide','Jobs','Status'],'tabs keep their names for screen readers');assert.ok(!ls.labelsShown,'tab labels hidden visually in landscape');
   assert.strictEqual(ls.search,0,'search box tucked behind the header icon');assert.ok(ls.count,'job count in the chip row');assert.strictEqual(ls.chipRow,36,'chips and count on one 36px row');
   assert.strictEqual(ls.scoreWeight,'600','Score column as heavy as the portrait score');assert.ok(ls.city&&!/,/.test(ls.city),'table shows the city without the state ('+ls.city+')');

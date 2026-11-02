@@ -64,6 +64,11 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
     const states=new Set([...document.querySelectorAll('#m-pane-decide .m-b')].map(e=>e.className));return {bad,states:[...states]}});
   assert.deepStrictEqual(colour.bad,[],'every coloured score, reason and badge carries a glyph or "~"');
   ['m-b ok','m-b fault','m-b caution m-i'].forEach(s=>assert.ok(colour.states.includes(s),'badge state present: '+s+' in '+colour.states));
+  // Every fit badge carries a glyph or "~", whatever badges sit around it; fits of 70+ are green with a check (Grok Bot GUI, Stage 5 review).
+  const fits=await page.$$eval('#m-pane-decide .m-b',bs=>bs.filter(b=>/Fit/.test(b.textContent)).map(b=>({t:b.textContent.trim(),cls:b.className,g:!!b.querySelector('svg.m-g')})));
+  assert.ok(fits.some(f=>parseInt(f.t.replace(/\D+/g,''),10)>=70),'test data has a strong fit');
+  fits.forEach(f=>{assert.ok(f.g||/^~/.test(f.t),'fit badge has a glyph or "~": '+JSON.stringify(f));const n=parseInt(f.t.replace(/\D+/g,''),10);
+    if(n>=70){assert.strictEqual(f.cls,'m-b ok','strong fit is green: '+JSON.stringify(f));assert.ok(f.g,'strong fit has the check glyph')}});
   const sizes=await page.evaluate(()=>{const small=[],taps=[];document.querySelectorAll('#m-root *').forEach(e=>{if(!e.offsetParent&&getComputedStyle(e).position!=='fixed')return;
       if([...e.childNodes].some(x=>x.nodeType===3&&x.textContent.trim())&&parseFloat(getComputedStyle(e).fontSize)<12)small.push(e.textContent.trim().slice(0,30))});
     document.querySelectorAll('#m-pane-decide button').forEach(b=>{const r=b.getBoundingClientRect();if(r.width&&(r.height<44||r.width<44)&&!b.classList.contains('m-chip'))taps.push(b.textContent.trim()+' '+Math.round(r.width)+'x'+Math.round(r.height))});
