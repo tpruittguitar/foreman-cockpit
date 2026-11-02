@@ -140,7 +140,12 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
       return {clip:bs.filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim()),right:Math.max(...bs.map(b=>b.getBoundingClientRect().right)),bar:bar.right,
         spare:Math.round(d.getBoundingClientRect().left-r.getBoundingClientRect().right),pursueRoom:(()=>{const p=document.querySelector('.m-dbar .m-primary'),c=getComputedStyle(p);return p.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight)-[...p.childNodes].reduce((s,n)=>{const g=document.createRange();g.selectNodeContents(n);return s+g.getBoundingClientRect().width},0)})()}});
     assert.deepStrictEqual(nb.clip,[],w+'px: no detail action label is clipped');assert.ok(nb.right<=nb.bar+0.5,w+'px: detail actions stay on screen '+JSON.stringify(nb));
-    assert.ok(nb.spare>=16,w+'px: Research and Decline at least 16px apart ('+nb.spare+')');assert.ok(nb.pursueRoom>=0,w+'px: Pursue label fits ('+JSON.stringify(nb)+')');}
+    assert.ok(nb.spare>=16,w+'px: Research and Decline at least 16px apart ('+nb.spare+')');assert.ok(nb.pursueRoom>=0,w+'px: Pursue label fits ('+JSON.stringify(nb)+')');
+    // Headroom: GitHub's runner draws text ~0.3px/letter wider than this container (CI 2026-11-02 overflowed 360px by 7px when
+    // it fit here by 1px). With every letter 0.5px wider the bar must still fit and no label may clip.
+    const wide=await page.evaluate(()=>{const st=document.createElement('style');st.id='t-wide';st.textContent='#m-root .m-dbar .m-btn{letter-spacing:.5px!important}';document.head.appendChild(st);
+      const bs=[...document.querySelectorAll('.m-dbar .m-btn')],bar=document.querySelector('.m-dbar').getBoundingClientRect(),r={right:Math.max(...bs.map(b=>b.getBoundingClientRect().right)),bar:bar.right,clip:bs.filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim())};st.remove();return r});
+    assert.ok(wide.right<=wide.bar+0.5&&!wide.clip.length,w+'px: still fits with 0.5px wider letters (CI headroom) '+JSON.stringify(wide));}
   await page.setViewportSize({width:390,height:844});await page.waitForTimeout(150);
   await page.click('#m-d-back');assert.ok(await page.isHidden('#m-detail'),'back arrow closes');
   await page.click('.m-card.m-top [data-m-open]');await page.keyboard.press('Escape');assert.ok(await page.isHidden('#m-detail'),'Escape closes');

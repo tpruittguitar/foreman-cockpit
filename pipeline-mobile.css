@@ -181,10 +181,10 @@ html.m-detail-open body{overflow:hidden}
 #m-root .m-link{color:var(--m-text);text-decoration:underline;display:inline-flex;min-height:44px;align-items:center}
 .m-dbar{flex:none;display:flex;gap:8px;padding:10px 12px calc(10px + var(--m-safe-bottom));background:var(--m-panel);border-top:1px solid var(--m-border)}
 /* Detail action bar fits Pursue / Hold / Research / Decline without clipping down to 360px (CI 2026-11-02: Pursue had 0px to spare
-   at 390 and was clipped at 375). Tighter side padding; the 16px Research-Decline gap stays; Pursue never shrinks below its label. */
+   at 390 and was clipped at 375; the CI runner's wider text then overflowed 360 by 7px, hence 14px text and 7px padding at <=380). Tighter side padding; the 16px Research-Decline gap stays; Pursue never shrinks below its label. */
 #m-root .m-dbar .m-btn{padding:0 10px}
 #m-root .m-dbar .m-primary{min-width:max-content}
-@media (max-width:380px){#m-root .m-dbar .m-btn{padding:0 8px}#m-root .m-dbar{gap:6px;padding-left:10px;padding-right:10px}#m-root .m-dbar .m-research{margin-right:10px}}   /* 6px gap + 10px keeps Research-Decline at 16px */
+@media (max-width:380px){#m-root .m-dbar .m-btn{padding:0 7px;font-size:14px}#m-root .m-dbar{gap:6px;padding-left:10px;padding-right:10px}#m-root .m-dbar .m-research{margin-right:10px}}   /* 6px gap + 10px keeps Research-Decline at 16px */
 
 
 /* ---- Stage 4: Jobs ---- */
