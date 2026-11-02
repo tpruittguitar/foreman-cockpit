@@ -178,7 +178,9 @@
   var decideFilter = 'all', menuFor = null, swipeX = 0, toastTimer = 0, lastDecision = null, holdTimer = 0;
   function queue() {
     var b = B(), rows = b.decideRows(), ids = decideFilter === 'act' ? b.actNowIds() : null;
-    if (ids) rows = rows.filter(function (r) { return ids.indexOf(r.id) >= 0; });
+    /* Act now keeps the shared Act Now model's order (Shield AI pinned first, then its ranking); re-sorting by score here
+       dropped the pin (found by tests/mobile-act-now.browser.js, 2026-11-02). All is sorted by score. */
+    if (ids) return rows.filter(function (r) { return ids.indexOf(r.id) >= 0; }).sort(function (a, c) { return ids.indexOf(a.id) - ids.indexOf(c.id); }).map(function (r) { return b.view(r); });
     return rows.map(function (r) { return b.view(r); }).sort(function (a, c) { return (c.score == null ? -1 : c.score) - (a.score == null ? -1 : a.score) || String(a.id).localeCompare(String(c.id)); });
   }
   function cardHtml(v, top) {
@@ -203,7 +205,7 @@
     var p = $('m-pane-decide');
     if (!loaded) { p.innerHTML = skeleton(); return; }
     var q = queue(), rows = B().decideRows(), all = rows.length, ids = B().actNowIds(), act = rows.filter(function (r) { return ids.indexOf(r.id) >= 0; }).length;
-    var head = '<div class="m-count"><p><b class="m-num m-attn">' + all + '</b> need you</p><span class="m-label">Sort: score ↓</span></div>' +
+    var head = '<div class="m-count"><p><b class="m-num m-attn">' + all + '</b> need you</p><span class="m-label">' + (decideFilter === 'act' ? 'Order: Act now' : 'Sort: score ↓') + '</span></div>' +
       '<div class="m-chips" role="group" aria-label="Decide filter"><button type="button" class="m-chip" data-m-filter="all" aria-pressed="' + (decideFilter === 'all') + '">All · ' + all + '</button>' +
       '<button type="button" class="m-chip" data-m-filter="act" aria-pressed="' + (decideFilter === 'act') + '" title="Act Now: up to 10 roles to act on first (Director and up, US, scored)">Act now · ' + act + '</button></div>';
     var h = B().health(), qs = queueState();
