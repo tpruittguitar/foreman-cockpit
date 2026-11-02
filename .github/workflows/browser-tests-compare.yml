@@ -1,0 +1,41 @@
+# Tim + Grok Bot GUI (2026-11-02, PR #253): run the full browser suite on the PR branch AND on its base branch in the same clean
+# runner, so failures that also happen on the base are told apart from regressions with a repeatable result. Read only:
+# contents:read, no secrets; tests/helpers/ci-net-guard.cjs blocks every Apps Script (production Writer) host on both sides.
+# Not a required check. Job summary: side-by-side table. Artifact: logs and screenshots for both sides.
+name: browser-tests-compare
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: browser-tests-compare-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: branch }
+      - uses: actions/checkout@v4
+        with: { path: base, ref: '${{ github.base_ref || ''main'' }}' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Install dependencies (each side's own lockfile)
+        run: |
+          (cd branch && npm ci --ignore-scripts --no-audit --no-fund)
+          (cd base && npm ci --ignore-scripts --no-audit --no-fund)
+          echo "branch playwright $(node -p "require('./branch/node_modules/playwright/package.json').version")"
+          echo "base   playwright $(node -p "require('./base/node_modules/playwright/package.json').version")"
+      - name: Install Chromium for each side's Playwright
+        run: |
+          (cd branch && npx --no-install playwright install --with-deps chromium)
+          (cd base && npx --no-install playwright install chromium)
+      - name: Fonts (same packages as visual-golden)
+        run: sudo apt-get install -y --no-install-recommends fonts-inter fonts-dejavu-core fonts-dejavu-mono fonts-dejavu-extra fonts-liberation fonts-noto-color-emoji && fc-cache -f
+      - name: Run every browser test on base and branch
+        run: bash branch/.github/scripts/compare-browser-tests.sh branch base results
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: browser-tests-compare, path: results/, retention-days: 14 }
