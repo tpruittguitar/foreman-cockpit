@@ -1,7 +1,8 @@
 /* Mobile job detail: the radial score ring is coloured by the app's percentile score band (pipeline-bands.js, the same bands as
    the desktop score colours): TOP green, UPPER yellow, MID orange, LOW red (phone tokens --m-ok / --m-caution / --m-attn /
    --m-fault). The track stays gray, the number stays neutral light gray, a text label names the band (no colour-only meaning),
-   the ring passes 3:1 against its panel, and the fill animates once on open (<= 250ms; none under reduced motion).
+   the ring passes 3:1 against its panel, and the fill animates once on open (<= 250ms; none under reduced motion). Decide card
+   scores use the same band colour, with the band glyph beside the number (Tim 2026-11-02).
    Tim, 2026-11-02. Run: node tests/mobile-score-ring.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the
    other browser tests). MOBILE_SHOTS=<dir> also writes screenshots. */
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
@@ -20,7 +21,8 @@ function clone(i,fit,pay){const c=tpl.split(' | ');c[0]=String(2000+i);c[1]='V2X
 for(let i=0;i<120;i++)extra.push(clone(i,20+Math.round(i*79/119),['190000','240000']));
 const BELOW='V2X-RING'+String(500).padStart(8,'0');extra.push(clone(500,96,['120000','140000']));
 const fixture=lines.slice(0,lines.indexOf(tpl)).concat(extra,lines.slice(lines.indexOf(tpl))).join('\n');
-const TOKEN={TOP:'--m-ok',UPPER:'--m-caution',MID:'--m-attn',LOW:'--m-fault'};
+// MID is gray as on desktop (Tim 2026-11-02: orange stays for constraints and QUEUE DOWN).
+const TOKEN={TOP:'--m-ok',UPPER:'--m-caution',MID:'--m-text-2',LOW:'--m-fault'},GLYPH={TOP:'▲',UPPER:'◆',MID:'●',LOW:'▽'};
 function lum(rgb){const v=rgb.match(/\d+(\.\d+)?/g).slice(0,3).map(Number).map(x=>{x/=255;return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4)});return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2]}
 const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05)};
 (async()=>{
@@ -55,7 +57,19 @@ const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math
   assert.deepStrictEqual(Object.keys(pick).sort(),['LOW','MID','TOP','UPPER'],'test data covers every band ('+JSON.stringify(Object.keys(pick))+')');
   const text=await tok(page,'--m-text'),gray=await tok(page,'--m-text-2');
 
-  // 2. Each band: ring colour = its token, gray track, neutral number, a text label naming the band, ring >= 3:1 on its panel.
+  // 2. Each band's Decide card: the score number in the band colour with the band glyph beside it; the card agrees with the ring.
+  for(const band of ['TOP','UPPER','MID','LOW']){
+    const c=await page.evaluate(id=>{const s=document.querySelector('.m-card[data-m-card="'+id+'"] .m-score'),b=s.querySelector('b');
+      return {band:s.getAttribute('data-band'),color:getComputedStyle(b).color,g:b.getAttribute('data-g'),before:getComputedStyle(b,'::before').content,num:b.textContent.trim(),label:s.getAttribute('aria-label')}},pick[band].id);
+    assert.strictEqual(c.band,band,band+': card has the same band as the ring');assert.strictEqual(c.color,await tok(page,TOKEN[band]),band+': card score in '+TOKEN[band]+' ('+c.color+')');
+    assert.strictEqual(c.g,GLYPH[band],band+': band glyph '+GLYPH[band]+' beside the number');assert.strictEqual(c.before,'"'+GLYPH[band]+'"','glyph is drawn');
+    assert.match(c.num,/^\d+$/,band+': the number itself stays a plain number');assert.match(c.label,new RegExp(band.toLowerCase()+' \\d+% of open jobs'),band+': screen readers hear the band ('+c.label+')');
+    if(shots){await page.evaluate(id=>document.querySelector('.m-card[data-m-card="'+id+'"]').scrollIntoView({block:'center'}),pick[band].id);
+      await page.locator('.m-card[data-m-card="'+pick[band].id+'"]').screenshot({path:path.join(shots,'stage5-card-'+band.toLowerCase()+'-390.png')});}
+  }
+  await page.evaluate(()=>scrollTo(0,0));
+
+  // 3. Each band: ring colour = its token, gray track, neutral number, a text label naming the band, ring >= 3:1 on its panel.
   for(const band of ['TOP','UPPER','MID','LOW']){
     await openDetail(page,pick[band].id);const r=await ringInfo(page),want=await tok(page,TOKEN[band]);
     assert.strictEqual(r.band,band,band+': ring knows its band');assert.strictEqual(r.arc,want,band+': ring colour is '+TOKEN[band]+' ('+r.arc+')');
@@ -68,7 +82,7 @@ const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math
     await closeDetail(page);
   }
 
-  // 3. Animation: once on open (<= 250ms), not replayed by a later repaint of the same sheet.
+  // 4. Animation: once on open (<= 250ms), not replayed by a later repaint of the same sheet.
   await openDetail(page,pick.TOP.id);let r=await ringInfo(page);
   assert.strictEqual(r.anim,'m-ring-fill','fill animates on open');assert.ok(r.dur>0&&r.dur<=0.25,'animation <= 250ms ('+r.dur+'s)');
   await page.evaluate(()=>{document.querySelector('#m-detail .m-ring')._t=1});await page.waitForTimeout(400);   // past the 250ms fill
@@ -76,7 +90,7 @@ const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math
   await page.evaluate(()=>PEMobile.refresh());await page.waitForTimeout(300);
   assert.strictEqual(await page.evaluate(()=>document.querySelector('#m-detail .m-ring')._t),1,'a refresh of the unchanged sheet does not repaint it (so the fill does not replay)');
 
-  // 4. The pay-below case: a strong band next to the red pay warning (both shown, each with its own glyph and words).
+  // 5. The pay-below case: a strong band next to the red pay warning (both shown, each with its own glyph and words).
   await closeDetail(page);await openDetail(page,BELOW);r=await ringInfo(page);
   const pay=await page.evaluate(()=>{const p=document.querySelector('#m-detail .m-pay');return p&&{cls:p.className,text:p.textContent.trim()}});
   assert.ok(pay&&/fault/.test(pay.cls),'pay below need is shown in red ('+JSON.stringify(pay)+')');
@@ -84,7 +98,7 @@ const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math
   if(shots)await page.locator('#m-detail .m-verdict').screenshot({path:path.join(shots,'stage5-ring-pay-below-390.png')});
   assert.deepStrictEqual(errors,[],'no page errors');await ctx.close();
 
-  // 5. Reduced motion: no ring animation.
+  // 6. Reduced motion: no ring animation.
   ({ctx,page,errors}=await open({reducedMotion:'reduce'}));
   await openDetail(page,(await page.evaluate(()=>PEMobileBridge.decideRows()[0].id)));r=await ringInfo(page);
   assert.strictEqual(r.anim,'none','no ring animation under reduced motion');

@@ -59,7 +59,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   const first=await page.evaluate(()=>{const b=document.querySelector('.m-card.m-top [data-m-do="pursue"]').getBoundingClientRect();return {top:b.top,bottom:b.bottom,ih:innerHeight}});
   assert.ok(first.bottom<first.ih-64,'Pursue on the first card is on screen: one tap to decide');
   const colour=await page.evaluate(()=>{const bad=[];
-    document.querySelectorAll('#m-pane-decide .m-b.ok,#m-pane-decide .m-b.caution,#m-pane-decide .m-b.attn,#m-pane-decide .m-b.fault,#m-pane-decide .m-reason.ok,#m-pane-decide .m-reason.caution,#m-pane-decide .m-reason.fault,#m-pane-decide .m-score.ok').forEach(e=>{
+    document.querySelectorAll('#m-pane-decide .m-b.ok,#m-pane-decide .m-b.caution,#m-pane-decide .m-b.attn,#m-pane-decide .m-b.fault,#m-pane-decide .m-reason.ok,#m-pane-decide .m-reason.caution,#m-pane-decide .m-reason.fault').forEach(e=>{
       if(!e.querySelector('svg.m-g')&&!/^~/.test(e.textContent.trim()))bad.push(e.className+': '+e.textContent)});
     const states=new Set([...document.querySelectorAll('#m-pane-decide .m-b')].map(e=>e.className));return {bad,states:[...states]}});
   assert.deepStrictEqual(colour.bad,[],'every coloured score, reason and badge carries a glyph or "~"');

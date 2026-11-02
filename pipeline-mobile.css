@@ -108,8 +108,8 @@ html.m-shell:not(.m-legacy) body{display:block;margin:0;background:var(--m-bg);c
 #m-root .m-sub{font:400 14px/1.35 var(--m-sans);color:var(--m-text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:none}
 .m-score{display:flex;flex-direction:column;align-items:flex-end;flex:none}
 #m-root .m-score b{font:600 30px/1 var(--m-mono);font-variant-numeric:tabular-nums;color:var(--m-text);display:flex;align-items:center}
-#m-root .m-score.ok b{color:var(--m-ok)}
-.m-score.ok .m-g{width:18px;height:18px}
+#m-root .m-score.m-b-top b{color:var(--m-ok)}#m-root .m-score.m-b-upper b{color:var(--m-caution)}#m-root .m-score.m-b-mid b{color:var(--m-text-2)}#m-root .m-score.m-b-low b{color:var(--m-fault)}
+#m-root .m-score b[data-g]::before{content:attr(data-g);font-size:.5em;margin-right:4px}   /* band glyph beside the number: never colour alone */
 #m-root .m-reason{margin:10px 0 0;font:600 12px/1.35 var(--m-mono);letter-spacing:.5px;text-transform:uppercase;color:var(--m-text-2)}
 #m-root .m-reason.ok,#m-root .m-pay.ok{color:var(--m-ok)}#m-root .m-reason.caution,#m-root .m-pay.caution{color:var(--m-caution)}#m-root .m-reason.fault,#m-root .m-pay.fault{color:var(--m-fault)}
 .m-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
@@ -165,9 +165,10 @@ html.m-detail-open body{overflow:hidden}
 .m-db{flex:1;overflow:auto;padding:12px 12px 16px;-webkit-overflow-scrolling:touch}
 .m-verdict{display:flex;gap:14px;align-items:center;padding:14px;background-color:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius)}
 .m-ring{flex:none;color:var(--m-text-2)}   /* bands off / not ranked / hold: neutral gray arc */
-/* Score ring by percentile band (pipeline-bands.js): TOP green, UPPER yellow, MID orange, LOW red; the track stays gray. */
+/* Score ring and card scores by percentile band (pipeline-bands.js): TOP green, UPPER yellow, MID gray (as desktop; orange stays
+   for constraints and QUEUE DOWN), LOW red; the ring track stays gray. */
 #m-root .m-ring.m-b-top,#m-root .m-band-l.m-b-top{color:var(--m-ok)}#m-root .m-ring.m-b-upper,#m-root .m-band-l.m-b-upper{color:var(--m-caution)}
-#m-root .m-ring.m-b-mid,#m-root .m-band-l.m-b-mid{color:var(--m-attn)}#m-root .m-ring.m-b-low,#m-root .m-band-l.m-b-low{color:var(--m-fault)}
+#m-root .m-ring.m-b-mid,#m-root .m-band-l.m-b-mid{color:var(--m-text-2)}#m-root .m-ring.m-b-low,#m-root .m-band-l.m-b-low{color:var(--m-fault)}
 #m-root .m-band-l{margin:4px 0 0;font:600 12px/1.3 var(--m-mono);letter-spacing:.6px;color:var(--m-text-2)}
 /* One fill on open: the arc grows from empty in 250ms; no motion under reduced motion. */
 @keyframes m-ring-fill{from{stroke-dasharray:0 999}}

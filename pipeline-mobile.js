@@ -182,11 +182,15 @@
     if (ps === 'ok') return ['ok', gl('ok') + 'Pay meets target'];
     return ['', 'Pay vs need not known'];
   }
+  /* Card / row score: coloured by the same percentile band as the detail ring (Tim, 2026-11-02), with the band glyph drawn
+     before the number (CSS ::before from data-g, so the number's text stays a plain number) and the band named in the label
+     for screen readers. TOP green ▲, UPPER yellow ◆, MID gray ●, LOW red ▽; bands off / not ranked / HOLD: plain number. */
   function scoreHtml(v, big) {
     if (v.score == null) return '<div class="m-score"><b class="m-num">—</b><span class="m-label">Unscored</span></div>';
-    var ok = v.score >= SCORE_OK;
-    return '<div class="m-score' + (ok ? ' ok' : '') + '" aria-label="Score ' + Math.round(v.score) + (ok ? ', strong' : '') + '"><b class="m-num">' + (ok ? gl('ok') : '') + Math.round(v.score) + '</b><span class="m-label">Score</span></div>';
+    var bd = { TOP: 'top', UPPER: 'upper', MID: 'mid', LOW: 'low' }[v.band], g = bd ? BAND[v.band][1].split(' ')[0] : '';
+    return '<div class="m-score' + (bd ? ' m-b-' + bd : '') + '" data-band="' + esc(v.band || 'NONE') + '" aria-label="Score ' + Math.round(v.score) + (bd ? ', ' + BAND[v.band][1].slice(2).toLowerCase() + ' of open jobs' : '') + '"><b class="m-num"' + (g ? ' data-g="' + g + '"' : '') + '>' + Math.round(v.score) + '</b><span class="m-label">Score</span></div>';
   }
+
 
   var decideFilter = 'all', menuFor = null, swipeX = 0, toastTimer = 0, lastDecision = null, holdTimer = 0;
   function queue() {
