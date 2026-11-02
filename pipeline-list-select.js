@@ -27,6 +27,9 @@
     }
     if (mods.toggle) {
       checked = copy(state.checked);
+      // Seed the focused row once when a multi-selection begins. Never re-add a
+      // row deliberately removed from an existing group, or a hidden row.
+      if (!Object.keys(checked).length && state.focus !== id && ids.indexOf(state.focus) >= 0 && mods.box !== false) checked[state.focus] = true;
       if (mods.box === true) checked[id] = true;
       else if (mods.box === false) delete checked[id];
       else if (checked[id]) delete checked[id];
@@ -41,3 +44,4 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.PipelineListSelect = api;
 })(typeof self !== 'undefined' ? self : this);
+

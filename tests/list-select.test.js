@@ -51,3 +51,14 @@ test('the job list wires ctrl, shift, and one decision menu, with no row checkbo
   assert.match(html, /kind:spec\.kind,value:spec\.value\|\|''/);
   assert.equal(html.includes('class="row-select"'), false);
 });
+
+
+test('starting ctrl selection includes the focused visible job; later deselection sticks',()=>{
+ let st=S.apply({checked:{},anchor:'a',focus:'a'},ids,'c',{toggle:true});
+ assert.deepEqual(Object.keys(st.checked).sort(),['a','c']);
+ st=S.apply({...st,focus:'a'},ids,'a',{toggle:true});
+ assert.deepEqual(Object.keys(st.checked),['c']);
+ st=S.apply({...st,focus:'a'},ids,'e',{toggle:true});
+ assert.deepEqual(Object.keys(st.checked).sort(),['c','e']);
+ assert.deepEqual(Object.keys(S.apply({checked:{},focus:'hidden'},ids,'b',{toggle:true}).checked),['b']);
+});

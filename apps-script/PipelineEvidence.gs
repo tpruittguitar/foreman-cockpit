@@ -26,6 +26,8 @@
   function salary(p){
     p=p||{};var direct=['SALARY_BASE_POSTED','PAY_POSTED','SALARY_BASE_EST'];
     function range(v,source,legacy){var a=moneyNumbers(v);if(!a.length)return null;var lo=Math.min.apply(null,a),hi=Math.max.apply(null,a);return{low:lo,high:hi,mid:(lo+hi)/2,scorePoint:lo+0.75*(hi-lo),source:source,legacy:legacy}}
+    // Explicit posted text takes precedence over a conflicting estimated canonical band.
+    if(/^(FORGE-ESTIMATE|THIRD_PARTY_ESTIMATE)$/.test(p.SALARY_BASIS||''))for(var k=0;k<2;k++){var v=p[direct[k]];if(v&&!/ESTIMAT|NOT[ _]POSTED|UNVERIFIED/i.test(v)){var posted=range(v,direct[k],false);if(posted)return posted;}}
     var canonicalLow=moneyNumbers(p.SALARY_BASE_LOW),canonicalHigh=moneyNumbers(p.SALARY_BASE_HIGH);
     if(/^(EMPLOYER_POSTED|FORGE-ESTIMATE|THIRD_PARTY_ESTIMATE)$/.test(p.SALARY_BASIS||'')&&canonicalLow.length&&canonicalHigh.length&&canonicalHigh[0]>=canonicalLow[0])return{low:canonicalLow[0],high:canonicalHigh[0],mid:(canonicalLow[0]+canonicalHigh[0])/2,scorePoint:canonicalLow[0]+0.75*(canonicalHigh[0]-canonicalLow[0]),source:'SALARY_BASE_LOW/HIGH',legacy:false};
     for(var i=0;i<direct.length;i++){var out=range(p[direct[i]],direct[i],false);if(out)return out}
@@ -36,5 +38,9 @@
     for(var j=0;j<legacy.length;j++){var x=range(p[legacy[j]],legacy[j],true);if(x)return x}
     return{mid:null,source:'',legacy:false};
   }
-  return{present:present,score:score,fit:fit,salary:salary,moneyNumbers:moneyNumbers,FIT_KEYS:FIT_KEYS};
+  // Candidate decision band is the upper 30% of the span, not 70% of the maximum.
+  function decisionBand(p){var s=salary(p);return s.low!=null&&s.high!=null?{low:s.low+.70*(s.high-s.low),high:s.high}:null;}
+  function salaryMatches(p,min,max){var s=salary(p);return (!min||(s.high!=null&&s.high>=Number(min)))&&(!max||(s.low!=null&&s.low<=Number(max)));}
+  return{present:present,score:score,fit:fit,salary:salary,decisionBand:decisionBand,salaryMatches:salaryMatches,moneyNumbers:moneyNumbers,FIT_KEYS:FIT_KEYS};
 }));
+

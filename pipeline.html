@@ -485,14 +485,14 @@ var MASTER_CACHE_=(function(){var moved=Promise.resolve().then(function(){var ra
     write:function(v){moved.then(function(){return IDB_.set('master',v)}).catch(function(){})},moved:moved}})();
 
 var FIXED=['INV','PRIMARY_ID','COMPANY','TITLE','BUCKET','DISPOSITION','TAGS','REQ','LOCATION','SCOUT_ACTION'];
-var COMPUTED=['NEW','TIM_RULING','SECTION','MISMATCH','COMP_MID','CELLS','AGE','LINK','OVERALL_RATING','EXPERIENCE_FIT','NET_COMP_SCORE','GEO_SCORE','ATS_MATCH_SCORE','TITLE_SCORE','CULTURE_SCORE','OWNERSHIP_SCORE','SCREEN_GATE','RATING_CONFIDENCE','FLEX_CLASS','FLEX_MODIFIER','FLEX_RATING_IMPACT','RAW_FIT','ADJUSTED_FIT','PURSUIT_STATUS'];
+var COMPUTED=['NEW','TIM_RULING','SECTION','MISMATCH','COMP_MAX','COMP_MID','CELLS','AGE','LINK','OVERALL_RATING','EXPERIENCE_FIT','NET_COMP_SCORE','GEO_SCORE','ATS_MATCH_SCORE','TITLE_SCORE','CULTURE_SCORE','OWNERSHIP_SCORE','SCREEN_GATE','RATING_CONFIDENCE','FLEX_CLASS','FLEX_MODIFIER','FLEX_RATING_IMPACT','RAW_FIT','ADJUSTED_FIT','PURSUIT_STATUS'];
 var BUCKET_ORDER_DEFAULT=['READY_TO_PURSUE','TIM_DECISION_REQUIRED','SCOUT_INTAKE','DISCOVERY_LEAD','BLOCKED','MANUAL_RESEARCH','APPLIED','REJECTED_BY_EMPLOYER','DECLINED_BY_TIM','DUPLICATE','CLOSED_DEAD','INVALID_DISCOVERY'];
 var PROTECTED=['APPLIED','REJECTED_BY_EMPLOYER'];
 var DESK_DEFAULT=['NEW','COMPANY','TITLE','LINK','BUCKET','OVERALL_RATING','EXPERIENCE_FIT','GEO_SCORE','NET_COMP_SCORE','ATS_MATCH_SCORE','TIM_RULING','DISPOSITION','LOCATION','DATE_ADDED','AGE','MASTER_LOADED_AT','SALARY_BASE_EST','FLEX','FLOOR_STATUS','REQ','NOTIFICATION_SOURCE','IDENTITY_CONFIDENCE','SCOUT_RUN_ID','TAGS','DECLINE_REASON_CODE','BLOCKER','SECTION'];
 var PHONE_DEFAULT=['NEW','TITLE','COMPANY','LOCATION','OVERALL_RATING','BUCKET','SALARY_BASE_EST'];
 var COCKPIT_DESK=['NEW','TITLE','COMPANY','LOCATION','LINK','OVERALL_RATING','BUCKET','SALARY_BASE_EST','FLEX_CLASS','EXPERIENCE_FIT','AGE'];
 var DATE_KEYS={DATE_ADDED:1,MASTER_LOADED_AT:1,SALARY_ASOF:1,FLEX_ASOF:1,SALARY_EXPIRES:1,APP_DATE:1};
-var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MID:1};
+var MONEY_KEYS={SALARY_BASE_EST:1,COMP_MAX:1,COMP_MID:1};
 var mapView={fitPending:true,userZoomed:false,tapPin:null,zoom:1,x:480,y:255,focus:null,hasFocused:false,animation:0,request:0,found:[],active:null,overview:null,returnView:null};
 var scoreCache={fp:"",rows:{}};
 var S={anSnooze:LS.get('anSnooze',{}),anCollapsed:LS.get('anCollapsed',false),changeOk:{},held:null,cfg:LS.get('cfg',PipelineConnection),master:null,rows:[],text:'',meta:{},preset:'OPEN',sort:{col:'OVERALL_RATING',dir:'desc'},filters:{},seen:LS.get('seen',{}),reviewed:LS.get('reviewed',{}),reviewDirty:{},sessionStart:Date.now(),rulings:LS.get('rulings',{}),incidents:LS.get('incidents',null)||PipelineIncidents.empty(),pins:LS.get('pins',{}),checked:{},colWidths:LS.get('colWidths',{}),colWidthsPhone:LS.get('colWidthsPhone',{}),mapMode:(function(m){return m==='selected'||m==='visible'?m:'visible'})(LS.get('mapMode','selected')),chartsArchive:!!LS.get('chartsArchive',false),docSelection:LS.get('docSelection',null),docScores:{},cols:LS.get('cols',null),autos:LS.get('autos',null),scoring:LS.get('scoring',null),scoringCanonical:null,scoringCanonicalMeta:null,buildInfo:null,buildLatest:null,chartFilter:null,focus:null,detailTab:'overview',tab:'pipeline',newDays:1,search:'',docs:null,canonicalRules:null,targetCompanies:null,events:{},interview:{}};
@@ -1010,7 +1010,7 @@ function apply(text,meta,fromCache){
 function decorate(r){
   r.id=r.PRIMARY_ID||('INV-'+r.INV);
   var d=PipelineParser.parseDate(r.payload.DATE_ADDED),loaded=PipelineParser.parseDate(r.payload.MASTER_LOADED_AT);r.dateAdded=d;r.dateAddedStr=d?d.toISOString().slice(0,10):(r.payload.DATE_ADDED||'');r.masterLoadedAt=loaded;r.masterLoadedAtStr=loaded?loaded.toISOString():(r.payload.MASTER_LOADED_AT||'');
-  var cm=PipelineEvidence.salary(r.payload);r.compMid=cm.mid;r.compSource=cm.source;r.compLegacy=cm.legacy;
+  var cm=PipelineEvidence.salary(r.payload);r.compMid=cm.mid;r.compMax=cm.high!=null?cm.high:null;r.compSource=cm.source;r.compLegacy=cm.legacy;
   r.mismatch=!!(r.section&&r.BUCKET&&r.section!==r.BUCKET);
   /* POSTING_TITLE: the title as posted, recorded when the canonical TITLE column is protected (applied rows). Display only; writes use PRIMARY_ID. */
   if(r.payload.POSTING_TITLE&&String(r.payload.POSTING_TITLE).trim()&&r.payload.POSTING_TITLE!==r.TITLE){r.TITLE_CANONICAL=r.TITLE;r.TITLE=String(r.payload.POSTING_TITLE).trim()}
@@ -1112,6 +1112,7 @@ function val(r,c){
     case 'TIM_RULING':var st=rulingState(r);return st?(st.ru.kind+(st.ru.value?':'+st.ru.value:'')+' ('+st.s.toLowerCase()+')'):'';
     case 'SECTION':return r.section||'';
     case 'MISMATCH':return r.mismatch?'YES':'';
+    case 'COMP_MAX':return r.compMax!=null?String(r.compMax):'';
     case 'COMP_MID':return r.compMid!=null?String(r.compMid):'';
     case 'SALARY_BASE_EST':var sr=PipelineTrust.salaryRange(r.payload);return sr.text?(sr.approx?'~':'')+sr.text:'';
     case 'FLEX':var fi=PipelineTrust.flexInfo(r.payload);return fi.text?(fi.approx?'~':'')+fi.text:'';
@@ -1302,7 +1303,7 @@ var PRESETS={
   TIM_DECISION:{label:'Waiting on your decision',text:'BUCKET=TIM_DECISION_REQUIRED: the lanes leave these alone until Tim rules',fn:function(r){return r.BUCKET==='TIM_DECISION_REQUIRED'}},
   DEAD_POSTINGS:{label:'Closed postings still active',text:'Employer ATS reports the posting closed (LIVENESS=CLOSED_*) but BUCKET is still active; hidden from open views until filed CLOSED_DEAD',fn:function(r){var b=String(r.BUCKET||'').toUpperCase();return closedPosting_(r)&&!TERMINAL_BUCKETS_[b]&&b!=='APPLIED'&&!(r.payload&&r.payload.ARCHIVE_STATE)}},
   DECLINE_CANDIDATES:{label:'Decline candidates',hot:true,text:'active unresolved rows with an AI decline recommendation (PROPOSED_DISPOSITION=DECLINED_BY_TIM or an explicit review note); Tim must still approve the ruling',fn:isDeclineCandidate_},
-  HIGH_PAY:{label:'High Pay',text:'known/estimated compensation midpoint >= $200k',fn:function(r){return r.compMid!=null&&r.compMid>=200000}},
+  HIGH_PAY:{label:'High Pay',text:'posted or estimated maximum >= $200k',fn:function(r){return r.compMax!=null&&r.compMax>=200000}},
   LOCAL:{label:'Local',text:'Tennessee / Chattanooga-Cleveland regional roles',fn:function(r){return /(TN|Tennessee|Chattanooga|Cleveland|Knoxville)/i.test(r.LOCATION||'')}},
   REMOTE:{label:'Remote',text:'location or payload indicates remote',fn:function(r){return /remote/i.test((r.LOCATION||'')+' '+r.raw)}},
   PINNED:{label:'Pinned',text:'Tim pinned rows',fn:function(r){return !!S.pins[r.id]}},
@@ -1322,13 +1323,14 @@ function renderPresets(){
   var selOpts='<option value="">'+(nsel?nsel+' selected':'No rows selected')+'</option><option value="__visible">Select visible</option>'+(nsel?'<option value="__clear">Clear selection</option>':'');
   if(selected.length)selOpts+='<optgroup label="In this selection">'+selected.map(function(r){return '<option value="'+esc(r.id)+'">'+selLabel_(r)+'</option>'}).join('')+'</optgroup>';
   function decOpt_(v,label){return '<option value="'+v+'"'+(picked===v?' selected':'')+'>'+label+'</option>'}
-  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar"><label class="bulk-decision">Selection <select id="bulk-selection" aria-label="Selection" title="Selected rows. Choose a row to remove it.">'+selOpts+'</select></label><button id="select-visible" title="Select all rows in the current filtered view">Select visible</button>'+(nsel?'<button id="clear-selected" title="Clear all selected rows">Clear selection</button><label class="bulk-decision">Decision <select id="bulk-decision" aria-label="Decision for the selected rows"><option value="">Choose…</option>'+decOpt_('DECLINE','Decline')+decOpt_('APPLIED','Applied')+decOpt_('MANUAL_RESEARCH','Request research')+decOpt_('PURSUE','Pursue')+decOpt_('CLOSED_DEAD','Closed / dead')+decOpt_('INVALID_DISCOVERY','Invalid')+'</select></label><label class="bulk-decision" id="bulk-reason-wrap"'+(picked==='DECLINE'?'':' hidden')+'>Reason <select id="bulk-reason" aria-label="Decline reason"></select></label><button id="bulk-apply" class="neon" type="button">Send decision</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
+  h+='</div><div class="pipeline-tools"><span style="flex:1"></span><span class="bulkbar"><label class="bulk-decision">Selection <select id="bulk-selection" aria-label="Selection" title="Selected rows. Choose a row to remove it.">'+selOpts+'</select></label><button type="button" id="sort-max-salary" title="Sort by posted maximum, otherwise estimated maximum">Max salary '+(S.sort&&S.sort.col==='COMP_MAX'&&S.sort.dir==='asc'?'↑':'↓')+'</button><a href="automations.html">Run automations</a> <button id="select-visible" title="Select all rows in the current filtered view">Select visible</button>'+(nsel?'<button id="clear-selected" title="Clear all selected rows">Clear selection</button><label class="bulk-decision">Decision <select id="bulk-decision" aria-label="Decision for the selected rows"><option value="">Choose…</option>'+decOpt_('DECLINE','Decline')+decOpt_('APPLIED','Applied')+decOpt_('MANUAL_RESEARCH','Request research')+decOpt_('PURSUE','Pursue')+decOpt_('CLOSED_DEAD','Closed / dead')+decOpt_('INVALID_DISCOVERY','Invalid')+'</select></label><label class="bulk-decision" id="bulk-reason-wrap"'+(picked==='DECLINE'?'':' hidden')+'>Reason <select id="bulk-reason" aria-label="Decline reason"></select></label><button id="bulk-apply" class="neon" type="button">Send decision</button>':'')+'</span><button id="discover-data" title="Queue AI research for active rows with missing salary, posting link, or FLEX">AI discover missing data <span class="mono">'+discoverable+'</span></button><button id="markseen" title="Mark every currently visible row as seen">Mark visible seen</button>';
   h+='</div><div id="predicate"></div>';
   $('presets').innerHTML=h;
   $('presets').querySelectorAll('.chip').forEach(function(el){el.onclick=function(){S.chartFilter=null;S.preset=el.getAttribute('data-p');waitingCandidatePage_=0;pushHash();render();if(S.preset==='WAITING_INTAKE')waitingQueues_.intake()}});
   if($('search').value!==S.search)$('search').value=S.search;
   $('discover-data').onclick=function(){requestDiscoveryForRows_(filteredRows().filter(function(r){return PRESETS.ACTIVE.fn(r)&&researchGaps_(r).length}))};
   $('markseen').onclick=function(){filteredRows().forEach(function(r){S.seen[r.id]=Date.now();recordReview_(r)});LS.set('seen',S.seen);LS.set('reviewed',S.reviewed);syncStateUp();render()};
+  $('sort-max-salary').onclick=function(){S.sort={col:'COMP_MAX',dir:S.sort&&S.sort.col==='COMP_MAX'&&S.sort.dir==='desc'?'asc':'desc'};this.textContent='Max salary '+(S.sort.dir==='desc'?'↓':'↑');pushHash();render()};
   $('select-visible').onclick=function(){filteredRows().forEach(function(r){if(['SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','TIM_DECISION_REQUIRED','READY_TO_PURSUE','BLOCKED'].indexOf(r.BUCKET)>=0)S.checked[r.id]=true});renderPresets();render()};
   if($('clear-selected'))$('clear-selected').onclick=function(){S.checked={};renderPresets();render()};
   if($('bulk-apply'))$('bulk-apply').onclick=function(){var k=$('bulk-decision')&&$('bulk-decision').value;if(!k){alert('Choose a decision for the selection.');return}S.bulkDecision=k;bulkAction(k)};
@@ -1348,7 +1350,7 @@ function passes(r){
     if(f.type==='enum'){if(f.values&&f.values.length&&f.values.indexOf(v||'(blank)')<0)return false}
     else if(f.type==='text'){if(f.contains&&v.toLowerCase().indexOf(f.contains.toLowerCase())<0)return false;if(f.not&&v.toLowerCase().indexOf(f.not.toLowerCase())>=0)return false}
     else if(f.type==='date'){var d=PipelineParser.parseDate(v);if(f.from&&(!d||d<PipelineParser.parseDate(f.from)))return false;if(f.to&&(!d||d>PipelineParser.parseDate(f.to)))return false}
-    else if(f.type==='money'){var mm=c==='COMP_MID'?(r.compMid!=null?{mid:r.compMid}:null):PipelineParser.parseMoney(v);if(f.min&&(!mm||mm.mid<+f.min))return false;if(f.max&&(!mm||mm.mid>+f.max))return false}
+    else if(f.type==='money'){if(c==='SALARY_BASE_EST'){if(!PipelineEvidence.salaryMatches(r.payload,f.min,f.max))return false;continue;}var mm=c==='COMP_MAX'?(r.compMax!=null?{mid:r.compMax}:null):c==='COMP_MID'?(r.compMid!=null?{mid:r.compMid}:null):PipelineParser.parseMoney(v);if(f.min&&(!mm||mm.mid<+f.min))return false;if(f.max&&(!mm||mm.mid>+f.max))return false}
   }
   return true;
 }
@@ -1364,12 +1366,12 @@ function filteredRows(){
   if(S.sort){
     var c=S.sort.col,dir=S.sort.dir==='desc'?-1:1;
     rows.sort(function(a,b){
-      function sortValue(r){if(c==='COMP_MID')return r.compMid; if(c==='OVERALL_RATING')return scoreFor_(r).overall;return val(r,c)}
+      function sortValue(r){if(c==='COMP_MAX')return r.compMax;if(c==='COMP_MID')return r.compMid; if(c==='OVERALL_RATING')return scoreFor_(r).overall;return val(r,c)}
       var x=sortValue(a),y=sortValue(b);
       function missing(v){return v==null||String(v).trim()===''||String(v).trim()==='-'}
       var ma=missing(x),mb=missing(y);
       if(ma!==mb)return ma?1:-1; // Unknown stays at bottom, even descending.
-      var numeric=['OVERALL_RATING','EXPERIENCE_FIT','RAW_FIT','ADJUSTED_FIT','GEO_SCORE','NET_COMP_SCORE','ATS_MATCH_SCORE','TITLE_SCORE','CULTURE_SCORE','OWNERSHIP_SCORE','RATING_CONFIDENCE','COMP_MID'];
+      var numeric=['OVERALL_RATING','EXPERIENCE_FIT','RAW_FIT','ADJUSTED_FIT','GEO_SCORE','NET_COMP_SCORE','ATS_MATCH_SCORE','TITLE_SCORE','CULTURE_SCORE','OWNERSHIP_SCORE','RATING_CONFIDENCE','COMP_MAX','COMP_MID'];
       var difference;
       if(numeric.indexOf(c)>=0){
         var nx=Number(x),ny=Number(y),vx=!ma&&Number.isFinite(nx),vy=!mb&&Number.isFinite(ny);
@@ -1432,10 +1434,11 @@ function rowHtml_(r,cols){var nSt=stickyN_();
       else if(c==='AGE'){v=v?esc(v)+'<span class="faint">d</span>':''}
       else if(c==='SOURCE_URL'){v=v?'<a href="'+esc(v)+'" target="_blank" rel="noopener" title="'+esc(v)+'" onclick="event.stopPropagation()">'+esc(v.replace(/^https?:\/\//,'').slice(0,70))+'</a>':''}
       else if(c==='FLEX_CLASS'){var fw=flexWord_(v);v='<span class="flex-w flex-'+fw.toLowerCase().replace(/[^a-z]/g,'')+'" title="'+esc(v||'not recorded')+'">'+esc(fw)+'</span>'}
+      else if(c==='COMP_MAX'&&r.compMax!=null)v='$'+Math.round(r.compMax/1000)+'k';
       else if(c==='COMP_MID'&&r.compMid!=null)v='$'+Math.round(r.compMid/1000)+'k';
       else v=esc(v);
       // Salary cells show the figures; anything not VERIFIED gets a ~ and the full trust label is in the tooltip.
-      if(c==='SALARY_BASE_EST'||c==='COMP_MID'){var sr=PipelineTrust.salaryRange(r.payload);if(c==='SALARY_BASE_EST')v=sr.text?esc(sr.text):'';if(v)v='<span title="'+esc(sr.label)+'">'+(sr.approx?'<span class="approx">~</span>':'')+v+'</span>'}
+      if(c==='SALARY_BASE_EST'||c==='COMP_MID'||c==='COMP_MAX'){var sr=PipelineTrust.salaryRange(r.payload);if(c==='SALARY_BASE_EST')v=sr.text?esc(sr.text):'';if(v)v='<span title="'+esc(sr.label+(r.payload.SALARY_MODEL_VERSION==='employer-upper-range-v5'?'; screening range: upper-quartile comparable ceiling, not expected offer':'')+(PipelineEvidence.decisionBand(r.payload)?'; 70–100% planning band: $'+Math.round(PipelineEvidence.decisionBand(r.payload).low/1000)+'k–$'+Math.round(PipelineEvidence.decisionBand(r.payload).high/1000)+'k':''))+'">'+(sr.approx?'<span class="approx">~</span>':'')+v+'</span>'}
       if(c==='FLEX'){var fi=PipelineTrust.flexInfo(r.payload);v=fi.text?'<span title="'+esc(fi.label)+'">'+(fi.approx?'<span class="approx">~</span>':'')+esc(fi.text)+'</span>':''}
       if(c==='IDENTITY_CONFIDENCE'){var ic=(r.payload.IDENTITY_CONFIDENCE||'UNKNOWN').toUpperCase();v+='<span class="conf '+esc(ic)+'">'+esc(ic)+'</span>'}
       var mono=/^(INV|PRIMARY_ID|REQ|DATE_|SALARY_|COMP_|APP_DATE|FLEX_ASOF|CELLS)/.test(c)?' mono':'';
@@ -1443,7 +1446,7 @@ function rowHtml_(r,cols){var nSt=stickyN_();
 }
 /* REV-088: row click and checkbox handlers (moved out of render() unchanged) */
 function paintChecks_(){document.querySelectorAll('#grid tbody tr[data-id]').forEach(function(tr){tr.classList.toggle('sel',!!S.checked[tr.getAttribute('data-id')])})}
-function bindRow_(tr){tr.onclick=function(e){if(e.target&&e.target.closest&&e.target.closest('a'))return;var id=tr.getAttribute('data-id');if(e.shiftKey||e.ctrlKey||e.metaKey){var mods={shift:!!e.shiftKey,toggle:!!(e.ctrlKey||e.metaKey)};var next=PipelineListSelect.apply({checked:S.checked,anchor:S.selAnchor},filteredRows().map(function(r){return r.id}),id,mods);S.checked=next.checked;S.selAnchor=next.anchor;paintChecks_();renderPresets();mapSelectionChanged_();return}S.selAnchor=id;selectMapRow_(id);if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!$('drawer').classList.contains('pe-sheet'))setTimeout(function(){if($('drawer').classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}};}
+function bindRow_(tr){tr.onclick=function(e){if(e.target&&e.target.closest&&e.target.closest('a'))return;var id=tr.getAttribute('data-id');if(e.shiftKey||e.ctrlKey||e.metaKey){var mods={shift:!!e.shiftKey,toggle:!!(e.ctrlKey||e.metaKey)};var next=PipelineListSelect.apply({checked:S.checked,anchor:S.selAnchor||S.focus,focus:S.focus},filteredRows().map(function(r){return r.id}),id,mods);S.checked=next.checked;S.selAnchor=next.anchor;paintChecks_();renderPresets();mapSelectionChanged_();return}S.selAnchor=id;selectMapRow_(id);if(phoneLayout()){var dw=$('drawer');if(dw&&dw.scrollIntoView&&!$('drawer').classList.contains('pe-sheet'))setTimeout(function(){if($('drawer').classList.contains('pe-sheet'))return;dw.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth',block:'start'})},60)}};}
 /* REV-088 (perf, Tim 23:35 ET "the phone feels very slow"): opening or closing a job used to rebuild every table row (890 at
    1,872 jobs). When the visible list (same rows, same order, same columns) is unchanged, only the rows named in ids are
    rebuilt and the focus mark moved; the readout and dashboard redraw as before. Any other change takes the full render(). */
@@ -1469,6 +1472,7 @@ function openPop(c,anchor){
   else if(t==='text')h+='<div class="row">contains <input type="text" id="f-contains" value="'+esc(f.contains||'')+'"></div><div class="row">not <input type="text" id="f-not" value="'+esc(f.not||'')+'"></div>';
   else if(t==='date')h+='<div class="row">from <input type="date" id="f-from" value="'+esc(f.from||'')+'"></div><div class="row">to <input type="date" id="f-to" value="'+esc(f.to||'')+'"></div>';
   else h+='<div class="row">min $ <input type="number" id="f-min" value="'+esc(f.min||'')+'"></div><div class="row">max $ <input type="number" id="f-max" value="'+esc(f.max||'')+'"></div>';
+  if(c==='SALARY_BASE_EST')h+='<p>Range overlap: minimum uses the posted or estimated maximum; maximum uses its minimum. Unknown ranges do not match.</p>';
   h+='<div class="row" style="margin-top:8px"><button id="f-apply" class="neon">Apply</button><button id="f-clear">Clear</button><button id="f-x">Close</button></div>';
   pop.innerHTML=h;pop.style.display='block';var rc=anchor.getBoundingClientRect();pop.style.top=Math.min(rc.bottom+2,window.innerHeight-300)+'px';pop.style.left=Math.min(rc.left,window.innerWidth-330)+'px';
   pop.querySelectorAll('[data-s]').forEach(function(b){b.onclick=function(){var s=b.getAttribute('data-s');S.sort=s==='none'?null:{col:c,dir:s};pushHash();render();closePop()}});
@@ -3334,3 +3338,4 @@ load();
 </script>
 </body>
 </html>
+
