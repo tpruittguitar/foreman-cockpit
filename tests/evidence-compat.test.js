@@ -41,7 +41,7 @@ test('full fit precedence: each recognized field outranks every field after it; 
 });
 
 test('full salary precedence: current fields first, then historical aliases in order',()=>{
-  const order=[['SALARY_BASE_POSTED','$300,000'],['PAY_POSTED','$290,000'],['SALARY_BASE_EST','$280,000'],['SALARY_MIDPOINT','$270,000'],['SALARY_BASE_LOW','260000'],['GROK_SALARY','POSTED $250,000'],['SALARY_POSTED','$240,000'],['PAY','$230K'],['SALARY_ESTIMATED','$220,000'],['SALARY_RECRUITER_RANGE','$210,000'],['SALARY_AGGREGATOR_RANGE','$200,000']];
+  const order=[['SALARY_BASE_POSTED','$300,000'],['PAY_POSTED','$290,000'],['SALARY_BASE_EST','$280,000'],['SALARY_BASE_LOW','260000'],['SALARY_MIDPOINT','$270,000'],['GROK_SALARY','POSTED $250,000'],['SALARY_POSTED','$240,000'],['PAY','$230K'],['SALARY_ESTIMATED','$220,000'],['SALARY_RECRUITER_RANGE','$210,000'],['SALARY_AGGREGATOR_RANGE','$200,000']];
   order.forEach(([k],i)=>{const p={};order.slice(i).forEach(([kk,v])=>{p[kk]=v});if(p.SALARY_BASE_LOW)p.SALARY_BASE_HIGH='260000';const ev=E.salary(deepFreeze(p));assert.equal(ev.source,k==='SALARY_BASE_LOW'?'SALARY_BASE_LOW/HIGH':k);assert.equal(ev.legacy,i>=3)});
 });
 

@@ -2293,6 +2293,15 @@ function applyFields_(fields, P, O, set, flexPolicy) {
     if (INTAKE_PRESERVE.indexOf(k) >= 0 && P[k] && P['INTAKE_' + k] === undefined) set('INTAKE_' + k, P[k]);
     set(k, v); changed.push(k);
   }
+  // Numeric pay semantics are Writer-owned derivations from the accepted range.
+  // A client cannot disguise the policy's 75% point as the arithmetic midpoint.
+  if(keys.some(function(k){return /^SALARY_|^PAY_POSTED$/.test(String(k).toUpperCase())})){
+    var payValues=PipelineEvidence.salary(P);
+    if(payValues.low!=null&&payValues.high!=null){
+      var payDerived={SALARY_MIDPOINT:Math.round(payValues.mid),SALARY_SCORE_POINT:Math.round(payValues.scorePoint)};
+      Object.keys(payDerived).forEach(function(k){if(String(P[k])!==String(payDerived[k])){set(k,String(payDerived[k]));if(changed.indexOf(k)<0)changed.push(k);}});
+    }
+  }
   // FLEX is derived only when this write actually changes FLEX/degree evidence.
   // Unrelated ENRICH writes must preserve existing FLEX_CLASS/FLEX_MODIFIER byte-for-byte
   // and must not create UNKNOWN/0 placeholders.
@@ -2672,7 +2681,7 @@ function classifyNeverConsider(rec, R) {
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
 }
 /* ================= pure functions: intake planning ================= */
-var INTAKE_FACT_KEYS = ['PAY_POSTED', 'SALARY_BASE_POSTED', 'SALARY_BASE_EST', 'SALARY_BASIS', 'SALARY_CONF', 'SALARY_SOURCE', 'SALARY_ASOF', 'SALARY_NOTE', 'SALARY_BASE_LOW', 'SALARY_BASE_HIGH', 'SALARY_MIDPOINT', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
+var INTAKE_FACT_KEYS = ['PAY_POSTED', 'SALARY_BASE_POSTED', 'SALARY_BASE_EST', 'SALARY_BASIS', 'SALARY_CONF', 'SALARY_SOURCE', 'SALARY_ASOF', 'SALARY_NOTE', 'SALARY_BASE_LOW', 'SALARY_BASE_HIGH', 'SALARY_MIDPOINT', 'SALARY_SCORE_POINT', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
   ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'IDENTITY_SITE_SOURCE_URL', 'IDENTITY_SITE_VALUE', 'IDENTITY_SITE_EVIDENCE', 'IDENTITY_SITE_MODE', 'OPERATING_SCOPE', 'OPERATING_SCOPE_SOURCE_URL', 'OPERATING_SCOPE_EVIDENCE', 'IDENTITY_PRIOR_SCOPE_EVIDENCE', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });
