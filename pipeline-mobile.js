@@ -1,9 +1,10 @@
-/* Mobile shell (Tim 2026-11-02; handoff "pipeline-explorer-mobile-handoff", Stage 2 approved by Grok Bot GUI).
+/* Mobile shell (Tim 2026-11-02; handoff "pipeline-explorer-mobile-handoff", staged and approved by Grok Bot GUI).
    Phones only: html.m-shell is set in the page head at <= 767px, or on a landscape phone (<= 932 x 520, coarse pointer).
    The desktop app keeps running underneath (data, Writer, rulings) and is hidden; this shell reads it through
    window.PEMobileBridge (pipeline.html) and never changes data, endpoints or the desktop layout.
-   Stage 2: header with system readout, Decide / Jobs / Status tabs, More sheet (desktop views), header hide on scroll.
-   Decide, Jobs and Status content arrive in Stages 3 and 4. */
+   Header with system readout (hides on scroll), Decide / Jobs / Status tabs, More sheet (desktop views), job detail
+   sheet. Decisions go through the existing ruling sender with a 5-second Undo; nothing is sent without a Writer
+   connection set on purpose. */
 (function (root) {
   'use strict';
   var Q = '(max-width:767px),(max-width:932px) and (max-height:520px) and (pointer:coarse)';
@@ -59,12 +60,8 @@
       '</ul></div>' +
       '<button type="button" class="m-return" id="m-return" hidden>' + svg('back') + '<span>Mobile</span></button>' +
       '<div class="m-sheet" id="m-fields" role="dialog" aria-modal="true" aria-label="Fields shown in Jobs" hidden></div>' +
-      '<div class="m-detail" id="m-detail" role="dialog" aria-modal="true" aria-labelledby="m-d-title" hidden></div>' +
+      '<div class="m-detail" id="m-detail" role="dialog" aria-modal="true" aria-label="Job details" aria-labelledby="m-d-title" hidden></div>' +
       '<div class="m-toast" id="m-toast" role="status" aria-live="polite" hidden></div>';
-  }
-
-  function placeholder(name, stage) {
-    return '<div class="m-empty"><p class="m-label">' + esc(name) + '</p><p>Arrives in Stage ' + stage + '.</p></div>';
   }
 
   function setTab(t, focusSearch) {
@@ -74,7 +71,7 @@
       b.setAttribute('aria-selected', String(x[0] === t)); b.tabIndex = x[0] === t ? 0 : -1; p.hidden = x[0] !== t;
     });
     showHeader(true); root.scrollTo(0, 0); refresh();
-    if (focusSearch) { var s = $('m-q'); if (s) s.focus(); }
+    if (focusSearch) { var s = $('m-q'); if (s) { s.parentNode.classList.add('m-open'); s.focus(); } }
   }
 
   /* Header readout: one square dot and one word. Tap opens Status. */
@@ -105,6 +102,20 @@
   }
   function settle() { busy = Math.max(0, busy - 1); if (!busy && pending) { pending = false; refresh(); } }
   function skeleton() { return '<div class="m-skel" aria-busy="true" aria-label="Loading"><i></i><i></i><i></i></div>'; }
+  /* Repaint a pane only when its markup changed. A repaint keeps keyboard focus on the same control (found again by its
+     data attributes) and keeps open <details> open, so background refreshes never throw a keyboard or screen-reader
+     user back to the top. Returns true when the pane was repainted (its handlers must be bound again). */
+  var FOCUS_KEYS = ['data-m-do', 'data-id', 'data-m-open', 'data-m-menu', 'data-m-filter', 'data-m-jf', 'data-m-retry', 'data-m-field', 'id'];
+  function setHtml(el, html) {
+    if (el._mHtml === html) return false;
+    var a = document.activeElement, sel = '';
+    if (a && el.contains(a)) sel = FOCUS_KEYS.filter(function (k) { return a.hasAttribute(k); }).map(function (k) { return '[' + k + '="' + String(a.getAttribute(k)).replace(/"/g, '\\"') + '"]'; }).join('') || (a.hasAttribute('data-m-browse') ? '[data-m-browse]' : '');
+    var open = [].map.call(el.querySelectorAll('details'), function (x) { return x.open; });
+    el.innerHTML = html; el._mHtml = html;
+    el.querySelectorAll('details').forEach(function (x, i) { if (open[i]) x.open = true; });
+    if (sel) { var t = el.querySelector(sel); if (t) t.focus({ preventScroll: true }); }
+    return true;
+  }
 
   /* ---- Stage 3: badges, Decide cards, decisions with Undo, swipe, detail sheet ---------------------------------- */
   var STALE_DAYS = 21, FIT_BORDER = 70, SCORE_OK = 85;
@@ -185,6 +196,7 @@
   }
   function menuHtml(id) {
     return '<div class="m-menu" role="menu"><button type="button" role="menuitem" data-m-do="research" data-id="' + esc(id) + '">Research<small>Ask for more research before deciding</small></button>' +
+      '<button type="button" role="menuitem" data-m-do="applied" data-id="' + esc(id) + '">Mark applied<small>I already applied to this job</small></button>' +
       '<button type="button" role="menuitem" data-m-open="' + esc(id) + '">Open details<small>Posting, fit and score, my application</small></button></div>';
   }
   function renderDecide(loaded) {
@@ -194,16 +206,30 @@
     var head = '<div class="m-count"><p><b class="m-num m-attn">' + all + '</b> need you</p><span class="m-label">Sort: score ↓</span></div>' +
       '<div class="m-chips" role="group" aria-label="Decide filter"><button type="button" class="m-chip" data-m-filter="all" aria-pressed="' + (decideFilter === 'all') + '">All · ' + all + '</button>' +
       '<button type="button" class="m-chip" data-m-filter="act" aria-pressed="' + (decideFilter === 'act') + '" title="Act Now: up to 10 roles to act on first (Director and up, US, scored)">Act now · ' + act + '</button></div>';
-    var h = B().health();
+    var h = B().health(), qs = queueState();
+    if ((qs.view === 'loading' || qs.view === 'unavailable') && q.length) head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue ' + (qs.view === 'loading' ? 'loading' : 'unavailable') + ': showing only jobs marked Needs decision.' + (qs.view === 'unavailable' ? ' <button type="button" class="m-inline-link" data-m-retry-queue>Retry</button>' : '') + '</span></p>' + head;
+    if (qs.view === 'stale') head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue from ' + esc(qs.when) + '; the latest refresh failed. <button type="button" class="m-inline-link" data-m-retry-queue>Retry</button></span></p>' + head;
     if (h.writer === false) head = '<p class="m-alert m-nowriter-note" role="status">' + gl('warn') + '<span>Writer not connected · decisions can’t be sent from this device. Save a connection in <button type="button" class="m-inline-link" data-m-settings>Settings</button>.</span></p>' + head;
-    p.innerHTML = head + (q.length ? '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>' :
-      '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision' + (decideFilter === 'act' ? ' in Act Now' : '') + '. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>');
-    bindDecide(p);
+    var changed = setHtml(p, head + (q.length ? '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>' :
+      (qs.view === 'loading' ? '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Decision queue loading</b><p>Jobs that need your decision come from the pipeline evidence, which has not loaded yet. This updates on its own.</p></div>' :
+      qs.view === 'unavailable' ? '<div class="m-done m-pending" role="alert">' + gl('caution') + '<b>Decision queue unavailable</b><p>Last loaded: ' + esc(qs.when) + '.' + (qs.error ? ' ' + esc(qs.error) + '.' : '') + '</p><button type="button" class="m-btn m-quiet" data-m-retry-queue>Retry</button> <button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>' :
+      '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision' + (decideFilter === 'act' ? ' in Act Now' : '') + '. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>')));
+    if (changed) bindDecide(p);
+  }
+  /* What Decide can honestly say about its queue: ready, loading (first 60 s), unavailable (nothing loaded, failed or
+     still loading after 60 s), or stale (an older queue is shown because a refresh failed). */
+  var started = Date.now();
+  function queueState() {
+    var s = B().decideState(), when = s.loadedAt ? new Date(s.loadedAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) + ' ET' : 'never';
+    if (s.status === 'ready') return { view: 'ready', when: when };
+    if (s.have) return { view: s.status === 'error' || s.error ? 'stale' : 'ready', when: when, error: s.error };
+    if (s.status === 'error' || s.error || Date.now() - started > 60000) return { view: 'unavailable', when: when, error: s.error };
+    return { view: 'loading', when: when };
   }
   function say(id, t) { document.querySelectorAll('[data-m-say="' + id + '"]').forEach(function (e) { e.textContent = t; }); var ts = $('m-toast-say'); if (ts && lastDecision && lastDecision.id === id) ts.textContent = t; }
 
   /* A decision: queued in the existing ruling sender first; only then does the card leave and the Undo toast appear. */
-  var WORD = { pursue: 'Pursue', hold: 'Hold', research: 'Research', decline: 'Decline' };
+  var WORD = { pursue: 'Pursue', hold: 'Hold', research: 'Research', decline: 'Decline', applied: 'Applied' };
   function decide(id, kind, card) {
     var res = B().decide(id, kind, function (t) { say(id, t); });
     if (!res || !res.ok) { say(id, (res && res.msg) || 'Not saved.'); if (card) { card.classList.remove('m-gone'); card.style.transform = ''; } return false; }
@@ -255,6 +281,7 @@
     p.querySelectorAll('[data-m-retry]').forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-m-retry'), r = B().retry(id, function (t) { say(id, t); }); if (!r.ok) say(id, r.msg); }; });
     var br = p.querySelector('[data-m-browse]'); if (br) br.onclick = function () { setTab('jobs'); };
     var st = p.querySelector('[data-m-settings]'); if (st) st.onclick = function () { openDesktop('settings'); };
+    p.querySelectorAll('[data-m-retry-queue]').forEach(function (b) { b.onclick = function () { b.disabled = true; b.textContent = 'Retrying…'; B().retryDecide().then(function () { refresh(); }); }; });
     /* Long-press a card (500ms) for the same menu as ⋯ (Research in two taps or fewer). */
     p.querySelectorAll('.m-card').forEach(function (c) {
       var id = c.getAttribute('data-m-card');
@@ -290,7 +317,7 @@
       sec('Posting', (v.why ? '<p>' + esc(v.why) + '</p>' : '<p class="m-faint">No fit summary recorded.</p>') + (v.url ? '<p><a class="m-link" href="' + esc(v.url) + '" target="_blank" rel="noopener">Open the posting ↗</a></p>' : '')) +
       sec('Fit &amp; score', kv('Raw fit', v.fit == null ? '? not measured' : Math.round(v.fit)) + kv('Pay vs target', ps === 'ok' ? '✓ meets need' : ps === 'below' ? '↓ below need' : ps === 'missing' ? '? pending' : 'not known') +
         kv('Flex', esc(flexBadge(v.flex)[2])) + kv('Recency', a == null ? '? unknown' : a + ' days') + kv('Final score', v.score == null ? 'unscored' : Math.round(v.score))) +
-      sec('My application', v.applied ? kv('Applied', esc(v.applied.date || 'yes')) : '<p class="m-faint">No application recorded.</p>') + (v.ruling ? kv('Decision', esc(v.ruling)) : '') +
+      sec('My application', (v.applied ? kv('Applied', esc(v.applied.date || 'yes')) : '<p class="m-faint">No application recorded.</p><p><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></p>') + (v.ruling ? kv('Decision', esc(v.ruling)) : '')) +
       '<p class="m-say" role="status" data-m-say="' + esc(v.id) + '"></p></div>' +
       '<div class="m-dbar"><button type="button" class="m-btn m-primary" data-m-do="pursue" data-id="' + esc(v.id) + '">' + gl('ok') + 'Pursue</button>' +
       '<button type="button" class="m-btn m-quiet" data-m-do="hold" data-id="' + esc(v.id) + '">Hold</button>' +
@@ -306,8 +333,7 @@
   }
   function renderDetail() {
     var d = $('m-detail'), r = B().rows().filter(function (x) { return x.id === detailId; })[0]; if (!r) { closeDetail(true); return; }
-    var open = [].map.call(d.querySelectorAll('details'), function (x) { return x.open; });
-    d.innerHTML = detailHtml(B().view(r)); d.querySelectorAll('details').forEach(function (x, i) { if (open[i]) x.open = true; });
+    if (!setHtml(d, detailHtml(B().view(r)))) return;   // unchanged: keep focus, open sections and handlers as they are
     $('m-d-back').onclick = function () { closeDetail(); };
     d.querySelectorAll('[data-m-do]').forEach(function (b) { b.onclick = function () { decide(b.getAttribute('data-id'), b.getAttribute('data-m-do'), null); }; });
     dragClose($('m-dh'), d);
@@ -316,7 +342,7 @@
      after a decision) removes the entry openDetail pushed, so Back never reopens a closed sheet. */
   function closeDetail(how) {
     if (!detailId) return; detailId = null;
-    var d = $('m-detail'); d.hidden = true; d.innerHTML = ''; d.style.transform = ''; document.documentElement.classList.remove('m-detail-open');
+    var d = $('m-detail'); d.hidden = true; d.innerHTML = ''; d._mHtml = ''; d.style.transform = ''; document.documentElement.classList.remove('m-detail-open');
     if (how !== 'pop') { try { if (history.state && history.state.mDetail) history.back(); } catch (e) {} }
     if (detailFocus && detailFocus.focus && document.contains(detailFocus)) detailFocus.focus();
   }
@@ -359,17 +385,18 @@
     var cols = [['Title', 1], ['Company', f.company], ['Location', f.location], ['Salary', f.salary], ['Fit', f.fit], ['Flex', f.flex], ['Score', 1], ['Age', f.age]].filter(function (c) { return c[1]; });
     return '<div class="m-table-wrap"><table class="m-table"><thead><tr>' + cols.map(function (c, i) { return '<th scope="col"' + (i === 0 ? ' class="m-sticky"' : '') + '>' + c[0] + '</th>'; }).join('') + '</tr></thead><tbody>' +
       list.map(function (v) {
-        var bs = badges(v).map(tableCell), m = { Title: '<button type="button" class="m-link-row" data-m-open="' + esc(v.id) + '">' + esc(v.title) + '</button>', Company: '<span class="m-clip" title="' + esc(v.company) + '">' + esc(v.company) + '</span>', Location: '<span class="m-clip" title="' + esc(v.location) + '">' + esc(v.location) + '</span>', Salary: badgeSpan(bs[0]), Fit: badgeSpan(bs[1]), Flex: badgeSpan(bs[2]), Score: v.score == null ? '—' : (v.score >= SCORE_OK ? gl('ok') : '') + Math.round(v.score), Age: badgeSpan(bs[3]) };
+        var bs = badges(v).map(tableCell), m = { Title: '<button type="button" class="m-link-row" data-m-open="' + esc(v.id) + '"><span class="m-clamp2">' + esc(v.title) + '</span></button>', Company: '<span class="m-clip" title="' + esc(v.company) + '">' + esc(v.company) + '</span>', Location: '<span class="m-clip" title="' + esc(v.location) + '">' + esc(String(v.location).split(/[,;]/)[0]) + '</span>', Salary: badgeSpan(bs[0]), Fit: badgeSpan(bs[1]), Flex: badgeSpan(bs[2]), Score: v.score == null ? '—' : (v.score >= SCORE_OK ? gl('ok') : '') + Math.round(v.score), Age: badgeSpan(bs[3]) };
         return '<tr>' + cols.map(function (c, i) { return i === 0 ? '<th scope="row" class="m-sticky">' + m[c[0]] + '</th>' : '<td' + (c[0] === 'Score' ? ' class="m-num' + (v.score >= SCORE_OK ? ' m-okc' : '') + '"' : '') + '>' + m[c[0]] + '</td>'; }).join('') + '</tr>';
       }).join('') + '</tbody></table></div>';
   }
   function buildJobs() {
     var p = $('m-pane-jobs');
-    p.innerHTML = '<label class="m-search"><span class="m-sr">Search jobs</span>' + svg('search') + '<input type="search" id="m-q" placeholder="Search title, company, city" autocomplete="off" enterkeyhint="search"></label>' +
+    p.innerHTML = '<label class="m-search' + (jobsQuery ? ' m-open' : '') + '"><span class="m-sr">Search jobs</span>' + svg('search') + '<input type="search" id="m-q" placeholder="Search title, company, city" autocomplete="off" enterkeyhint="search"></label>' +
       '<div class="m-chips m-jobchips" role="group" aria-label="Jobs filter"><button type="button" class="m-chip" data-m-jf="mine">Mine</button><button type="button" class="m-chip" data-m-jf="applied">Applied</button><button type="button" class="m-chip" data-m-jf="all">All</button>' +
-      '<span class="m-chip-gap"></span><button type="button" class="m-chip" id="m-sort"></button><button type="button" class="m-chip" id="m-fields-btn" aria-haspopup="dialog">Fields</button></div>' +
+      '<span class="m-label m-jobcount-l" id="m-jobcount-l" aria-hidden="true"></span><span class="m-chip-gap"></span><button type="button" class="m-chip" id="m-sort"></button><button type="button" class="m-chip" id="m-fields-btn" aria-haspopup="dialog">Fields</button></div>' +
       '<p class="m-label m-jobcount" id="m-jobcount" role="status"></p><div id="m-jobs-list"></div>';
     $('m-q').value = jobsQuery;
+    $('m-q').addEventListener('blur', function () { if (!$('m-q').value) $('m-q').parentNode.classList.remove('m-open'); });
     $('m-q').addEventListener('input', function () { clearTimeout(jobsTimer); jobsTimer = setTimeout(function () { jobsQuery = $('m-q').value; jobsShown = 50; paintJobs(); }, 150); });
     p.querySelectorAll('[data-m-jf]').forEach(function (b) { b.onclick = function () { jobsFilter = b.getAttribute('data-m-jf'); jobsShown = 50; paintJobs(); }; });
     $('m-sort').onclick = function () { jobsSort = (jobsSort + 1) % SORTS.length; paintJobs(); };
@@ -381,11 +408,11 @@
     var f = fields(), list = jobsList(), shown = list.slice(0, jobsShown), box = $('m-jobs-list');
     document.querySelectorAll('[data-m-jf]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-m-jf') === jobsFilter)); });
     $('m-sort').textContent = SORTS[jobsSort][1]; $('m-sort').setAttribute('aria-label', 'Sort: ' + SORTS[jobsSort][1] + '. Tap for the next sort.');
-    $('m-jobcount').textContent = list.length + (list.length === 1 ? ' job' : ' jobs') + (jobsQuery ? ' match' : '');
-    if (io) { io.disconnect(); io = null; }
-    if (!list.length) { box.innerHTML = '<p class="m-empty-line">No jobs match.</p>'; return; }
-    box.innerHTML = wide() ? jobTableHtml(list, f) : '<ul class="m-rows">' + shown.map(function (v) { return jobRowHtml(v, f); }).join('') + '</ul>' +
-      (shown.length < list.length ? '<div class="m-more-rows" id="m-more-rows"><button type="button" class="m-btn m-quiet">Show more · ' + (list.length - shown.length) + ' left</button></div>' : '');
+    $('m-jobcount').textContent = $('m-jobcount-l').textContent = list.length + (list.length === 1 ? ' job' : ' jobs') + (jobsQuery ? ' match' : '');
+    if (!list.length) { if (io) { io.disconnect(); io = null; } setHtml(box, '<p class="m-empty-line">No jobs match.</p>'); return; }
+    if (!setHtml(box, wide() ? jobTableHtml(list, f) : '<ul class="m-rows">' + shown.map(function (v) { return jobRowHtml(v, f); }).join('') + '</ul>' +
+      (shown.length < list.length ? '<div class="m-more-rows" id="m-more-rows"><button type="button" class="m-btn m-quiet">Show more · ' + (list.length - shown.length) + ' left</button></div>' : ''))) return;
+    if (io) { io.disconnect(); io = null; }   // only a real repaint replaces the Show more row the observer watches
     box.querySelectorAll('[data-m-open]').forEach(function (b) { b.onclick = function () { openDetail(b.getAttribute('data-m-open')); }; });
     var more = $('m-more-rows');
     if (more) {
@@ -429,12 +456,12 @@
     function tile(label, v) { return '<div class="m-tile"><b class="m-num">' + (v == null ? '—' : n$(v)) + '</b><span class="m-label">' + label + '</span></div>'; }
     var hs = h.state === 'OK' ? ['ok', gl('ok'), 'SYS OK'] : h.state === 'FAULT' ? ['fault', gl('no'), 'SYS FAULT'] : h.state === 'DELAYED' ? ['caution', gl('caution'), 'SYS DELAYED'] : ['', '', 'SYS …'];
     var sync = h.lastRead ? new Date(h.lastRead).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : 'unknown';
-    p.innerHTML = '<p class="m-label m-sec-l">Pipeline constraint</p><ol class="m-flow" aria-label="Pipeline stages">' + flow + '</ol>' +
+    setHtml(p, '<p class="m-label m-sec-l">Pipeline constraint</p><ol class="m-flow" aria-label="Pipeline stages">' + flow + '</ol>' +
       '<p class="m-cr-note">' + esc(s.constraintReason) + '</p>' +
       '<div class="m-tiles">' + tile('Need decision', b.decideRows().length) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
       '<ul class="m-legend" aria-label="Legend"><li class="ok">' + gl('ok') + 'OK</li><li class="caution">' + gl('caution') + 'Caution</li><li class="attn">' + gl('warn') + 'Constraint</li><li class="fault">' + gl('no') + 'Fault</li></ul>' +
       '<p class="m-fresh ' + hs[0] + '">' + hs[1] + hs[2] + ' · SYNC ' + esc(sync) + (h.writer === false ? ' · ' + gl('warn') + 'NO WRITER' : '') + '</p>' +
-      (s.details ? '<details class="m-sec"><summary>Details</summary><div class="m-sec-b"><p>' + esc(s.details) + '</p></div></details>' : '');
+      (s.details ? '<details class="m-sec"><summary>Details</summary><div class="m-sec-b"><p>' + esc(s.details) + '</p></div></details>' : ''));
   }
 
   /* More sheet: a bottom sheet over a scrim; Escape or the scrim closes it. */
@@ -480,6 +507,15 @@
       if (!$('m-more-sheet').hidden) sheet(false); else if (closeFields()) return; else if (detailId) closeDetail(); else if (menuFor) { menuFor = null; refresh(); }
     });
     root.addEventListener('popstate', function () { if (detailId) closeDetail('pop'); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Tab' || !d.classList.contains('m-shell')) return;
+      var box = ['m-more-sheet', 'm-fields', 'm-detail'].map($).filter(function (x) { return x && !x.hidden; })[0]; if (!box) return;
+      var f = [].filter.call(box.querySelectorAll('button,a[href],input,summary,[tabindex]:not([tabindex="-1"])'), function (x) { return !x.disabled && x.getClientRects().length; });
+      if (!f.length) return; var first = f[0], last = f[f.length - 1];
+      if (!box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
     root.addEventListener('scroll', onScroll, { passive: true });
   }
 
@@ -488,7 +524,7 @@
     var el = document.createElement('div'); el.id = 'm-root'; el.className = 'm-texture'; el.innerHTML = shellHtml();
     document.body.appendChild(el); mounted = true; bind(); setTab('decide'); refresh();
     root.setInterval(renderSys, 15000);
-    root.setInterval(function () { if (tab === 'status' && !document.hidden && !d.classList.contains('m-legacy')) refresh(); }, 5000);   // the health monitor updates on its own clock
+    root.setInterval(function () { if ((tab === 'status' || tab === 'decide') && !document.hidden && !d.classList.contains('m-legacy')) refresh(); }, 5000);   // the health monitor updates on its own clock
   }
 
   /* Crossing the breakpoint (rotation, window resize) switches shells without a reload. */

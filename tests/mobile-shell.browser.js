@@ -34,7 +34,7 @@ const shots=process.env.MOBILE_SHOTS;
     const v=await page.evaluate(()=>{const h=document.getElementById('m-hd').getBoundingClientRect(),t=document.querySelector('.m-tabs').getBoundingClientRect();
       return {shell:document.documentElement.classList.contains('m-shell'),header:Math.round(h.height),tabs:Math.round(t.height),tabBottom:Math.round(t.bottom),ih:innerHeight,
         sel:[...document.querySelectorAll('#m-root [role=tab]')].map(b=>b.textContent+':'+b.getAttribute('aria-selected')),sw:document.documentElement.scrollWidth,cw:document.documentElement.clientWidth}});
-    assert.ok(v.shell,name+': html.m-shell');assert.strictEqual(v.header,52,name+': header 52px');assert.strictEqual(v.tabs,64,name+': tab bar 64px');
+    assert.ok(v.shell,name+': html.m-shell');assert.strictEqual(v.header,52,name+': header 52px');assert.strictEqual(v.tabs,opts.viewport.height<=520?44:64,name+': tab bar 64px (44px icon-only on a landscape phone)');
     assert.strictEqual(v.tabBottom,v.ih,name+': tab bar on the bottom edge');
     assert.deepStrictEqual(v.sel,['Decide:true','Jobs:false','Status:false'],name+': opens on Decide');
     assert.strictEqual(await page.evaluate(()=>Math.round(document.getElementById('m-main').getBoundingClientRect().width)),opts.viewport.width,name+': content spans the full width');
@@ -43,7 +43,7 @@ const shots=process.env.MOBILE_SHOTS;
     const sys=await page.textContent('#m-sys-word');assert.match(sys,/^SYS (OK|DELAYED|FAULT)$/,name+': header system readout');
     const col=await page.evaluate(()=>({brand:getComputedStyle(document.querySelector('.m-brand')).color,sys:getComputedStyle(document.getElementById('m-sys')).color,cls:document.getElementById('m-sys').className,glyph:!!document.querySelector('#m-sys-ic svg'),tab:getComputedStyle(document.getElementById('m-tab-decide')).color}));
     assert.strictEqual(col.brand,'rgb(232, 232, 232)',name+': wordmark in primary text color');assert.ok(col.glyph,name+': state glyph next to the word');
-    assert.strictEqual(col.sys,{'m-sys m-ok':'rgb(111, 191, 74)','m-sys m-delayed':'rgb(227, 195, 65)','m-sys m-fault':'rgb(217, 83, 79)'}[col.cls],name+': readout colored by state ('+col.cls+')');
+    assert.strictEqual(col.sys,{'m-sys m-ok':'rgb(111, 191, 74)','m-sys m-delayed':'rgb(227, 195, 65)','m-sys m-fault':'rgb(222, 94, 90)'}[col.cls],name+': readout colored by state ('+col.cls+')');
     assert.strictEqual(col.tab,'rgb(217, 217, 217)',name+': active tab light gray');
     if(shots)await page.screenshot({path:path.join(shots,'stage2-decide-'+name+'.png')});
     assert.deepStrictEqual(errors,[],name+': no page errors');await ctx.close();

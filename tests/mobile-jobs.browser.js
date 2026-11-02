@@ -123,6 +123,18 @@ function activity(){return {ok:true,now:new Date().toISOString(),today:{writes:2
   const chip=await page.evaluate(()=>{const b=document.querySelector('[data-m-jf="all"]'),c=getComputedStyle(b);return [c.backgroundColor,c.color]});
   assert.deepStrictEqual(chip,['rgb(217, 217, 217)','rgb(11, 11, 11)'],'active chip light with dark text at once');
   assert.strictEqual(tb.headSticky,'sticky');assert.strictEqual(tb.titleSticky,'sticky');assert.strictEqual(tb.left,'0px','Title column sticks left');assert.ok(tb.sw<=tb.cw,'no page sideways scroll');
+  const ls=await page.evaluate(()=>{const tabs=document.querySelector('.m-tabs').getBoundingClientRect(),top=document.querySelector('.m-table thead').getBoundingClientRect().bottom;
+    const full=[...document.querySelectorAll('.m-table tbody tr')].filter(r=>{const b=r.getBoundingClientRect();return b.top>=top-0.5&&b.bottom<=tabs.top+0.5}).length;
+    const sc=document.querySelector('.m-table td.m-num');
+    return {full,tabH:Math.round(tabs.height),names:[...document.querySelectorAll('#m-root [role=tab]')].map(t=>t.textContent.trim()),labelsShown:[...document.querySelectorAll('#m-root [role=tab] span')].some(x=>x.getBoundingClientRect().width>1),
+      search:document.querySelector('.m-search').getBoundingClientRect().height,count:document.getElementById('m-jobcount-l').getBoundingClientRect().height>0,chipRow:Math.round(document.querySelector('.m-jobchips').getBoundingClientRect().height),
+      scoreWeight:getComputedStyle(sc).fontWeight,city:document.querySelector('.m-table tbody .m-clip[title*=","]')?document.querySelector('.m-table tbody .m-clip[title*=","]').textContent:''}});
+  assert.ok(ls.full>=4,'landscape shows at least 4 full job rows at rest ('+ls.full+')');assert.strictEqual(ls.tabH,44,'landscape tab bar 44px');
+  assert.deepStrictEqual(ls.names,['Decide','Jobs','Status'],'tabs keep their names for screen readers');assert.ok(!ls.labelsShown,'tab labels hidden visually in landscape');
+  assert.strictEqual(ls.search,0,'search box tucked behind the header icon');assert.ok(ls.count,'job count in the chip row');assert.strictEqual(ls.chipRow,36,'chips and count on one 36px row');
+  assert.strictEqual(ls.scoreWeight,'600','Score column as heavy as the portrait score');assert.ok(ls.city&&!/,/.test(ls.city),'table shows the city without the state ('+ls.city+')');
+  await page.click('#m-search');assert.ok(await page.evaluate(()=>document.activeElement.id==='m-q'&&document.querySelector('.m-search').getBoundingClientRect().height===44),'header search opens the search box');
+  await page.evaluate(()=>document.activeElement.blur());await page.waitForTimeout(100);
   if(shots)await page.screenshot({path:path.join(shots,'stage4-jobs-landscape-844x390.png')});
   assert.deepStrictEqual(errors,[],'no page errors (landscape)');await ctx.close();
   // 11. Reduced motion: the constraint highlight ring does not animate.

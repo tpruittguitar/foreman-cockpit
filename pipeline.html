@@ -1268,7 +1268,7 @@ var DECISION_VIEWS_={DECIDED:1,RULED:1,APPLIED:1,DECLINED:1,TERMINAL:1,TERMINAL_
 function actRule_(r){return PipelineActNow.rule(r,ruling(r),(scoreFor_(r)||{}).overall)}
 function allowedInView_(r,key){return !terminalJob_(r)||historyPreset_(key)}
 var decisionReady_={at:null,ids:new Set()};
-var waitingCandidatePage_=0,waitingHealth_=null,waitingQueues_=PipelineWaitingQueues.create({onChange:function(){if(!S.master)return;renderWaitingQueueBar_();if(S.preset==='WAITING_INTAKE'){renderWaitingCandidates_();return;}renderPresets();if(S.preset==='ENRICHMENT_WAITING'||S.preset==='DECISION_READY')render();}});
+var waitingCandidatePage_=0,waitingHealth_=null,waitingQueues_=PipelineWaitingQueues.create({onChange:function(){if(window.PEMobile)PEMobile.refresh();if(!S.master)return;renderWaitingQueueBar_();if(S.preset==='WAITING_INTAKE'){renderWaitingCandidates_();return;}renderPresets();if(S.preset==='ENRICHMENT_WAITING'||S.preset==='DECISION_READY')render();}});
 function setDecisionReady_(health){waitingHealth_=health;var d=health&&health.decisionReady;if(d&&Array.isArray(d.ids))decisionReady_={at:d.at,ids:new Set(d.ids)};waitingQueues_.accept(health);}
 function selectedWaiting_(){return {WAITING_INTAKE:'intake',ENRICHMENT_WAITING:'enrichment',DECISION_READY:'decision'}[S.preset]||'';}
 function openWaitingQueue_(key){S.preset={intake:'WAITING_INTAKE',enrichment:'ENRICHMENT_WAITING',decision:'DECISION_READY'}[key]||'OPEN';S.search='';S.filters={};S.chartFilter=null;S.focus=null;S.checked={};waitingCandidatePage_=0;$('drawer').classList.remove('on');switchTab('pipeline');renderPresets();render();pushHash();if(key==='intake')waitingQueues_.intake();}
@@ -3273,6 +3273,9 @@ var paneSplit_=PipelinePaneSplit.create({view:$('view-pipeline'),handle:$('list-
 loadBuildInfo_();loadWriterStatus_();
 fetch('/api/site-products',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('Product reference unavailable');return r.json();}).then(function(j){S.productReference=j;var r=S.rows.find(function(x){return x.id===S.focus;}),el=document.activeElement;if(r&&!(el&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))renderDetail(r);}).catch(function(e){S.productError=e.message;});
 S.tab='pipeline';readHash();/* Simplify PR 1 (Tim 2026-10-20): the app opens on Act now; a link to a specific view still opens that view. */var L0=typeof location==='object'?location:{hash:'',search:''};if(S.tab==='pipeline'&&!S.pendingMap&&L0.hash.length<2&&!/[?&]open=jobs\b/.test(L0.search))S.tab='act-now';/* ?open=jobs opens the job table (table-focused tests, deep links) */ /* Tim 2026-10-18: applied, rejected and dead jobs are not shown on the opening page at the start. */if((S.tab==='pipeline'||S.tab==='act-now')&&/^(ALL|APPLIED|DECLINED|TERMINAL|TERMINAL_HISTORY|DEAD_POSTINGS)$/.test(S.preset))S.preset='OPEN';LS.set('openDefaultV1',true);switchTab(S.pendingMap?'map':S.tab);
+/* Phone Decide queue: the last good DECISION_READY set and when it loaded (waitingQueues_ empties its sets while reloading). */
+var M_DECIDE_={ids:null,at:null,error:''};
+function mDecideIds_(){var st=waitingQueues_.state;if(st&&st.status==='ready'&&st.index){var ids=waitingQueues_.ids('decision');if(M_DECIDE_.ids!==ids)M_DECIDE_={ids:ids,at:Date.now(),error:''}}return M_DECIDE_.ids||new Set()}
 /* Mobile shell bridge (pipeline-mobile.js, Tim 2026-11-02). Read-only views of the loaded master plus the existing desktop
    navigation; no new data, endpoints or write paths. Health uses the same incident model as the Writer badge. */
 window.PEMobileBridge={
@@ -3291,10 +3294,14 @@ window.PEMobileBridge={
       salary:{text:sr.text,approx:sr.approx,label:sr.label,top:nums.length?Math.max.apply(null,nums):null},need:b&&b.need||null,needArea:b&&b.area||'',
       added:r.dateAdded?r.dateAdded.getTime():null,why:String(p.WHY_FIT||p.FIT_SUMMARY||p.FIT_EVIDENCE||p.SCOPE_FIT_NOTE||''),url:PipelinePolicy.links(r).preferred||'',
       applied:applicationEvidence_(r),ruling:rulingState(r)&&rulingState(r).s||''}},
-  /* The Decide queue: open needs-decision jobs, minus ones Tim already ruled on (same decision rule as Act now: a ruling
-     hides the job until it fails to save or the job changes materially). */
-  decideRows:function(){if(!S.master)return [];return distinctRows_().filter(function(r){
-      if(String(r.BUCKET||'').toUpperCase()!=='TIM_DECISION_REQUIRED'||terminalJob_(r))return false;
+  /* The Decide queue: the desktop "Waiting for my decision" jobs (DECISION_READY: evidence-complete, finally scored
+     identities from the pipeline waiting-queue index) plus any TIM_DECISION_REQUIRED row, minus applied / terminal jobs
+     and ones Tim already ruled on (same decision rule as Act now: a ruling hides the job until it fails to save or the job
+     changes materially). Live master has no TIM_DECISION_REQUIRED rows (2026-11-02 read-only check), so the index is the
+     real source. A reload clears the waiting-queue sets while it fetches, so the last good set (and when it loaded) is
+     kept for the phone; decideState() reports it. */
+  decideRows:function(){if(!S.master)return [];var ready=mDecideIds_();return distinctRows_().filter(function(r){
+      var b=String(r.BUCKET||'').toUpperCase();if(terminalJob_(r)||b==='APPLIED'||b!=='TIM_DECISION_REQUIRED'&&!ready.has(r.PRIMARY_ID))return false;
       var ru=ruling(r);if(!ru||ru.undone||!/^(APPLY_NOW|MANUAL_RESEARCH|DECLINE)$/.test(ru.kind)&&!PipelineActNow.DECIDING[ru.kind])return true;
       return PipelineActNow.saveState(ru)==='NOT_SAVED'||PipelineActNow.changes(r,ru,(scoreFor_(r)||{}).overall).length>0})},
   /* Stage 4. Jobs list: mine = the Decide queue; applied = APPLIED bucket; all = open jobs plus applied ones. */
@@ -3303,11 +3310,13 @@ window.PEMobileBridge={
   /* Status tab: the desktop constraint viewer's own model (operations monitor: health + Writer activity), as plain data. */
   status:function(){if(typeof PipelineControlRoom==='undefined'||!PipelineControlRoom.summary||!operationsUI_.room)return null;
     try{return PipelineControlRoom.summary(operationsUI_.room(),{rateWindowHours:operationsUI_.rateWindowHours()})}catch(e){return {error:e.message}}},
+  decideState:function(){mDecideIds_();var st=waitingQueues_.state||{};return {status:st.status||'idle',error:st.error||M_DECIDE_.error||'',loadedAt:M_DECIDE_.at,have:!!M_DECIDE_.ids}},
+  retryDecide:function(){M_DECIDE_.error='';return fetch('/api/pipeline-health',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('Health feed HTTP '+r.status);return r.json()}).then(setDecisionReady_).catch(function(e){M_DECIDE_.error=e.message;if(window.PEMobile)PEMobile.refresh()})},
   notSaved:function(id){var r=rowById(id),ru=r&&ruling(r);return !!(ru&&!ru.undone&&PipelineActNow.saveState(ru)==='NOT_SAVED')},
   actNowIds:function(){return S.master?actNowModel_().items.map(function(it){return it.r.id}):[]},
   /* A phone decision: the same guards and the same ruling record as the Act now buttons, sent by postRuling_ (batched
      outbox). ok:true only once the request is in the ruling queue; say() then reports its save state. */
-  decide:function(id,kind,say){var r=rowById(id),K={pursue:['APPLY_NOW','YES','',''],hold:['MANUAL_RESEARCH','','','Hold · from the phone'],research:['MANUAL_RESEARCH','','','Research requested by Tim · from the phone'],decline:['DECLINE','','TIM_EXPLICIT_DECLINE','']}[kind];
+  decide:function(id,kind,say){var r=rowById(id),K={pursue:['APPLY_NOW','YES','',''],hold:['MANUAL_RESEARCH','','','Hold · from the phone'],research:['MANUAL_RESEARCH','','','Research requested by Tim · from the phone'],decline:['DECLINE','','TIM_EXPLICIT_DECLINE',''],applied:['APPLIED','','','Applied · from the phone']}[kind];
     if(!r||!K)return {ok:false,msg:'Job not found.'};if(!canSend())return {ok:false,msg:'Writer not connected on this device; nothing saved.'};
     var cur=ruling(r);if(cur&&!cur.undone&&PipelineActNow.saveState(cur)==='NOT_SAVED')return {ok:false,msg:'Your earlier decision on this job did not save. Retry it first.'};
     var prior=PipelineActNow.alreadyDecided(r,cur);if(prior)return {ok:false,msg:'Already decided: '+prior.label+(prior.date?', '+prior.date:'')+'.'};
