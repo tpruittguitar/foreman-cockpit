@@ -104,7 +104,7 @@ test('Writer: writes PAY_WORTH, FLOOR_STATUS + FLOOR_BASIS it derived; agents ca
   const d = run({ SALARY_BASE_EST: '$190,000', SALARY_CONF:'MED', DEGREE_TEXT: 'Bachelor degree preferred or equivalent experience', TITLE_RULE_STATUS: 'PASS', SCOPE_FIT_RAW: '85' });
   assert.equal(d.PAY_WORTH, '83');
   assert.equal(d.FLOOR_STATUS, 'PASS_PAY_WORTH_83');
-  assert.match(d.FLOOR_BASIS, /^WRITER_DERIVED · PAY_WORTH 83 · base mid \$190,000 from SALARY_BASE_EST vs need \$192k at Nashville, TN \(geo 90\)/);
+  assert.match(d.FLOOR_BASIS, /^WRITER_DERIVED · PAY_WORTH 83 · base 75% point \$190,000 from SALARY_BASE_EST vs need \$192k at Nashville, TN \(geo 90\)/);
   assert.equal(d.PURSUIT_STATUS, 'PURSUE_CANDIDATE');
   const a = run({ SALARY_BASE_EST: '$190,000', FLOOR_STATUS: 'CLEARS_NASHVILLE', DEGREE_TEXT: 'Bachelor degree preferred or equivalent experience' });
   assert.equal(a.FLOOR_STATUS, 'CLEARS_NASHVILLE');
