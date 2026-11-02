@@ -3,6 +3,12 @@
    request, and a held email resolves from Needs you with one tap.
    Run: node tests/act-now.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for the other browser tests)
    ACT_NOW_SHOTS=<dir> also writes phone and desktop screenshots. */
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
+// Kept (Claude, Stage 3-4 review 2026-11-02): missed when Stage 2 moved the old phone tests onto the helper, so it failed at
+// 390x844 / 402x874 because phones now open the mobile shell's Decide tab, not the old Act now view. The phone shell's
+// Act now chip is checked by tests/mobile-decide.browser.js (count, at most 10, pressed state) but NOT for these list rules
+// (Shield AI first, Memphis and decided roles out), which reach it only through the shared actNowIds() source.
+// TODO(tablet follow-up): retire the phone contexts here when tablets get the new layout.
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');
