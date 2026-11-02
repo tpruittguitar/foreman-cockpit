@@ -105,7 +105,7 @@
   /* Repaint a pane only when its markup changed. A repaint keeps keyboard focus on the same control (found again by its
      data attributes) and keeps open <details> open, so background refreshes never throw a keyboard or screen-reader
      user back to the top. Returns true when the pane was repainted (its handlers must be bound again). */
-  var FOCUS_KEYS = ['data-m-do', 'data-id', 'data-m-open', 'data-m-menu', 'data-m-filter', 'data-m-jf', 'data-m-retry', 'data-m-field', 'id'];
+  var FOCUS_KEYS = ['data-m-do', 'data-id', 'data-m-open', 'data-m-menu', 'data-m-filter', 'data-m-jf', 'data-m-retry', 'data-m-retry-queue', 'data-m-field', 'id'];
   function setHtml(el, html) {
     if (el._mHtml === html) return false;
     var a = document.activeElement, sel = '';
@@ -207,18 +207,37 @@
       '<div class="m-chips" role="group" aria-label="Decide filter"><button type="button" class="m-chip" data-m-filter="all" aria-pressed="' + (decideFilter === 'all') + '">All · ' + all + '</button>' +
       '<button type="button" class="m-chip" data-m-filter="act" aria-pressed="' + (decideFilter === 'act') + '" title="Act Now: up to 10 roles to act on first (Director and up, US, scored)">Act now · ' + act + '</button></div>';
     var h = B().health(), qs = queueState();
-    if ((qs.view === 'loading' || qs.view === 'unavailable') && q.length) head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue ' + (qs.view === 'loading' ? 'loading' : 'unavailable') + ': showing only jobs marked Needs decision.' + (qs.view === 'unavailable' ? ' <button type="button" class="m-inline-link" data-m-retry-queue>Retry</button>' : '') + '</span></p>' + head;
-    if (qs.view === 'stale') head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue from ' + esc(qs.when) + '; the latest refresh failed. <button type="button" class="m-inline-link" data-m-retry-queue>Retry</button></span></p>' + head;
+    if ((qs.view === 'loading' || qs.view === 'unavailable') && q.length) head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue ' + (qs.view === 'loading' ? 'loading' : 'unavailable') + ': showing only jobs marked Needs decision.' + (qs.view === 'unavailable' ? retryNote(qs) + ' ' + retryBtn('m-inline-link') : '') + '</span></p>' + head;
+    if (qs.view === 'stale') head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue from ' + esc(qs.when) + '; the latest refresh failed.' + retryNote(qs) + ' ' + retryBtn('m-inline-link') + '</span></p>' + head;
     if (h.writer === false) head = '<p class="m-alert m-nowriter-note" role="status">' + gl('warn') + '<span>Writer not connected · decisions can’t be sent from this device. Save a connection in <button type="button" class="m-inline-link" data-m-settings>Settings</button>.</span></p>' + head;
     var changed = setHtml(p, head + (q.length ? '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>' :
       (qs.view === 'loading' ? '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Decision queue loading</b><p>Jobs that need your decision come from the pipeline evidence, which has not loaded yet. This updates on its own.</p></div>' :
-      qs.view === 'unavailable' ? '<div class="m-done m-pending" role="alert">' + gl('caution') + '<b>Decision queue unavailable</b><p>Last loaded: ' + esc(qs.when) + '.' + (qs.error ? ' ' + esc(qs.error) + '.' : '') + '</p><button type="button" class="m-btn m-quiet" data-m-retry-queue>Retry</button> <button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>' :
+      qs.view === 'unavailable' ? '<div class="m-done m-pending" role="alert">' + gl('caution') + '<b>Decision queue unavailable</b><p>' + (retryNote(qs) || 'Last loaded: ' + esc(qs.when) + '.' + (qs.error ? ' ' + esc(qs.error) + '.' : '')) + '</p>' + retryBtn('m-btn m-quiet') + ' <button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>' :
       '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision' + (decideFilter === 'act' ? ' in Act Now' : '') + '. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>')));
     if (changed) bindDecide(p);
   }
   /* What Decide can honestly say about its queue: ready, loading (first 60 s), unavailable (nothing loaded, failed or
      still loading after 60 s), or stale (an older queue is shown because a refresh failed). */
   var started = Date.now();
+  /* Retry of the decision queue. Its state lives in the pane's markup (not set on the button), so setHtml repaints it: busy shows
+     a disabled "Retrying…"; once the request settles the button is "Retry" again, and a failed retry says so, with the
+     time of the last successful load (ET). */
+  var queueRetry = { busy: false, failedAt: null, error: '' };
+  function etTime(ms) { return new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) + ' ET'; }
+  function retryBtn(cls) { return '<button type="button" class="' + cls + '" data-m-retry-queue' + (queueRetry.busy ? ' disabled aria-busy="true">Retrying…' : '>Retry') + '</button>'; }
+  function retryNote(qs) {
+    if (queueRetry.busy || !queueRetry.failedAt) return '';
+    return ' <span class="m-retry-note" data-m-retry-note>Retry failed at ' + esc(etTime(queueRetry.failedAt)) + (queueRetry.error ? ' (' + esc(queueRetry.error) + ')' : '') + '. Last successful load: ' + esc(qs.when) + '.</span>';
+  }
+  function retryQueue() {
+    if (queueRetry.busy) return;
+    queueRetry.busy = true; refresh();
+    B().retryDecide().then(function (r) {
+      queueRetry.busy = false;
+      if (r && r.ok) { queueRetry.failedAt = null; queueRetry.error = ''; } else { queueRetry.failedAt = Date.now(); queueRetry.error = (r && r.error) || ''; }
+      refresh();
+    });
+  }
   function queueState() {
     var s = B().decideState(), when = s.loadedAt ? new Date(s.loadedAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) + ' ET' : 'never';
     if (s.status === 'ready') return { view: 'ready', when: when };
@@ -281,7 +300,7 @@
     p.querySelectorAll('[data-m-retry]').forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-m-retry'), r = B().retry(id, function (t) { say(id, t); }); if (!r.ok) say(id, r.msg); }; });
     var br = p.querySelector('[data-m-browse]'); if (br) br.onclick = function () { setTab('jobs'); };
     var st = p.querySelector('[data-m-settings]'); if (st) st.onclick = function () { openDesktop('settings'); };
-    p.querySelectorAll('[data-m-retry-queue]').forEach(function (b) { b.onclick = function () { b.disabled = true; b.textContent = 'Retrying…'; B().retryDecide().then(function () { refresh(); }); }; });
+    p.querySelectorAll('[data-m-retry-queue]').forEach(function (b) { b.onclick = retryQueue; });
     /* Long-press a card (500ms) for the same menu as ⋯ (Research in two taps or fewer). */
     p.querySelectorAll('.m-card').forEach(function (c) {
       var id = c.getAttribute('data-m-card');
