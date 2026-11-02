@@ -11,6 +11,9 @@
   if(!phone)return;d.classList.add('touch-phone');
   if(pref==='desktop'||(pref!=='mobile'&&/Macintosh/.test(navigator.userAgent))){d.classList.add('force-desktop');document.querySelector('meta[name=viewport]').setAttribute('content','width=1280,viewport-fit=cover')}
 }catch(e){}})();
+/* Mobile shell (pipeline-mobile.js): phones get html.m-shell before first paint so the desktop cockpit never flashes.
+   Same query as the shell; the desktop-layout preference above wins. */
+(function(){try{var d=document.documentElement;if(!d.classList.contains('force-desktop')&&matchMedia('(max-width:767px),(max-width:932px) and (max-height:520px) and (pointer:coarse)').matches)d.classList.add('m-shell')}catch(e){}})();
 </script>
 <title>Pipeline Explorer</title>
 <style>
@@ -360,6 +363,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <link rel="stylesheet" href="pipeline-ui-workspace.css">
 <link rel="stylesheet" href="pipeline-ui-oct15.css">
 <link rel="stylesheet" href="pipeline-waiting-queues.css">
+<link rel="stylesheet" href="pipeline-mobile.css">
 </head>
 <body>
 <nav id="rail" aria-label="Sections"><div class="rail-in"><div class="rail-brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f5f5f5" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8 4.5v11L12 22l-8-4.5v-11z"></path><path d="M12 7v10M8 9.3l8 5.4M16 9.3l-8 5.4" stroke-width="1.2" stroke="#39ff88"></path></svg><span class="rl mono" style="font:11px var(--mono);letter-spacing:2px">PIPELINE EXPLORER</span></div><div class="rail-group" data-group="pipeline"><button data-tab="pipeline" data-group-btn="pipeline" aria-label="Pipeline"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="6" r="1.6"></circle><circle cx="5.5" cy="12" r="1.6"></circle><circle cx="5.5" cy="18" r="1.6"></circle><path d="M10 6h10M10 12h10M10 18h6"></path><path d="M5.5 7.6v2.8M5.5 13.6v2.8" stroke-dasharray="1.2 1.6"></path></svg><span class="rl">Pipeline</span></button><div class="rail-sub"><button data-go="pipeline" data-preset="NEEDS_ANALYSIS">Awaiting review</button><button data-go="pipeline" data-preset="MISSING_DATA">Missing data</button><button data-go="pipeline" data-preset="OPEN">Open roles</button><button data-go="pipeline" data-preset="APPLIED">Applied</button><button data-go="pipeline" data-preset="ALL">All live</button></div></div><div class="rail-group" data-group="scout"><button data-tab="quality" data-group-btn="scout" aria-label="Scout"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.3 15.3L21 21"></path><path d="M10.5 6.5v2.5M10.5 12v2.5M6.5 10.5H9M12 10.5h2.5"></path></svg><span class="rl">Scout</span></button><div class="rail-sub"><button data-go="quality">Scout analysis</button><button data-tab="intake">Manual intake</button><button data-go="pipeline" data-preset="SCOUT_INTAKE">New intake</button><button data-go="pipeline" data-preset="LEADS">Discovery leads</button></div></div><div class="rail-group" data-group="targets"><button data-tab="companies" data-group-btn="targets" aria-label="Targets"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="7.5"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg><span class="rl">Targets</span></button><div class="rail-sub"><button data-go="companies">Companies</button></div></div><div class="rail-group" data-group="map"><button data-tab="map" data-group-btn="map" aria-label="Map"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6l6-2.5 6 2.5 6-2.5v15L15 21l-6-2.5L3 21z"></path><path d="M9 3.5v15M15 6v15"></path></svg><span class="rl">Map</span></button><div class="rail-sub"><button data-go="map">Full-screen map</button></div></div><div class="rail-group" data-group="analytics"><button data-tab="reports" data-group-btn="analytics" aria-label="Analytics"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16h16"></path><path d="M7.5 15l3.5-4.5 3 2.5 5-6.5"></path><circle cx="19" cy="6.5" r="1.3"></circle></svg><span class="rl">Analytics</span></button><div class="rail-sub"><button data-go="reports">Reports</button></div></div><div class="rail-group" data-group="operations"><button data-tab="automations" data-group-btn="operations" aria-label="Operations"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.6l8.1 4.7v9.4L12 21.4l-8.1-4.7V7.3z"></path><circle cx="12" cy="12" r="3.2"></circle></svg><span class="rl">Operations</span></button><div class="rail-sub"><button data-go="operations" data-action="system">System status</button><button data-go="automations">Operations</button><button data-go="incident-history">Current incidents</button></div></div><div class="rail-group" data-group="system"><button data-tab="rules" data-group-btn="system" aria-label="System"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path><circle cx="9" cy="7" r="2" fill="#0d0d0d"></circle><circle cx="15.5" cy="12" r="2" fill="#0d0d0d"></circle><circle cx="7" cy="17" r="2" fill="#0d0d0d"></circle></svg><span class="rl">System</span></button><div class="rail-sub"><button data-go="rules">Rules</button><button data-tab="scoring">Scoring</button><button data-tab="documents">Job documents</button><button data-tab="columns">Columns</button><button data-tab="settings">Settings</button></div></div><div class="rail-foot"><button id="rail-status" aria-label="System status"><span class="sys-dot" id="rail-dot"></span><span class="rl">Status</span></button><button id="rail-refresh" aria-label="Refresh master"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg><span class="rl">Refresh</span></button></div></div></nav>
@@ -460,6 +464,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-target-companies.js"></script>
 <script src="pipeline-rules.js"></script>
 <script src="pipeline-map.js"></script>
+<script src="pipeline-mobile.js"></script>
 <script>
 (function(){
 'use strict';
@@ -1378,6 +1383,7 @@ function renderReadout(){renderWriterStatus_();renderHeaderStatus_();
 
 }
 function render(){
+  if(window.PEMobile)PEMobile.refresh();   // mobile shell repaints (once per frame) from the same rows
   if(!S.master)return;renderWaitingQueueBar_();renderWaitingCandidates_();if(S.preset==='WAITING_INTAKE'||selectedWaiting_()&&!waitingQueues_.state.index){S.renderSeq_=(S.renderSeq_||0)+1;return;}if(S.tab==='act-now'){renderActNow_();renderReadout();return}S.renderFp_=scoringFp_();attentionCache={};renderReadout();renderDashboard();
   $('presets').querySelectorAll('.chip').forEach(function(el){el.classList.toggle('on',el.getAttribute('data-p')===S.preset)});
   var fchips='';Object.keys(S.filters).forEach(function(c){var f=S.filters[c],d=f.type==='enum'?(f.values||[]).join('|'):f.type==='text'?[f.contains&&'~'+f.contains,f.not&&'!'+f.not].filter(Boolean).join(' '):f.type==='date'?[f.from,f.to].filter(Boolean).join('→'):[f.min,f.max].filter(Boolean).join('–');fchips+='<span class="chip on" data-c="'+esc(c)+'">'+esc(c)+' <span class="mono">'+esc(d.slice(0,40))+'</span><span class="x">✕</span></span>'});
@@ -3258,6 +3264,17 @@ var paneSplit_=PipelinePaneSplit.create({view:$('view-pipeline'),handle:$('list-
 loadBuildInfo_();loadWriterStatus_();
 fetch('/api/site-products',{cache:'no-store'}).then(function(r){if(!r.ok)throw Error('Product reference unavailable');return r.json();}).then(function(j){S.productReference=j;var r=S.rows.find(function(x){return x.id===S.focus;}),el=document.activeElement;if(r&&!(el&&/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))renderDetail(r);}).catch(function(e){S.productError=e.message;});
 S.tab='pipeline';readHash();/* Simplify PR 1 (Tim 2026-10-20): the app opens on Act now; a link to a specific view still opens that view. */var L0=typeof location==='object'?location:{hash:'',search:''};if(S.tab==='pipeline'&&!S.pendingMap&&L0.hash.length<2&&!/[?&]open=jobs\b/.test(L0.search))S.tab='act-now';/* ?open=jobs opens the job table (table-focused tests, deep links) */ /* Tim 2026-10-18: applied, rejected and dead jobs are not shown on the opening page at the start. */if((S.tab==='pipeline'||S.tab==='act-now')&&/^(ALL|APPLIED|DECLINED|TERMINAL|TERMINAL_HISTORY|DEAD_POSTINGS)$/.test(S.preset))S.preset='OPEN';LS.set('openDefaultV1',true);switchTab(S.pendingMap?'map':S.tab);
+/* Mobile shell bridge (pipeline-mobile.js, Tim 2026-11-02). Read-only views of the loaded master plus the existing desktop
+   navigation; no new data, endpoints or write paths. Health uses the same incident model as the Writer badge. */
+window.PEMobileBridge={
+  ready:function(){return !!S.master},
+  rows:function(){return S.rows},
+  health:function(){if(!S.master)return {state:'LOADING'};var hh=PipelineIncidents.health(S.incidents),v=S.load||{},lr=S.connection&&S.connection.lastRead;
+    var st=hh.critical||hh.recurring.length?'FAULT':hh.warning||v.freshness==='STALE'||S.meta.fromCache?'DELAYED':'OK';
+    return {state:st,lastRead:lr||S.meta.fetchedAt||null,freshness:v.freshness||null,critical:hh.critical,warning:hh.warning}},
+  openDesktop:function(k){if(k==='rulings'){S.chartFilter=null;S.search='';S.preset='RULED';switchTab('pipeline');return}
+    if(k==='compare'){switchTab('pipeline');var c=$('compare-open');if(c)c.click();return}switchTab(k)}
+};
 load();
 })();
 </script>

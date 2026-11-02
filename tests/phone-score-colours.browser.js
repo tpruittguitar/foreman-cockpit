@@ -1,6 +1,8 @@
 /* REV-068 (Track M step 2; Grok Bot 18:57 / 19:28 ET): on the phone, score colours come from the percentile bands as on
    desktop: table scores and the drawer ring. 390 x 844 and landscape 874 x 402, 141 open jobs (bands on); fixture
    (bands off) keeps Secondary. Run: node tests/phone-score-colours.browser.js */
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
+// TODO(mobile Stage 3): retire once mobile-shell.browser.js checks Decide-card score colours with an icon or word.
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

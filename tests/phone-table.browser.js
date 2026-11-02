@@ -3,6 +3,8 @@
    scroll and stays there while the other columns scroll; TITLE shrinks first (>= 140 px, ellipsis), leaving a 96 px
    window. 390 x 844, 402 x 874, landscape 874 x 402; desktop not pinned. (b) the ring label rule is never under 11 px.
    Run: node tests/phone-table.browser.js */
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
+// TODO(mobile Stage 4): retire the phone sections once mobile-shell.browser.js checks every Jobs field is visible (list and landscape table).
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');

@@ -1,0 +1,80 @@
+/* Mobile shell (handoff "pipeline-explorer-mobile-handoff", gray targeting-OS tokens). Every rule is scoped to html.m-shell
+   inside the phone media query, so desktop (>= 768px) and touch tablets keep their current layout pixel for pixel.
+   Fonts: Inter and IBM Plex Mono from /fonts (the handoff's named mono fallback); no external font fetch. */
+@media (max-width:767px),(max-width:932px) and (max-height:520px) and (pointer:coarse){
+html.m-shell{
+  --m-bg:#0B0B0B;--m-panel:#151515;--m-raised:#1E1E1E;--m-border:#2E2E2E;--m-line:#4A4A4A;--m-badge-bg:#111111;
+  --m-text:#E8E8E8;--m-text-2:#A6A6A6;--m-accent:#D9D9D9;--m-on-accent:#0B0B0B;
+  --m-ok:#6FBF4A;--m-ok-border:#35552a;--m-caution:#E3C341;--m-caution-border:#5f5424;
+  --m-attn:#E8862A;--m-attn-border:#6a4220;--m-attn-tint:#1c1610;--m-fault:#D9534F;--m-fault-border:#6b2a28;
+  --m-sans:Inter,system-ui,-apple-system,sans-serif;--m-mono:"IBM Plex Mono",ui-monospace,monospace;
+  --m-radius:4px;--m-tap:44px;--m-header-h:52px;--m-tabbar-h:64px;
+  --m-dur:200ms;--m-dur-settle:220ms;--m-dur-highlight:250ms;
+  --m-safe-top:env(safe-area-inset-top,0px);--m-safe-bottom:env(safe-area-inset-bottom,0px);
+  background:var(--m-bg);
+}
+/* The desktop cockpit stays loaded underneath but is not shown (this also keeps its queue filter bar, drawer and alert
+   banners off the phone: known issues 1, 3, 5, 6). A desktop view from More shows it until "Mobile" is tapped. */
+html.m-shell:not(.m-legacy) body>#rail,html.m-shell:not(.m-legacy) body>#app,html.m-shell:not(.m-legacy) body>#pop{display:none!important}
+html.m-shell.m-legacy #m-root>:not(.m-return){display:none!important}
+html.m-shell:not(.m-legacy) body{display:block;margin:0;background:var(--m-bg);color:var(--m-text);font:400 15px/1.45 var(--m-sans);-webkit-text-size-adjust:100%;overflow-x:hidden}
+#m-root{position:relative;width:100%;min-height:100vh;min-height:100dvh}
+#m-root *{box-sizing:border-box}
+#m-root button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#m-root :focus-visible{outline:2px solid var(--m-accent);outline-offset:2px}
+.m-label{font:600 12px/1.3 var(--m-mono);letter-spacing:.6px;text-transform:uppercase;color:var(--m-text-2)}
+.m-texture::after{content:"";position:fixed;inset:0;pointer-events:none;opacity:.035;z-index:0;
+  background:repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 3px),linear-gradient(90deg,rgba(255,255,255,.4) 1px,transparent 1px) 0 0/24px 24px}
+
+/* Header: 52px, fixed, hides on scroll down after 60px and returns on scroll up. */
+.m-hd{position:fixed;top:0;left:0;right:0;z-index:40;height:calc(var(--m-header-h) + var(--m-safe-top));padding:var(--m-safe-top) 4px 0 12px;
+  display:flex;align-items:center;gap:4px;background:var(--m-panel);border-bottom:1px solid var(--m-border);transition:transform var(--m-dur) ease}
+.m-hd.m-hide{transform:translateY(-100%)}
+#m-root .m-brand{font:600 16px/1 var(--m-mono);letter-spacing:2px;color:var(--m-text);margin-right:auto}
+#m-root .m-sys{display:inline-flex;align-items:center;gap:8px;min-height:var(--m-tap);padding:0 8px;font:600 12px/1 var(--m-mono);letter-spacing:.6px;color:var(--m-text-2)}
+.m-sys .m-dot{width:8px;height:8px;background:currentColor;flex:none}
+.m-sys svg{flex:none}
+/* State colors need the #m-root prefix to beat the button reset; every state also carries a glyph and a word. */
+#m-root .m-sys.m-ok{color:var(--m-ok)}#m-root .m-sys.m-delayed{color:var(--m-caution)}#m-root .m-sys.m-fault{color:var(--m-fault)}#m-root .m-sys.m-loading{color:var(--m-text-2)}
+#m-root .m-ic{width:var(--m-tap);height:var(--m-tap);display:inline-flex;align-items:center;justify-content:center;color:var(--m-text);border-radius:var(--m-radius)}
+
+/* Content: the page scrolls (no inner scroll box); room for header, tab bar and safe areas. */
+.m-main{position:relative;z-index:1;padding:calc(var(--m-header-h) + var(--m-safe-top) + 12px) 12px calc(var(--m-tabbar-h) + var(--m-safe-bottom) + 16px)}
+.m-pane[hidden]{display:none}
+.m-empty{padding:48px 12px;text-align:center;color:var(--m-text-2)}
+#m-root .m-empty p{margin:0 0 8px;text-align:center}
+.m-skel i{display:block;height:148px;margin-bottom:12px;background:var(--m-panel);border:1px solid var(--m-border);border-radius:var(--m-radius)}
+
+/* Bottom tab bar: 64px, three tabs, icon + uppercase mono label; active = light gray + 1px top indicator. */
+.m-tabs{position:fixed;left:0;right:0;bottom:0;z-index:40;height:calc(var(--m-tabbar-h) + var(--m-safe-bottom));padding-bottom:var(--m-safe-bottom);
+  display:grid;grid-template-columns:repeat(3,1fr);background:var(--m-panel);border-top:1px solid var(--m-border)}
+#m-root .m-tabs button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:var(--m-tap);
+  color:var(--m-text-2);font:600 12px/1 var(--m-mono);letter-spacing:.6px;text-transform:uppercase}
+#m-root .m-tabs button[aria-selected="true"]{color:var(--m-accent)}
+#m-root .m-tabs button[aria-selected="true"]::before{content:"";position:absolute;top:-1px;left:20%;right:20%;height:2px;background:var(--m-accent)}
+
+/* More sheet. */
+.m-scrim{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.4)}
+.m-sheet{position:fixed;left:0;right:0;bottom:0;z-index:61;max-height:85vh;overflow:auto;background:var(--m-raised);border-top:1px solid var(--m-border);
+  border-radius:14px 14px 0 0;padding:0 0 calc(12px + var(--m-safe-bottom))}
+.m-grab{width:36px;height:4px;margin:8px auto 4px;border-radius:2px;background:var(--m-line)}
+.m-sheet-h{display:flex;align-items:center;gap:12px;padding:0 4px 0 16px;min-height:52px;border-bottom:1px solid var(--m-border)}
+#m-root .m-sheet-h b{font:600 16px/1.2 var(--m-sans);text-transform:none;letter-spacing:normal}
+.m-sheet-h .m-x{margin-left:auto}
+#m-root .m-sheet-h .m-label{font-weight:400}
+.m-list{list-style:none;margin:0;padding:0}
+#m-root .m-list button{display:flex;flex-direction:column;justify-content:center;width:100%;min-height:52px;padding:8px 16px;text-align:left;border-bottom:1px solid var(--m-border)}
+/* Sentence case: titles 16px primary, descriptions 14px gray (the cockpit's own b/small rules would capitalize them). */
+#m-root .m-list b{display:block;font:600 16px/1.3 var(--m-sans);color:var(--m-text);text-transform:none;letter-spacing:normal}
+#m-root .m-list small{display:block;font:400 14px/1.35 var(--m-sans);color:var(--m-text-2);text-transform:none;letter-spacing:normal}
+#m-root .m-list .m-leave b{color:var(--m-text-2)}
+
+/* Return from a desktop view. */
+#m-root .m-return{position:fixed;left:12px;bottom:calc(12px + var(--m-safe-bottom));z-index:200;display:inline-flex;align-items:center;gap:6px;min-height:var(--m-tap);
+  padding:0 14px 0 8px;background:var(--m-accent);color:var(--m-on-accent)!important;border-radius:var(--m-radius);font:600 12px/1 var(--m-mono)!important;letter-spacing:.6px;text-transform:uppercase}
+.m-return[hidden]{display:none}
+}
+@media (max-width:767px) and (prefers-reduced-motion:reduce),(max-width:932px) and (max-height:520px) and (pointer:coarse) and (prefers-reduced-motion:reduce){
+  html.m-shell{--m-dur:0ms;--m-dur-settle:0ms;--m-dur-highlight:0ms}
+  html.m-shell #m-root *{animation:none!important;transition:none!important}
+}

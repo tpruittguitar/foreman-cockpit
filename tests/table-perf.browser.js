@@ -1,6 +1,7 @@
 /* REV-088 (perf, Tim 23:35 ET): behaviour kept by the speed-ups, at 1,872 jobs. Phone rows built in stages end complete and in
    the desktop order; sticky columns aligned; opening / closing a job rebuilds only the opened row; a late-built row opens.
    Run: node tests/table-perf.browser.js */
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');
