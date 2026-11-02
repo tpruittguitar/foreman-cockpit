@@ -69,6 +69,8 @@ test('every band has a distinct glyph and label (no colour-only state, L-1); STR
   assert.equal(new Set(g).size, g.length);
   assert.equal(new Set(l).size, l.length);
   assert.equal(B.GLYPH.HOLD, '⊘');
+  assert.equal(B.GLYPH.LOW, '▼');   // filled, same family as TOP ▲
+  assert.equal(B.GLYPH.TOP, '▲');
 });
 
 test('F-6 shares: largest remainder makes TOP/UPPER/MID/LOW add up to 100 over the whole population (golden emptyDrawer)', () => {

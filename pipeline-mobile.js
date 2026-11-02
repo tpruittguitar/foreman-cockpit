@@ -184,7 +184,7 @@
   }
   /* Card / row score: coloured by the same percentile band as the detail ring (Tim, 2026-11-02), with the band glyph drawn
      before the number (CSS ::before from data-g, so the number's text stays a plain number) and the band named in the label
-     for screen readers. TOP green ▲, UPPER yellow ◆, MID gray ●, LOW red ▽; bands off / not ranked / HOLD: plain number. */
+     for screen readers. TOP green ▲, UPPER yellow ◆, MID gray ●, LOW red ▼ (pipeline-bands.js; all filled); bands off / not ranked / HOLD: plain number. */
   function scoreHtml(v, big) {
     if (v.score == null) return '<div class="m-score"><b class="m-num">—</b><span class="m-label">Unscored</span></div>';
     var bd = { TOP: 'top', UPPER: 'upper', MID: 'mid', LOW: 'low' }[v.band], g = bd ? BAND[v.band][1].split(' ')[0] : '';
@@ -354,7 +354,8 @@
      a text label names the band, so colour never carries meaning alone (Tim, 2026-11-02). The fill animates once per opened
      sheet (<= 250ms; none under reduced motion, see pipeline-mobile.css): renderDetail drops the class from the live element when
      the fill ends, so the stored markup is unchanged and later refreshes neither repaint the sheet nor replay the fill. */
-  var BAND = { TOP: ['top', '▲ TOP 10%'], UPPER: ['upper', '◆ UPPER 25%'], MID: ['mid', '● MID 45%'], LOW: ['low', '▽ LOW 20%'], HOLD: ['hold', '⊘ HOLD · outside the bands'] };
+  var BG = (typeof PipelineBands !== 'undefined' && PipelineBands.GLYPH) || { TOP: '▲', UPPER: '◆', MID: '●', LOW: '▼', HOLD: '⊘' };
+  var BAND = { TOP: ['top', BG.TOP + ' TOP 10%'], UPPER: ['upper', BG.UPPER + ' UPPER 25%'], MID: ['mid', BG.MID + ' MID 45%'], LOW: ['low', BG.LOW + ' LOW 20%'], HOLD: ['hold', BG.HOLD + ' HOLD · outside the bands'] };
   function ring(score, band, animate) {
     var r = 30, c = 2 * Math.PI * r, f = score == null ? 0 : Math.max(0, Math.min(100, score)) / 100, k = (BAND[band] || [])[0] || 'none';
     return '<svg class="m-ring m-b-' + k + (animate ? ' m-ring-in' : '') + '" data-band="' + esc(band || 'NONE') + '" width="88" height="88" viewBox="0 0 88 88" aria-hidden="true"><g transform="translate(44 44)">' +

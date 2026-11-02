@@ -24,7 +24,7 @@ for(let i=0;i<120;i++)extra.push(clone(i,20+Math.round(i*79/119),['190000','2400
 const BELOW='V2X-RING'+String(500).padStart(8,'0');extra.push(clone(500,96,['120000','140000']));
 const fixture=lines.slice(0,lines.indexOf(tpl)).concat(extra,lines.slice(lines.indexOf(tpl))).join('\n');
 // MID is gray as on desktop (Tim 2026-11-02: orange stays for constraints and QUEUE DOWN).
-const TOKEN={TOP:'--m-ok',UPPER:'--m-caution',MID:'--m-text-2',LOW:'--m-fault'},GLYPH={TOP:'▲',UPPER:'◆',MID:'●',LOW:'▽'};
+const TOKEN={TOP:'--m-ok',UPPER:'--m-caution',MID:'--m-text-2',LOW:'--m-fault'},GLYPH={TOP:'▲',UPPER:'◆',MID:'●',LOW:'▼'};
 function lum(rgb){const v=rgb.match(/\d+(\.\d+)?/g).slice(0,3).map(Number).map(x=>{x/=255;return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4)});return 0.2126*v[0]+0.7152*v[1]+0.0722*v[2]}
 const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05)};
 (async()=>{
@@ -76,7 +76,7 @@ const contrast=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+0.05)/(Math
     await openDetail(page,pick[band].id);const r=await ringInfo(page),want=await tok(page,TOKEN[band]);
     assert.strictEqual(r.band,band,band+': ring knows its band');assert.strictEqual(r.arc,want,band+': ring colour is '+TOKEN[band]+' ('+r.arc+')');
     assert.strictEqual(r.track,'#2E2E2E',band+': track stays gray');assert.strictEqual(r.num,text,band+': the number stays neutral light gray');
-    assert.match(r.label||'',new RegExp('^[▲◆●▽] '+band+' \\d+% of open jobs$'),band+': text label names the band ('+r.label+')');assert.strictEqual(r.labelColor,want,band+': label in the band colour');
+    assert.match(r.label||'',new RegExp('^[▲◆●▼] '+band+' \\d+% of open jobs$'),band+': text label names the band ('+r.label+')');assert.strictEqual(r.labelColor,want,band+': label in the band colour');
     const cr=contrast(r.arc,r.bg);assert.ok(cr>=3,band+': ring '+cr.toFixed(2)+':1 against its panel '+r.bg+' (needs 3:1)');
     console.log('  '+band+' score '+pick[band].score+': ring '+r.arc+', '+cr.toFixed(2)+':1 on '+r.bg+', "'+r.label+'"');
     if(shots)await page.locator('#m-detail .m-verdict').screenshot({path:path.join(shots,'stage5-ring-'+band.toLowerCase()+'-390.png')});

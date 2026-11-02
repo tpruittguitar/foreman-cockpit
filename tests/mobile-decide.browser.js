@@ -60,7 +60,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   // The band's words stay in the detail sheet; the card shows the number, a glyph, and the word Score.
   const scoreBands=await page.evaluate(()=>{const root=document.getElementById('m-root');
     const tok=v=>{const d=document.createElement('i');d.style.color='var('+v+')';root.appendChild(d);const c=getComputedStyle(d).color;d.remove();return c};
-    const attn=tok('--m-attn'),gray=tok('--m-text-2'),glyph={TOP:'▲',UPPER:'◆',MID:'●',LOW:'▽'};
+    const attn=tok('--m-attn'),gray=tok('--m-text-2'),glyph={TOP:'▲',UPPER:'◆',MID:'●',LOW:'▼'};
     return {attn,gray,rows:[...document.querySelectorAll('#m-pane-decide .m-score')].map(s=>{const b=s.querySelector('b');
       return {band:s.getAttribute('data-band'),color:getComputedStyle(b).color,g:b.getAttribute('data-g'),label:s.querySelector('.m-label').textContent.trim(),want:glyph[s.getAttribute('data-band')]||null}})}});
   assert.ok(scoreBands.rows.length>=4,'scored cards to check');

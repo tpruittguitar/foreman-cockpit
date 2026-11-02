@@ -40,7 +40,7 @@ const JOB='V2X-A4CCD49EE686';
     const titles=await page.$$eval('#grid tbody tr[data-id] .score-badge',els=>els.map(e=>e.title));
     assert(titles.length>20,'score cells: '+titles.length);
     const BAD=/\b(PRIORITY|STRONG|WATCH|WEAK|NO-GO)\b/;
-    titles.forEach(t=>{assert.doesNotMatch(t,BAD,'no band() word: '+t);assert.match(t,/^(▲ TOP|◆ UPPER|● MID|▽ LOW) · \d+ · #\d+ of \d+ eligible open · (\d\d:\d\d|—)$|^\d+ · ⊘ HOLD · outside the bands$|^\d+ · not ranked \(applied or closed\)$/,'V-19 format: '+t)});
+    titles.forEach(t=>{assert.doesNotMatch(t,BAD,'no band() word: '+t);assert.match(t,/^(▲ TOP|◆ UPPER|● MID|▼ LOW) · \d+ · #\d+ of \d+ eligible open · (\d\d:\d\d|—)$|^\d+ · ⊘ HOLD · outside the bands$|^\d+ · not ranked \(applied or closed\)$/,'V-19 format: '+t)});
     assert(titles.some(t=>/eligible open/.test(t)),'ranked rows present');console.log('sample hover: '+titles.find(t=>/eligible open/.test(t)));
     await page.locator('#grid tbody tr[data-id]').first().click();await page.waitForTimeout(800);
     const ring=await page.locator('#drawer .ws-ring').getAttribute('title');assert.doesNotMatch(ring,BAD,'ring title: '+ring);assert.match(ring,/^Opportunity rating · viewer-derived from the scoring model · /);
