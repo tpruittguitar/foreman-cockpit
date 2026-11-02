@@ -224,7 +224,8 @@
       '<div class="m-chips" role="group" aria-label="Decide filter"><button type="button" class="m-chip" data-m-filter="all" aria-pressed="' + (decideFilter === 'all') + '">All · ' + all + '</button>' +
       '<button type="button" class="m-chip" data-m-filter="act" aria-pressed="' + (decideFilter === 'act') + '" title="Act Now: up to 10 roles to act on first (Director and up, US, scored)">Act now · ' + act + '</button></div>';
     var h = B().health(), qs = queueState();
-    if ((qs.view === 'loading' || qs.view === 'unavailable') && q.length) head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue ' + (qs.view === 'loading' ? 'loading' : 'unavailable') + ': showing only jobs marked Needs decision.' + (qs.view === 'unavailable' ? retryNote(qs) + ' ' + retryBtn('m-inline-link') : '') + '</span></p>' + head;
+    /* Down = orange ⚠ everywhere (header "QUEUE DOWN", this banner, the empty view); loading and stale = yellow "?" (Tim, Stage 5 polish). */
+    if ((qs.view === 'loading' || qs.view === 'unavailable') && q.length) head = '<p class="m-alert ' + (qs.view === 'unavailable' ? 'm-down-note' : 'm-caution-note') + ' m-stale" role="status">' + gl(qs.view === 'unavailable' ? 'warn' : 'caution') + '<span>Decision queue ' + (qs.view === 'loading' ? 'loading' : 'unavailable') + ': showing only jobs marked Needs decision.' + (qs.view === 'unavailable' ? retryNote(qs) + ' ' + retryBtn('m-inline-link') : '') + '</span></p>' + head;
     /* Stale: "Showing queue from 8:53 AM ET. Refresh failed (server error). Retry" (Tim, Stage 5 review). After a failed
        retry: "... Retry failed at 9:40 AM ET (server error). Retry"; the queue time already says when it last loaded. */
     if (qs.view === 'stale') head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Showing queue from ' + esc(qs.when) + '. ' +
@@ -233,7 +234,7 @@
     if (h.writer === false) head = '<p class="m-alert m-nowriter-note" role="status">' + gl('warn') + '<span>Writer not connected · decisions can’t be sent from this device. Save a connection in <button type="button" class="m-inline-link" data-m-settings>Settings</button>.</span></p>' + head;
     var changed = setHtml(p, head + (q.length ? '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>' :
       (qs.view === 'loading' ? '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Decision queue loading</b><p>Jobs that need your decision come from the pipeline evidence, which has not loaded yet. This updates on its own.</p></div>' :
-      qs.view === 'unavailable' ? '<div class="m-done m-pending" role="alert">' + gl('caution') + '<b>Decision queue unavailable</b><p>' + (retryNote(qs) || 'Last loaded: ' + esc(qs.when) + '.' + (qs.error ? ' ' + esc(qs.error) + '.' : '')) + '</p>' + retryBtn('m-btn m-quiet') + ' <button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>' :
+      qs.view === 'unavailable' ? '<div class="m-done m-pending m-down" role="alert">' + gl('warn') + '<b>Decision queue unavailable</b><p>' + (retryNote(qs) || 'Last loaded: ' + esc(qs.when) + '.' + (qs.error ? ' ' + esc(qs.error) + '.' : '')) + '</p>' + retryBtn('m-btn m-quiet') + ' <button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>' :
       '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision' + (decideFilter === 'act' ? ' in Act Now' : '') + '. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>')));
     if (changed) bindDecide(p);
   }
