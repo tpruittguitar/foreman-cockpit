@@ -44,13 +44,13 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   assert.deepStrictEqual(errors,[]);await ctx.close();
 
   // 2. Desktop, first visit: status cell shows the warning; the desktop decision form's send is stopped before any POST.
-  ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}}));await page.waitForSelector('#hstat .hs-nowriter');
-  assert.match(await page.textContent('#hstat .hs-nowriter'),/Writer\s*not connected/,'desktop shows Writer not connected');assert.ok(await page.$('#hstat .hs-nowriter svg'),'with a warning glyph');
+  ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}}));await page.waitForFunction(()=>{const b=document.getElementById('writer-badge');return /off/.test(b.textContent)&&!!b.querySelector('svg')},null,{timeout:15000});
+  assert.ok(!(await page.$('#hstat .hs-nowriter')),'one Writer indicator: no separate status cell');
   await page.waitForFunction(()=>/off/.test(document.getElementById('writer-badge').textContent),null,{timeout:10000});await page.waitForTimeout(800);   // let the badge colour transition finish
-  const wb=await page.evaluate(()=>{const b=document.getElementById('writer-badge'),c=document.querySelector('#hstat .hs-nowriter b');return {text:b.textContent.trim(),cls:b.className,badge:getComputedStyle(b.querySelector('b')).color,lines:Math.round(c.getBoundingClientRect().height/parseFloat(getComputedStyle(c).lineHeight||'14')),cell:getComputedStyle(c).color,bad:document.querySelector('#hstat .hs-nowriter').classList.contains('bad')}});
-  assert.match(wb.text,/Writer\s*off/i,'centre box says Writer off, not idle ('+wb.text+')');assert.match(wb.cls,/\boff\b/);
-  assert.deepStrictEqual([wb.badge,wb.cell,wb.bad],['rgb(232, 134, 42)','rgb(232, 134, 42)',false],'both Writer indicators orange, not red');
-  assert.strictEqual(wb.lines,1,'not-connected cell stays on one line');
+  const wb=await page.evaluate(()=>{const b=document.getElementById('writer-badge'),r=document.getElementById('refresh').getBoundingClientRect();return {text:b.textContent.trim(),cls:b.className,badge:getComputedStyle(b.querySelector('b')).color,glyph:!!b.querySelector('b svg'),refreshRight:Math.round(r.right),refreshW:Math.round(r.width),vw:innerWidth}});
+  assert.match(wb.text,/Writer\s*off/i,'Writer box says Writer off, not idle ('+wb.text+')');assert.match(wb.cls,/\boff\b/);assert.ok(wb.glyph,'with a warning glyph');
+  assert.strictEqual(wb.badge,'rgb(232, 134, 42)','Writer off is orange, not red');
+  assert.ok(wb.refreshW>0&&wb.refreshRight<=wb.vw,'Refresh button fully on screen at 1440px with no Writer ('+wb.refreshRight+' of '+wb.vw+')');
   if(shots)await page.screenshot({path:path.join(shots,'stage3-no-writer-desktop-1440x900.png'),clip:{x:0,y:0,width:1440,height:120}});
   await page.goto(base+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.click('#grid tbody tr[data-id]');
   await page.waitForSelector('#edit-state',{state:'attached'});await page.evaluate(()=>{const d=document.getElementById('decision-details');if(d)d.open=true});
@@ -67,13 +67,13 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
 
   // 4. Clear asks first; Cancel changes nothing; OK shows not-connected at once and it survives a reload.
   ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}},{url:base+'/writer',key:'test-only'}));await page.waitForSelector('#hstat .hcell');
-  assert.ok(!(await page.$('#hstat .hs-nowriter')),'connected desktop has no warning');
+  assert.ok(!/off/.test(await page.textContent('#writer-badge')),'connected desktop is not Writer off');
   await page.evaluate(()=>{location.hash='';});await page.goto(base+'/pipeline.html#settings');await page.waitForTimeout(400);
   if(!(await page.$('#cfg-clear')))await page.evaluate(()=>document.querySelector('[data-go="settings"]').click());await page.waitForSelector('#cfg-clear');
   let asked='';page.once('dialog',d=>{asked=d.message();d.dismiss()});await page.click('#cfg-clear');await page.waitForTimeout(200);
-  assert.match(asked,/^Stop sending decisions from this device\?/,'Clear asks first');assert.ok(!(await page.$('#hstat .hs-nowriter')),'Cancel keeps the connection');
-  page.once('dialog',d=>d.accept());await page.click('#cfg-clear');await page.waitForSelector('#hstat .hs-nowriter');
-  await page.reload();await page.waitForSelector('#hstat .hs-nowriter');
+  assert.match(asked,/^Stop sending decisions from this device\?/,'Clear asks first');assert.ok(!/off/.test(await page.textContent('#writer-badge')),'Cancel keeps the connection');
+  page.once('dialog',d=>d.accept());await page.click('#cfg-clear');await page.waitForFunction(()=>/not configured|off/.test(document.getElementById('writer-badge').textContent),null,{timeout:15000});
+  await page.reload();await page.waitForFunction(()=>{const b=document.getElementById('writer-badge');return /off/.test(b.textContent)&&!!b.querySelector('svg')},null,{timeout:15000});
   const cfg=await page.evaluate(()=>JSON.parse(localStorage.getItem('px.cfg')));assert.strictEqual(cfg.deliberate,false,'after a reload the device stays not connected');
   assert.deepStrictEqual(posts,[],'nothing sent');assert.deepStrictEqual(errors,[]);await ctx.close();
 

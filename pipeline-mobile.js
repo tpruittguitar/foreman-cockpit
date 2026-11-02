@@ -58,6 +58,7 @@
       }).join('') + (d.classList.contains('touch-phone') ? '<li><button type="button" class="m-leave" data-m-layout="desktop"><b>Desktop layout ↗</b><small>Leaves the mobile view; use the full desktop cockpit on this phone</small></button></li>' : '') +
       '</ul></div>' +
       '<button type="button" class="m-return" id="m-return" hidden>' + svg('back') + '<span>Mobile</span></button>' +
+      '<div class="m-sheet" id="m-fields" role="dialog" aria-modal="true" aria-label="Fields shown in Jobs" hidden></div>' +
       '<div class="m-detail" id="m-detail" role="dialog" aria-modal="true" aria-labelledby="m-d-title" hidden></div>' +
       '<div class="m-toast" id="m-toast" role="status" aria-live="polite" hidden></div>';
   }
@@ -72,8 +73,8 @@
       var b = $('m-tab-' + x[0]), p = $('m-pane-' + x[0]);
       b.setAttribute('aria-selected', String(x[0] === t)); b.tabIndex = x[0] === t ? 0 : -1; p.hidden = x[0] !== t;
     });
-    showHeader(true); root.scrollTo(0, 0);
-    if (focusSearch) { var s = document.querySelector('#m-pane-jobs input[type=search]'); if (s) s.focus(); }
+    showHeader(true); root.scrollTo(0, 0); refresh();
+    if (focusSearch) { var s = $('m-q'); if (s) s.focus(); }
   }
 
   /* Header readout: one square dot and one word. Tap opens Status. */
@@ -97,8 +98,8 @@
       raf = 0; renderSys();
       var b = B(), loaded = b && b.ready();
       renderDecide(loaded);
-      $('m-pane-jobs').innerHTML = loaded ? placeholder('Jobs', 4) : skeleton();
-      $('m-pane-status').innerHTML = loaded ? placeholder('Status', 4) : skeleton();
+      renderJobs(loaded);
+      renderStatus(loaded);
       if (detailId) renderDetail();
     });
   }
@@ -129,13 +130,13 @@
     else if (ps === 'below') out.push(['fault', gl('down') + esc(st), 'Salary ' + st + ', below the pay you need']);
     else if (ps === 'missing') out.push(['caution m-i', gl('caution') + '— est. pending', 'Salary estimate pending']);
     else out.push(['', esc(st), 'Salary ' + st]);
-    if (v.fit == null) out.push(['caution', gl('caution') + 'Fit', 'Fit not measured']);
+    if (v.fit == null) out.push(['caution', gl('caution') + 'Fit unknown', 'Fit not measured']);
     else if (v.fit < FIT_BORDER) out.push(['caution', '~ Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit) + ', borderline']);
     else out.push(['', 'Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit)]);
     out.push(flexBadge(v.flex));
     var a = ageDays(v);
     if (opt && opt.skipAge) return out;
-    if (a == null) out.push(['caution', gl('caution') + 'Age', 'Age unknown']);
+    if (a == null) out.push(['caution', gl('caution') + 'Age unknown', 'Age unknown']);
     else if (a > STALE_DAYS) out.push(['caution', gl('caution') + a + 'd', a + ' days old, stale']);
     else out.push(['', a + 'd', a + ' days old']);
     return out;
@@ -143,7 +144,7 @@
   /* Flex classes from the scoring model (Grok Bot GUI, Stage 1): Strict is red, No flex orange, unknown yellow. */
   function flexBadge(c) {
     return { HIGH_FLEX: ['ok', gl('globe') + 'High flex', 'High flex'], SOFT_FLEX: ['ok', gl('home') + 'Soft flex', 'Soft flex'],
-      NO_FLEX: ['attn', gl('no') + 'No flex', 'No flex'], STRICT: ['fault', gl('no') + 'Strict', 'Strict, no flex'] }[c] || ['caution', gl('caution') + 'Flex', 'Flex not recorded'];
+      NO_FLEX: ['attn', gl('no') + 'No flex', 'No flex'], STRICT: ['fault', gl('no') + 'Strict', 'Strict, no flex'] }[c] || ['caution', gl('caution') + 'Flex unknown', 'Flex not recorded'];
   }
   function badgeRow(v, opt) { return '<div class="m-badges">' + badges(v, opt).map(function (b) { return '<span class="m-b ' + b[0] + '" title="' + esc(b[2]) + '" aria-label="' + esc(b[2]) + '">' + b[1] + '</span>'; }).join('') + '</div>'; }
 
@@ -327,6 +328,115 @@
     handle.addEventListener('pointerup', end); handle.addEventListener('pointercancel', end);
   }
 
+  /* ---- Stage 4: Jobs (list, chips, sort, Fields sheet, landscape table) and Status (constraint viewer) ----------- */
+  var jobsFilter = 'mine', jobsSort = 0, jobsQuery = '', jobsShown = 50, jobsBuilt = false, jobsTimer = 0, io = null;
+  var SORTS = [['score', 'Score ↓'], ['salary', 'Salary ↓'], ['fit', 'Fit ↓'], ['age', 'Age ↑']];
+  var FIELDS = [['salary', 'Salary'], ['location', 'Location'], ['fit', 'Fit'], ['flex', 'Flex'], ['age', 'Age'], ['company', 'Company']];
+  function fields() { var f = {}; FIELDS.forEach(function (x) { f[x[0]] = true; }); try { var s = JSON.parse(localStorage.getItem('px.mFields') || 'null'); if (s) Object.keys(f).forEach(function (k) { if (typeof s[k] === 'boolean') f[k] = s[k]; }); } catch (e) {} return f; }
+  function saveFields(f) { try { localStorage.setItem('px.mFields', JSON.stringify(f)); } catch (e) {} }
+  function wide() { return root.innerWidth > 700; }
+  function jobsList() {
+    var b = B(), q = jobsQuery.trim().toLowerCase(), by = SORTS[jobsSort][0];
+    var rows = b.jobsRows(jobsFilter).map(function (r) { return b.view(r); });
+    if (q) rows = rows.filter(function (v) { return (v.title + ' ' + v.company + ' ' + v.location).toLowerCase().indexOf(q) >= 0; });
+    var key = { score: function (v) { return v.score == null ? -1 : v.score; }, salary: function (v) { return v.salary.top == null ? -1 : v.salary.top; }, fit: function (v) { return v.fit == null ? -1 : v.fit; }, age: function (v) { var a = ageDays(v); return a == null ? -1e9 : -a; } }[by];
+    return rows.sort(function (a, c) { return key(c) - key(a) || String(a.id).localeCompare(String(c.id)); });
+  }
+  function badgeSpan(x) { return x ? '<span class="m-b ' + x[0] + '" aria-label="' + esc(x[2]) + '">' + x[1] + '</span>' : ''; }
+  function jobRowHtml(v, f) {
+    var bs = badges(v), keep = [f.salary, f.fit, f.flex, f.age];
+    var picked = bs.slice(0, 4).filter(function (x, i) { return keep[i]; });
+    if (v.bucket === 'APPLIED' || v.applied) picked.push(['ok', gl('ok') + 'Applied', 'Applied']);
+    var l2 = [f.company ? v.company : '', f.location ? v.location : ''].filter(Boolean).join(' · ');
+    return '<li><button type="button" class="m-row" data-m-open="' + esc(v.id) + '"><span class="m-row-1"><b class="m-title">' + esc(v.title) + '</b>' + scoreHtml(v).replace('<span class="m-label">Score</span>', '') + '</span>' +
+      (l2 ? '<span class="m-sub">' + esc(l2) + '</span>' : '') +
+      '<span class="m-badges">' + picked.map(badgeSpan).join('') + '</span></button></li>';
+  }
+  /* In the table the column header names the field, so a cell drops the repeated word: "Fit 46" -> "46",
+     "? Age unknown" -> "? unknown". The glyph, colour and the full wording in the label stay. */
+  function tableCell(x) { return x && [x[0], x[1].replace(/(Fit|Age|Flex) unknown$/, 'unknown').replace(/^(~ )?Fit (\d+)$/, '$1$2').replace('~ Fit ', '~'), x[2]]; }
+  function jobTableHtml(list, f) {
+    var cols = [['Title', 1], ['Company', f.company], ['Location', f.location], ['Salary', f.salary], ['Fit', f.fit], ['Flex', f.flex], ['Score', 1], ['Age', f.age]].filter(function (c) { return c[1]; });
+    return '<div class="m-table-wrap"><table class="m-table"><thead><tr>' + cols.map(function (c, i) { return '<th scope="col"' + (i === 0 ? ' class="m-sticky"' : '') + '>' + c[0] + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      list.map(function (v) {
+        var bs = badges(v).map(tableCell), m = { Title: '<button type="button" class="m-link-row" data-m-open="' + esc(v.id) + '">' + esc(v.title) + '</button>', Company: '<span class="m-clip" title="' + esc(v.company) + '">' + esc(v.company) + '</span>', Location: '<span class="m-clip" title="' + esc(v.location) + '">' + esc(v.location) + '</span>', Salary: badgeSpan(bs[0]), Fit: badgeSpan(bs[1]), Flex: badgeSpan(bs[2]), Score: v.score == null ? '—' : (v.score >= SCORE_OK ? gl('ok') : '') + Math.round(v.score), Age: badgeSpan(bs[3]) };
+        return '<tr>' + cols.map(function (c, i) { return i === 0 ? '<th scope="row" class="m-sticky">' + m[c[0]] + '</th>' : '<td' + (c[0] === 'Score' ? ' class="m-num' + (v.score >= SCORE_OK ? ' m-okc' : '') + '"' : '') + '>' + m[c[0]] + '</td>'; }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div>';
+  }
+  function buildJobs() {
+    var p = $('m-pane-jobs');
+    p.innerHTML = '<label class="m-search"><span class="m-sr">Search jobs</span>' + svg('search') + '<input type="search" id="m-q" placeholder="Search title, company, city" autocomplete="off" enterkeyhint="search"></label>' +
+      '<div class="m-chips m-jobchips" role="group" aria-label="Jobs filter"><button type="button" class="m-chip" data-m-jf="mine">Mine</button><button type="button" class="m-chip" data-m-jf="applied">Applied</button><button type="button" class="m-chip" data-m-jf="all">All</button>' +
+      '<span class="m-chip-gap"></span><button type="button" class="m-chip" id="m-sort"></button><button type="button" class="m-chip" id="m-fields-btn" aria-haspopup="dialog">Fields</button></div>' +
+      '<p class="m-label m-jobcount" id="m-jobcount" role="status"></p><div id="m-jobs-list"></div>';
+    $('m-q').value = jobsQuery;
+    $('m-q').addEventListener('input', function () { clearTimeout(jobsTimer); jobsTimer = setTimeout(function () { jobsQuery = $('m-q').value; jobsShown = 50; paintJobs(); }, 150); });
+    p.querySelectorAll('[data-m-jf]').forEach(function (b) { b.onclick = function () { jobsFilter = b.getAttribute('data-m-jf'); jobsShown = 50; paintJobs(); }; });
+    $('m-sort').onclick = function () { jobsSort = (jobsSort + 1) % SORTS.length; paintJobs(); };
+    $('m-fields-btn').onclick = openFields;
+    jobsBuilt = true;
+  }
+  function paintJobs() {
+    if (!jobsBuilt) buildJobs();
+    var f = fields(), list = jobsList(), shown = list.slice(0, jobsShown), box = $('m-jobs-list');
+    document.querySelectorAll('[data-m-jf]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-m-jf') === jobsFilter)); });
+    $('m-sort').textContent = SORTS[jobsSort][1]; $('m-sort').setAttribute('aria-label', 'Sort: ' + SORTS[jobsSort][1] + '. Tap for the next sort.');
+    $('m-jobcount').textContent = list.length + (list.length === 1 ? ' job' : ' jobs') + (jobsQuery ? ' match' : '');
+    if (io) { io.disconnect(); io = null; }
+    if (!list.length) { box.innerHTML = '<p class="m-empty-line">No jobs match.</p>'; return; }
+    box.innerHTML = wide() ? jobTableHtml(list, f) : '<ul class="m-rows">' + shown.map(function (v) { return jobRowHtml(v, f); }).join('') + '</ul>' +
+      (shown.length < list.length ? '<div class="m-more-rows" id="m-more-rows"><button type="button" class="m-btn m-quiet">Show more · ' + (list.length - shown.length) + ' left</button></div>' : '');
+    box.querySelectorAll('[data-m-open]').forEach(function (b) { b.onclick = function () { openDetail(b.getAttribute('data-m-open')); }; });
+    var more = $('m-more-rows');
+    if (more) {
+      more.querySelector('button').onclick = function () { jobsShown += 50; paintJobs(); };
+      if (root.IntersectionObserver) { io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { io.disconnect(); io = null; jobsShown += 50; paintJobs(); } }, { rootMargin: '400px' }); io.observe(more); }
+    }
+  }
+  function renderJobs(loaded) {
+    if (!loaded) { $('m-pane-jobs').innerHTML = skeleton(); jobsBuilt = false; return; }
+    var a = document.activeElement, typing = a && a.id === 'm-q'; paintJobs(); if (typing) $('m-q').focus();
+  }
+
+  /* Fields sheet: which details the Jobs rows and table show; kept on this device. */
+  function openFields() {
+    var f = fields(), s = $('m-fields');
+    s.innerHTML = '<div class="m-grab" aria-hidden="true"></div><div class="m-sheet-h"><b>Fields</b><span class="m-label">Shown in Jobs</span><button type="button" class="m-ic m-x" id="m-fields-x" aria-label="Close">' + svg('close') + '</button></div><ul class="m-list">' +
+      FIELDS.map(function (x) { return '<li><button type="button" class="m-toggle" role="switch" aria-checked="' + f[x[0]] + '" data-m-field="' + x[0] + '"><b>' + x[1] + '</b><i aria-hidden="true"></i></button></li>'; }).join('') + '</ul>';
+    lastFocus = document.activeElement; s.hidden = false; $('m-scrim').hidden = false;
+    s.querySelectorAll('[data-m-field]').forEach(function (b) { b.onclick = function () { var k = b.getAttribute('data-m-field'), g = fields(); g[k] = !g[k]; saveFields(g); b.setAttribute('aria-checked', String(g[k])); paintJobs(); }; });
+    $('m-fields-x').onclick = closeFields; s.querySelector('[data-m-field]').focus();
+  }
+  function closeFields() { var s = $('m-fields'); if (!s || s.hidden) return false; s.hidden = true; $('m-scrim').hidden = true; if (lastFocus && lastFocus.focus) lastFocus.focus(); return true; }
+
+  /* Status: the constraint viewer as a vertical flow; a stage that becomes the constraint gets a 250ms highlight ring. */
+  var lastConstraint = null;
+  function n$(n) { return n == null ? null : Number(n).toLocaleString('en-US'); }
+  function renderStatus(loaded) {
+    var p = $('m-pane-status'); if (!loaded) { p.innerHTML = skeleton(); return; }
+    var b = B(), s = b.status(), h = b.health();
+    if (!s || s.error) { p.innerHTML = '<p class="m-label m-sec-l">Pipeline constraint</p><p class="m-alert m-caution-note">' + gl('caution') + 'Pipeline evidence is not available yet' + (s && s.error ? ' · ' + esc(s.error) : '') + '.</p>'; return; }
+    var ci = s.stages.map(function (x, i) { return x.constraint ? i : -1; }).filter(function (i) { return i >= 0; }).join(',');
+    var moved = lastConstraint !== null && ci !== lastConstraint && ci !== ''; lastConstraint = ci;
+    var flow = s.stages.map(function (st, i) {
+      var state = st.manual ? ['', '', 'Manual'] : st.constraint ? ['attn', gl('warn'), 'Constraint'] : st.perHour == null ? ['caution', gl('caution'), 'Unknown'] : ['ok', gl('ok'), 'OK'];
+      var card = '<li class="m-stage' + (st.constraint ? ' m-constraint m-brackets' : '') + (st.constraint && moved ? ' m-flash' : '') + '"><span class="m-stage-n m-num">0' + (i + 1) + '</span><div class="m-stage-t"><b>' + esc(st.name) + '</b><span class="m-stage-r m-num">' +
+        (st.manual ? 'You decide' : st.perHour == null ? 'Rate not measured' : (Math.round(st.perHour * 10) / 10) + ' jobs/hr') + '</span></div><span class="m-stage-s ' + state[0] + '">' + state[1] + state[2] + '</span></li>';
+      if (i >= 3) return card;
+      var w = s.waiting[i];
+      return card + '<li class="m-wait"><span class="m-num' + (w.count == null ? ' m-cau' : '') + '">' + (w.count == null ? gl('caution') + 'Waiting unknown' : (w.partial ? '≥ ' : '') + n$(w.count) + ' waiting') + '</span></li>';
+    }).join('');
+    function tile(label, v) { return '<div class="m-tile"><b class="m-num">' + (v == null ? '—' : n$(v)) + '</b><span class="m-label">' + label + '</span></div>'; }
+    var hs = h.state === 'OK' ? ['ok', gl('ok'), 'SYS OK'] : h.state === 'FAULT' ? ['fault', gl('no'), 'SYS FAULT'] : h.state === 'DELAYED' ? ['caution', gl('caution'), 'SYS DELAYED'] : ['', '', 'SYS …'];
+    var sync = h.lastRead ? new Date(h.lastRead).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : 'unknown';
+    p.innerHTML = '<p class="m-label m-sec-l">Pipeline constraint</p><ol class="m-flow" aria-label="Pipeline stages">' + flow + '</ol>' +
+      '<p class="m-cr-note">' + esc(s.constraintReason) + '</p>' +
+      '<div class="m-tiles">' + tile('Need decision', b.decideRows().length) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
+      '<ul class="m-legend" aria-label="Legend"><li class="ok">' + gl('ok') + 'OK</li><li class="caution">' + gl('caution') + 'Caution</li><li class="attn">' + gl('warn') + 'Constraint</li><li class="fault">' + gl('no') + 'Fault</li></ul>' +
+      '<p class="m-fresh ' + hs[0] + '">' + hs[1] + hs[2] + ' · SYNC ' + esc(sync) + (h.writer === false ? ' · ' + gl('warn') + 'NO WRITER' : '') + '</p>' +
+      (s.details ? '<details class="m-sec"><summary>Details</summary><div class="m-sec-b"><p>' + esc(s.details) + '</p></div></details>' : '');
+  }
+
   /* More sheet: a bottom sheet over a scrim; Escape or the scrim closes it. */
   var lastFocus = null;
   function sheet(open) {
@@ -359,7 +469,7 @@
     $('m-sys').onclick = function () { setTab('status'); };
     $('m-search').onclick = function () { setTab('jobs', true); };
     $('m-more').onclick = function () { sheet(true); };
-    $('m-scrim').onclick = function () { sheet(false); };
+    $('m-scrim').onclick = function () { sheet(false); closeFields(); };
     $('m-more-x').onclick = function () { sheet(false); };
     $('m-return').onclick = closeDesktop;
     document.querySelectorAll('[data-m-desk]').forEach(function (b) { b.onclick = function () { openDesktop(b.getAttribute('data-m-desk')); }; });
@@ -367,7 +477,7 @@
     if (lay) lay.onclick = function () { try { localStorage.setItem('px.layout', 'desktop'); } catch (e) {} location.reload(); };
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || !d.classList.contains('m-shell')) return;
-      if (!$('m-more-sheet').hidden) sheet(false); else if (detailId) closeDetail(); else if (menuFor) { menuFor = null; refresh(); }
+      if (!$('m-more-sheet').hidden) sheet(false); else if (closeFields()) return; else if (detailId) closeDetail(); else if (menuFor) { menuFor = null; refresh(); }
     });
     root.addEventListener('popstate', function () { if (detailId) closeDetail('pop'); });
     root.addEventListener('scroll', onScroll, { passive: true });
@@ -378,6 +488,7 @@
     var el = document.createElement('div'); el.id = 'm-root'; el.className = 'm-texture'; el.innerHTML = shellHtml();
     document.body.appendChild(el); mounted = true; bind(); setTab('decide'); refresh();
     root.setInterval(renderSys, 15000);
+    root.setInterval(function () { if (tab === 'status' && !document.hidden && !d.classList.contains('m-legacy')) refresh(); }, 5000);   // the health monitor updates on its own clock
   }
 
   /* Crossing the breakpoint (rotation, window resize) switches shells without a reload. */

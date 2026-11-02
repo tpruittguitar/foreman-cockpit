@@ -2,7 +2,8 @@
    landscape 874 x 402: strip inside the screen, four 44 px tap targets at 13 px, 11 px label, cause example hidden, no
    sideways scroll, a tap filters the queue. Desktop strip unchanged. Run: node tests/phone-strip.browser.js */
 require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
-// TODO(mobile Stage 4): retire the phone sections once mobile-shell.browser.js checks every Jobs field is visible (list and landscape table).
+// Kept (Grok Bot GUI, Stage 3 review): the phone shell's Jobs fields are checked by tests/mobile-jobs.browser.js; this test is
+// the only check on the old layout that touch tablets (768-980 px) still use. TODO(tablet follow-up): retire when tablets get the new layout.
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');
