@@ -129,6 +129,15 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   const dclip=await page.evaluate(()=>[...document.querySelectorAll('.m-dbar .m-btn')].filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim()));
   assert.deepStrictEqual(dclip,[],'no detail action label is clipped');
   if(shots)await page.screenshot({path:path.join(shots,'stage3-detail-390x844.png')});
+  // Narrower phones (CI 2026-11-02: Pursue had 0px to spare at 390 and was clipped at 375): every label whole with room to
+  // spare (so a slightly wider text rasteriser does not clip it), the bar inside the screen, and Research-Decline >= 16px.
+  for(const w of [375,360]){await page.setViewportSize({width:w,height:844});await page.waitForTimeout(150);
+    const nb=await page.evaluate(()=>{const bs=[...document.querySelectorAll('.m-dbar .m-btn')],bar=document.querySelector('.m-dbar').getBoundingClientRect(),r=document.querySelector('.m-dbar .m-research'),d=document.querySelector('.m-dbar .m-danger');
+      return {clip:bs.filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim()),right:Math.max(...bs.map(b=>b.getBoundingClientRect().right)),bar:bar.right,
+        spare:Math.round(d.getBoundingClientRect().left-r.getBoundingClientRect().right),pursueRoom:(()=>{const p=document.querySelector('.m-dbar .m-primary'),c=getComputedStyle(p);return p.clientWidth-parseFloat(c.paddingLeft)-parseFloat(c.paddingRight)-[...p.childNodes].reduce((s,n)=>{const g=document.createRange();g.selectNodeContents(n);return s+g.getBoundingClientRect().width},0)})()}});
+    assert.deepStrictEqual(nb.clip,[],w+'px: no detail action label is clipped');assert.ok(nb.right<=nb.bar+0.5,w+'px: detail actions stay on screen '+JSON.stringify(nb));
+    assert.ok(nb.spare>=16,w+'px: Research and Decline at least 16px apart ('+nb.spare+')');assert.ok(nb.pursueRoom>=0,w+'px: Pursue label fits ('+JSON.stringify(nb)+')');}
+  await page.setViewportSize({width:390,height:844});await page.waitForTimeout(150);
   await page.click('#m-d-back');assert.ok(await page.isHidden('#m-detail'),'back arrow closes');
   await page.click('.m-card.m-top [data-m-open]');await page.keyboard.press('Escape');assert.ok(await page.isHidden('#m-detail'),'Escape closes');
   await page.click('.m-card.m-top [data-m-open]');await page.goBack();await page.waitForTimeout(200);assert.ok(await page.isHidden('#m-detail'),'browser Back closes');
