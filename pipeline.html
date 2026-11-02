@@ -1403,7 +1403,7 @@ function render(){
   if($('clearf'))$('clearf').onclick=function(){S.chartFilter=null;S.filters={};pushHash();render()};
   var rows=filteredRows();
   $('predicate').textContent='PREDICATE › '+PRESETS[S.preset].text+(S.sort?' · SORT '+S.sort.col+' '+S.sort.dir:' · SORT priority (pinned, bucket order, new first, DATE_ADDED desc)')+' · SHOWING '+rows.length+'/'+S.rows.length;
-  var cols=visibleCols(),nSt=stickyN_();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<nSt?'sticky ':'')+(c==='NEW'?'c-new ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(c==='LOCATION'?'c-loc ':'')+(c==='COMPANY'?'c-co ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c==='COMP_MAX'?'MAX SALARY':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
+  var cols=visibleCols(),nSt=stickyN_();var th='<tr>'+cols.map(function(c,i){var srt=S.sort&&S.sort.col===c;return '<th data-c="'+esc(c)+'" class="'+(i<nSt?'sticky ':'')+(c==='NEW'?'c-new ':'')+(c==='OVERALL_RATING'?'pin-r ':'')+(c==='LOCATION'?'c-loc ':'')+(c==='COMPANY'?'c-co ':'')+(srt?'sorted ':'')+(S.filters[c]?'filtered':'')+'">'+esc(c==='OVERALL_RATING'?'SCORE':c)+'<span class="fx">'+(srt?(S.sort.dir==='asc'?'▲':'▼'):'')+'⌄</span></th>'}).join('')+'</tr>';
   $('grid').querySelector('thead').innerHTML=th;
   /* REV-088 (perf): the first ROWS_FIRST_ rows are built now and the rest in idle-time chunks (same rows, same order, same
      markup); the first screen paints without waiting for all of them. REV-093: desktop too (live: laying out all ~1,200 rows
@@ -2037,7 +2037,7 @@ function autoFitRenderedColumns_(){
     if(c==='NEW'||c==='LINK'){widths[c]=phone&&c==='NEW'?PHONE_NEW_W_:44;return}
     var th=head[i],computed=getComputedStyle(th);
     ctx.font=computed.font||computed.fontSize+' '+computed.fontFamily;
-    var width=ctx.measureText(c==='OVERALL_RATING'?'SCORE':c==='COMP_MAX'?'MAX SALARY':c.replace(/_/g,' ')).width+34;
+    var width=ctx.measureText(c==='OVERALL_RATING'?'SCORE':c.replace(/_/g,' ')).width+34;
     rows.forEach(function(tr){
       var td=tr.children[i];if(!td)return;
       var style=getComputedStyle(td);
