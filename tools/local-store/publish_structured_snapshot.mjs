@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 
 const file = process.argv[2] || 'data/structured_snapshot.json';
-const endpoint = process.env.STRUCTURED_ENDPOINT || 'https://foreman-cockpit.netlify.app/api/structured/admin/snapshot';
+const endpoint = process.env.STRUCTURED_ENDPOINT || 'https://foreman-cockpit.pages.dev/api/structured/admin/snapshot';
 const writerKey = process.env.WRITER_KEY || process.env.PIPELINE_WRITER_KEY || process.env.STRUCTURED_WRITER_KEY || '';
 const structuredToken = process.env.STRUCTURED_READ_TOKEN || process.env.PIPELINE_STRUCTURED_TOKEN || '';
 

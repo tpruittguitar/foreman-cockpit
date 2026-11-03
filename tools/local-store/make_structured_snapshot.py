@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a compact structured JSON snapshot from the local SQLite mirror.
 
-This creates the payload served by the token-gated Netlify structured endpoint.
+This creates the payload served by the token-gated Cloudflare Pages structured endpoint.
 It does not upload anything by itself.
 """
 from __future__ import annotations

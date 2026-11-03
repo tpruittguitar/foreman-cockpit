@@ -19,7 +19,7 @@ VALIDATOR = ROOT / "tools" / "local-store" / "validate_mirror_parity.py"
 EXPORT_DIR = Path(r"C:\Users\Tim\My Drive\AI_Coordination\SQLite_Exports")
 ROLLBACK_PLAN = Path("docs/STORAGE_RUNTIME_ROLLBACK_PLAN.md")
 CUTOVER_APPROVAL = Path("docs/STORAGE_CUTOVER_APPROVAL_2026-10-10.md")
-STRUCTURED_HEALTH_URL = "https://foreman-cockpit.netlify.app/api/structured/health"
+STRUCTURED_HEALTH_URL = "https://foreman-cockpit.pages.dev/api/structured/health"
 
 
 def run(cmd):

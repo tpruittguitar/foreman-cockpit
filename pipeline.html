@@ -517,7 +517,7 @@ function renderBuildIdentity_(){
 }
 function checkLatestBuild_(manual){
   var i=S.buildInfo||{};
-  if(!i.commit||i.commit==='local'){S.buildLatest={status:'unknown',message:'This is a local/source build; Netlify commit metadata is not available.'};renderBuildIdentity_();return Promise.resolve(S.buildLatest)}
+  if(!i.commit||i.commit==='local'){S.buildLatest={status:'unknown',message:'This is a local/source build; deploy commit metadata is not available.'};renderBuildIdentity_();return Promise.resolve(S.buildLatest)}
   S.buildLatest={status:'checking',message:'Comparing this build with GitHub main…'};renderBuildIdentity_();
   return PipelineProgress.track(fetch('https://api.github.com/repos/tpruittguitar/foreman-cockpit/commits/main',{cache:'no-store',headers:{Accept:'application/vnd.github+json'}}).then(function(r){if(!r.ok)throw new Error('GitHub HTTP '+r.status);return r.json()}).then(function(j){var main=String(j.sha||'');if(!main)throw new Error('GitHub returned no main commit');if(i.commit===main)S.buildLatest={status:'latest',message:'This deployed frontend matches the current GitHub main commit.'};else if(i.context==='production')S.buildLatest={status:'behind',message:'Production is serving an older commit than GitHub main. Deploy the newer main commit.'};else S.buildLatest={status:'preview',message:'This is not the current main commit; it is a preview or branch build.'};S.buildLatest.main=main;return S.buildLatest}).catch(function(e){S.buildLatest={status:'unknown',message:'Could not compare with GitHub main: '+e.message};return S.buildLatest}).then(function(v){renderBuildIdentity_();return v}),{label:'Checking deployed build',control:manual?'#build-check':null});
 }
@@ -785,7 +785,6 @@ function gsPost(body){
     }),body.action,true);
 }
 var Source={
-  netlify:function(){return fetch('/api/master',{cache:'no-store'}).then(function(r){return r.json()})},
   url:function(u){return fetch(u,{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.text()}).then(function(t){return{ok:true,id:'(url) '+u,fetchedAt:new Date().toISOString(),bytes:t.length,text:t}})}
 };
 /* Published scoring model + canonical rules (FLEX policy, Target Companies). Both data sources need these:

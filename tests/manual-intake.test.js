@@ -1,5 +1,5 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-const {createService,normalizeUrl,jobId}=require('../netlify/lib/manual-intake.cjs');
+const {createService,normalizeUrl,jobId}=require('./helpers/manual-intake-core.cjs');
 function fixture(){const records=new Map();let serial=0,stamp='2026-10-02T17:00:00Z',rows=[];const store={get:async k=>records.get(k)?.data||null,getWithMetadata:async k=>records.get(k)||null,setJSON:async(k,data,opts={})=>{const old=records.get(k);if(opts.onlyIfNew&&old||opts.onlyIfMatch&&old?.etag!==opts.onlyIfMatch)return {modified:false};records.set(k,{data:structuredClone(data),etag:String(++serial)});return {modified:true}},async *list(){yield {blobs:[...records.keys()].filter(k=>k.startsWith('items/')).map(key=>({key}))}}};return {call:createService({store,readMaster:async()=>({rows}),now:()=>stamp}),setRows:r=>rows=r,setTime:t=>stamp=t,records}}
 const url='https://jobs.example.com/positions/123';
 test('Canonical URL deduplicates tracking parameters; rejects invalid links',()=>{assert.equal(normalizeUrl(url+'?utm_source=a#top'),url);assert.equal(jobId(url),jobId(url+'?utm_medium=email'));assert.throws(()=>normalizeUrl('javascript:alert(1)'));assert.throws(()=>normalizeUrl('http://127.0.0.1/x'))});
