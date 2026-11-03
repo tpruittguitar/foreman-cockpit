@@ -3,27 +3,29 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
-const commit = process.env.COMMIT_REF || 'local';
-// The PR this build came from: Netlify's REVIEW_ID on a deploy preview, else a squash-merge subject ending "(#NN)".
+// Cloudflare Pages build variables (Netlify retired 2026-11-03).
+const commit = process.env.CF_PAGES_COMMIT_SHA || 'local';
+// The PR this build came from: a squash-merge subject ending "(#NN)"; preview builds carry their branch name.
 let subject = '';
 try { subject = execSync('git log -1 --format=%s', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { subject = ''; }
 const subjectPr = (subject.match(/\(#(\d+)\)\s*$/) || [])[1];
-const pr = /^\d+$/.test(process.env.REVIEW_ID || '') ? +process.env.REVIEW_ID : subjectPr ? +subjectPr : null;
+const pr = subjectPr ? +subjectPr : null;
+const branch = process.env.CF_PAGES_BRANCH || 'local';
 const info = {
   app: 'Pipeline Explorer',
   release: process.env.PIPELINE_VERSION || 'main',
   commit,
   commitShort: commit === 'local' ? 'local' : commit.slice(0, 7),
-  branch: process.env.BRANCH || 'local',
+  branch,
   pr,
-  prSource: pr === null ? '' : /^\d+$/.test(process.env.REVIEW_ID || '') ? 'deploy-preview' : 'merge-commit',
+  prSource: pr === null ? '' : 'merge-commit',
   subject: subject.slice(0, 160),
-  context: process.env.CONTEXT || 'local',
-  deployId: process.env.DEPLOY_ID || '',
-  deployUrl: process.env.DEPLOY_URL || '',
-  siteUrl: process.env.URL || '',
+  context: commit === 'local' ? 'local' : branch === 'main' ? 'production' : 'preview',
+  deployId: '',
+  deployUrl: process.env.CF_PAGES_URL || '',
+  siteUrl: 'https://foreman-cockpit.pages.dev',
   builtAt: new Date().toISOString(),
-  source: commit === 'local' ? 'source' : 'netlify'
+  source: commit === 'local' ? 'source' : 'cloudflare-pages'
 };
 
 fs.writeFileSync(path.join(root, 'build-info.json'), JSON.stringify(info, null, 2) + '\n');

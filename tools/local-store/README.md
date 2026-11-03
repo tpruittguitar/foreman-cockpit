@@ -55,7 +55,7 @@ The SQLite database becomes the local runtime source. Google Drive files become 
 With the local API running, open Pipeline Explorer with:
 
 ```text
-https://foreman-cockpit.netlify.app/?src=local
+https://foreman-cockpit.pages.dev/?src=local
 ```
 
 Default local API:
@@ -67,7 +67,7 @@ http://127.0.0.1:8765
 Override the API base when needed:
 
 ```text
-https://foreman-cockpit.netlify.app/?src=local&localApi=http://127.0.0.1:8765
+https://foreman-cockpit.pages.dev/?src=local&localApi=http://127.0.0.1:8765
 ```
 
 This is a read-only development source. It does not use Writer, Apps Script, Google Docs, or Google Drive runtime reads for the Pipeline table load. By default it reads bounded `/api/jobs?mode=source` pages from SQLite and feeds the existing Pipeline parser. The older single `/api/master` compatibility endpoint remains available with `?src=local&bounded=0`.
@@ -228,7 +228,7 @@ They use the existing Writer key in `x-writer-key` or `writerKey`. The snapshot 
 
 A non-default browser adapter is available for testing the structured endpoint without changing the production load path:
 
-    https://foreman-cockpit.netlify.app/pipeline.html?src=structured
+    https://foreman-cockpit.pages.dev/pipeline.html?src=structured
 
 It uses the existing in-app Writer key and reads `/api/structured/jobs` in bounded pages. It will fail safely until the structured snapshot has been loaded. The normal production Pipeline Explorer path is unchanged.
 
@@ -237,10 +237,10 @@ It uses the existing in-app Writer key and reads `/api/structured/jobs` in bound
 
 The production UI has a non-default structured test path:
 
-    https://foreman-cockpit.netlify.app/pipeline.html?src=structured
+    https://foreman-cockpit.pages.dev/pipeline.html?src=structured
 
 To seed the structured snapshot from the current Writer master using the existing in-browser Writer key, use:
 
-    https://foreman-cockpit.netlify.app/pipeline.html?src=structured&import=1
+    https://foreman-cockpit.pages.dev/pipeline.html?src=structured&import=1
 
 This posts to `/api/structured/admin/import-from-writer`, stores a Netlify Blob snapshot, then rereads `/api/structured/jobs` in bounded pages. It does not change the normal production default path.

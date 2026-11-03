@@ -1,5 +1,9 @@
 # Cloudflare Pages migration
 
+## Status (2026-11-03)
+
+Done. Cloudflare Pages (https://foreman-cockpit.pages.dev) is the only host. Tim retired Netlify (subscription and usage limits): `netlify.toml`, `netlify/functions` and the `@netlify/blobs` dependency are removed, and the build stamp reads Cloudflare's `CF_PAGES_*` variables. Restore from git history before 2026-11-03 if ever needed.
+
 ## Decision
 
 Move the public Pipeline Explorer runtime from Netlify to Cloudflare Pages.
