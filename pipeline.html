@@ -1427,6 +1427,7 @@ function rowHtml_(r,cols){var nSt=stickyN_();
     return '<tr data-id="'+esc(r.id)+'" class="'+cls+'">'+cols.map(function(c,i){var v=val(r,c),extra='';
       if(c==='NEW'){var changed=isChanged(r);v=(S.pins[r.id]?'<span class="pin on">★</span> ':'')+(isNew(r)?'<span class="g new">◆</span>':'')+(changed?'<span class="changed">CHANGED</span>':'')}
       else if(c==='TIM_RULING'){var st=rulingState(r);v=st?'<span class="g '+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'rule':'pend')+'">'+(st.ru.writeStatus==='VERIFIED'&&st.s==='Master verified'?'◈':'◇')+'</span>'+esc(v):''}
+      else if(c==='TITLE'){var pa=(r.payload||{}).PRIOR_APPLICATION;v=esc(v)+(pa?'<span class="write-tag prior-tag" title="Tim already applied to, was rejected from, or declined a matching role. Evidence: '+esc((r.payload||{}).PRIOR_APPLICATION_EVIDENCE||'')+'">'+esc(pa)+'</span>':'')}
       else if(c==='COMPANY')v=(ruling(r)?'<span class="write-tag">'+esc(rulingState(r).s)+'</span> ':'')+(r.parseError?'<span class="g err" title="'+esc(r.parseError)+'">!</span>':'')+esc(v);
       else if(c==='BUCKET'){extra=' b-'+esc(r.BUCKET);v='<span class="bpill b-'+esc(r.BUCKET)+'" title="'+esc(v)+'">'+esc(bucketWord_(r.BUCKET))+'</span>'+(r.mismatch?' <span class="faint" title="heading says '+esc(r.section)+'">§</span>':'')}
       else if(c==='OVERALL_RATING'){var os=scoreFor_(r);var ob=bandOf_(r);v=os.overall==null?'':'<span class="score-badge '+esc(String(os.band||'').toLowerCase().replace(/[^a-z]/g,''))+' band-'+ob.band.toLowerCase()+'" title="'+esc(scoreTitle_(r,os.overall))+'">'+os.overall+'</span>'+bandMark_(r)+deltaMark_(r)}
@@ -1635,7 +1636,7 @@ function historyCard_(r){var p=r.payload||{},ru=ruling(r),rs=ru?rulingState(r):n
 }
 function renderDetail(r){if(!allowedInView_(r,S.preset)){S.focus=null;$('drawer').classList.remove('on');return;}
   $('d-title').textContent=r.TITLE;
-  $('d-sub').innerHTML='<span class="mono">'+esc(r.PRIMARY_ID)+' · INV '+esc(r.INV)+'</span> · '+esc(r.BUCKET)+' · '+esc(r.DISPOSITION)+(r.payload.ARCHIVE_STATE?' · <span class="faint" title="Terminal history kept in V2_TERMINAL_ARCHIVE; restore it through the Writer before changing it">ARCHIVED · read-only</span>':'');
+  $('d-sub').innerHTML='<span class="mono">'+esc(r.PRIMARY_ID)+' · INV '+esc(r.INV)+'</span> · '+esc(r.BUCKET)+' · '+esc(r.DISPOSITION)+(r.payload.ARCHIVE_STATE?' · <span class="faint" title="Terminal history kept in V2_TERMINAL_ARCHIVE; restore it through the Writer before changing it">ARCHIVED · read-only</span>':'')+(r.payload.PRIOR_APPLICATION?' · <span class="write-tag prior-tag" style="display:inline" title="'+esc(r.payload.PRIOR_APPLICATION_EVIDENCE||'')+'">'+esc(r.payload.PRIOR_APPLICATION)+'</span>':'');
   var legacy={interview:'application',timeline:'history',compensation:'fit'};if(legacy[S.detailTab])S.detailTab=legacy[S.detailTab];
   var detailBody=$('d-body'),detailKey=r.id+'|'+S.detailTab,resetDetailScroll=detailBody.dataset.detailKey!==detailKey;
   renderWorkspaceHead_(r);
