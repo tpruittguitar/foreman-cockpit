@@ -30,7 +30,7 @@ const shots=process.env.MOBILE_SHOTS;
   const visible=(page,sel)=>page.evaluate(s=>{const e=document.querySelector(s);if(!e)return false;const r=e.getBoundingClientRect(),cs=getComputedStyle(e);return r.width>0&&r.height>0&&cs.visibility!=='hidden'&&cs.display!=='none'},sel);
 
   // 1. Phones (portrait and a landscape phone): the shell is up, desktop cockpit and its queue filter bar are not rendered.
-  for(const [name,opts] of [['390x844',phone(390,844)],['375x667',phone(375,667)],['844x390',phone(844,390)]]){
+  for(const [name,opts] of [['390x844',phone(390,844)],['375x667',phone(375,667)],['430x932',phone(430,932)],['844x390',phone(844,390)]]){
     const {ctx,page,errors}=await open(opts);await page.waitForSelector('#m-root .m-tabs');await page.waitForTimeout(600);
     const v=await page.evaluate(()=>{const h=document.getElementById('m-hd').getBoundingClientRect(),t=document.querySelector('.m-tabs').getBoundingClientRect();
       return {shell:document.documentElement.classList.contains('m-shell'),header:Math.round(h.height),tabs:Math.round(t.height),tabBottom:Math.round(t.bottom),ih:innerHeight,
@@ -47,6 +47,21 @@ const shots=process.env.MOBILE_SHOTS;
     assert.strictEqual(col.sys,{'m-sys m-ok':'rgb(111, 191, 74)','m-sys m-delayed':'rgb(227, 195, 65)','m-sys m-fault':'rgb(222, 94, 90)'}[col.cls],name+': readout colored by state ('+col.cls+')');
     assert.strictEqual(col.tab,'rgb(217, 217, 217)',name+': active tab light gray');
     if(shots)await page.screenshot({path:path.join(shots,'stage2-decide-'+name+'.png')});
+    // More swaps in the cockpit. The hidden phone shell must not take a second flex column beside it.
+    for(const view of ['map','reports','compare','rulings','intake','settings']){
+      await page.click('#m-more');await page.click('[data-m-desk="'+view+'"]');
+      const layout=await page.evaluate(()=>{const app=document.getElementById('app').getBoundingClientRect();return {left:app.left,right:app.right,scroll:document.documentElement.scrollWidth};});
+      assert.equal(layout.left,0,name+' '+view+': no left gutter');assert.ok(Math.abs(layout.right-opts.viewport.width)<=1,name+' '+view+': full page width, got '+layout.right);
+      assert.ok(layout.scroll<=opts.viewport.width,name+' '+view+': no horizontal page overflow');
+      if(view==='map'){
+        if(shots)await page.screenshot({path:path.join(shots,'more-map-'+name+'.png'),animations:'disabled'});
+        assert.ok(await page.isHidden('#wip-queue-bar'),name+': the queue filter does not cover the full-screen map');
+        await page.waitForFunction(()=>!!document.elementFromPoint(innerWidth-10,innerHeight/2)?.closest('#job-map-card'),null,{timeout:3000});
+      }
+      if(view==='compare')await page.click('#compare-close');
+      if(view==='rulings')assert.ok(await page.isVisible('#wip-queue-bar'),name+': the pipeline queue filter is available outside the map');
+      await page.click('#m-return');assert.ok(await page.isVisible('.m-tabs'),name+' '+view+': return to mobile');
+    }
     assert.deepStrictEqual(errors,[],name+': no page errors');await ctx.close();
   }
 
@@ -85,6 +100,8 @@ const shots=process.env.MOBILE_SHOTS;
   // 3. Crossing the breakpoint switches without a reload.
   await page.setViewportSize({width:1024,height:768});await page.waitForTimeout(300);
   assert.ok(!(await page.evaluate(()=>document.documentElement.classList.contains('m-shell'))),'wide window leaves the shell');assert.ok(await visible(page,'#app'),'desktop cockpit shown again');
+  assert.ok(await page.isHidden('#m-root'),'mounted shell takes no desktop space after resize');
+  assert.equal(await page.evaluate(()=>Math.round(document.getElementById('app').getBoundingClientRect().right)),1024,'resized cockpit reaches the right edge');
   await page.setViewportSize({width:390,height:844});await page.waitForTimeout(300);
   assert.ok(await page.evaluate(()=>document.documentElement.classList.contains('m-shell')),'narrow window returns to the shell');
   await ctx.close();
