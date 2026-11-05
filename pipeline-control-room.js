@@ -39,7 +39,9 @@
     if(!activityUsable)warn('Writer completion evidence is unavailable',input.activityError||'No current receipt snapshot');
     else if(input.activityError||a.now&&now-Date.parse(a.now)>30*60000)warn('Evidence refresh is delayed','Writer counts are from the last verified observation '+age(a.now,now)+' ago; they are not a fresh live read.','Inspect the evidence publisher; keep the saved observation visible while retrying');
     var emailCoverage=checks.emailCoverage,coverageFresh=emailCoverage&&emailCoverage.ok&&Number.isFinite(Date.parse(emailCoverage.at))&&now>=Date.parse(emailCoverage.at)&&now-Date.parse(emailCoverage.at)<6*3600000;
-    if(coverageFresh){
+    var capture=checks.emailCapture,captureFresh=capture&&capture.ok&&now>=Date.parse(capture.at)&&now-Date.parse(capture.at)<6*3600000;
+    if(!coverageFresh&&captureFresh){warnings.push({title:'Email processing is current; historical coverage remains pending',detail:'Latest pass examined '+capture.messagesRead+' saved messages '+age(capture.at,now)+' ago; '+capture.pendingMessages+' messages remain pending. Last fully read checkpoint: '+(capture.fullyReadThrough||'unproven')+'.',action:'Code continues saved messages and source windows; Gofer reviews source gaps. Current processing does not prove complete historical coverage.',level:'ACTION',at:capture.at,sourceUrl:'https://github.com/tpruittguitar/forge-coordination/blob/main/'+capture.sourceFile});}
+    else if(coverageFresh){
       coverageRuns=Math.max(coverageRuns||0,1);
       if(emailCoverage.refreshError)warn('Email coverage refresh failed',emailCoverage.refreshError+'; verified '+age(emailCoverage.at,now)+' ago','Retry the execution-evidence feed; keep unfinished source windows pending');
       var er=h.emailRecovery,recoveryCurrent=er&&er.supersedesReceipt===emailCoverage.sourceFile&&now>=Date.parse(er.at)&&now-Date.parse(er.at)<86400000;
