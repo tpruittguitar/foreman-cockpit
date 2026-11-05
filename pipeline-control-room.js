@@ -93,6 +93,17 @@
     var low=Math.min.apply(null,active.map(function(i){return rates[i].perHour;}));
     return {indices:active.filter(function(i){return Math.abs(rates[i].perHour-low)<1e-9;}),reason:'Lowest observed '+hours+'-hour job output among processes with waiting work; posting freshness is background maintenance'};
   }
+  function ratesForWindow(m,hours){
+    var completed=m.flow&&(m.flow.completionByWindow&&m.flow.completionByWindow[hours]||(hours===36?m.flow.completion:null));
+    var rates=m.upstream?(m.upstream.ratesByWindow&&m.upstream.ratesByWindow[hours]||(hours===36?m.upstream.rates:null)):(hours===36?m.activity&&m.activity.rates36:null);
+    if(m.evidenceDelayed)return {rates:null,completed:null,en:null};
+    if(!m.upstream&&rates){
+      rates=Object.assign({},rates);var d=rates.discovery,age=d&&d.sourceAt&&m.now-Date.parse(d.sourceAt);
+      if(!d||d.unit!=='candidate identities'||d.available===false||!Number.isFinite(age)||age<0||age>30*60000)rates.discovery=null;
+      if(rates.intake)rates.intake=Object.assign({},rates.intake,{partial:true,basis:rates.intake.basis||'Distinct verified insert jobs from Writer receipts; canonical admission history unavailable.'});
+    }
+    return {rates:rates,completed:completed,en:completed&&completed.enrichment};
+  }
   function rateWindow(hours){return [36,24,12,6].includes(Number(hours))?Number(hours):36;}
   function flowAccounting(m,hours){
     var f=m.flow;if(!f)return '<p class="cr-note">Flow accounting unavailable: current complete job evidence is required. Unknown queues are not zero.</p>';
@@ -115,7 +126,7 @@
   }
   function html(m,options){
     options=options||{};var hours=rateWindow(options.rateWindowHours);
-    var a=m.activity,c=m.counts,unknown='Not reported',v=function(n){return n==null?unknown:n;},completed=m.flow&&(m.flow.completionByWindow&&m.flow.completionByWindow[hours]||(hours===36?m.flow.completion:null)),rates=m.upstream?(m.upstream.ratesByWindow&&m.upstream.ratesByWindow[hours]||(hours===36?m.upstream.rates:null)):(hours===36?a&&a.rates36:null),en=completed&&completed.enrichment;if(m.evidenceDelayed){rates=null;completed=null;en=null;}
+    var a=m.activity,c=m.counts,unknown='Not reported',v=function(n){return n==null?unknown:n;},selected=ratesForWindow(m,hours),completed=selected.completed,rates=selected.rates,en=selected.en;
     var stages=[
       ['Discovery',v(m.health&&m.health.candidates),'potential candidates in latest source passes','Captured candidates enter intake',m.checks.sources&&m.checks.sources.ok?'working':'unknown'],
       ['Intake',v(m.intakeToday),'new jobs today · all sources',m.blocks.some(function(x){return /intake/i.test(x.title);})?'Automatic path blocked; other paths may still write':'Recorded intake day · Eastern time',m.rowsKnown?'working':'unknown'],
@@ -150,7 +161,7 @@
      plain data. Unknown stays null (never zero). html() is unchanged. */
   function summary(m,options){
     options=options||{};var hours=rateWindow(options.rateWindowHours),a=m.activity;
-    var completed=m.flow&&(m.flow.completionByWindow&&m.flow.completionByWindow[hours]||(hours===36?m.flow.completion:null)),rates=m.upstream?(m.upstream.ratesByWindow&&m.upstream.ratesByWindow[hours]||(hours===36?m.upstream.rates:null)):(hours===36?a&&a.rates36:null),en=completed&&completed.enrichment;if(m.evidenceDelayed){rates=null;completed=null;en=null;}
+    var selected=ratesForWindow(m,hours),completed=selected.completed,rates=selected.rates,en=selected.en;
     var per=function(r){return r&&r.available!==false&&Number.isFinite(r.perHour)?r.perHour:null;},bn=constraint([rates&&rates.discovery,rates&&rates.intake,en],[null,m.waiting[0].count,m.waiting[1].count],hours);
     var stages=['Discovery','Intake','Enrichment'].map(function(name,i){return {name:name,unit:i===0?'candidates/hr':'jobs/hr',perHour:per(i===2?en:rates&&(i===0?rates.discovery:rates.intake)),constraint:bn.indices.indexOf(i)>=0};}).concat([{name:'Your decisions',manual:true,constraint:false}]);
     var st=m.outcomes&&m.outcomes.recruiting&&m.outcomes.recruiting.stages;
