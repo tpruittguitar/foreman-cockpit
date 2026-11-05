@@ -164,7 +164,7 @@
     options=options||{};var hours=rateWindow(options.rateWindowHours),a=m.activity;
     var selected=ratesForWindow(m,hours),completed=selected.completed,rates=selected.rates,en=selected.en;
     var per=function(r){return r&&r.available!==false&&Number.isFinite(r.perHour)?r.perHour:null;},bn=constraint([rates&&rates.discovery,rates&&rates.intake,en],[null,m.waiting[0].count,m.waiting[1].count],hours);
-    var stages=['Discovery','Intake','Enrichment'].map(function(name,i){return {name:name,unit:i===0?'candidates/hr':'jobs/hr',perHour:per(i===2?en:rates&&(i===0?rates.discovery:rates.intake)),constraint:bn.indices.indexOf(i)>=0};}).concat([{name:'Your decisions',manual:true,constraint:false}]);
+    var stages=['Discovery','Intake','Enrichment'].map(function(name,i){var r=i===2?en:rates&&(i===0?rates.discovery:rates.intake);return {name:name,unit:i===0?'candidates/hr':'jobs/hr',perHour:per(r),partial:!!(r&&(i===0||r.partial||rates&&rates.metadataGaps)),constraint:bn.indices.indexOf(i)>=0};}).concat([{name:'Your decisions',manual:true,constraint:false}]);
     var st=m.outcomes&&m.outcomes.recruiting&&m.outcomes.recruiting.stages;
     return {hours:hours,stages:stages,waiting:[0,1,2].map(function(i){var q=m.waiting&&m.waiting[i];return {count:q&&q.count!=null?q.count:null,partial:!!(q&&q.partial)};}),constraintReason:bn.reason,
       needDecision:m.flow?m.flow.queues.readyForReview:null,applied:m.rowsKnown?m.outcomes.applied:null,interviews:m.contactsKnown&&st?Object.keys(st).reduce(function(t,k){return t+(st[k]||0);},0):null,

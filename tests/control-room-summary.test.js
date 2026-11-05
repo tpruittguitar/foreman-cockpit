@@ -35,3 +35,9 @@ test('summary fallback rejects source-report-only discovery and checks capture e
  m.activity.rates36.discovery.sourceAt=new Date(now-31*60000).toISOString();assert.strictEqual(CR.summary(m,{}).stages[0].perHour,null,'fresh Writer activity cannot make old discovery current');
  for(const h of [6,12,24])assert.strictEqual(CR.summary(m,{rateWindowHours:h}).stages[0].perHour,null,'36-hour fallback cannot fill another window');
 });
+
+
+test('mobile summary preserves partial coverage for every process rate',()=>{
+ const m={...base,upstream:{rates:{discovery:{perHour:40,partial:true},intake:{perHour:44,partial:true}}},flow:{...base.flow,completion:{enrichment:{perHour:17,partial:true}}}};
+ const s=CR.summary(m,{});assert.deepStrictEqual(s.stages.slice(0,3).map(x=>x.partial),[true,true,true]);
+});
