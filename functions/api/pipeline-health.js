@@ -34,6 +34,8 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
         if(j.schema!=='forge.automation-evidence.v1'||!Array.isArray(j.executions)||!Array.isArray(j.schedules?.active)||!Number.isFinite(Date.parse(j.at)))throw Error('Unsupported execution evidence');
         output.execution=j;
         output.checks[key]={ok:true,at:j.at};
+        const capture=j.emailCapture;
+        if(capture&&capture.corroborated===true&&capture.coverageComplete===false&&Number.isFinite(Date.parse(capture.at))&&Number.isSafeInteger(capture.messagesRead)&&capture.messagesRead>0&&/^receipts\/FORGE-CODE-CHATGPT-[A-Za-z0-9_-]+_MAIL\.json$/.test(capture.sourceFile||''))output.checks.emailCapture={ok:true,...capture};
         const c=j.emailCoverage;
         if(c&&c.writerProofsVerified===true&&Number.isFinite(Date.parse(c.at))&&/^receipts\/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-/.test(c.sourceFile||''))output.checks.emailCoverage={ok:true,...c};
       }else if(key==='boardHealth'){
