@@ -100,7 +100,8 @@
     if(!m.upstream&&rates){
       rates=Object.assign({},rates);var d=rates.discovery,age=d&&d.sourceAt&&m.now-Date.parse(d.sourceAt);
       if(!d||d.unit!=='candidate identities'||d.available===false||!Number.isFinite(age)||age<0||age>30*60000)rates.discovery=null;
-      if(rates.intake)rates.intake=Object.assign({},rates.intake,{partial:true,basis:rates.intake.basis||'Distinct verified insert jobs from Writer receipts; canonical admission history unavailable.'});
+      // Receipt verification time is not admission time; do not substitute it for stage intake.
+      rates.intake=null;
     }
     return {rates:rates,completed:completed,en:completed&&completed.enrichment};
   }
