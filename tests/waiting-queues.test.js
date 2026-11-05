@@ -9,3 +9,9 @@ test('waiting cards show provisional resume evidence and rule review without inv
  const h=Q.intakeHtml({items:[item],loaded:1,intakeStatus:'complete'},'',0);a.match(h,/2 resume-supported competency areas/);a.match(h,/Resume 2026-10-13/);a.match(h,/Supplier exception/);a.doesNotMatch(h,/%|ATS score/);
  item.preliminaryScreen.ats.status='RESUME_UPDATE_REQUIRED';a.match(Q.intakeHtml({items:[item],loaded:1,intakeStatus:'complete'},'',0),/Resume update needed/);
 });
+
+
+test('backlog capture age is visible without inventing a date for old undated records',()=>{
+ const state={items:[{...page.items[0],firstSeen:'2026-11-01T20:00:00Z'}],loaded:1,intakeStatus:'complete'};
+ a.match(Q.intakeHtml(state,'',0),/Captured 11\/1\/2026/);delete state.items[0].firstSeen;a.match(Q.intakeHtml(state,'',0),/Capture date unknown/);a.match(Q.intakeHtml(state,'',0),/not all ready for intake/);
+});

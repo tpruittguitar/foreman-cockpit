@@ -120,3 +120,8 @@ test('discovery shows captured candidates per hour with decimal precision and ex
  const f=fixture();f.health.processFlow={at,population:{reconciled:true,total:1},queues:{verification:0,enrichment:1,readyForReview:0,blockedClosed:0},upstream:{at,reconciled:true,total:2,accounted:2,sourceIdentities:2,aliasesMerged:0,waiting:2,counts:{WAITING:2,PRESENT:0,EXCLUDED:0,HELD:0,IDENTITY_HOLD:0,MISSING_PREVIOUSLY_PRESENT:0},reconciliation:{opening:0,arrivals:2,admitted:0,excluded:0,otherExits:0,closing:2},coverage:{unreadSourceWindows:0},ratesByWindow:{36:{discovery:{count:230,perHour:230/36,partial:true,unit:'candidate identities'},intake:{count:195,perHour:195/36}}}}};
  const h=C.html(C.model(f));assert.match(h,/6\.4 <span class="cr-rate-unit">candidates\/hr/);assert.match(h,/230 distinct captured candidate identities/);assert.match(h,/5\.4 <span class="cr-rate-unit">jobs\/hr/);
 });
+
+test('the intake buffer is explicitly discovery backlog with screening and hold counts',()=>{
+ const f=fixture();f.health.processFlow={at,population:{reconciled:true,total:1},queues:{verification:0,enrichment:1,readyForReview:0,blockedClosed:0},upstream:{at,reconciled:true,total:5,accounted:5,sourceIdentities:5,aliasesMerged:0,waiting:5,counts:{WAITING:3,PRESENT:0,EXCLUDED:0,HELD:1,IDENTITY_HOLD:1,MISSING_PREVIOUSLY_PRESENT:0},reconciliation:{opening:5,arrivals:0,admitted:0,excluded:0,otherExits:0,closing:5},coverage:{unreadSourceWindows:0}}};
+ const m=C.model(f),h=C.html(m);assert.match(h,/Discovery backlog/);assert.match(h,/3 need screening/);assert.match(h,/2 held/);assert.match(h,/not all are ready for intake/);assert.deepEqual(C.summary(m,{}).waiting[0].breakdown,{screening:3,held:2});
+});
