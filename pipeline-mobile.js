@@ -512,7 +512,7 @@
     var flow = s.stages.map(function (st, i) {
       var state = st.manual ? ['', '', 'Manual'] : st.constraint ? ['attn', gl('warn'), 'Constraint'] : st.perHour == null ? ['caution', gl('caution'), 'Unknown'] : ['ok', gl('ok'), 'OK'];
       var card = '<li class="m-stage' + (st.constraint ? ' m-constraint m-brackets' : '') + (st.constraint && moved ? ' m-flash' : '') + '"><span class="m-stage-n m-num">0' + (i + 1) + '</span><div class="m-stage-t"><b>' + esc(st.name) + '</b><span class="m-stage-r m-num">' +
-        (st.manual ? 'You decide' : st.perHour == null ? 'Rate not measured' : (Math.round(st.perHour * 10) / 10) + ' jobs/hr') + '</span></div><span class="m-stage-s ' + state[0] + '">' + state[1] + state[2] + '</span></li>';
+        (st.manual ? 'You decide' : st.perHour == null ? 'Rate not measured' : (Math.round(st.perHour * 10) / 10) + ' '+esc(st.unit||'jobs/hr')) + '</span></div><span class="m-stage-s ' + state[0] + '">' + state[1] + state[2] + '</span></li>';
       if (i >= 3) return card;
       var w = s.waiting[i];
       return card + '<li class="m-wait"><span class="m-num' + (w.count == null ? ' m-cau' : '') + '">' + (w.count == null ? gl('caution') + 'Waiting unknown' : (w.partial ? '≥ ' : '') + n$(w.count) + ' waiting') + '</span></li>';
