@@ -54,3 +54,8 @@ test('loading, error and old-Writer states render a message, never a chart of ze
 test('text from the Writer is escaped', () => {
   assert.doesNotMatch(T.html({ error: '<img src=x onerror=1>' }), /<img/);
 });
+
+test('peak request throughput is labeled as requests and its sparkline follows finished work',()=>{
+ const previous=global.PipelineMiniViz,seen={};global.PipelineMiniViz={spark:(values,opts)=>{seen[opts.title]=values;return '';}};
+ try{const h=T.html({stats,status:{}});assert.match(h,/Peak requests\/hour/);assert.deepEqual(seen['Finished requests per hour, last 24 h'],[15,31,25,14]);assert.doesNotMatch(h,/demonstrated drain rate/);}finally{global.PipelineMiniViz=previous;}
+});

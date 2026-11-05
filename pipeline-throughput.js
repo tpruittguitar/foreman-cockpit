@@ -96,7 +96,7 @@
     var h = head + '<div class="dash-grid ops-kpis throughput-kpis">'
       + kpi('Waiting now', m.pending == null ? 'UNKNOWN' : m.pending, m.oldestPendingMin == null ? 'live queue' : 'oldest ' + m.oldestPendingMin + ' min', m.oldestPendingMin != null && m.oldestPendingMin >= m.actMin ? 'warn' : '', trend(m, 'backlog', 'Still waiting at end of each hour, last 24 h'))
       + kpi('Finished · 24 h', t.finished, t.arrived + ' arrived', '', trend(m, 'finished', 'Finished per hour, last 24 h'))
-      + kpi('Peak per hour', t.peak, 'demonstrated drain rate', '', trend(m, 'arrived', 'Arrived per hour, last 24 h'))
+      + kpi('Peak requests/hour', t.peak, 'finished Writer requests', '', trend(m, 'finished', 'Finished requests per hour, last 24 h'))
       + kpi('Longest wait · 24 h', t.waitMax + ' min', overWait ? 'at or over ' + m.actMin + ' min: act' : 'under ' + m.actMin + ' min', overWait ? 'warn' : '', trend(m, 'waitMax', 'Longest wait per hour (minutes), last 24 h'))
       + kpi('Failed · 24 h', t.failed, t.failed ? 'see WRITER_QUEUE/failed' : 'none', t.failed ? 'warn' : '', trend(m, 'failed', 'Failures per hour, last 24 h'))
       + '</div><div class="chart-grid ops-flow-grid throughput-grid">'

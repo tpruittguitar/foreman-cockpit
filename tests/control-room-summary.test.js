@@ -26,3 +26,11 @@ test('summary: delayed evidence drops the rates, like the desktop viewer',()=>{
   const s=CR.summary(Object.assign({},base,{evidenceDelayed:true}),{});
   assert.deepStrictEqual(s.stages.slice(0,3).map(x=>x.perHour),[null,null,null]);assert.ok(s.evidenceDelayed);
 });
+
+test('summary fallback rejects source-report-only discovery and checks capture evidence age independently',()=>{
+ const now=Date.parse('2026-11-05T22:00:00Z'),m={now,activity:{rates36:{discovery:{count:40,perHour:40/36},intake:{count:36,perHour:1}}},waiting:[{count:10},{count:0},{count:0}],outcomes:{}};
+ assert.strictEqual(CR.summary(m,{}).stages[0].perHour,null,'legacy automatic-source report rates are not all-source discovery');
+ Object.assign(m.activity.rates36.discovery,{unit:'candidate identities',sourceAt:new Date(now-60000).toISOString()});assert.strictEqual(CR.summary(m,{}).stages[0].perHour,40/36);
+ m.activity.rates36.discovery.sourceAt=new Date(now-31*60000).toISOString();assert.strictEqual(CR.summary(m,{}).stages[0].perHour,null,'fresh Writer activity cannot make old discovery current');
+ for(const h of [6,12,24])assert.strictEqual(CR.summary(m,{rateWindowHours:h}).stages[0].perHour,null,'36-hour fallback cannot fill another window');
+});
