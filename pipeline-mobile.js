@@ -515,7 +515,7 @@
         (st.manual ? 'You decide' : st.perHour == null ? 'Rate not measured' : (st.partial?'≥ ':'')+(Math.round(st.perHour * 10) / 10) + ' '+esc(st.unit||'jobs/hr')+(st.partial?' · observed minimum':'')) + '</span></div><span class="m-stage-s ' + state[0] + '">' + state[1] + state[2] + '</span></li>';
       if (i >= 3) return card;
       var w = s.waiting[i];
-      return card + '<li class="m-wait"><span class="m-num' + (w.count == null ? ' m-cau' : '') + '">' + (w.count == null ? gl('caution') + 'Waiting unknown' : (w.partial ? '≥ ' : '') + n$(w.count) + ' waiting') + '</span></li>';
+      return card + '<li class="m-wait"><span class="m-num' + (w.count == null ? ' m-cau' : '') + '">' + (w.count == null ? gl('caution') + 'Waiting unknown' : (w.partial ? '≥ ' : '') + n$(w.count) + (i===0?' candidates in discovery backlog':' waiting')) + '</span>'+(i===0&&w.breakdown?'<small>'+n$(w.breakdown.screening)+' need screening · '+n$(w.breakdown.held)+' held</small>':'')+'</li>';
     }).join('');
     function tile(label, v) { return '<div class="m-tile"><b class="m-num">' + (v == null ? '—' : n$(v)) + '</b><span class="m-label">' + label + '</span></div>'; }
     var hs = h.state === 'OK' ? ['ok', gl('ok'), 'SYS OK'] : h.state === 'FAULT' ? ['fault', gl('no'), 'SYS FAULT'] : h.state === 'DELAYED' ? ['caution', gl('caution'), 'SYS DELAYED'] : ['', '', 'SYS …'];
