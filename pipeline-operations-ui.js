@@ -158,8 +158,10 @@
           Object.keys(store.catchUps).forEach(function(id){var r=store.catchUps[id];if(r.state==='REQUESTED'||r.providerStatus==='PENDING_MANUAL')h+=PipelineProgress.html(id+' · awaiting provider acknowledgement',null,null,'medium','waiting');});
         }else h+='<p>UNKNOWN · Writer coverage snapshot unavailable.</p>';
       }else if(tab==='recovery'){
-        h+='<h3>Unresolved obligations</h3><p class="tip">Acknowledgement records that you saw an item. It retains the obligation until independent resolution evidence exists. Writer service incidents are available in System status.</p>';
+        h+='<h3>Automatic recovery</h3><p class="tip">Gofer and code own technical identity and verification cases. Only personal decisions require your input. Resolved cases disappear after independent verification.</p>';
+        if(summary)h+='<details><summary>Technical recovery queue · '+summary.open.length+' unresolved case(s)</summary>';
         if(summary)summary.open.forEach(function(o){h+='<article class="ops-obligation"><b>'+cell(o.id)+' · '+cell(stageOf(o))+' · '+cell(o.state)+'</b><p>'+cell(o.error||o.nextAction||'Resolution evidence required')+'</p><span class="tip">'+cell(o.acknowledgedAt?'Acknowledged '+o.acknowledgedAt:'Unacknowledged')+'</span> <button data-ops-ack="'+esc(o.id)+'">Acknowledge</button></article>';});
+        if(summary)h+='</details>';
       }else if(tab==='schedules'){
         var manifest=schedules&&schedules.manifest;
         h+='<h3>Desired schedules and native provider evidence</h3><p class="tip">Native control: '+cell(schedules&&schedules.nativeControl||'UNKNOWN')+'. Saving stages a proposal; provider changes require the native scheduler. Writer + Forge are active. Claude and Grok are deferred. Freeze remains 07:00 America/New_York. Paused tasks stay paused.</p>';

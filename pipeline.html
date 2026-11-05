@@ -600,7 +600,7 @@ function incidentsHtml_(hv,hh){
     +(live.length?live.map(incidentHtml_).join(''):'<div class="inc-none">No confirmed current faults.</div>');
   h+='<h3 style="margin-top:12px">Unfinished work - '+obligations.length+' operation(s)</h3>'
     +'<p class="tip">Failures do not disappear because Writer is idle. Each operation remains open until its actual outcome is verified. Different failure classes and retries are grouped below.</p>'
-    +outstandingWorkHtml_(obligations,5);
+    +(obligations.length?'<details><summary>Automatic reconciliation · '+obligations.length+' operation(s)</summary>'+outstandingWorkHtml_(obligations,5)+'</details>':outstandingWorkHtml_([],5));
   if(obligations.length>5)h+='<div class="tip">'+(obligations.length-5)+' additional operation(s) in Current incidents.</div>';
   h+='<div class="inc-history-link"><button type="button" id="open-incident-history">Review current incidents and unfinished work</button></div>';
   return h;
@@ -639,12 +639,13 @@ function renderIncidentHistory_(){
     +'<p class="tip">Current faults and work awaiting verification.</p>'
     +'<div class="inc-history-summary"><b>'+all.filter(function(i){return i.kind!=='event'}).length+'</b> current faults <b>'+work.length+'</b> unfinished operations</div>'
     +'<div class="inc-history-tools"><label>Search <input id="inc-history-search" type="search" placeholder="Request ID, component, error or owner" value="'+esc(q)+'"></label></div>'
-    +'<h3>Unfinished work by original operation</h3><div id="inc-history-work"></div><h3>Current faults and verification needs</h3><div id="inc-history-items"></div></section>';
+    +'<details><summary>Automatic reconciliation · '+work.length+' operation(s)</summary><div id="inc-history-work"></div></details><h3>Current faults and verification needs</h3><div id="inc-history-items"></div></section>';
   $('inc-history-work').innerHTML=outstandingWorkHtml_(work,0);
   function refresh(){
     var term=$('inc-history-search').value.trim().toLowerCase();
     var filtered=all.filter(function(i){return !term||[i.id,i.title,i.latestError,i.latestFile,i.component,i.status,i.operation].join(' ').toLowerCase().indexOf(term)>=0;});
-    $('inc-history-items').innerHTML=filtered.length?filtered.map(incidentHtml_).join(''):'<p class="tip">No current incidents match.</p>';
+    var faults=filtered.filter(function(i){return i.kind!=='event'}),technical=filtered.filter(function(i){return i.kind==='event'});
+    $('inc-history-items').innerHTML=(faults.length?faults.map(incidentHtml_).join(''):'<p class="tip">No current service faults match.</p>')+(technical.length?'<details'+(term?' open':'')+'><summary>Technical attempt details · '+technical.length+'</summary>'+technical.map(incidentHtml_).join('')+'</details>':'');
     $('inc-history-items').querySelectorAll('[data-ack]').forEach(function(b){b.onclick=function(){ackIncident_(b.getAttribute('data-ack'));renderIncidentHistory_()}});
   }
   $('inc-history-search').oninput=refresh;
