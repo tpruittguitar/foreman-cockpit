@@ -3,21 +3,24 @@
 const Alignment=require('./pipeline-alignment');
 function create(io){
  const now=()=>new Date(io.now?io.now():Date.now()).toISOString();
+ function nativeId(task,taskKey){const supplied=(io.nativeTaskIds||{})[taskKey];if(supplied&&task.nativeId&&supplied!==task.nativeId)throw new Error('NATIVE_BINDING_MIGRATION_REQUIRED');if(task.registered&&!task.nativeId)return undefined;return task.nativeId||supplied;}
  async function checkpoint(record){
   if(!io.persist||!io.readCheckpoint)throw new Error('UNSYNCED: durable checkpoint/readback unavailable');
   await io.persist(record);const back=await io.readCheckpoint(record.attemptId);
   if(Alignment.stable(back)!==Alignment.stable(record))throw new Error('UNSYNCED: checkpoint readback differs');
  }
  async function inspect(taskKey,scope,approvedSchedule,attemptId){
-  const task=Alignment.task(taskKey),nativeTaskId=task.nativeId||(io.nativeTaskIds||{})[taskKey];let authorities={},native=null;
+  const task=Alignment.task(taskKey),nativeTaskId=nativeId(task,taskKey);let authorities={},native=null;
+  if(!task.active){const result=Alignment.preflight({taskKey,attemptId,at:now()});await checkpoint(result);return result;}
   try{authorities=await io.readAuthorities()}catch(e){authorities={common:{error:e.message}}}
   if(io.provider&&io.provider.getTask&&nativeTaskId){try{native=await io.provider.getTask(nativeTaskId);native.readbackAt=now()}catch(e){native={error:e.message}}}
   const input={taskKey,nativeTaskId,scope,approvedSchedule,attemptId,at:now(),authorities,native,capabilities:{checkpoint:!!(io.persist&&io.readCheckpoint),writerTransport:!!(io.submitWriter&&io.reconcileWriter),coverageReadback:!!io.verifyCoverage,artifactReadback:!!io.artifactReadback}};
   const result=Alignment.preflight(input);await checkpoint({...result,input});return result;
  }
  async function updatePrompt(taskKey,scope,attemptId){
-  const task=Alignment.task(taskKey),nativeTaskId=task.nativeId||(io.nativeTaskIds||{})[taskKey],desired=Alignment.prompt(task,scope);
-  if(!task.active)return {state:'DEFERRED',taskKey,applied:false};
+  const task=Alignment.task(taskKey);
+  if(!task.active)return {state:task.retired?'RETIRED':'DEFERRED',taskKey,applied:false};
+  const nativeTaskId=nativeId(task,taskKey),desired=Alignment.prompt(task,scope);
   if(!nativeTaskId||!io.provider||!io.provider.getTask||!io.provider.updatePrompt)return {state:'NATIVE_CONTROL_UNSUPPORTED',taskKey,prompt:desired,applied:false};
   const before=await io.provider.getTask(nativeTaskId);
   if(before.enabled!==true)throw new Error('PAUSED_TASK_REACTIVATION_FORBIDDEN');

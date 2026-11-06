@@ -142,11 +142,11 @@ test('worker: a fresh PROCESSING__ claim (another execution is still running it)
   assert.equal(out.processed, 0); assert.equal(dispatched, 0); assert.equal(h.created.length, 0);
 });
 
-test('worker: an exception thrown by the writer still produces a FAILED RESULT and moves the request', t => {
+test('worker: a dispatch exception produces an uncertain HOLD and preserves the original request', t => {
   const h = queueHarness({ dispatch: () => { throw new Error('Exceeded maximum execution time'); } });
   h.addFile('IDENT_X.json', { action: 'intake', records: [] }, 60000);
   A.processWriterQueue();
-  assert.equal(h.created[0].body.terminalStatus, 'FAILED');
+  assert.equal(h.created[0].body.terminalStatus, 'HOLD_UNCERTAIN');
   assert.match(h.created[0].body.result.error, /Exceeded maximum/);
   assert.equal(h.failed.files.length, 1);
   assert.equal(h.queue.files.length, 0);
@@ -181,15 +181,12 @@ test('worker: a WRITE_FENCE result releases the claim and leaves the request que
   assert.equal(h.created.length, 0);
 });
 
-test('worker: a script-lock timeout releases the claim and leaves the request queued, never FAILED', t => {
-  const h = queueHarness({ dispatch: () => { throw new Error('Lock timeout: another process was holding the lock for too long.'); } });
+test('worker: an unclassified dispatch timeout never authorizes a second dispatch', t => {
+  let calls=0;const h = queueHarness({ dispatch: () => { calls++;throw new Error('Lock timeout: another process was holding the lock for too long.'); } });
   h.addFile('LOCKED.json', { action: 'ruling', ruling: { primaryId: 'V2I-1', kind: 'ENRICH', requestId: 'R-LOCK' } }, 60000);
   const out = A.processWriterQueue();
-  assert.equal(out.deferred.file, 'LOCKED.json');
-  assert.match(out.deferred.reason, /writer busy \(Lock timeout/);
-  assert.equal(h.queue.files[0].getName(), 'LOCKED.json', 'claim released under the original name');
-  assert.equal(h.created.length, 0, 'no RESULT written');
-  assert.equal(h.failed.files.length, 0);
+  assert.equal(out.deferred,null);assert.equal(h.created[0].body.terminalStatus,'HOLD_UNCERTAIN');assert.equal(h.failed.files.length,1);
+  A.processWriterQueue();assert.equal(calls,1,'the uncertain original is never dispatched again');
 });
 
 test('worker: no new file is claimed after the claim cutoff; the deadline is set and always cleared', t => {
@@ -379,4 +376,9 @@ test('monitor: when the receipt index cannot be read, every recent hold still wa
 
 test('monitor: an idle, healthy writer has no warnings', t => {
   assert.deepEqual(A.writerWarnings_({ freeze: null, queue: { pending: 0, processing: [], hold: [] }, triggerInstalled: true, unverified: { count: 0 }, recentRuns: [{ file: 'X', terminalStatus: 'SUCCESS', finishedAt: '2026-10-05T03:59:00Z' }], errors: [] }, Date.parse('2026-10-05T04:00:00Z')), []);
+});
+
+test('worker leaves a request-bound structured pre-mutation busy response queued for automatic recovery',t=>{
+ const h=queueHarness({dispatch:()=>({ok:false,mode:'WRITER_NOT_ACCEPTED',outcome:{schema:'forge.writer-outcome.v1',status:'NOT_ACCEPTED',phase:'BEFORE_MUTATION',masterMutations:0,code:'WRITER_BUSY',requestIds:['QUEUE-ONE'],retryAfterMs:60000}})});
+ h.addFile('BUSY.json',{action:'intake',requestId:'QUEUE-ONE',records:[]},60000);const result=A.processWriterQueue();assert.equal(result.deferred.file,'BUSY.json');assert.equal(h.queue.files[0].getName(),'BUSY.json');assert.equal(h.created.length,0);
 });

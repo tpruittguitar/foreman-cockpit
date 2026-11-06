@@ -185,7 +185,7 @@ function dispatchWrite_(req) {
   if (['record_operations','catch_up','acknowledge_obligation'].indexOf(a)>=0) return operationsWrite_(req);
   if (a === 'save_schedule_proposal') return schedulerWrite_(req);
   if (a === 'intake') return applyIntakeToMaster_(req);
-  if (a === 'ruling') { var shapeErr = requestShapeError_(req); if (shapeErr) return { ok: false, mode: 'REJECTED_SCHEMA', error: shapeErr }; return applyRulingToMaster_(req.ruling); }
+  if (a === 'ruling') { var shapeErr = requestShapeError_(req); if (shapeErr) return writerRejectedBeforeMutation_({ ok: false, mode: 'REJECTED_SCHEMA', error: shapeErr }, [req.ruling && req.ruling.requestId || req.requestId || req.request_id || ''], 'REJECTED_SCHEMA'); return applyRulingToMaster_(req.ruling); }
   if (a === 'data_discovery') return applyDataDiscoveryRequest_(req);
   if (a === 'upsert_application') { if (Array.isArray(req.events)) return applyUpsertBatchToMaster_(req); return applyUpsertToMaster_(req.event || req); }
   if (a === 'interview_note') return saveInterviewNote_(req.note || req);
@@ -217,12 +217,12 @@ function dispatchWrite_(req) {
         : requestShapeError_(sub);
       if (err) malformed.push({ index: ix, ok: false, error: err });
     });
-    if (malformed.length) return { ok: false, mode: 'REJECTED_SCHEMA', attempted: 0, error: malformed.length + ' of ' + list.length + ' requests are malformed; nothing was applied', results: malformed };
+    if (malformed.length) return writerRejectedBeforeMutation_({ ok: false, mode: 'REJECTED_SCHEMA', attempted: 0, error: malformed.length + ' of ' + list.length + ' requests are malformed; nothing was applied', results: malformed }, list.map(function (q) { return q.ruling && q.ruling.requestId || q.requestId || q.request_id || ''; }), 'REJECTED_SCHEMA');
     var allRulings = list.every(function (sub) { return sub.action === 'ruling'; });
     if (allRulings) return applyRulingBatchToMaster_(list);
     return serialBatch_(list);
   }
-  return { ok: false, error: 'unknown action ' + a + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' };
+  return writerRejectedBeforeMutation_({ ok: false, error: 'unknown action ' + a + ' (expected one of ' + WRITE_ACTIONS.join(', ') + ')' }, [req.requestId || req.request_id || ''], 'UNSUPPORTED_ACTION');
 }
 
 /** Absolute time (ms) after which a serial batch starts no further sub-request; 0 means no deadline. The queue worker sets
@@ -282,10 +282,26 @@ function serialBatch_(list) {
  * One lock, one master open, one save, one readback, one receipt append and one event-log append.
  * This is the high-throughput path used by Claude backlog ENRICH batches.
  */
+function writerBusyBeforeMutation_(requestIds, error) {
+  if (!/Lock timeout: another process was holding the lock for too long\./.test(String(error && error.message || error))) throw error;
+  return { ok: false, mode: 'WRITE_FENCE', error: 'Writer busy; this request was not accepted',
+    outcome: { schema: 'forge.writer-outcome.v1', status: 'NOT_ACCEPTED', phase: 'BEFORE_MUTATION', code: 'WRITER_BUSY',
+      masterMutations: 0, requestIds: requestIds, retryAfterMs: 60000 } };
+}
+function writerFenceBeforeMutation_(fence, requestIds) {
+  fence.outcome = { schema: 'forge.writer-outcome.v1', status: 'NOT_ACCEPTED', phase: 'BEFORE_MUTATION', code: 'WRITE_FENCE',
+    masterMutations: 0, requestIds: requestIds, retryAfterMs: +fence.retryAfterMs || 60000 };
+  return fence;
+}
+function writerRejectedBeforeMutation_(result, requestIds, code) {
+  result.outcome = { schema: 'forge.writer-outcome.v1', status: 'NOT_ACCEPTED', phase: 'BEFORE_MUTATION', code: code,
+    masterMutations: 0, requestIds: requestIds, retryable: false, writerCommit: WRITER_BUILD.commit };
+  return result;
+}
 function applyRulingBatchToMaster_(requests) {
   var started = Date.now(), t = { TOTAL_MS: 0, LOCK_WAIT_MS: 0, MASTER_READ_MS: 0, PLAN_MS: 0, MASTER_WRITE_MS: 0, READBACK_MS: 0, RECEIPT_MS: 0, EVENT_MS: 0 };
   var lock = LockService.getScriptLock(), lockStart = Date.now();
-  lock.waitLock(30000);
+  try { lock.waitLock(30000); } catch (busy) { return writerBusyBeforeMutation_(requests.map(function (q) { return q.ruling && q.ruling.requestId || ''; }), busy); }
   t.LOCK_WAIT_MS = Date.now() - lockStart;
   try {
     var readStart = Date.now();
@@ -294,7 +310,7 @@ function applyRulingBatchToMaster_(requests) {
     var M = openMaster_(), lines = M.lines, snapshot = lines.slice();
     t.MASTER_READ_MS = Date.now() - readStart;
     var fence = writeFence_(snapshot);
-    if (fence) { t.TOTAL_MS = Date.now() - started; fence.timings = t; fence.docAccess = docAccessSummary_(); return fence; }
+    if (fence) { t.TOTAL_MS = Date.now() - started; fence.timings = t; fence.docAccess = docAccessSummary_(); return writerFenceBeforeMutation_(fence, requests.map(function (q) { return q.ruling && q.ruling.requestId || ''; })); }
 
     var planStart = Date.now(), byPid = {}, duplicatePid = {}, seenBatchPid = {}, results = [], receipts = [], events = [], changed = [], identityArchive = null;
     for (var p = 0; p < lines.length; p++) {
@@ -341,13 +357,18 @@ function applyRulingBatchToMaster_(requests) {
     t.PLAN_MS = Date.now() - planStart;
     if (!changed.length) {
       t.TOTAL_MS = Date.now() - started;
-      return { ok: results.every(function (x) { return x.ok; }), mode: 'BATCH_RULING_NO_WRITE', results: results, timings: t, docAccess: docAccessSummary_(), flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
+      var refusedResult = { ok: results.every(function (x) { return x.ok; }), mode: 'BATCH_RULING_NO_WRITE', results: results, timings: t, docAccess: docAccessSummary_(), flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
+      return results.every(function (x) { return x.ok === false && x.mode !== 'PENDING_VERIFICATION'; }) ? writerRejectedBeforeMutation_(refusedResult, requests.map(function (q) { return q.ruling.requestId; }), 'REJECTED_INPUT') : refusedResult;
     }
 
     var modCheck = masterModified_();
     if (modCheck !== modBefore) {
       t.TOTAL_MS = Date.now() - started;
-      return { ok: false, mode: 'BATCH_RULING_RETRY', error: 'master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', results: results, timings: t, docAccess: docAccessSummary_() };
+      var conflictResult = { ok: false, mode: 'BATCH_RULING_RETRY', error: 'master changed during request (' + modBefore + ' -> ' + modCheck + '); retry', results: results, timings: t, docAccess: docAccessSummary_() };
+      // Evidence routing is still an in-memory plan here; no flush, intent,
+      // master save, receipt or event has run. Previously applied children must
+      // never be labeled NOT_ACCEPTED along with fresh planned siblings.
+      return results.every(function (x) { return x.ok === true && x.mode === 'PLANNED'; }) ? writerFenceBeforeMutation_(conflictResult, requests.map(function (q) { return q.ruling.requestId; })) : conflictResult;
     }
 
     var writeStart = Date.now();
@@ -1626,13 +1647,13 @@ function readMaster_() {
 /* ================= ruling (one existing row, exact PRIMARY_ID) ================= */
 function applyRulingToMaster_(ruling) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  try { lock.waitLock(30000); } catch (busy) { return writerBusyBeforeMutation_([ruling && ruling.requestId || ''], busy); }
   try {
     DOC_ACCESS_ = [];
     var modBefore = masterModified_();
     var M = openMaster_(), snapshot = M.lines.slice();
     var fence = writeFence_(snapshot);
-    if (fence) { fence.docAccess = docAccessSummary_(); return fence; }
+    if (fence) { fence.docAccess = docAccessSummary_(); return writerFenceBeforeMutation_(fence, [ruling && ruling.requestId || '']); }
     var pid = String(ruling.primaryId || '').trim();
     if (!pid) return fail_('no PRIMARY_ID in request', ruling);
     var rid = String(ruling.requestId || '').trim();
@@ -1651,7 +1672,7 @@ function applyRulingToMaster_(ruling) {
     var before = snapshot[hits[0]];
     var flexPolicy = readFlexPolicy_();
     var res = mutateRow(before, ruling, flexPolicy);
-    if (!res.ok) return fail_(res.error, ruling);
+    if (!res.ok) return writerRejectedBeforeMutation_({ ok: false, error: res.error }, [ruling.requestId || ''], 'REJECTED_INPUT');
     if (String(ruling.kind || '').toUpperCase() === 'IDENTITY') { var idConflict = identityConflicts_(snapshot, hits[0], res.after, ruling, archiveRowsLive_()); if (idConflict) return { ok: false, mode: 'HOLD', error: idConflict, primaryId: pid }; }
     var routing = evidenceRouting_();
     res.after = externalizeEvidence_(routing, before, res.after, String(ruling.actor || 'TIM').toUpperCase() + ':' + (ruling.requestId || 'no-id'), new Date().toISOString());
@@ -1907,14 +1928,14 @@ function applyUpsertToMaster_(ev) {
 /* ================= intake (Scout discovery -> canonical rows) ================= */
 function applyIntakeToMaster_(req, internal) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(30000);
+  try { lock.waitLock(30000); } catch (busy) { return writerBusyBeforeMutation_([req && req.requestId || ''], busy); }
   try {
     DOC_ACCESS_ = [];
     var modBefore = masterModified_();
     var M = openMaster_(), snapshot = M.lines.slice();
     var lines = M.lines.slice();
     var fence = writeFence_(snapshot);
-    if (fence) { fence.results = []; fence.docAccess = docAccessSummary_(); return fence; }
+    if (fence) { fence.results = []; fence.docAccess = docAccessSummary_(); return writerFenceBeforeMutation_(fence, [req && req.requestId || '']); }
     var rules = readRules_();
     // Dedupe (and next INV numbering) against live rows AND archived terminal history, so a declined/closed/rejected job is not re-admitted.
     var flexPolicy = readFlexPolicy_();

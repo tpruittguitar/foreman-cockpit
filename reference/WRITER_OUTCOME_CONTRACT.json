@@ -1,0 +1,261 @@
+{
+  "schema": "forge.writer-outcome-contract.v1",
+  "requestId": "TEST",
+  "childRequestIds": [
+    "TEST-R1"
+  ],
+  "cases": [
+    {
+      "name": "request-bound pre-mutation refusal",
+      "response": {
+        "ok": false,
+        "mode": "WRITE_FENCE",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "WRITER_BUSY",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        }
+      },
+      "notAccepted": true
+    },
+    {
+      "name": "wrong request",
+      "response": {
+        "ok": false,
+        "mode": "WRITE_FENCE",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "WRITER_BUSY",
+          "masterMutations": 0,
+          "requestIds": [
+            "OTHER-R1"
+          ],
+          "retryAfterMs": 60000
+        }
+      },
+      "notAccepted": false
+    },
+    {
+      "name": "after possible mutation",
+      "response": {
+        "ok": false,
+        "mode": "WRITE_FENCE",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "AFTER_MUTATION",
+          "code": "WRITER_BUSY",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        }
+      },
+      "notAccepted": false
+    },
+    {
+      "name": "unknown mutation count",
+      "response": {
+        "ok": false,
+        "mode": "WRITE_FENCE",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "WRITER_BUSY",
+          "masterMutations": null,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        }
+      },
+      "notAccepted": false
+    },
+    {
+      "name": "unrecognized code",
+      "response": {
+        "ok": false,
+        "mode": "WRITE_FENCE",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "UNCLASSIFIED",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        }
+      },
+      "notAccepted": false
+    },
+    {
+      "name": "unversioned response",
+      "response": {
+        "ok": false,
+        "mode": "WRITE_FENCE",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "old",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "WRITER_BUSY",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        }
+      },
+      "notAccepted": false
+    },
+    {
+      "name": "contradictory write acceptance",
+      "response": {
+        "ok": false,
+        "mode": "WRITE_FENCE",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "WRITER_BUSY",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        },
+        "writeId": "W-EXISTS"
+      },
+      "notAccepted": false
+    },
+    {
+      "name": "legacy error is not proof by itself",
+      "response": {
+        "ok": false,
+        "error": "Lock timeout: another process was holding the lock for too long."
+      },
+      "notAccepted": false
+    },
+    {
+      "name": "fresh planned optimistic conflict",
+      "response": {
+        "ok": false,
+        "mode": "BATCH_RULING_RETRY",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "WRITE_FENCE",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        },
+        "results": [
+          {
+            "ok": true,
+            "mode": "PLANNED",
+            "requestId": "TEST-R1"
+          }
+        ]
+      },
+      "notAccepted": true
+    },
+    {
+      "name": "previously applied child cannot be unaccepted",
+      "response": {
+        "ok": false,
+        "mode": "BATCH_RULING_RETRY",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "WRITE_FENCE",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        },
+        "results": [
+          {
+            "ok": true,
+            "mode": "ALREADY_APPLIED",
+            "requestId": "TEST-R1"
+          }
+        ]
+      },
+      "notAccepted": false
+    },
+    {
+      "name": "terminal schema refusal proves no acceptance but must not retry",
+      "response": {
+        "ok": false,
+        "mode": "REJECTED_SCHEMA",
+        "error": "ruling fields must be nested",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "REJECTED_SCHEMA",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000,
+          "retryable": false
+        }
+      },
+      "notAccepted": true,
+      "retryable": false
+    },
+    {
+      "name": "previous pending child cannot be unaccepted",
+      "response": {
+        "ok": false,
+        "mode": "BATCH_RULING_RETRY",
+        "error": "Writer busy; this request was not accepted",
+        "outcome": {
+          "schema": "forge.writer-outcome.v1",
+          "status": "NOT_ACCEPTED",
+          "phase": "BEFORE_MUTATION",
+          "code": "WRITE_FENCE",
+          "masterMutations": 0,
+          "requestIds": [
+            "TEST-R1"
+          ],
+          "retryAfterMs": 60000
+        },
+        "results": [
+          {
+            "ok": false,
+            "mode": "PENDING_VERIFICATION",
+            "requestId": "TEST-R1"
+          }
+        ]
+      },
+      "notAccepted": false
+    }
+  ]
+}

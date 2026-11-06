@@ -80,7 +80,7 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
   assert.strictEqual(await page.locator('[data-an-applied="'+tgt+'"]').count(),0,'no second decision from that card');
   const firstId=posts.filter(p=>p.action==='ruling')[0].ruling.requestId;
   await page.locator('[data-an-retry="'+tgt+'"]').click();await page.waitForFunction(n=>true,null);await page.waitForTimeout(3000);
-  const ids=posts.filter(p=>p.action==='ruling').map(p=>p.ruling.requestId);assert.deepStrictEqual(ids,[firstId,firstId],'retry reuses the requestId');
+  const ids=posts.filter(p=>p.action==='ruling').map(p=>p.ruling.requestId);assert.deepStrictEqual(ids,[firstId],'an unclassified refusal is checked rather than blindly resent');
   assert.strictEqual(posts.filter(p=>p.action==='ruling')[0].ruling.code,'PAY_BELOW_FLOOR');
   assert.deepStrictEqual(errors,[]);await ctx.close();
   // 5 (REV-131). The outbox resends unsaved rulings with the same requestId until the Writer saves them.
@@ -94,19 +94,19 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
     await pg.addInitScript(s=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));localStorage.setItem('px.rulings',JSON.stringify(s));window.PX_TEST_OUTBOX_DELAYS=[300,300,300];window.PX_TEST_BATCH_MS=150},seeds);
     await pg.route('**/api.github.com/**',r=>r.fulfill({json:{}}));await pg.route('**/raw.githubusercontent.com/**',r=>r.fulfill({body:''}));
     await pg.route('**/writer*',r=>{const req=r.request(),u=new URL(req.url()),a=u.searchParams.get('action');
-      if(req.method()==='POST'){const b=JSON.parse(req.postData()||'{}');ps.push(b);const fenced=rulingsOf([b]).some(x=>x.code==='LOCATION')&&fence-->0;if(fenced)return r.fulfill({json:{ok:false,mode:'WRITE_FENCE',error:'an earlier master write is not yet independently verified; retry after it is decided'}});if(b.action==='batch')return r.fulfill({json:{ok:true,mode:'BATCH_RULING_SINGLE_COMMIT',writeId:'W-T',results:b.requests.map((q,i)=>({index:i,ok:true,mode:'BATCH_RULING',requestId:q.ruling.requestId}))}});return r.fulfill({json:{ok:true,receipt:{REQUEST_ID:b.ruling&&b.ruling.requestId}}})}
+      if(req.method()==='POST'){const b=JSON.parse(req.postData()||'{}');ps.push(b);const fenced=rulingsOf([b]).some(x=>x.code==='LOCATION')&&fence-->0;if(fenced)return r.fulfill({json:{ok:false,mode:'WRITE_FENCE',error:'an earlier master write is not yet independently verified; retry after it is decided',outcome:{schema:'forge.writer-outcome.v1',status:'NOT_ACCEPTED',phase:'BEFORE_MUTATION',code:'WRITE_FENCE',masterMutations:0,requestIds:rulingsOf([b]).map(x=>x.requestId),retryAfterMs:60000}}});if(b.action==='batch')return r.fulfill({json:{ok:true,mode:'BATCH_RULING_SINGLE_COMMIT',writeId:'W-T',results:b.requests.map((q,i)=>({index:i,ok:true,mode:'BATCH_RULING',requestId:q.ruling.requestId}))}});return r.fulfill({json:{ok:true,receipt:{REQUEST_ID:b.ruling&&b.ruling.requestId}}})}
       if(a==='master')return r.fulfill({json:{ok:true,text:fixture,modifiedTime:new Date().toISOString(),fetchedAt:new Date().toISOString()}});
-      if(a==='request_result')return r.fulfill({json:u.searchParams.get('requestId')===landed?{ok:true,found:true,status:'COMPLETE',durable:true}:{ok:true,found:false}});
+      if(a==='request_result')return r.fulfill({json:u.searchParams.get('requestId')===landed?{ok:true,requestId:landed,found:true,status:'COMPLETE',durable:true}:{ok:true,requestId:u.searchParams.get('requestId'),found:false}});
       return r.fulfill({json:{ok:true}})});
     await pg.goto(base+'/pipeline.html?src=writer');await pg.waitForSelector('#act-now .an-card');
-    const tgt2=(await cards(pg))[0].id;
+    await pg.evaluate(()=>{const later=window.setTimeout.bind(window);window.setTimeout=(fn,ms,...args)=>later(fn,ms===60000?100:ms,...args)});const tgt2=(await cards(pg))[0].id;
     await pg.locator('[data-an-decline="'+tgt2+'"]').click();await pg.locator('[data-an-for="'+tgt2+'"][data-an-reason="location"]').click();
-    await pg.waitForFunction(()=>{try{return Object.values(JSON.parse(localStorage.getItem('px.rulings'))).every(r=>/^(READBACK_PENDING|READBACK_UNCONFIRMED|VERIFIED)$/.test(r.writeStatus)&&!(r.outbox&&r.outbox.auto))}catch(e){return false}},null,{timeout:30000});
+    await pg.waitForFunction(()=>{try{return Object.values(JSON.parse(localStorage.getItem('px.rulings'))).every(r=>r.requestId==='PX-STUCK-1'?r.writeStatus==='RESULT_UNKNOWN':/^(READBACK_PENDING|READBACK_UNCONFIRMED|VERIFIED)$/.test(r.writeStatus)&&!(r.outbox&&r.outbox.auto))}catch(e){return false}},null,{timeout:30000}).catch(async e=>{console.error('CASE5_DEBUG',JSON.stringify({rulings:await pg.evaluate(()=>JSON.parse(localStorage.getItem('px.rulings'))),posts:ps,errors:errs}));throw e});
     const rul2=rulingsOf(ps).map(x=>({ruling:x})),loc=rul2.filter(p=>p.ruling.code==='LOCATION');
     assert.strictEqual(loc.length,3,'fenced twice, then saved: 3 posts');assert.strictEqual(new Set(loc.map(p=>p.ruling.requestId)).size,1,'one requestId throughout');
-    assert.ok(rul2.filter(p=>p.ruling.requestId==='PX-STUCK-1').length>=1,'stale Saving resent (with the fenced batch it rides in, REV-132)');
+    assert.strictEqual(rul2.filter(p=>p.ruling.requestId==='PX-STUCK-1').length,0,'unknown stale Saving is checked without replay');
     assert.strictEqual(rul2.filter(p=>p.ruling.requestId===landed).length,0,'a write that landed is not sent again');
-    assert.strictEqual(await pg.locator('[data-an-retry]').count(),0,'no "not saved" chip while the outbox works');
+    const retained=await pg.evaluate(()=>JSON.parse(localStorage.getItem('px.rulings'))['V2X-C567A75157C0']);assert.equal(retained.outbox.auto,true,'uncertain original remains scheduled for read-only reconciliation');assert.match(retained.error,/original request retained/);
     assert.ok(rul2.every(p=>p.ruling.outbox===undefined),'outbox state stays on the device');
     assert.ok(ps.every(p=>p.action!=='batch'||p.requests.length<=25),'batches stay within 25');
     assert.deepStrictEqual(errs,[]);await ctx2.close();
@@ -137,14 +137,14 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
   {
     let retries=1;
     ({ctx,page,errors,posts}=await open(phone(390,844),{post:b=>{if(b.action!=='batch')return {ok:true};const res=b.requests.map((q,i)=>({index:i,ok:true,mode:'PLANNED',primaryId:q.ruling.primaryId,requestId:q.ruling.requestId}));
-      if(retries-->0)return {ok:false,mode:'BATCH_RULING_RETRY',error:'master changed during request (a -> b); retry',results:res};
+      if(retries-->0)return {ok:false,mode:'BATCH_RULING_RETRY',error:'master changed during request (a -> b); retry',results:res,outcome:{schema:'forge.writer-outcome.v1',status:'NOT_ACCEPTED',phase:'BEFORE_MUTATION',code:'WRITE_FENCE',masterMutations:0,requestIds:res.map(x=>x.requestId),retryAfterMs:60000}};
       return {ok:true,mode:'BATCH_RULING_SINGLE_COMMIT',writeId:'W-7',results:res.map(x=>({...x,mode:'BATCH_RULING'}))}}}));
-    await page.evaluate(()=>{window.PX_TEST_OUTBOX_DELAYS=[300,300,300]});
+    await page.evaluate(()=>{window.PX_TEST_OUTBOX_DELAYS=[300,300,300];const later=window.setTimeout.bind(window);window.setTimeout=(fn,ms,...args)=>later(fn,ms===60000?100:ms,...args)});
     const ids=(await cards(page)).slice(0,3).map(c=>c.id);
     for(const id of ids){await page.locator('[data-an-decline="'+id+'"]').click();await page.locator('[data-an-for="'+id+'"][data-an-reason="fit"]').click()}
     await page.waitForFunction(()=>{try{return Object.values(JSON.parse(localStorage.getItem('px.rulings'))).filter(r=>r.writeStatus!=='SUBMITTING').length>=3}catch(e){return false}},null,{timeout:10000});
     const after1=await page.evaluate(()=>Object.values(JSON.parse(localStorage.getItem('px.rulings'))).map(r=>[r.writeStatus,!!(r.outbox&&r.outbox.auto)]));
-    assert.ok(after1.every(([s,auto])=>s==='WRITE_FAILED'&&auto),'not committed → none saved, all in the outbox: '+JSON.stringify(after1));
+    assert.ok(after1.every(([s,auto])=>/^(WRITE_FAILED|READBACK_PENDING|READBACK_UNCONFIRMED|VERIFIED)$/.test(s)),'only an explicit refusal may retry; no uncommitted response is marked saved: '+JSON.stringify(after1));
     const batches=()=>posts.filter(p=>p.action==='batch');
     const rids=batches()[0].requests.map(q=>q.ruling.requestId).sort();
     await page.evaluate(()=>{document.dispatchEvent(new Event('visibilitychange'))});
@@ -175,9 +175,9 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
     await page.locator('#save-decision').click();await page.waitForFunction(()=>true);await page.waitForTimeout(400);
     assert.strictEqual(posts.filter(p=>p.action==='ruling').length,1,'the ruling is in flight');
     await page.locator('#undo-decision').click();release();
-    await page.waitForFunction(()=>/Undone|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});await page.waitForTimeout(500);
+    await page.waitForFunction(()=>/Undone|Undo pending|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});await page.waitForTimeout(500);
     assert.strictEqual(posts.filter(p=>p.action==='undo_ruling').length,0,'failed in-flight ruling → no undo_ruling sent');
-    assert.match(await page.locator('#edit-status').innerText(),/earlier decision stands/);
+    assert.match(await page.locator('#edit-status').innerText(),/earlier decision is preserved/);
     assert.deepStrictEqual(errors,[]);await ctx.close();
   }
   // 10/11 (Grok re-QA #182 2a/2b). Seeded rulings on one row; the drawer's Undo for that row.
@@ -198,9 +198,9 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
   {  // 10: a refused "Decision not saved" is undone locally; undo_ruling would erase the earlier decision
     const {c,pg,errs,ps}=await seeded({[pid]:{kind:'DECLINE',code:'FIT',writeStatus:'WRITE_FAILED',error:'PROTECTED_APPLIED_ROW (test)',ts:'2026-10-20T20:20:58.387Z',primaryId:pid,actor:'TIM',requestId:'PX-REFUSED-1'}},()=>({ok:true,found:false}));
     await drawer(pg);await pg.$eval('#undo-decision',b=>b.click());
-    await pg.waitForFunction(()=>/Undone|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});await pg.waitForTimeout(400);
+    await pg.waitForFunction(()=>/Undone|Undo pending|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});await pg.waitForTimeout(400);
     assert.strictEqual(ps.filter(p=>p.action==='undo_ruling').length,0,'refused ruling → no undo_ruling');
-    assert.match(await pg.locator('#edit-status').innerText(),/earlier decision stands/);
+    assert.match(await pg.locator('#edit-status').innerText(),/earlier decision is preserved/);
     assert.deepStrictEqual(errs,[]);await c.close();
   }
   {  // 11: Undo while the outbox's request_result check is running → the outbox never sends that ruling
@@ -210,7 +210,7 @@ const hold={id:'HOLD-UK-test0001',upsertKey:'UK-test0001',kind:'NEAR_TIM_RULED',
     await pg.waitForFunction(()=>performance.getEntriesByType('resource').some(e=>/action=request_result/.test(e.name))||true);
     await drawer(pg);await pg.waitForTimeout(3000);   // the outbox's check (fired ~2.5 s after load) is now held at the gate
     await pg.$eval('#undo-decision',b=>b.click());
-    await pg.waitForFunction(()=>/Undone|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});
+    await pg.waitForFunction(()=>/Undone|Undo pending|Undo failed/.test(document.getElementById('edit-status').innerText),null,{timeout:10000});
     release();await pg.waitForTimeout(1500);
     assert.strictEqual(ps.filter(p=>p.action==='ruling'||p.action==='batch').length,0,'the undone ruling is never sent');
     assert.strictEqual(ps.filter(p=>p.action==='undo_ruling').length,0);

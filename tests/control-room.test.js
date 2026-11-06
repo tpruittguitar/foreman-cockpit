@@ -87,6 +87,25 @@ test('public health uses verified per-task execution, not the saved configuratio
  const file=fs.readFileSync(path.join(__dirname,'../functions/api/pipeline-health.js'),'utf8'),mod=await import('data:text/javascript;base64,'+Buffer.from(file).toString('base64'));const fetcher=async url=>new Response(JSON.stringify(url.includes('EXECUTION')?{schema:'forge.automation-evidence.v1',at,executions:[],schedules:{active:[{id:'email',executionVerified:true}]},emailCoverage:{at,writerProofsVerified:true,sourceFile:'receipts/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-20261030-1902ET.json'}}:url.includes('SCHEDULE')?{schema:'forge.schedule-readback.v1',at,local:[{id:'email',status:'ACTIVE'}],executionVerified:false}:url.includes('NEEDS_TIM')?{schema:'forge.needs-tim.v1',builtAt:at,items:[]}:{summary:{at},new_roles:[]}));const h=await mod.loadHealth(fetcher,now);assert.equal(h.checks.schedules.executionVerified,true);assert.equal(h.checks.emailCoverage.ok,true);
 });
 
+test('verified task work does not certify the scheduled invocation or create an extra action warning',async()=>{
+ const file=fs.readFileSync(path.join(__dirname,'../functions/api/pipeline-health.js'),'utf8'),mod=await import('data:text/javascript;base64,'+Buffer.from(file).toString('base64'));
+ const fetcher=async url=>new Response(JSON.stringify(url.includes('EXECUTION')?{schema:'forge.automation-evidence.v1',at,executions:[],services:[{id:'programmed-coordinator',workEvidenceVerified:true}],schedules:{active:[{id:'email',taskExecutionVerified:true,nativeInvocationVerified:false}],nativeInvocationStatus:'NOT_OBSERVED'}}:url.includes('SCHEDULE')?{schema:'forge.schedule-readback.v1',at,configurationReadbackScope:'LOCAL_CODEX_ONLY',local:[{id:'email',status:'ACTIVE',managed:true},{id:'personal-reminder',status:'ACTIVE',managed:false}],executionVerified:true}:url.includes('NEEDS_TIM')?{schema:'forge.needs-tim.v1',builtAt:at,items:[]}:{summary:{at},new_roles:[]}));
+ const h=await mod.loadHealth(fetcher,now);
+ assert.equal(h.checks.schedules.taskExecutionVerified,true);
+ assert.equal(h.checks.schedules.nativeInvocationVerified,false);
+ assert.equal(h.checks.schedules.serviceWorkVerified,true);
+ assert.equal(h.checks.schedules.configurationReadbackScope,'LOCAL_CODEX_ONLY');
+ assert.equal(h.checks.schedules.configured,1,'personal automations are inventoried without becoming Forge schedule faults');
+ const f=fixture();f.health.checks.schedules=h.checks.schedules;const m=C.model(f);
+ assert.match(m.scheduleNote,/scheduled launch itself has not been independently verified/);
+ assert.ok(!m.warnings.some(x=>/Scheduled execution/.test(x.title)));
+});
+
+test('configuration discrepancies remain actionable independently of task-work proof',()=>{
+ const f=fixture();f.health.checks.schedules.configurationDiscrepancies=[{code:'TARGET_THREAD_MISMATCH'}];
+ assert.ok(C.model(f).warnings.some(x=>/Automation configuration needs repair/.test(x.title)));
+});
+
 test('receipt-only metrics cannot substitute for missing canonical stage history',()=>{
  const f=fixture();f.activity.rates36={basis:'Distinct jobs',metadataGaps:0,intake:{count:72,perHour:2},verification:{count:36,perHour:1},enrichment:{count:18,perHour:.5}};
  let h=C.html(C.model(f));assert.doesNotMatch(h,/2 <span class="cr-rate-unit">jobs\/hr/);assert.match(h,/Unknown <span class="cr-rate-unit">jobs\/hr/);assert.doesNotMatch(h,/1 <span class="cr-rate-unit">jobs\/hr/);assert.match(h,/Unknown <span class="cr-rate-unit">candidates\/hr/);assert.match(h,/36 h average/);
