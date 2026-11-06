@@ -32,6 +32,7 @@
   function svg(k, size) { size = size || 22; return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (size < 20 ? 2.4 : 1.6) + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[k] + '</svg>'; }
 
   var MORE = [
+    ['backlog', 'Discovery backlog', 'Review discovery candidates in the pipeline table; select and decline batches'],
     ['map', 'Map', 'Jobs on the map'],
     ['reports', 'Trends', 'Reports and charts'],
     ['compare', 'Compare', 'Compare up to three roles'],

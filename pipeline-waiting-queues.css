@@ -1,3 +1,22 @@
 #wip-queue-bar{grid-column:1/-1;width:100%;min-width:0;box-sizing:border-box;position:relative;z-index:2}#app:not(:has(#view-pipeline.on)) #wip-queue-bar{display:none!important}.wip-intake-mode #view-pipeline.on,.wip-intake-mode #view-pipeline.on:has(#drawer.on){display:flex!important;flex-direction:column!important;overflow:hidden!important;padding:8px!important}.wip-intake-mode #drawer,.wip-intake-mode #dash,.wip-intake-mode #job-map-card,.wip-intake-mode #list-map-divider,.wip-intake-mode #map-drawer-divider,.wip-intake-mode #row-tip{display:none!important}#waiting-candidate-view{min-width:0;box-sizing:border-box;width:100%;flex:1;overflow:auto}#waiting-candidate-view .wip-candidates-head{position:relative}#waiting-candidate-view .wip-candidate-scroll{width:100%}#waiting-candidate-view .wip-pages{position:relative}@media(max-width:760px){#wip-queue-bar{padding:7px 10px;gap:4px}#wip-queue-bar label{width:100%;min-width:0}#wip-queue-bar select{width:0;flex:1;min-width:0;font-size:12px}#wip-queue-bar>span{width:100%;overflow-wrap:anywhere}.wip-intake-mode #view-pipeline.on{padding:8px 8px 75px!important}#waiting-candidate-view{padding:4px}#waiting-candidate-view h3{font-size:16px}#waiting-candidate-view p{font-size:12px;line-height:1.4}}
 
 #wip-candidate-search{background:#111;color:var(--text,#eee);border:1px solid var(--line2,#444);padding:6px;max-width:340px;min-width:140px;flex:1}#wip-candidate-search[hidden]{display:none!important}@media(max-width:760px){#wip-candidate-search{flex-basis:100%;max-width:none;width:100%}}
+
+/* Discovery reuses the actual pipeline grid, column widths and row styles. */
+.wip-intake-mode #waiting-candidate-view{flex:none;padding:8px 12px;overflow:visible}
+.wip-intake-mode #worksplit{display:flex!important;flex:1;min-height:0;width:100%}
+.wip-intake-mode #gridpane{width:100%;flex:1;min-height:0}
+.wip-intake-mode #waiting-candidate-view .wip-pages{padding:4px 0;gap:8px}
+.backlog-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px}
+.backlog-note{color:var(--dim,#aaa);font-size:11px;margin:6px 0}
+#backlog-decision-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#grid .discovery-row{cursor:pointer}
+#grid .discovery-row:focus-visible{outline:2px solid var(--neon,#b4f44c);outline-offset:-2px}
+#grid .discovery-row input[type=checkbox]{accent-color:var(--neon,#b4f44c);cursor:pointer}
+.wip-intake-mode .pipeline-tools{display:none!important}
+@media(max-width:760px){.backlog-controls{gap:6px}.wip-intake-mode #waiting-candidate-view{padding:4px}.backlog-note{font-size:10px}.wip-intake-mode #worksplit[hidden]{display:none!important}}
+#backlog-decision-controls .backlog-receipt{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-basis:100%;font-size:11px}
+.backlog-receipt details{max-height:120px;overflow:auto;width:100%}
+#backlog-decision-controls [role=alert]{color:#e5c285;width:100%}
+.wip-intake-mode #waiting-candidate-view{max-height:38vh;overflow:auto}
+.wip-intake-mode #worksplit[hidden]{display:none!important}
