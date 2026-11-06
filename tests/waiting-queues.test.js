@@ -15,3 +15,9 @@ test('backlog capture age is visible without inventing a date for old undated re
  const state={items:[{...page.items[0],firstSeen:'2026-11-01T20:00:00Z'}],loaded:1,intakeStatus:'complete'};
  a.match(Q.intakeHtml(state,'',0),/Captured 11\/1\/2026/);delete state.items[0].firstSeen;a.match(Q.intakeHtml(state,'',0),/Capture date unknown/);a.match(Q.intakeHtml(state,'',0),/not all ready for intake/);
 });
+
+test('saved discovery evidence is pinned to the snapshot and only shows supported facts',()=>{
+ const path='state/discovery-evidence/'+ 'b'.repeat(64)+'.json',item={...page.items[0],evidenceRefs:[{path,sha256:'b'.repeat(64),fullPosting:true,observedAt:at}],discoveredFacts:{fullPosting:true,sourceRef:path,degree:{req:'PREFERRED'},pay:{low:175000,high:200000}}},state={items:[item],loaded:1,intakeStatus:'complete',revision:rev};
+ let h=Q.intakeHtml(state,'',0);a.match(h,/Saved posting/);a.match(h,new RegExp('/blob/'+rev+'/state/discovery-evidence/'));a.match(h,/Degree: PREFERRED/);a.match(h,/175,000/);
+ item.discoveredFacts.sourceRef='different';h=Q.intakeHtml(state,'',0);a.doesNotMatch(h,/Posted annual base|Degree:/);item.evidenceRefs[0].path='javascript:bad';a.doesNotMatch(Q.intakeHtml(state,'',0),/Saved posting/);
+});
