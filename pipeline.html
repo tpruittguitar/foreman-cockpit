@@ -438,6 +438,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-products.js"></script>
 <script src="pipeline-ai-usage.js"></script>
 <script src="pipeline-needs-tim.js"></script>
+<script src="pipeline-writer-outcome.js"></script>
 <script src="pipeline-act-now.js"></script>
 <script src="pipeline-list-select.js"></script>
 <script src="pipeline-operations-ui.js"></script>
@@ -763,9 +764,10 @@ function recoverWriteResult_(rid,attempt){
   });
 }
 var GS_POST_TIMEOUT_MS=(typeof window!=='undefined'&&window.PX_TEST_POST_TIMEOUT_MS)||150000;
+function localWriteRefusal_(body,error){return {ok:false,error:error,mode:'WRITE_FENCE',outcome:{schema:'forge.writer-outcome.v1',status:'NOT_ACCEPTED',phase:'BEFORE_MUTATION',code:'WRITE_FENCE',masterMutations:0,requestIds:PipelineWriterOutcome.scope(body||{}),issuer:'LOCAL_PREFLIGHT',retryAfterMs:1000}};}
 function gsPost(body){
-  if(!canSend())return Promise.resolve({ok:false,error:'Writer not connected on this device; nothing sent. Save a Writer connection in Settings to send decisions.'});   // last check before any write
-  if(!S.load||S.load.freshness!=='LIVE')return Promise.resolve({ok:false,error:'Writes are disabled: the current canonical master is not loaded'+(S.load&&S.load.error?' ('+S.load.error+')':'')+'. Refresh first.'});
+  if(!canSend())return Promise.resolve(localWriteRefusal_(body,'Writer not connected on this device; nothing sent. Save a Writer connection in Settings to send decisions.'));   // last check before any write
+  if(!S.load||S.load.freshness!=='LIVE')return Promise.resolve(localWriteRefusal_(body,'Writes are disabled: the current canonical master is not loaded'+(S.load&&S.load.error?' ('+S.load.error+')':'')+'. Refresh first.'));
   body=JSON.parse(JSON.stringify(body||{}));
   var rid=requestIdForBody_(body);
   body.key=S.cfg.key;
@@ -834,10 +836,10 @@ function localSqliteTextFromPagedJobs_(base,seq){
   });
 }
 
-/* Writes refused for a Writer lock timeout never touched the master (waitLock throws first), so they are retried
- * automatically: Tim 2026-10-13 wants trivial non-problems handled by the pipeline, not by manual resubmits. */
+/* Only a request-bound pre-mutation refusal authorizes another delivery.
+ * Uncertain responses are reconciled read-only; local preflight waits for readiness. */
 var WRITER_BUSY_RE_=/lock timeout|writer busy|another process was holding the lock/i,WRITER_BUSY_DELAYS_=[8000,15000,30000,45000];
-function gsPostRetryBusy_(body,onRetry){var attempt=0;function go(){return gsPost(body).then(function(j){if(j&&!j.ok&&WRITER_BUSY_RE_.test(String(j.error||''))&&attempt<WRITER_BUSY_DELAYS_.length){var wait=WRITER_BUSY_DELAYS_[attempt++];if(onRetry)onRetry(attempt,WRITER_BUSY_DELAYS_.length,wait);return new Promise(function(res){setTimeout(res,wait)}).then(go)}return j})}return go()}
+function gsPostRetryBusy_(body,onRetry,onDelivery){var attempt=0;function go(){if(onDelivery)onDelivery('BEFORE_DELIVERY');return gsPost(body).then(function(j){if(PipelineWriterOutcome.retryable(j,PipelineWriterOutcome.scope(body))&&j.outcome.issuer!=='LOCAL_PREFLIGHT'&&attempt<WRITER_BUSY_DELAYS_.length){if(onDelivery)onDelivery('NOT_ACCEPTED',j);var wait=Math.max(WRITER_BUSY_DELAYS_[attempt++],Math.min(600000,Math.max(0,Number(j.outcome.retryAfterMs)||60000))); if(onRetry)onRetry(attempt,WRITER_BUSY_DELAYS_.length,wait);return new Promise(function(res){setTimeout(res,wait)}).then(go)}return j})}return go()}
 function setText_(id,text){var e=$(id);if(e)e.textContent=text}
 /* The default view reads a stored copy of the master. After a write, rebuild that copy from the Writer before reading,
  * so the readback sees the write. Until 2026-10-15 the copy was rebuilt only by a manual button (stale since Oct 11). */
@@ -1722,6 +1724,8 @@ function bindDetail_(r){
 /* One path for every Tim ruling (drawer and Act Now). The same ru object, and so the same requestId, is reused by a retry:
    the Writer answers a replay from its request index, so a retry can never record a second decision. */
 function postRuling_(r,ru,say){
+  if(ru.terminalRefusal){say(ru.error||'Writer rejected this request. Correct the decision before submitting a new request.');return Promise.resolve();}
+  if((ru.deliveryAttempted||ru.writeStatus==='RESULT_UNKNOWN')&&!ru.notAccepted){ru.writeStatus='RESULT_UNKNOWN';outboxMark_(ru);outboxTick_(true);say('Checking the original request; it will not be resent without proof it was not accepted.');return Promise.resolve();}
   ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;render();
   say(!S.load||S.load.freshness!=='LIVE'?'Writes are disabled until the current master loads · your decision is kept on this device and sent automatically once it does':'Queued · sent together with your other decisions in a few seconds…');
   return rulingEnqueue_(r,ru,say);
@@ -1733,7 +1737,7 @@ function postRuling_(r,ru,say){
    own requestId, so a resend is answered ALREADY_APPLIED and can never record a second decision. Per-item results decide
    each ruling; a whole-batch failure (busy, fence, network) leaves every item to the REV-131 outbox. */
 var RULING_BATCH_={q:[],timer:0,chain:Promise.resolve(),rows:{},MS:(typeof window!=='undefined'&&window.PX_TEST_BATCH_MS)||3000,MAX:25};
-function rulingWire_(ru){var w=JSON.parse(JSON.stringify(ru));delete w.decisionSnap;delete w.writeStatus;delete w.error;delete w.receipt;delete w.outbox;return w}   // device-only fields stay here
+function rulingWire_(ru){var w=JSON.parse(JSON.stringify(ru));delete w.decisionSnap;delete w.writeStatus;delete w.error;delete w.receipt;delete w.outbox;delete w.notAccepted;delete w.deliveryAttempted;delete w.notAcceptedHistory;delete w.undoRequested;delete w.terminalRefusal;return w}   // device-only fields stay here
 function rulingEnqueue_(r,ru,say,now){
   if(ru.undone){delete OUTBOX_.inflight[ru.requestId];return Promise.resolve()}   // Undo got there first: never send it
   return new Promise(function(res){
@@ -1752,8 +1756,11 @@ function rulingSend_(items){
   var n=items.length,label=n===1?'Sending to the Writer…':'Sending '+n+' decisions to the Writer in one write…';
   items.forEach(function(it){it.say(label)});
   var body=n===1?{action:'ruling',ruling:rulingWire_(items[0].ru)}:{action:'batch',requests:items.map(function(it){return {action:'ruling',ruling:rulingWire_(it.ru)}})};
-  return gsPostRetryBusy_(body,function(k,of,wait){items.forEach(function(it){it.say('Writer busy with another job · retrying automatically ('+k+' of '+of+') in '+Math.round(wait/1000)+' s…')})}).then(function(j){
+  items.forEach(function(it){if(it.ru.notAccepted)(it.ru.notAcceptedHistory||(it.ru.notAcceptedHistory=[])).push(it.ru.notAccepted);delete it.ru.notAccepted;it.ru.deliveryAttempted=true});LS.set('rulings',S.rulings);
+  return gsPostRetryBusy_(body,function(k,of,wait){items.forEach(function(it){it.say('Writer busy with another job · retrying automatically ('+k+' of '+of+') in '+Math.round(wait/1000)+' s…')})},function(phase,response){items.forEach(function(it){if(phase==='NOT_ACCEPTED')it.ru.notAccepted={response:response,requestIds:PipelineWriterOutcome.scope(body)};else{if(it.ru.notAccepted)(it.ru.notAcceptedHistory||(it.ru.notAcceptedHistory=[])).push(it.ru.notAccepted);delete it.ru.notAccepted;it.ru.deliveryAttempted=true;}});LS.set('rulings',S.rulings);}).then(function(j){
     var any=false;
+    var refused=PipelineWriterOutcome.notAccepted(j,PipelineWriterOutcome.scope(body));
+    items.forEach(function(it){if(refused){it.ru.notAccepted={response:j,requestIds:PipelineWriterOutcome.scope(body)};it.ru.terminalRefusal=!PipelineWriterOutcome.retryable(j,PipelineWriterOutcome.scope(body));}else{delete it.ru.notAccepted;delete it.ru.terminalRefusal;}});
     try{
       /* Grok QA #182: a per-item ok counts only when the batch committed. BATCH_RULING_RETRY ("master changed") returns its
          PLANNED items as ok:true with nothing written. Results match by requestId; a decision with no result is unknown. */
@@ -1780,7 +1787,7 @@ function rulingSettle_(it,ok,err,receipt){
   ru.receipt=receipt;ru.error=ok?'':err;ru.writeStatus=ok?'READBACK_PENDING':ok===null?'RESULT_UNKNOWN':'WRITE_FAILED';
   outboxMark_(ru);if(S.rulings[r.id]===ru||!S.rulings[r.id])S.rulings[r.id]=ru;LS.set('rulings',S.rulings);
   if(ok)it.say('Saved · refreshing the master to confirm…');
-  else{LS.set('writeError',ru.error);it.say(ok===null?'Result unknown · '+err+' · it will be checked and resent automatically':ru.outbox&&ru.outbox.auto?ru.error+' · not saved yet; it will be resent automatically until the Writer saves it':ru.error)}
+  else{LS.set('writeError',ru.error);it.say(ok===null?'Result unknown · '+err+' · it will be checked automatically; the original request is retained':ru.outbox&&ru.outbox.auto?ru.error+' · not saved yet; it will be resent automatically until the Writer saves it':ru.error)}
   it.res();
 }
 /* Grok QA #182: Undo goes through the same one-at-a-time queue, so it can never land before a queued or retrying ruling for
@@ -1798,48 +1805,58 @@ function undoRuling_(r,say){
   render();
   if(queued&&!flying.length){say('Undone · it had not been sent yet');return Promise.resolve()}
   say('Undoing…');
-  function landed_(x){return gsGet('request_result','&requestId='+encodeURIComponent(x.requestId)).then(function(j){return !!(j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||'')))},function(){return false})}
+  function landed_(x){return gsGet('request_result','&requestId='+encodeURIComponent(x.requestId)).then(function(j){return PipelineWriterOutcome.decision(j,x.notAccepted,x.requestId)},function(){return PipelineWriterOutcome.decision(null,x.notAccepted,x.requestId)})}
   RULING_BATCH_.chain=RULING_BATCH_.chain.then(function(){
     var check;
-    if(flying.length)check=flying.some(function(f){return f.sent===true})?Promise.resolve(true):Promise.all(flying.filter(function(f){return f.sent!==false}).map(landed_)).then(function(v){return v.some(Boolean)});
-    else if(retrying)check=landed_(ru);
-    else check=Promise.resolve(saved);   // only a saved decision is undone on the Writer; a refused one or a draft never landed
+    if(flying.length)check=flying.some(function(f){return f.sent===true})?Promise.resolve('landed'):Promise.all(flying.map(landed_)).then(function(v){return v.some(function(x){return x==='landed'})?'landed':v.some(function(x){return x==='unknown'})?'unknown':'send'});
+    else if(retrying||(ru&&(ru.deliveryAttempted||ru.writeStatus==='WRITE_FAILED'||ru.writeStatus==='RESULT_UNKNOWN')))check=landed_(ru);
+    else check=Promise.resolve(saved?'landed':'send');   // only a saved decision is undone on the Writer; a refused one or a draft never landed
     return check.then(function(landed){
-      if(!landed){say('Undone · it never reached the Writer, so your earlier decision stands');render();return}
+      if(landed==='unknown'){if(ru){ru.undone=false;ru.undoRequested=true;ru.writeStatus='RESULT_UNKNOWN';S.rulings[r.id]=ru;outboxDeferUnknown_(ru);LS.set('rulings',S.rulings);outboxSchedule_();}say('Undo pending: the original request is still being checked. Your earlier decision is preserved.');render();return}
+      if(landed!=='landed'){say('Undone · the request was not accepted, so your earlier decision stands');render();return}
       return gsPost({action:'undo_ruling',undo:{primaryId:r.PRIMARY_ID}}).then(function(j){if(j.ok){say('Undone');reloadAfterWrite_()}else say(j.error||'Undo failed')});
     });
   }).catch(function(e){say('Undo failed · '+e.message)});
   return RULING_BATCH_.chain;
 }
 /* REV-131 (Tim 2026-10-20 23:11 / 23:16 ET: "shouldn't the system automatically resubmit until it saves to the master").
-   Every Tim ruling the Writer did not confirm stays in an outbox and is resent with the SAME requestId until it saves:
-   busy / lock timeout / write fence / network / result unknown, and a "Saving" left behind by a closed page. Before each
-   resend the Writer's request_result is asked, so a write that did land is never sent again (and a resend would be
-   answered as a replay anyway). Backoff 30 s → 10 min; also on app open, return to the foreground and coming online.
+   Every unconfirmed ruling stays in the outbox. Request-result reads recover landed writes;
+   only a bound NOT_ACCEPTED proof permits another delivery. Network errors, missing results and old Saving
+   states remain uncertain and are never blindly resent. Known refusals back off 30 s → 10 min (or server retry-after);
+   readiness, foreground and online events also trigger read-only reconciliation.
    A real refusal (e.g. a protected applied row) stops the outbox and shows "Decision not saved" with the reason. */
 var OUTBOX_RETRY_RE_=/lock timeout|writer busy|another process was holding the lock|WRITE_FENCE|not yet independently verified|frozen|Writes are disabled|master changed during request|\bretry\b|Failed to fetch|NetworkError|network|timed? ?out|HTTP 5\d\d|result unknown|could not be verified|Unexpected token|Load failed/i;
 var OUTBOX_DELAYS_=(typeof window!=='undefined'&&window.PX_TEST_OUTBOX_DELAYS)||[30000,60000,120000,300000,600000];
 var OUTBOX_={inflight:{},timer:0,busy:false};
-function outboxRetryable_(ru){if(!ru||!ru.requestId||ru.undone)return false;var s=ru.writeStatus;return s==='RESULT_UNKNOWN'||(s==='WRITE_FAILED'&&OUTBOX_RETRY_RE_.test(String(ru.error||'')))||(s==='SUBMITTING'&&!OUTBOX_.inflight[ru.requestId])}
-function outboxMark_(ru){var o=ru.outbox||{tries:0};if(outboxRetryable_(ru)){o.auto=true;o.nextAt=Date.now()+OUTBOX_DELAYS_[Math.min(o.tries||0,OUTBOX_DELAYS_.length-1)];ru.outbox=o}else if(ru.outbox){ru.outbox.auto=false;ru.outbox.nextAt=0}}
+function outboxRetryable_(ru){if(!ru||!ru.requestId||ru.undone||ru.terminalRefusal)return false;var s=ru.writeStatus;return s==='RESULT_UNKNOWN'||(s==='WRITE_FAILED'&&OUTBOX_RETRY_RE_.test(String(ru.error||'')))||(s==='SUBMITTING'&&!OUTBOX_.inflight[ru.requestId])}
+function outboxMark_(ru){var o=ru.outbox||{tries:0};if(outboxRetryable_(ru)){o.auto=true;var server=ru.notAccepted&&ru.notAccepted.response.outcome;var delay=OUTBOX_DELAYS_[Math.min(o.tries||0,OUTBOX_DELAYS_.length-1)];o.nextAt=Date.now()+Math.max(delay,server?Math.min(600000,Math.max(0,Number(server.retryAfterMs)||60000)):0);ru.outbox=o}else if(ru.outbox){ru.outbox.auto=false;ru.outbox.nextAt=0}}
 function outboxDue_(force){var now=Date.now();return Object.keys(S.rulings).filter(function(k){var ru=S.rulings[k];return outboxRetryable_(ru)&&(force||!ru.outbox||!ru.outbox.nextAt||ru.outbox.nextAt<=now)})}
 function outboxTick_(force){if(OUTBOX_.busy||!canSend()||!S.load||S.load.freshness!=='LIVE')return;var due=outboxDue_(force);if(!due.length){outboxSchedule_();return}
   if(due.length>1){   // REV-132: several waiting → ask request_result for each (reads, no lock), then one batch for the rest
     OUTBOX_.busy=true;due=due.slice(0,RULING_BATCH_.MAX);
     var held=due.map(function(k){return S.rulings[k]});
-    Promise.all(due.map(function(k){var ru=S.rulings[k];return gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return !!(j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||'')))},function(){return false})})).then(function(landed){
+    Promise.all(due.map(function(k){var ru=S.rulings[k];return gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return PipelineWriterOutcome.decision(j,ru.notAccepted,ru.requestId)},function(){return PipelineWriterOutcome.decision(null,ru.notAccepted,ru.requestId)})})).then(function(landed){
       var ps=[];due.forEach(function(k,i){var ru=held[i];if(!ru||ru.undone)return;   // undone during the check (Undo also removes it from S.rulings)
-        if(landed[i]){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;return}
+        if(landed[i]==='refused'){ru.terminalRefusal=true;ru.writeStatus='WRITE_FAILED';if(ru.outbox)ru.outbox.auto=false;return;}
+        if(landed[i]==='unknown'){outboxDeferUnknown_(ru);return;}
+        if(landed[i]==='landed'&&ru.undoRequested){ru.writeStatus='READBACK_PENDING';undoRuling_(rowById(k)||{id:k,PRIMARY_ID:ru.primaryId},function(){});return;}
+        if(landed[i]==='send'&&ru.undoRequested){delete S.rulings[k];return;}
+        if(landed[i]==='landed'){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;return}
         var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();ru.writeStatus='SUBMITTING';ru.error='';OUTBOX_.inflight[ru.requestId]=1;ps.push(rulingEnqueue_(rowById(k)||{id:k},ru,function(){}))});
       LS.set('rulings',S.rulings);rulingFlush_();if(!ps.length)render();return Promise.all(ps)}).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()});return}
   var id=due[0];
   var ru=S.rulings[id],r=rowById(id)||{id:id};OUTBOX_.busy=true;
-  gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return j&&j.ok&&j.found&&/COMPLETE|PENDING/.test(String(j.status||''))?'landed':'send'},function(){return 'send'}).then(function(next){
+  gsGet('request_result','&requestId='+encodeURIComponent(ru.requestId)).then(function(j){return PipelineWriterOutcome.decision(j,ru.notAccepted,ru.requestId)},function(){return PipelineWriterOutcome.decision(null,ru.notAccepted,ru.requestId)}).then(function(next){
+    if(next==='refused'){ru.terminalRefusal=true;ru.writeStatus='WRITE_FAILED';if(ru.outbox)ru.outbox.auto=false;LS.set('rulings',S.rulings);render();return;}
+    if(next==='unknown'){outboxDeferUnknown_(ru);LS.set('rulings',S.rulings);render();return;}
+    if(next==='landed'&&ru.undoRequested){ru.writeStatus='READBACK_PENDING';return undoRuling_(r,function(){});}
+    if(next==='send'&&ru.undoRequested){delete S.rulings[id];LS.set('rulings',S.rulings);render();return;}
     if(next==='landed'){ru.writeStatus='READBACK_PENDING';ru.error='';ru.receipt=ru.receipt||{REQUEST_ID:ru.requestId,RECOVERED_BY:'request_result'};if(ru.outbox)ru.outbox.auto=false;LS.set('rulings',S.rulings);render();return}
     if(ru.undone)return;   // undone during the check
     var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.lastAt=new Date().toISOString();
     ru.error='';ru.writeStatus='SUBMITTING';OUTBOX_.inflight[ru.requestId]=1;return rulingEnqueue_(r,ru,function(){},true);
   }).then(function(){OUTBOX_.busy=false;if(outboxDue_(false).length)setTimeout(function(){outboxTick_(false)},1000);else outboxSchedule_()},function(){OUTBOX_.busy=false;outboxSchedule_()})}
+function outboxDeferUnknown_(ru){var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.auto=true;o.nextAt=Date.now()+OUTBOX_DELAYS_[Math.min(o.tries,OUTBOX_DELAYS_.length-1)];ru.writeStatus='RESULT_UNKNOWN';ru.error='Waiting for independent Writer proof; original request retained';}
 function outboxSchedule_(){clearTimeout(OUTBOX_.timer);var next=Infinity;Object.keys(S.rulings).forEach(function(k){var ru=S.rulings[k];if(outboxRetryable_(ru))next=Math.min(next,ru.outbox&&ru.outbox.nextAt||Date.now())});if(next<Infinity)OUTBOX_.timer=setTimeout(function(){outboxTick_(false)},Math.max(1000,next-Date.now()))}
 /* ---------- Act Now (Simplify PR 1) ---------- */
 function actNowModel_(){return PipelineActNow.pick(distinctRows_().filter(function(r){return !terminalJob_(r)||ruling(r)}),{now:Date.now(),ruling:ruling,score:function(r){var s=scoreFor_(r);return s?s.overall:null},fitMeasured:hasMeasuredFit_,snoozes:S.anSnooze})}

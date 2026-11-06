@@ -131,12 +131,14 @@ function processWriterQueue() {
         else { delete parsed.body.key; result = dispatchWrite_(parsed.body); }
       } catch (e) {
         var emsg = String(e && e.message || e);
-        // waitLock throws before the writer touches the master: another execution held the script lock. Nothing ran, so the
-        // request is released for the next tick (WRITE_FENCE path below), never finalized as FAILED.
-        if (!claim.stale && /^Lock timeout/i.test(emsg)) result = { ok: false, mode: 'WRITE_FENCE', retryAfterMs: 60000, lockTimeout: true, error: 'writer busy (' + emsg + '); request left queued for the next tick' };
-        else result = claim.stale ? abandonedClaimResult_(claim.stale, body) : { ok: false, error: emsg, errorStack: errorStack_(e), docAccess: docAccessSummary_() };
+        // A dispatch exception can occur after a save. Only an explicit bound
+        // pre-mutation response below authorizes another dispatch.
+        result = claim.stale ? abandonedClaimResult_(claim.stale, body) : { ok: false, mode: 'OUTCOME_UNKNOWN', error: emsg, errorStack: errorStack_(e), docAccess: docAccessSummary_() };
       }
-      if (result && result.mode === 'WRITE_FENCE') {
+      var refusal = result && result.outcome, refusedIds = body && (body.action === 'batch' ? (body.requests || []).map(function (q) { return q.ruling && q.ruling.requestId || q.requestId; }) : [body.ruling && body.ruling.requestId || body.requestId]);
+      var plannedOnly = result && result.mode === 'BATCH_RULING_RETRY' && Array.isArray(result.results) && result.results.length === (refusedIds || []).length && result.results.every(function (x) { return x.ok === true && x.mode === 'PLANNED'; }) && JSON.stringify(result.results.map(function (x) { return x.requestId; }).sort()) === JSON.stringify((refusedIds || []).slice().sort());
+      var notAccepted = result && result.ok === false && !result.writeId && !result.WRITE_ACCEPTED && (!result.results || !result.results.length || plannedOnly) && refusal && refusal.schema === 'forge.writer-outcome.v1' && refusal.status === 'NOT_ACCEPTED' && refusal.phase === 'BEFORE_MUTATION' && refusal.masterMutations === 0 && /^(WRITER_BUSY|WRITE_FENCE)$/.test(refusal.code) && Array.isArray(refusal.requestIds) && JSON.stringify(refusal.requestIds.slice().sort()) === JSON.stringify((refusedIds || []).slice().sort());
+      if (result && (result.mode === 'WRITE_FENCE' || notAccepted)) {
         // Not a failure and nothing ran: an earlier write is unverified, this execution already wrote the master, or the
         // writer is frozen. Release the claim; if the rename fails the file goes stale and is finalized as HOLD_ABANDONED.
         try { file.setName(original); } catch (re) {}
@@ -178,6 +180,7 @@ function processWriterQueue() {
 
 /** Pure: the terminal state a RESULT reports. */
 function terminalStatus_(result) {
+  if (result && result.mode === 'OUTCOME_UNKNOWN') return 'HOLD_UNCERTAIN';
   if (result && result.mode === 'ABANDONED_CLAIM') return 'HOLD_ABANDONED';
   if (result && result.partial) return 'PARTIAL_HOLD';
   return result && result.ok ? 'SUCCESS' : 'FAILED';
@@ -353,7 +356,7 @@ function writerStatus_() {
     s.recentRuns = runs.slice(-8).reverse();
     // Warnings follow the 24-hour policy window, not queue traffic: every HOLD-type result that finished
     // inside the window is kept, however many runs came after it. An unparseable finishedAt counts as recent.
-    s.recentHolds = runs.filter(function (r) { var t = Date.parse(r.finishedAt); return /HOLD/.test(r.terminalStatus) && (isNaN(t) || now - t < STATUS_RECENT_HOLD_MS); }).reverse();
+    s.recentHolds = runs.filter(function (r) { var t = Date.parse(r.finishedAt); return /HOLD/.test(r.terminalStatus) && (r.terminalStatus === 'HOLD_UNCERTAIN' || isNaN(t) || now - t < STATUS_RECENT_HOLD_MS); }).reverse();
     // FAILED runs (usually a governance rejection: nothing was written) inside the same window, newest first.
     s.recentFailed = runs.filter(function (r) { var t = Date.parse(r.finishedAt); return r.terminalStatus === 'FAILED' && (isNaN(t) || now - t < STATUS_RECENT_HOLD_MS); }).reverse();
     // PARTIAL_HOLD is an audit fact, not necessarily an active fault. If every request in the
@@ -361,7 +364,7 @@ function writerStatus_() {
     // keep it in history but mark it recovered so the Explorer no longer raises an active warning.
     // Fail closed: the exact logged file is read by ID; a missing ID, an unreadable file or any
     // request without a COMPLETE ID leaves the run unrecovered and its warning in place.
-    var partials = s.recentHolds.concat(s.recentRuns).filter(function (r, i, all) { return /^(PARTIAL_HOLD|SUCCESS)$/.test(r.terminalStatus) && all.indexOf(r) === i; });
+    var partials = s.recentHolds.concat(s.recentRuns).filter(function (r, i, all) { return /^(PARTIAL_HOLD|HOLD_UNCERTAIN|SUCCESS)$/.test(r.terminalStatus) && all.indexOf(r) === i; });
     if (partials.length) {
       var idx = readIndex_(), states = (idx && idx.requests) || {};
       partials.forEach(function (r) {
@@ -404,7 +407,7 @@ function writerWarnings_(s, now) {
   if (u.count && ua > STATUS_UNVERIFIED_WARN_MS) w.push({ level: ua > STATUS_UNVERIFIED_CRIT_MS ? 'critical' : 'warn', code: 'WRITE_UNVERIFIED', message: u.count + ' master write(s) not yet independently verified; oldest ' + min(ua) + ' ago. New master writes are fenced until it resolves.' });
   // recentHolds covers the whole 24-hour window; recentRuns (last 8) is only a fallback for an older status shape.
   (Array.isArray(s.recentHolds) ? s.recentHolds : (s.recentRuns || [])).forEach(function (r) {
-    if (/HOLD/.test(r.terminalStatus) && !r.recovered && age(r.finishedAt) < STATUS_RECENT_HOLD_MS) w.push({ level: 'warn', code: r.terminalStatus, message: r.file + ' ended ' + r.terminalStatus + ' at ' + r.finishedAt + '. See its RESULT in WRITER_QUEUE/failed before resubmitting.' });
+    if (/HOLD/.test(r.terminalStatus) && !r.recovered && (r.terminalStatus === 'HOLD_UNCERTAIN' || age(r.finishedAt) < STATUS_RECENT_HOLD_MS)) w.push({ level: 'warn', code: r.terminalStatus, message: r.file + ' ended ' + r.terminalStatus + ' at ' + r.finishedAt + '. See its RESULT in WRITER_QUEUE/failed before resubmitting.' });
   });
   // One notice for FAILED runs in the window. Notice level never raises s.level: a FAILED run wrote nothing, but
   // whoever submitted it should know it was refused and why.

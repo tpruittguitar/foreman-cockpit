@@ -44,7 +44,9 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
         output.checks[key]={ok:true,at:j.at,tracked:output.boardHealth.length,pending:output.boardHealth.filter(x=>x.status!=='OK').length};
       }else if(key==='schedules'){
         if(j.schema!=='forge.schedule-readback.v1'||!Array.isArray(j.local))throw Error('Unsupported schedule readback');
-        output.checks[key]={ok:true,at:j.at,configured:j.local.filter(x=>x.status==='ACTIVE').length,ids:j.local.filter(x=>x.status==='ACTIVE').map(x=>x.id),executionVerified:j.executionVerified===true};
+        output.checks[key]={ok:true,at:j.at,configured:j.local.filter(x=>x.status==='ACTIVE'&&x.managed!==false).length,ids:j.local.filter(x=>x.status==='ACTIVE'&&x.managed!==false).map(x=>x.id),executionVerified:false,
+          taskExecutionVerified:false,nativeInvocationVerified:false,configurationReadbackScope:j.configurationReadbackScope||'UNSPECIFIED',
+          configurationDiscrepancies:Array.isArray(j.configurationDiscrepancies)?j.configurationDiscrepancies:[]};
       }else{
         if(!j.summary||!j.summary.at||!Array.isArray(j.new_roles))throw Error('Unsupported discovery report');
         output.checks[key]={ok:true,at:j.summary.at,failedBoards:j.summary.boards?.failed||0,candidates:j.new_roles.length};
@@ -56,7 +58,14 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
   const e=output.execution,s=output.checks.schedules;
   if(e&&s?.ok&&now-Date.parse(e.at)<90*60000&&now>=Date.parse(e.at)){
     const active=e.schedules.active;
-    output.checks.schedules={...s,executionVerified:active.length===s.configured&&active.length>0&&new Set(active.map(x=>x.id)).size===s.configured&&active.every(x=>s.ids.includes(x.id)&&x.executionVerified===true),executionAt:e.at,unverified:active.filter(x=>x.executionVerified!==true).map(x=>x.id)};
+    const matches=active.length===s.configured&&active.length>0&&new Set(active.map(x=>x.id)).size===s.configured&&active.every(x=>s.ids.includes(x.id));
+    const taskVerified=matches&&active.every(x=>(x.taskExecutionVerified??x.executionVerified)===true);
+    output.checks.schedules={...s,executionVerified:taskVerified,taskExecutionVerified:taskVerified,
+      nativeInvocationVerified:matches&&active.every(x=>x.nativeInvocationVerified===true),
+      nativeInvocationStatus:e.schedules.nativeInvocationStatus||'NOT_OBSERVED',
+      serviceWorkVerified:Array.isArray(e.services)&&e.services.some(x=>x.workEvidenceVerified===true),
+      configurationDiscrepancies:[...s.configurationDiscrepancies,...(Array.isArray(e.schedules.configurationDiscrepancies)?e.schedules.configurationDiscrepancies:[])],
+      executionAt:e.at,unverified:active.filter(x=>(x.taskExecutionVerified??x.executionVerified)!==true).map(x=>x.id)};
   }
   if(reports)output.candidates=urls.size;
   if(output.decisionReady&&(!output.processFlow||output.decisionReady.at!==output.processFlow.at||output.decisionReady.ids.length!==output.processFlow.queues.readyForReview)){output.decisionReady=null;output.checks.processStates={ok:false,error:'Readiness does not reconcile with process flow'};}

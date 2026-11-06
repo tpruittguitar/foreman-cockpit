@@ -107,7 +107,7 @@ test('scoring config is memoized; rules text is not re-parsed per row',()=>{
 
 test('writes retry on Writer lock timeout and the default view re-reads a fresh copy after writes',()=>{
   assert.match(html,/var WRITER_BUSY_RE_=\/lock timeout\|writer busy\|another process was holding the lock\/i/);
-  assert.match(html,/function gsPostRetryBusy_\(body,onRetry\)/);
+  assert.match(html,/function gsPostRetryBusy_\(body,onRetry(?:,[A-Za-z_$][\w$]*)?\)/);
   assert.match(html,/function postRuling_\(r,ru,say\)\{[^]*?return rulingEnqueue_\(r,ru,say\)/);   // Simplify PR 1: one shared poster (postRuling_) for the drawer and Act Now
   assert.match(html,/var body=n===1\?\{action:'ruling',ruling:rulingWire_\(items\[0\]\.ru\)\}:\{action:'batch',requests:/);   // REV-132: quick taps coalesce into one batch
   assert.match(html,/return gsPostRetryBusy_\(body,function\(k,of,wait\)/);
