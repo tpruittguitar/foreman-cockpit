@@ -18,6 +18,6 @@ The UI persists the exact receipt ID before POST and verifies the local storage 
 - `npm run check:cloudflare`
 - `node tests/backlog-grid.browser.js` (uses synthetic 6,500 candidates, blocks external requests and production Writer traffic)
 
-The browser regression exercises same columns, row/page/keyboard selection, search, view switching, normal mobile navigation and a 65-batch receipt history. It requires a working Chromium sandbox/environment. In the implementation executor Chromium failed at process startup (`socket() Operation not permitted`), so no visual/browser pass is claimed. Run this gate before treating the draft as ready to merge.
+The browser regression exercises same columns, row/page/keyboard selection, search, view switching, normal mobile navigation and a 65-batch receipt history. It requires a working Chromium sandbox/environment. The local implementation executor cannot launch Chromium (`socket() Operation not permitted`). Independent isolated cloud-browser QA subsequently passed the 6,500-candidate flows, actual mobile entry, bounded 65-batch history, zero browser errors and zero writes. The browser regression uses intercepted public module factories and UI controls, not private application globals. The reproducible script remains a required browser gate in a compatible executor.
 
 No merge, deployment, live job decision, canonical write or schedule change was performed by this implementation.
