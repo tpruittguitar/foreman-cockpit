@@ -44,7 +44,8 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
         if(b.action==='batch')return r.fulfill({json:{ok:true,mode:'BATCH_RULING_SINGLE_COMMIT',writeId:'W1',results:b.requests.map(q=>({ok:true,requestId:q.ruling.requestId}))}});
         return r.fulfill({json:{ok:true,receipt:{REQUEST_ID:b.ruling&&b.ruling.requestId}}})}
       if(a==='master')return r.fulfill({json:{ok:true,text:fixture,modifiedTime:new Date().toISOString(),fetchedAt:new Date().toISOString()}});
-      if(a==='request_result')return r.fulfill({json:{ok:true,found:true,status:'COMPLETE'}});
+      // Match the Writer contract: completion belongs to the exact queried request.
+      if(a==='request_result')return r.fulfill({json:{ok:true,requestId:new URL(req.url()).searchParams.get('requestId'),found:true,status:'COMPLETE'}});
       return r.fulfill({json:{ok:true}})});
     await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#m-pane-decide .m-card');await page.waitForTimeout(300);
     return {ctx,page,errors,posts};
