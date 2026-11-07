@@ -1,39 +1,18 @@
-# Pipeline Explorer state writer — one-time setup (about 5 minutes)
+# Pipeline Explorer state writer
 
-This script runs in **your** Google account. It reads the canonical master and, when an approved Explorer or AI request arrives, writes the requested change into the master row in place, recounts, reads it back, and logs a receipt. It also supports Scout intake, data-discovery requests, scoring-model saves, document-text reads and the Drive queue. The queue trigger is the only unattended execution path; direct requests are handled immediately when the runtime can reach the web app.
+The Writer uses private Apps Script Script Properties for authentication and fixed Drive targets. Code.gs no longer contains a default passphrase or private target identifiers. This is not a claim that unchanged repository files or history have been sanitized. Configuration must be complete and valid before any HTTP handler or installed trigger runs.
 
-1. Open https://script.google.com and click **New project**.
-2. Delete the placeholder code, paste the full contents of `Code.gs` from this folder.
-3. Near the top, change `PASSPHRASE = 'CHANGE-ME'` to a passphrase of your own. Click the save icon.
-4. Click **Deploy** (top right) → **New deployment** → gear icon → **Web app**.
-   - Description: anything.
-   - Execute as: **Me**.
-   - Who has access: **Anyone**.
-   - Click **Deploy**. Approve the permissions prompt (Drive and Docs access for your own account).
-5. Copy the **Web app URL** (ends in `/exec`).
-6. Open the Explorer, click the **⚙** button, paste the URL and your passphrase, click **Test**, then **Save**.
+**Deployment is blocked in this draft.** Both `deploy.sh` and `activate_v5.sh` intentionally refuse every invocation, including `--head`, until separately approved configuration migration and verified readback are complete. Uploading HEAD also changes installed-trigger execution, even if the web app deployment stays unchanged. Do not bypass the gate with manual paste-over, direct API calls, or older deployment scripts.
 
-That is all. With the script configured, the page reads the master through it (the Doc no longer needs to be shared by link), your rulings go straight into the master, and your seen-state syncs across devices.
+Follow [Private Writer configuration](../docs/WRITER_PRIVATE_CONFIGURATION.md) for the property names, approval boundaries, verification, and rollout dependencies. This change does not migrate settings, rotate credentials, modify scopes, install triggers, or deploy anything. Explicitly saved browser connections are retained; browsers relying on bundled defaults require private setup.
+
+## Tests
+
+Run `npm test` for the full synthetic test suite. It explicitly preloads `tests/helpers/writer-runtime-fixture.cjs`; production has no synthetic defaults. For focused Node tests importing `Code.gs`, run `node --require ./tests/helpers/writer-runtime-fixture.cjs --test tests/<name>.test.js` from the repository root. Isolated VM tests must explicitly provide their own synthetic PropertiesService fixture.
 
 ## Receipt-index GitHub migration (REV-010)
 
-The GitHub receipt-index backend requires a separate `GITHUB_WRITER_STATE_TOKEN` Script Property with Contents read/write permission on `tpruittguitar/forge-writer-state`. Deployment alone leaves the index on Drive. Follow [the cutover runbook](../docs/RECEIPT_INDEX_GITHUB_CUTOVER.md) to freeze, seed from the current locked Drive snapshot, verify and activate GitHub. Do not manually switch the source property or treat the repo's initial review seed as live state.
-
-**To change the script later:** edit `Code.gs` in the Apps Script editor, then **Deploy → Manage deployments → edit (pencil) → Version: New version → Deploy**. The URL stays the same.
-
-**Also in this script (scout-intake PR):** `action=intake` for Scout discoveries (see `docs/SCOUT_INTAKE_CONTRACT.md`), `action=rules` (reads the canonical Doc `TIM_NEVER_CONSIDER_RULES` in AI_Coordination by fixed ID, read-only) and `action=runs` (`SCOUT_RUN_METRICS.jsonl` beside the master). After updating the script, redeploy: **Deploy → Manage deployments → pencil → Version: New version → Deploy**. The URL stays the same. The first run after redeploy will ask you to approve Docs access again.
-
-**What it writes.** Only the row you ruled on, plus the `COUNTS:` line. Notes go into a `TIM_NOTE=` payload key. "Do not pursue" and "Decline" set `BUCKET=DECLINED_BY_TIM` with `DECLINE_REASON_CODE`, `DECLINE_REASON_TEXT`, `REOPEN_TRIGGER`, `TIM_DISPOSITION`. "Pursue" sets `BUCKET=READY_TO_PURSUE` with `TIM_RULING=PURSUE`. "I applied" sets `BUCKET=APPLIED` with `APP_DATE` and `ANTI_RESURRECTION=YES`. Every write adds `STATE_SOURCE=TIM_EXPLORER:<request id>` and `STATE_UPDATED_AT`. Rows already APPLIED or REJECTED_BY_EMPLOYER cannot be declined or set to pursue (protected applicant state, Amendment 58). Section headings are left where they are; the master's own rule says row BUCKET is authoritative.
-
-## Historical manual deployment note
-The old paste-over instructions below are retained only as history. When `apps-script/deploy.sh` and clasp access are available, use that script so the existing web-app URL and passphrase are preserved. Do not infer live capabilities from this historical section; call `action=ping` and use the returned action list.
-
-Files the script creates beside the master on first use (no action needed): `SCOUT_RUN_METRICS.jsonl` (telemetry). Existing: `PIPELINE_EXPLORER_STATE.json`, `PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS`.
-
-## Automated deploys and AI access (2026-10-02)
-Nobody needs to paste code into the editor any more. `apps-script/deploy.sh` sets the live project to exactly this folder's `.gs` files, keeps the live passphrase, publishes a new version and points the existing web app at it, so the URL never changes. It needs a clasp login (`clasp login --no-localhost`) and the Apps Script API switched on at script.google.com/home/usersettings. `apps-script/deploy.sh --head` updates the code without touching the live web app.
-
-`Automation.gs` adds the Drive write queue (AI_Coordination/WRITER_QUEUE, claimed by a one-minute trigger). Run `installAutomation` once from the editor to approve the trigger permission and install the trigger. Queue files are transport only, never a second population. How the AIs write is described in `docs/WRITER_ACCESS.md`.
+The GitHub receipt-index backend uses a separate `GITHUB_WRITER_STATE_TOKEN` Script Property with Contents read/write permission on `tpruittguitar/forge-writer-state`. Follow [the cutover runbook](../docs/RECEIPT_INDEX_GITHUB_CUTOVER.md) only with the required approvals. Do not change this setting as part of the private Writer configuration separation.
 
 ## Intake handoff identity and legacy recovery
 

@@ -2,6 +2,32 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+## Local draft 2026-11-07: separate private Writer runtime configuration
+
+Status: source-only draft. Do not merge or deploy until approved private configuration migration/readback and downstream caller setup are complete. No live settings, scopes, triggers, credentials, or canonical data were changed.
+
+Changed: `Code.gs` loads the existing authentication credential and nine private Drive targets from a complete, validated Script Properties snapshot. Invalid or unreadable configuration fails before HTTP handlers or installed triggers run. The active/frozen master guards and exact-profile metadata proof remain enforced. The manual status check returns no values. Node/VM tests now explicitly provide synthetic configuration; production has no test defaults.
+
+Removed credential/default copies from the connection asset and historical implementation note. Explicitly saved browser connections remain; browsers using bundled defaults require private setup. Deployment and activation wrappers now refuse all invocations, including `--head`, until an approved migration and verified readback permit restoring a reviewed release path. The impact tool reports `NOT_RUN` without requests when private runtime configuration is absent. Coordination callers that parsed public defaults remain a rollout blocker, detailed in `WRITER_PRIVATE_CONFIGURATION.md`.
+
+Verification: focused configuration/metadata tests passed 29/29; full suite passed 873/873; The supported intake CLI also passed no-preload import/usage and row-hash parity checks; the isolated benchmark passed 48/48 synthetic samples. Cloudflare, shell/JavaScript syntax, and whitespace checks passed. Complete changed files were scanned for known credential, Drive, script, and deployment values with no hits. Browser contract tests were updated and syntax checked, but browser runtime validation is blocked because Chromium cannot launch in this environment; no app assertions ran. Live impact, migration, and deployment were not run.
+
+Removing current copies does not remove prior Git-history exposure or rotate the credential. Only sanitized final file contents may be published in a clean snapshot; credential-bearing local preparation history must never be pushed.
+
+## Local draft 2026-11-07: exact profile resume metadata verification
+
+Status: tested local change only. Not published, deployed, or enabled. Coordination callers must remain fail-closed until an authorized Writer release provides this response.
+
+Problem: a matching profile can reference an existing resume outside the canonical resume inventory. Folder enumeration alone cannot verify that exact source's current version, and an older in-folder file must not replace it.
+
+Changed (`apps-script/Code.gs`): the existing authenticated `GET action=documents` accepts optional `profileResumeId`. When supplied, it adds a separate `profileResume` object with `schema: "forge.profile-resume-metadata.v1"`, `status: "VERIFIED" | "UNKNOWN"`, `source: "DIRECT_FILE_METADATA"`, `id`, `modifiedTime`, `checkedAt`, and an optional fixed `reason` code. The old inventory fields stay intact; omitting the parameter omits the new field.
+
+The exact-file read uses only existing Drive metadata access. It never reads resume text/bytes, follows shortcuts, returns titles/URLs, adds inventory entries, or changes ownership/access/scopes. It validates the ID and rejects the active/frozen masters, trashed files, folders, shortcuts, mismatched IDs, and invalid metadata. Access failures return sanitized `UNKNOWN` proof without discarding the inventory response. Each request reads metadata again. Consumers must require this schema/source, `VERIFIED`, exact source ID/version, and a fresh `checkedAt`; no metadata proof certifies resume contents or supersedes a newer inventory entry.
+
+The documents GET now reads the existing config without creating it when absent. Explicit resume approval retains its existing creation and canonical-folder checks. No schedules, master data, credentials, persistent access, or deployment settings changed.
+
+Verification: `node --require ./tests/helpers/writer-runtime-fixture.cjs --test tests/writer-profile-resume-metadata.test.js` passed 18/18; `npm test` passed 860/860; `npm run check:cloudflare` and `git diff --check` passed. Synthetic tests cover auth before Drive access, exact ID/version, fresh rereads, invalid IDs, frozen/active master exclusion, malformed metadata, trashed/shortcut/folder rejection, sanitized access failures, unchanged inventory/legacy response, missing config without writes, and unchanged explicit approval behavior. No live Writer request or external data write was used for verification.
+
 ## Batch 2026-10-28: three weekly AI usage meters
 
 Trigger: Tim 2026-10-28: "Remove Grok Bot and Hourly usage from each AI report. Keep the others. So only 3 (weekly usage status) results needed for each run."

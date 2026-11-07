@@ -3,7 +3,7 @@
 // V2_TERMINAL_ARCHIVE.txt. Docs edits persist only at execution end (and can fail), exactly like production.
 const test = require('node:test'), assert = require('node:assert/strict');
 const W = require('../apps-script/Code.gs');
-const MASTER = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8', DOCMIME = 'application/vnd.google-apps.document';
+const MASTER = 'synthetic_master_id', DOCMIME = 'application/vnd.google-apps.document';
 
 const row = (n, id, bucket, extra) => n + ' | ' + id + ' | Acme ' + n + ' | Director of Quality | ' + bucket + ' | ANALYSIS_PENDING | - | REQ-' + n + ' | Austin, TX | SCOUT_ACTION; SOURCE_URL=https://example.com/' + n + '; FLEX_CLASS=HIGH_FLEX' + (extra || '');
 function masterFixture() {

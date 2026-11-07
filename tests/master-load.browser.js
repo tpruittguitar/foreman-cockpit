@@ -1,3 +1,4 @@
+require('./helpers/writer-runtime-fixture.cjs'); // explicit synthetic config for Node Writer helpers
 /* Browser checks for the Explorer master-loading path (fail closed on freshness). Requests go to a local test-only writer.
    Run: node tests/master-load.browser.js  (PIPELINE_PLAYWRIGHT_MODULE / PIPELINE_CHROMIUM as for tests/ui.browser.js) */
 require('./helpers/block-production-writer.cjs'); // no request to the production Writer

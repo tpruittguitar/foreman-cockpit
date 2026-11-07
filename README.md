@@ -6,7 +6,7 @@ Foreman Cockpit — operations dashboard
 - Design brief: `docs/PIPELINE_EXPLORER_DESIGN_BRIEF.md` (v0.9; §9D writer, §9E Scout intake).
 - Scout intake contract: `docs/SCOUT_INTAKE_CONTRACT.md`.
 - Writer setup (Apps Script, one time, Tim only): `apps-script/README.md`.
-- Tests (plain node, no dependencies): `for t in parser writer intake rules quality; do node tests/$t.test.js; done`. `tests/intake.test.js <path-to-master-export>` also dry-runs intake against a real export without writing anything.
+- Tests (plain node, no dependencies): `npm test`. Focused Writer tests require the explicit synthetic preload described in `apps-script/README.md`. `tests/intake.test.js <path-to-master-export>` also dry-runs intake against a real export without writing anything.
 
 Pipeline UI feedback update: explicit drag/keyboard column tracks, fixed 35% dashboard / 65% work area, real bundled state boundaries, employer-rejection controls, SVG report and cohort charts, and a searchable Rules outline with lossless source editing.
 

@@ -67,7 +67,7 @@ test('apply: archive first (narrative merged back), then a verified master write
 });
 
 test('archive appended but the master save failed: the row reads as live, and the next sweep finishes it without a second copy', t => {
-  const w = liveWorld(t); w.fail('1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8', 'write', { message: 'Service error: Drive' });
+  const w = liveWorld(t); w.fail('synthetic_master_id', 'write', { message: 'Service error: Drive' });
   assert.throws(() => w.post({ action: 'archive_sweep', op: 'apply', requestId: 'SWEEP-F' }), /Service error/);
   assert.equal(pids(w.master()).length, 5, 'master unchanged');
   w.advance(200000); w.exec(() => W.verifyPendingWrites_());

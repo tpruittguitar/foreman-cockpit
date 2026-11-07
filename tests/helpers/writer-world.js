@@ -1,7 +1,7 @@
 'use strict';
 const W = require('../../apps-script/Code.gs');
-const MASTER = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8';
-const RULES = '1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
+const MASTER = 'synthetic_master_id';
+const RULES = 'synthetic_canonical_rules_doc_id';
 const DOC = 'application/vnd.google-apps.document';
 function world(t, opts = {}) {
   const prior = {}, files = new Map(), faults = new Map(), opens = {};
@@ -33,7 +33,7 @@ function world(t, opts = {}) {
     LockService: { getScriptLock: () => ({ waitLock() {}, tryLock: () => true, releaseLock() {} }) },
     DriveApp: { getFileById: id => { if (!files.has(id)) throw new Error('No synthetic file: ' + id); return files.get(id); }, getRootFolder: () => folder },
     DocumentApp: { openById: id => {
-      if (id === MASTER || id === '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI') throw new Error('Forbidden Doc master access');
+      if (id === MASTER || id === 'synthetic_frozen_master_id') throw new Error('Forbidden Doc master access');
       opens[id] = (opens[id] || 0) + 1; const f = files.get(id); if (!f || (id === RULES && opts.rulesText === null)) throw new Error('No synthetic Doc: ' + id);
       return { getBody: () => ({ getText: () => f.content, appendParagraph: text => { f.content += '\n' + text; } }), saveAndClose() {} };
     } },
