@@ -20,29 +20,29 @@ const IPHONE={viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAg
     if(u.pathname==='/writer'){const a=u.searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'test-master',text:fixture,fetchedAt:new Date().toISOString()}:a==='canonical_rules'?{ok:true,text:rules}:a==='state'?{ok:true,state:{}}:{ok:true}});}
     return r.continue();
    });
-   await ctx.addInitScript(()=>localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'})));
+   await ctx.addInitScript(origin=>{if(location.origin!==origin)return;localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}));},base);
    return {ctx,calls,errors};
   }
   // Desktop app entry, explicit new tab, repeated entry, Back/Forward and narrow desktop.
   let {ctx,calls,errors}=await context({viewport:{width:1440,height:900},userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36'}),page=await ctx.newPage();
   await page.goto(base+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');
-  await page.locator('.backlog-worksheet-link').click();await page.waitForURL('**/backlog-worksheet.html');
+  await page.locator('.backlog-worksheet-link').click();await page.waitForURL('**/backlog-worksheet.html',{waitUntil:'commit'});
   assert(await page.locator('#local-worksheet').isVisible());assert(await page.locator('#mobile-unavailable').isHidden());assert.equal(calls.local,0);
   const popupPromise=ctx.waitForEvent('page');await page.locator('#local-worksheet').click();const popup=await popupPromise;await popup.waitForLoadState();assert.equal(await popup.title(),'Synthetic worksheet');assert.equal(calls.local,1);await popup.close();
-  await page.goBack();await page.waitForSelector('.backlog-worksheet-link');await page.goForward();await page.waitForURL('**/backlog-worksheet.html');
+  await page.goBack({waitUntil:'commit'});await page.waitForSelector('.backlog-worksheet-link');await page.goForward({waitUntil:'commit'});await page.waitForURL('**/backlog-worksheet.html',{waitUntil:'commit'});
   await page.setViewportSize({width:390,height:844});assert(await page.locator('#local-worksheet').isVisible());assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-  await page.locator('.back').click();await page.waitForSelector('.backlog-worksheet-link');await page.locator('.backlog-worksheet-link').click();assert.equal(calls.local,1);assert.equal(calls.writes,0);assert.deepEqual(errors,[]);
-  if(process.env.WORKSHEET_LINK_SHOTS){fs.mkdirSync(process.env.WORKSHEET_LINK_SHOTS,{recursive:true});await page.screenshot({path:path.join(process.env.WORKSHEET_LINK_SHOTS,'launcher-desktop-narrow.png'),fullPage:true});}
+  await page.setViewportSize({width:1440,height:900});await page.locator('.back').click();await page.waitForSelector('.backlog-worksheet-link');await page.locator('.backlog-worksheet-link').click();assert.equal(calls.local,1);assert.equal(calls.writes,0);assert.deepEqual(errors,[]);
+  if(process.env.WORKSHEET_LINK_SHOTS){fs.mkdirSync(process.env.WORKSHEET_LINK_SHOTS,{recursive:true});await page.screenshot({path:path.join(process.env.WORKSHEET_LINK_SHOTS,'launcher-desktop.png'),fullPage:true});}
   await ctx.close();
   // iPhone: More is a real navigation link, Close/Escape still work, and no phone loopback launch is offered.
   ({ctx,calls,errors}=await context(IPHONE));page=await ctx.newPage();await page.goto(base+'/pipeline.html?open=jobs');await page.waitForSelector('#m-more');
   await page.locator('#m-more').click();await page.locator('#m-more-x').click();assert(await page.locator('#m-more-sheet').isHidden());
   await page.locator('#m-more').click();await page.keyboard.press('Escape');assert(await page.locator('#m-more-sheet').isHidden());
-  await page.locator('#m-more').click();await page.locator('.m-worksheet-link').click();await page.waitForURL('**/backlog-worksheet.html');
+  await page.locator('#m-more').click();await page.locator('.m-worksheet-link').click();await page.waitForURL('**/backlog-worksheet.html',{waitUntil:'commit'});
   assert(await page.locator('#mobile-unavailable').isVisible());assert(await page.locator('#local-worksheet').isHidden());assert.match(await page.locator('main').innerText(),/More → Discovery backlog/);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   if(process.env.WORKSHEET_LINK_SHOTS)await page.screenshot({path:path.join(process.env.WORKSHEET_LINK_SHOTS,'launcher-iphone.png'),fullPage:true});
-  await page.goBack();await page.waitForSelector('#m-more');if(await page.locator('#m-more-sheet').isVisible())await page.locator('#m-more-x').click();await page.locator('#m-more').click();assert(await page.locator('[data-m-desk=backlog]').isVisible());
-  await page.locator('.m-worksheet-link').click();await page.waitForURL('**/backlog-worksheet.html');assert.equal(calls.local,0);assert.equal(calls.writes,0);assert.deepEqual(errors,[]);await ctx.close();
+  await page.goBack({waitUntil:'commit'});await page.waitForSelector('#m-more');if(await page.locator('#m-more-sheet').isVisible())await page.locator('#m-more-x').click();await page.locator('#m-more').click();assert(await page.locator('[data-m-desk=backlog]').isVisible());
+  await page.locator('.m-worksheet-link').click();await page.waitForURL('**/backlog-worksheet.html',{waitUntil:'commit'});assert.equal(calls.local,0);assert.equal(calls.writes,0);assert.deepEqual(errors,[]);await ctx.close();
   // iPad's desktop-site UA must not turn on the PC loopback link.
   ({ctx,calls}=await context({viewport:{width:1024,height:1366},hasTouch:true,userAgent:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15'}));
   await ctx.addInitScript(()=>{Object.defineProperty(navigator,'platform',{get:()=> 'MacIntel'});Object.defineProperty(navigator,'maxTouchPoints',{get:()=>5});});page=await ctx.newPage();await page.goto(base+'/backlog-worksheet.html');assert(await page.locator('#mobile-unavailable').isVisible());assert(await page.locator('#local-worksheet').isHidden());assert.equal(calls.local,0);await ctx.close();
