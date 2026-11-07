@@ -6,7 +6,16 @@
  */
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const Transport=require('../pipeline-writer-transport'),Parser=require('../pipeline-parser'),rowHash=require('../apps-script/Code.gs').textHash_;
+const Transport=require('../pipeline-writer-transport'),Parser=require('../pipeline-parser');
+// Pure row-proof hash, kept identical to Code.gs textHash_ without importing the GAS runtime.
+function rowHash(s) {
+  s = String(s == null ? '' : s);
+  var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (var i = 0; i < s.length; i++) { var ch = s.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16) + ':' + s.length;
+}
 async function main(args){
   if(args.length!==3)throw new Error('Usage: writer-intake.cjs connection.json candidate-request.json checkpoint-directory');
   const config=JSON.parse(fs.readFileSync(args[0],'utf8')),request=JSON.parse(fs.readFileSync(args[1],'utf8'));
@@ -35,4 +44,4 @@ async function main(args){
   if(result.state!=='VERIFIED_COMPLETE')process.exitCode=2;
 }
 if(require.main===module)main(process.argv.slice(2)).catch(error=>{console.error(error.message);process.exitCode=1;});
-module.exports={main};
+module.exports={main,rowHash};

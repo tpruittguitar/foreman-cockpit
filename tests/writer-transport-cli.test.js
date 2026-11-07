@@ -19,3 +19,16 @@ test('supported HTTP intake persists raw Gmail evidence, verifies exact row hash
  const saved=JSON.parse(fs.readFileSync(path.join(args[2],crypto.createHash('sha256').update(id).digest('hex')+'.json')));
  assert.equal(saved.state,'VERIFIED_COMPLETE');assert.deepEqual(saved.source,source);assert(saved.proof.readback.rows[0].matches);
 });
+
+test('supported intake CLI imports and shows usage without Apps Script configuration or test preload',()=>{
+ const {spawnSync}=require('node:child_process'),script=path.resolve(__dirname,'../scripts/writer-intake.cjs');
+ const env={PATH:process.env.PATH,NODE_OPTIONS:''};
+ const imported=spawnSync(process.execPath,['-e',`delete global.PropertiesService; require(${JSON.stringify(script)}); console.log('CLI_IMPORT_OK')`],{env,encoding:'utf8'});
+ assert.equal(imported.status,0);assert.equal(imported.stdout.trim(),'CLI_IMPORT_OK');assert.equal(imported.stderr,'');
+ const usage=spawnSync(process.execPath,[script],{env,encoding:'utf8'});
+ assert.equal(usage.status,1);assert.match(usage.stderr,/Usage: writer-intake.cjs/);assert.doesNotMatch(usage.stderr,/WRITER_RUNTIME_CONFIG/);
+});
+test('standalone CLI row-proof hash stays identical to Writer for synthetic values',()=>{
+ const {rowHash}=require('../scripts/writer-intake.cjs');
+ for(const value of [null,undefined,'',0,'synthetic row','1 | SYNTHETIC | Example | Director | SCOUT_INTAKE | ANALYSIS_PENDING | - | R1 | Austin, TX | NOTE=Example','Unicode résumé 🔧','x'.repeat(10000)])assert.equal(rowHash(value),W.textHash_(value));
+});

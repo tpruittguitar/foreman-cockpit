@@ -5,15 +5,15 @@
    Nothing is written anywhere. Usage:
      node tools/salary-floor-impact.js --old <dir with main's pipeline-scoring.js, pipeline-policy.js, pipeline-evidence.js>
           [--master FILE] [--rules FILE] [--model FILE]
-   Without --master the live master is read from the Writer (action=master, URL/key from pipeline-connection.js); without
+   Without --master the live master is read from the Writer (action=master, URL/key from explicitly configured WRITER_URL / WRITER_KEY environment variables); without
    --rules / --model the published policy is read from tpruittguitar/forge-policy main. In GitHub Actions the summary is printed
    as ::notice annotations (the check-run annotations are the readable channel). */
-const fs = require('fs'), path = require('path'), https = require('https'), vm = require('vm');
+const fs = require('fs'), path = require('path'), https = require('https');
 const repo = path.resolve(__dirname, '..');
 const arg = k => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
 const get = url => new Promise((res, rej) => {
   const go = (u, n) => https.get(u, r => { if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && n < 5) { r.resume(); return go(new URL(r.headers.location, u).toString(), n + 1); }
-    let b = ''; r.setEncoding('utf8'); r.on('data', d => b += d); r.on('end', () => r.statusCode === 200 ? res(b) : rej(new Error(u.split('?')[0] + ' -> HTTP ' + r.statusCode))); }).on('error', rej);
+    let b = ''; r.setEncoding('utf8'); r.on('data', d => b += d); r.on('end', () => r.statusCode === 200 ? res(b) : rej(new Error('Impact source HTTP ' + r.statusCode))); }).on('error', rej);
   go(url, 0);
 });
 const GH = process.env.GITHUB_ACTIONS === 'true';
@@ -21,10 +21,17 @@ const note = (title, msg) => { if (GH) console.log('::notice title=' + title + '
 
 (async () => {
   const oldDir = arg('--old'); if (!oldDir) throw new Error('--old <dir> is required');
-  const conn = (() => { const c = {}; vm.runInNewContext(fs.readFileSync(path.join(repo, 'pipeline-connection.js'), 'utf8').replace(/^var /m, 'this.'), c); return c.PipelineConnection; })();
+  const conn = { url: process.env.WRITER_URL || '', key: process.env.WRITER_KEY || '' };
+  if (!arg('--master') && (!conn.url || !conn.key)) {
+    const result = { status: 'NOT_RUN', reason: 'PRIVATE_WRITER_CONFIGURATION_REQUIRED', liveDataRead: false };
+    note('Writer impact NOT RUN', 'Private Writer configuration is absent. No live request was attempted; this is not an impact pass.');
+    if (arg('--out')) fs.writeFileSync(arg('--out'), JSON.stringify(result, null, 2) + '\n');
+    return;
+  }
+  if (!arg('--master') && !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(conn.url)) throw new Error('Writer endpoint configuration is invalid');
   let text;
   if (arg('--master')) text = fs.readFileSync(arg('--master'), 'utf8');
-  else { const j = JSON.parse(await get(conn.url + '?action=master&key=' + encodeURIComponent(conn.key))); if (!j.ok) throw new Error('Writer master read: ' + (j.error || 'not ok')); text = j.text; }
+  else { const j = JSON.parse(await get(conn.url + '?action=master&key=' + encodeURIComponent(conn.key))); if (!j.ok) throw new Error('Writer master read failed'); text = j.text; }
   const RAW = 'https://raw.githubusercontent.com/tpruittguitar/forge-policy/main/';
   const rulesText = arg('--rules') ? fs.readFileSync(arg('--rules'), 'utf8') : await get(RAW + 'rules/TIM_PIPELINE_RULES_CANONICAL.txt');
   const model = JSON.parse(arg('--model') ? fs.readFileSync(arg('--model'), 'utf8') : await get(RAW + 'scoring/PIPELINE_SCORING_MODEL.json'));

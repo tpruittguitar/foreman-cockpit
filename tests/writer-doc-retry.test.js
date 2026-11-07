@@ -5,7 +5,7 @@ const W = require('../apps-script/Code.gs');
 const freshExec = b => { W.resetExecution_(); return W.dispatchWrite_(b); };
 // Durable verification happens in a LATER execution (separate request / queue tick), never in the write itself.
 const verifyLater = () => { W.resetExecution_(); return W.verifyPendingWrites_(); };
-const MASTER = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8';
+const MASTER = 'synthetic_master_id';
 const INACCESSIBLE = 'The document is inaccessible. Please try again later.';
 
 function rowLine(n, id) { return n + ' | ' + id + ' | Acme ' + n + ' | Director of Quality | SCOUT_INTAKE | ANALYSIS_PENDING | - | REQ-' + n + ' | Austin, TX | SOURCE_URL=https://example.com/' + n; }
