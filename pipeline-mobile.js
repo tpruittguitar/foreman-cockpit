@@ -58,7 +58,7 @@
       '<div class="m-sheet-h"><b>More</b><span class="m-label">Desktop views</span><button type="button" class="m-ic m-x" id="m-more-x" aria-label="Close">' + svg('close') + '</button></div><ul class="m-list">' + MORE.map(function (m) {
         return '<li><button type="button" data-m-desk="' + m[0] + '"><b>' + m[1] + '</b><small>' + m[2] + '</small></button></li>';
       }).join('') + (d.classList.contains('touch-phone') ? '<li><button type="button" class="m-leave" data-m-layout="desktop"><b>Desktop layout ↗</b><small>Leaves the mobile view; use the full desktop cockpit on this phone</small></button></li>' : '') +
-      '</ul></div>' +
+      '<li><a class="m-worksheet-link" href="backlog-worksheet.html"><b>Backlog worksheet</b><small>PC worksheet access and mobile availability</small></a></li></ul></div>' +
       '<button type="button" class="m-return" id="m-return" hidden>' + svg('back') + '<span>Mobile</span></button>' +
       '<div class="m-sheet" id="m-fields" role="dialog" aria-modal="true" aria-label="Fields shown in Jobs" hidden></div>' +
       '<div class="m-detail" id="m-detail" role="dialog" aria-modal="true" aria-label="Job details" aria-labelledby="m-d-title" hidden></div>' +
