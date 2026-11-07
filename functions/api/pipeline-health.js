@@ -2,8 +2,34 @@ const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/'
 const FILES={processStates:'state/PROCESS_COMPLETIONS.json',processFlow:'state/ENRICHMENT_FLOW.json',applicationOutcomes:'state/APPLICATION_OUTCOMES.json',emailRecovery:'state/EMAIL_RECOVERY_SUMMARY.json',attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
 async function readSnapshot(fetcher,url){
   for(let attempt=0;attempt<2;attempt++){
-    try{const r=await fetcher(url,{cache:'no-store',headers:{'Accept':'application/json'},signal:AbortSignal.timeout(7000)});if(attempt===0&&[408,500,502,503,504].includes(r.status))continue;return r;}
+    try{const r=await fetcher(url,{cache:'no-store',headers:{'Accept':'application/json'},signal:AbortSignal.timeout(7000)});if(attempt===0&&[408,500,502,503,504].includes(r.status)){await r.body?.cancel();continue;}return r;}
     catch(e){if(attempt)throw e;}
+  }
+}
+// Read only a bounded projection on the normal discovery path. The producer writes
+// it in the same commit as the full report, so the existing revision pin still applies.
+async function readJson(fetcher,url,limit){
+  const res=await readSnapshot(fetcher,url);
+  if(!res.ok){await res.body?.cancel();throw Error('HTTP '+res.status);}
+  if(Number(res.headers.get('Content-Length'))>limit){await res.body?.cancel();throw Error('Snapshot too large');}
+  const reader=res.body?.getReader();if(!reader)throw Error('Empty snapshot');
+  const decoder=new TextDecoder();let text='',bytes=0;
+  try{
+    while(true){const {done,value}=await reader.read();if(done)break;bytes+=value.byteLength;if(bytes>limit)throw Error('Snapshot too large');text+=decoder.decode(value,{stream:true});}
+    text+=decoder.decode();
+  }finally{await reader.cancel();}
+  return JSON.parse(text);
+}
+async function readDiscovery(fetcher,url){
+  try{
+    const j=await readJson(fetcher,url.replace('.json?','.health.json?'),256*1024);
+    if(j.schema!=='forge.discovery-health.v1'||!Number.isFinite(Date.parse(j.at))||!Number.isSafeInteger(j.failedBoards)||j.failedBoards<0||!Number.isSafeInteger(j.candidates)||j.candidates<0||!Array.isArray(j.urls)||j.urls.length>j.candidates||j.urls.some(u=>typeof u!=='string'||!/^https:\/\//.test(u)))throw Error('Invalid discovery summary');
+    return j;
+  }catch{
+    // Older producer revisions and failed summary publication remain readable.
+    const j=await readJson(fetcher,url,8*1024*1024);
+    if(!j.summary||!j.summary.at||!Array.isArray(j.new_roles))throw Error('Unsupported discovery report');
+    return {at:j.summary.at,failedBoards:j.summary.boards?.failed||0,candidates:j.new_roles.length,urls:j.new_roles.filter(x=>x&&typeof x.url==='string'&&/^https:\/\//.test(x.url)).map(x=>x.url)};
   }
 }
 export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
@@ -12,10 +38,8 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
   const urls=new Set();let reports=0;
   await Promise.all(Object.entries(FILES).map(async([key,file])=>{
     try{
-      const res=await readSnapshot(fetcher,BASE+revision+'/'+file+'?cb='+Math.floor(now/60000));
-      if(!res.ok)throw Error('HTTP '+res.status);
-      const text=await res.text();if(text.length>8*1024*1024)throw Error('Snapshot too large');
-      const j=JSON.parse(text);
+      const url=BASE+revision+'/'+file+'?cb='+Math.floor(now/60000);
+      const j=key==='sources'||key==='boards'?await readDiscovery(fetcher,url):await readJson(fetcher,url,8*1024*1024);
       if(key==='processStates'){
         if(j.schema!=='forge.process-completions.v1'||j.model!=='four-stage-v2'||!j.states||!Number.isFinite(Date.parse(j.at)))throw Error('Invalid readiness snapshot');
         output.decisionReady={at:j.at,ids:Object.keys(j.states).filter(id=>j.states[id].enrichment===true&&j.states[id].closed===false)};output.checks[key]={ok:true,at:j.at};
@@ -48,9 +72,8 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
           taskExecutionVerified:false,nativeInvocationVerified:false,configurationReadbackScope:j.configurationReadbackScope||'UNSPECIFIED',
           configurationDiscrepancies:Array.isArray(j.configurationDiscrepancies)?j.configurationDiscrepancies:[]};
       }else{
-        if(!j.summary||!j.summary.at||!Array.isArray(j.new_roles))throw Error('Unsupported discovery report');
-        output.checks[key]={ok:true,at:j.summary.at,failedBoards:j.summary.boards?.failed||0,candidates:j.new_roles.length};
-        j.new_roles.forEach(x=>{if(x&&typeof x.url==='string'&&/^https:\/\//.test(x.url))urls.add(x.url.replace(/#.*$/,''));});reports++;
+        output.checks[key]={ok:true,at:j.at,failedBoards:j.failedBoards,candidates:j.candidates};
+        j.urls.forEach(url=>urls.add(url.replace(/#.*$/,'')));reports++;
       }
     }catch(e){output.checks[key]={ok:false,error:key==='schedules'?'Schedule execution not reported':'Could not read '+key+' evidence'};}
   }));
@@ -90,8 +113,40 @@ export async function currentRevision(fetcher=fetch,cache=null,now=Date.now()){
   })();
   try{return await revisionPending;}catch(e){revisionFailureUntil=now+60000;throw e;}finally{revisionPending=null;}
 }
+// Cache only fully verified results, keyed by both immutable revision and minute.
+// A minute boundary expires client and server results together; cached observations
+// never extend the existing freshness window, even after a source revision changes.
+let healthMemo=null,healthPending=null;
+const responseHeaders=remaining=>({'Content-Type':'application/json','Cache-Control':'public, max-age='+Math.max(0,Math.floor(remaining/1000))});
+export async function healthResponse(fetcher=fetch,cache=null,now=Date.now()){
+  const started=Date.now(),minute=Math.floor(now/60000);
+  const headers=complete=>complete?responseHeaders((minute+1)*60000-now-(Date.now()-started)):{'Content-Type':'application/json','Cache-Control':'no-store'};
+  let revision='main',error='';try{revision=await currentRevision(fetcher,cache,now);}catch{error='Could not verify current main revision';}
+  const id=revision+'/'+minute;
+  if(!error&&healthMemo?.id===id)return new Response(healthMemo.body,{headers:headers(true)});
+  if(!error&&healthPending?.id===id){const result=await healthPending.result;return new Response(result.body,{headers:headers(result.complete)});}
+  const key=new Request('https://foreman-cockpit.pages.dev/__health_response/v1/'+id);
+  const build=async()=>{
+    if(!error&&cache)try{
+      const hit=await cache.match(key);
+      if(hit){const body=await hit.text();healthMemo={id,body};return {body,complete:true};}
+    }catch{}
+    const result=await loadHealth(fetcher,now,revision);
+    result.checks.revision={ok:!error,sha:error?null:revision,error:error||undefined};
+    const body=JSON.stringify(result);
+    const complete=!error&&Object.keys(FILES).every(k=>result.checks[k]?.ok===true);
+    if(complete){
+      healthMemo={id,body};
+      if(cache)try{await cache.put(key,new Response(body,{headers:headers(true)}));}catch{}
+    }
+    return {body,complete};
+  };
+  // Share both cold summary builds and edge-cache hits within this isolate.
+  const pending={id,result:build()};
+  if(!error)healthPending=pending;
+  try{const result=await pending.result;return new Response(result.body,{headers:headers(result.complete)});}
+  finally{if(healthPending===pending)healthPending=null;}
+}
 export async function onRequestGet(){
-  let revision='main',error='';try{revision=await currentRevision(fetch,globalThis.caches?.default||null);}catch(e){error='Could not verify current main revision';}
-  const result=await loadHealth(fetch,Date.now(),revision);result.checks.revision={ok:!error,sha:error?null:revision,error:error||undefined};
-  return new Response(JSON.stringify(result),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=60'}});
+  return healthResponse(fetch,globalThis.caches?.default||null);
 }
