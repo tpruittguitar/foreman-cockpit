@@ -9,7 +9,8 @@ function missing(v){return !v||/^(UNKNOWN|NOT_STATED|NOT STATED|TBD|—|-)$/i.te
 // shows POSTED · UNVERIFIED unless SALARY_CONF is explicitly VERIFIED, and an estimate with no posted value stays ESTIMATED.
 function salary(p){
   p=p||{};var ev=Evidence&&Evidence.salary?Evidence.salary(p):{mid:null,source:''};if(ev.mid==null)return 'UNKNOWN';
-  var basis=String(p.SALARY_BASIS||''),label=String(p.SALARY_LABEL||'').trim(),estimateMarked=/ESTIMAT|COMPARABLE/i.test(basis)||/ESTIMAT/i.test(label)||/ESTIMAT|NOT[ _]?POSTED|CLAIMED/i.test([p.SALARY_BASE_POSTED,p.PAY_POSTED,p.SALARY_POSTED].join(' ')),doubt=/UNVERIFIED|LOW|DISPUT|CONFLICT/i.test(p.SALARY_CONF||'');
+  var selectedPosted=(ev.source==='PAY_POSTED'||ev.source==='SALARY_BASE_POSTED')&&!Evidence.salaryEstimateText(p[ev.source])&&!/NOT[ _]?POSTED|CLAIMED|UNVERIFIED/i.test(p[ev.source]||'');
+  var basis=String(p.SALARY_BASIS||''),label=String(p.SALARY_LABEL||'').trim(),estimateMarked=(/ESTIMAT|COMPARABLE/i.test(basis)&&!(selectedPosted&&/^(FORGE-ESTIMATE|THIRD_PARTY_ESTIMATE)$/.test(basis)))||/ESTIMAT/i.test(label)||[p.SALARY_BASE_POSTED,p.PAY_POSTED,p.SALARY_POSTED].some(function(v){return Evidence.salaryEstimateText(v)||/NOT[ _]?POSTED|CLAIMED/i.test(v||'')}),doubt=/UNVERIFIED|LOW|DISPUT|CONFLICT/i.test(p.SALARY_CONF||'');
   var postedValue=!missing(p.SALARY_BASE_POSTED)||!missing(p.PAY_POSTED)||ev.source==='SALARY_POSTED'||(ev.source==='GROK_SALARY'&&/\bPOSTED\b/i.test(p.GROK_SALARY)&&!/NOT POSTED|ESTIMAT/i.test(p.GROK_SALARY));
   var postedMarker=/^EMPLOYER_POSTED/i.test(basis)||/^POSTED$/i.test(label);
   if(postedValue)return /^VERIFIED$/i.test(p.SALARY_CONF||'')||!(estimateMarked||doubt)?'VERIFIED':'POSTED · UNVERIFIED';
