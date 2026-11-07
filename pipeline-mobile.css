@@ -292,3 +292,7 @@ html.m-detail-open body{overflow:hidden}
   html.m-shell{--m-dur:0ms;--m-dur-settle:0ms;--m-dur-highlight:0ms}
   html.m-shell #m-root,html.m-shell #m-root *{animation:none!important;transition:none!important}
 }
+
+/* The worksheet launcher is navigation, not a job action. */
+#m-root .m-list .m-worksheet-link{display:flex;flex-direction:column;justify-content:center;box-sizing:border-box;width:100%;min-height:52px;padding:8px 16px;text-align:left;border-bottom:1px solid var(--m-border);text-decoration:none}
+#m-root .m-list .m-worksheet-link:focus-visible{outline:2px solid var(--m-text);outline-offset:-3px}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<title>Backlog worksheet · Pipeline Explorer</title>
+<link rel="stylesheet" href="backlog-worksheet.css">
+<script src="backlog-worksheet.js" defer></script>
+</head>
+<body>
+<main>
+<a class="back" href="pipeline.html?open=jobs">← Pipeline Explorer</a>
+<p class="eyebrow">PIPELINE EXPLORER</p>
+<h1>Backlog worksheet</h1>
+<p class="intro">Open the live worksheet running on TIMMAY, or use the app’s discovery backlog.</p>
+<section aria-labelledby="local-heading">
+<p class="tag">PC WORKSHEET</p>
+<h2 id="local-heading">Chrome on TIMMAY</h2>
+<p>The worksheet runs locally on TIMMAY. Keep its service running, then open it in a new tab on that PC.</p>
+<a id="local-worksheet" class="button" href="http://127.0.0.1:51415/" target="_blank" rel="noopener noreferrer" hidden>Open worksheet on this PC ↗</a>
+<p id="mobile-unavailable" class="notice" hidden><strong>Not available in mobile Safari.</strong> This local address points to the device opening it, so your phone cannot use it to reach TIMMAY. A secure mobile connection has not been configured.</p>
+<noscript><p>JavaScript is off. On TIMMAY only, open http://127.0.0.1:51415/ in Chrome. That address does not work from your phone.</p></noscript>
+<p class="small">If the PC link will not load, make sure you are on TIMMAY and its worksheet service is still running on port 51415. Opening this page does not start or check the service.</p>
+</section>
+<section aria-labelledby="app-heading">
+<p class="tag">AVAILABLE IN THE APP</p>
+<h2 id="app-heading">Discovery backlog</h2>
+<p>This is the app’s existing backlog view, separate from the local worksheet. On mobile, open <strong>More → Discovery backlog</strong>. On desktop, choose <strong>Waiting queue → Waiting for intake</strong>.</p>
+<a class="button secondary" href="pipeline.html?open=jobs">Return to the app</a>
+<p class="small">The app keeps its existing connection and decision checks. This shortcut does not change or submit any backlog decisions.</p>
+</section>
+</main>
+</body>
+</html>

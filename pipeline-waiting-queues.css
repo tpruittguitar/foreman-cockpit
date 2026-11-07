@@ -20,3 +20,7 @@
 #backlog-decision-controls [role=alert]{color:#e5c285;width:100%}
 .wip-intake-mode #waiting-candidate-view{max-height:38vh;overflow:auto}
 .wip-intake-mode #worksplit[hidden]{display:none!important}
+
+#wip-queue-bar .backlog-worksheet-link{display:inline-flex;align-items:center;min-height:36px;padding:4px 8px;border:1px solid var(--line2,#444);border-radius:4px;color:var(--text,#eee);font:12px var(--mono,monospace);text-decoration:underline;text-underline-offset:3px}
+#wip-queue-bar .backlog-worksheet-link:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+@media(max-width:760px){#wip-queue-bar .backlog-worksheet-link{min-height:44px}}
