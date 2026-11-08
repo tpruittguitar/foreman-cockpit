@@ -1,0 +1,182 @@
+[
+  {
+    "name": "adjacent sentence",
+    "input": "Bachelor's degree in Engineering required. Equivalent experience is accepted in lieu of a degree.",
+    "text": "Bachelor's degree in Engineering required. Equivalent experience is accepted in lieu of a degree.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "HTML bullets",
+    "input": "<h3>Minimum Qualifications</h3><ul><li>Bachelor\u2019s degree in Engineering required.</li><li>Or equivalent combination of education and experience.</li><li>Ability to travel.</li></ul>",
+    "text": "Bachelor's degree in Engineering required. Or equivalent combination of education and experience.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "semicolon alternative",
+    "input": "B.S. in Engineering required; equivalent experience accepted.",
+    "text": "B.S. in Engineering required; equivalent experience accepted.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "markdown and wrapped alternative",
+    "input": "**Minimum Qualifications:**\n* Bachelor's degree required.\n* Or\n  equivalent experience.",
+    "text": "Bachelor's degree required. Or equivalent experience.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "separate experience years alternative",
+    "input": "Bachelor's degree required. Or 10 years of professional experience.",
+    "text": "Bachelor's degree required. Or 10 years of professional experience.",
+    "req": "PREFERRED",
+    "flex": "SOFT_FLEX"
+  },
+  {
+    "name": "unrelated experience",
+    "input": "Bachelor's degree required. Ten years of relevant experience required.",
+    "text": "Bachelor's degree required.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "section boundary",
+    "input": "Bachelor's degree in Engineering required.\nBenefits\nEquivalent experience is accepted for our employee mentoring program.",
+    "text": "Bachelor's degree in Engineering required.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "equivalent field is not equivalent experience",
+    "input": "B.S. in Electrical Engineering or an equivalent technical field and 10+ years of experience.",
+    "text": "B.S. in Electrical Engineering or an equivalent technical field and 10+ years of experience.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "negated alternative",
+    "input": "Bachelor's degree required. Equivalent experience is not accepted.",
+    "text": "Bachelor's degree required. Equivalent experience is not accepted.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "preferred heading retained",
+    "input": "<h3>Preferred Qualifications</h3><li>Bachelor's degree in engineering.</li>",
+    "text": "Preferred Qualifications Bachelor's degree in engineering.",
+    "req": "PREFERRED",
+    "flex": "SOFT_FLEX"
+  },
+  {
+    "name": "independent required advanced credential",
+    "input": "Bachelor's degree or equivalent experience.\nMaster's degree required.",
+    "text": "Master's degree required.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "mixed scope alternatives need review",
+    "input": "Bachelor's degree required; advanced degree or equivalent executive experience preferred.",
+    "text": null
+  },
+  {
+    "name": "generic degree",
+    "input": "Operate with a high degree of independence.",
+    "text": null
+  },
+  {
+    "name": "office software is not a degree",
+    "input": "Proficient in MS Office. Lead teams.",
+    "text": "NOT_STATED",
+    "req": "NOT_STATED"
+  },
+  {
+    "name": "generic master is not a credential",
+    "input": "Oversee Quality/Master/Supplier Quality Agreements. Bachelor degree or equivalent experience.",
+    "text": "Bachelor degree or equivalent experience.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "preferred alternatives list",
+    "input": "MBA, advanced technical degree, or Lean Six Sigma Black Belt preferred.",
+    "text": "MBA, advanced technical degree, or Lean Six Sigma Black Belt preferred.",
+    "req": "PREFERRED",
+    "flex": "SOFT_FLEX"
+  },
+  {
+    "name": "education heading resumes qualifications",
+    "input": "Responsibilities\nLead operations.\nEducation and Experience\nBachelor degree required. Or equivalent experience.",
+    "text": "Bachelor degree required. Or equivalent experience.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "unrelated semicolon preference",
+    "input": "Bachelor's degree in engineering; leadership experience preferred.",
+    "text": "Bachelor's degree in engineering; leadership experience preferred.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "certificate substitution is unrelated",
+    "input": "Bachelor's degree required; professional experience may be substituted for certification.",
+    "text": "Bachelor's degree required; professional experience may be substituted for certification.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "degree-specific substitution",
+    "input": "Bachelor's degree in Engineering. Relevant experience may be substituted for the degree.",
+    "text": "Bachelor's degree in Engineering. Relevant experience may be substituted for the degree.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "negated substitution",
+    "input": "Bachelor's degree in Engineering. Relevant experience may not be substituted for the degree.",
+    "text": "Bachelor's degree in Engineering.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "equivalent combination sentence",
+    "input": "Bachelor's degree in Engineering. An equivalent combination of education and experience is acceptable.",
+    "text": "Bachelor's degree in Engineering. An equivalent combination of education and experience is acceptable.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "additional experience substitution",
+    "input": "Bachelor's degree in Engineering. Additional experience may substitute for a degree.",
+    "text": "Bachelor's degree in Engineering. Additional experience may substitute for a degree.",
+    "req": "PREFERRED",
+    "flex": "HIGH_FLEX"
+  },
+  {
+    "name": "advanced parenthetical equivalence cannot waive bachelor",
+    "input": "Bachelor's degree in Engineering (advanced degree or equivalent executive experience preferred).",
+    "text": null
+  },
+  {
+    "name": "advanced years alternative cannot waive bachelor",
+    "input": "Bachelor's degree required; advanced degree or 10 years of executive experience preferred.",
+    "text": null
+  },
+  {
+    "name": "future negative equivalent experience",
+    "input": "Bachelor's degree required. Equivalent experience will not be accepted.",
+    "text": "Bachelor's degree required. Equivalent experience will not be accepted.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "cannot accept equivalent experience",
+    "input": "Bachelor's degree required. Equivalent experience cannot be considered.",
+    "text": "Bachelor's degree required. Equivalent experience cannot be considered.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  }
+]
