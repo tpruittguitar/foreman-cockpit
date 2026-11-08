@@ -145,3 +145,41 @@ test('posting-validation worklist leaves checker-owned rows to the checker, keep
   const ids = W.build(text, { now: NOW }).lanes.FORGE_POSTING_VALIDATION.map(r => r.PRIMARY_ID);
   assert.deepEqual(ids, ['V2I-0000000000A1', 'V2I-0000000000A4']);
 });
+
+test('undated initial ATS checks remain capped and never fabricate posting or discovery dates', () => {
+  const rows = Array.from({ length: 30 }, (_, i) => row({
+    DATE_ADDED: 'UNKNOWN', COMPANY_SOURCE_URL: 'https://job-boards.greenhouse.io/acme/jobs/' + (1000000 + i)
+  }, 'Director', 'SCOUT_INTAKE', 'UNDATED-' + i));
+  const before = JSON.stringify(rows);
+  const selected = A.select(rows, { now: NOW });
+  assert.equal(selected.length, A.BATCH_LIMIT);
+  assert.equal(A.BATCH_LIMIT, 25);
+  assert.equal(A.select(rows, { now: NOW, limit: 2 }).length, 2);
+  assert.equal(JSON.stringify(rows), before, 'selection is read-only');
+  const item = selected[0];
+  const fields = A.fieldsFor(item.row, item.target, { result: 'LIVE', liveness: 'LIVE_EMPLOYER_ATS' }, { now: NOW });
+  for (const key of ['POSTING_DATE', 'POSTED_DATE', 'DISCOVERED_AT_ET', 'DATE_ADDED', 'MASTER_LOADED_AT']) {
+    assert.equal(fields[key], undefined, 'no invented ' + key);
+  }
+  Object.assign(item.row.p, fields);
+  assert.equal(A.select([item.row], { now: NOW }).length, 0, 'initial success is reused');
+  assert.equal(A.select([item.row], { now: '2026-10-21T00:00:00Z' }).length, 1, 'successful check ages normally');
+});
+
+test('undated rows retain ATS ownership, error backoff, and posting-validation fallback', () => {
+  const line = (inv, payload) => `${inv} | UNDATED-${inv} | Co | Director | SCOUT_INTAKE | OPEN | - | R1 | Austin, TX | ${payload}`;
+  const source = 'SOURCE_URL=https://job-boards.greenhouse.io/acme/jobs/1234567';
+  const text = [
+    line(1, source),
+    line(2, 'SOURCE_URL=https://example.invalid/jobs/2'),
+    line(3, source + '; ATS_CHECK_RESULT=ERROR_403; ATS_CHECK_ASOF=2026-10-13'),
+    line(4, source + '; ATS_CHECK_RESULT=ERROR_403; ATS_CHECK_ASOF=2026-10-11'),
+    line(5, source + '; ATS_CHECK_RESULT=LIVE; ATS_CHECK_ASOF=2026-10-12'),
+    line(6, source + '; ATS_CHECK_RESULT=CLOSED_EMPLOYER_404'),
+    line(7, 'SOURCE_URL=https://example.invalid/jobs/7; LIVENESS_ATTEMPT_ASOF=2026-10-13'),
+    line(8, 'SOURCE_URL=https://example.invalid/jobs/8; LIVENESS=LIVE_SECONDARY; LIVENESS_ASOF=2026-10-12')
+  ].join('\n');
+  assert.deepEqual(A.select(W.parseRows(text), { now: NOW }).map(x => x.row.PRIMARY_ID), ['UNDATED-1', 'UNDATED-4']);
+  const worklist = W.build(text, { now: NOW }).lanes.FORGE_POSTING_VALIDATION;
+  assert.deepEqual(worklist.map(r => r.PRIMARY_ID), ['UNDATED-4', 'UNDATED-2']);
+});
