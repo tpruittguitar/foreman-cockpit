@@ -15,7 +15,7 @@
   var DEGREE_FROM_ALERT_RE = /\b(alert|email|snippet)\b|^(unknown|not available|n\/a)/i;
   var LIMIT = 80, ATTEMPT_COOLDOWN_DAYS = 3, LIVENESS_RECHECK_DAYS = 7, DAY = 86400000;
   var LANES = {
-    FORGE_ENRICH_STRATEGIC: 'Active-bucket rows with no fit score the Explorer can read (SCOPE_FIT_RAW, GROK_SCOPE_FIT_RAW and the other FIT_KEYS) and no ANALYSIS_BY/ANALYSIS_ASOF/STRATEGIC_ASOF. Priority first (Shield AI, then Director-level and up US manufacturing / operations / quality roles; Memphis last), then newest. Rows with STRATEGIC_ATTEMPT_ASOF in the last 3 days go last.',
+    FORGE_ENRICH_STRATEGIC: 'Active-bucket rows with no fit score the Explorer can read (SCOPE_FIT_RAW, GROK_SCOPE_FIT_RAW and the other FIT_KEYS) and no known ANALYSIS_BY/ANALYSIS_ASOF/ANALYSIS_ACTOR/STRATEGIC_ASOF. Historical markers are resolved only through the current master evidence pointer; research completion does not complete salary, degree or posting checks. Priority first (Shield AI, then Director-level and up US manufacturing / operations / quality roles; Memphis last), then newest. Rows with STRATEGIC_ATTEMPT_ASOF in the last 3 days go last.',
     FORGE_ENRICH_FEASIBILITY: 'Active-bucket rows with no salary the Explorer can read (posted, estimate, midpoint or low/high) or no posting-based degree evidence (DEGREE_REQ absent and DEGREE_TEXT absent or taken from an alert). Priority first (Shield AI, then Director-level and up US manufacturing / operations / quality roles; Memphis last), then newest, then strategically analyzed. Rows with FEASIBILITY_ATTEMPT_ASOF in the last 3 days go last.',
     FORGE_POSTING_VALIDATION: 'Background posting freshness across active buckets: first check after seven days from posting date, otherwise first discovery; successful checks reused seven days. Unknown dates are flagged, not guessed. Rows with a Workday, Greenhouse, Lever, Ashby, Oracle HCM (CX site), SmartRecruiters or BambooHR URL are left to the Writer ATS checker unless its ATS_CHECK_RESULT is not LIVE/CLOSED (blocked, error, title mismatch, not on public board). Newest first. Rows with LIVENESS_ATTEMPT_ASOF in the last 3 days go last.'
   };
@@ -133,7 +133,14 @@ function refreshWorklists_(force) {
   var props = PropertiesService.getScriptProperties(), last = +(props.getProperty('WORKLISTS_BUILT_AT') || 0);
   if (!force && Date.now() - last < WORKLIST_INTERVAL_MS_) return { ok: true, skipped: true, builtAt: last ? new Date(last).toISOString() : '' };
   var masterFile = DriveApp.getFileById(MASTER_ID), text = readMasterText_(MASTER_ID);
-  var built = PipelineWorklists.build(text), at = new Date().toISOString(), out = { ok: true, builtAt: at, rows: built.rows, lanes: {} };
+  var built = PipelineWorklists.build(text);
+  // Read the companion only when an otherwise eligible row might have a legacy research marker. Project compact
+  // metadata in memory; the master, evidence, original Writer requests and verification status stay untouched.
+  if (built.lanes.FORGE_ENRICH_STRATEGIC.some(function (r) { return /^EVC1:[1-9]\d*$/.test(r.p.EVIDENCE_REF || ''); })) {
+    var routing = evidenceRouting_();
+    if (routing.active) built = PipelineWorklists.build(worklistResearchLines_(text.split(/\r?\n/), loadCompanionRecs_(routing)).join('\n'));
+  }
+  var at = new Date().toISOString(), out = { ok: true, builtAt: at, rows: built.rows, lanes: {} };
   Object.keys(WORKLIST_FILES_).forEach(function (lane) {
     var body = PipelineWorklists.render(lane, built, { generatedAt: at, masterId: MASTER_ID, masterModified: masterFile.getLastUpdated().toISOString() });
     DriveApp.getFileById(WORKLIST_FILES_[lane]).setContent(body);
