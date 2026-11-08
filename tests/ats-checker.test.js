@@ -43,7 +43,7 @@ test('Workday: live, closed by flags, closed by 404, malformed pay is never gues
   const live = A.interpret(t, 200, wdBody(), r, { now: NOW });
   assert.equal(live.result, 'LIVE'); assert.equal(live.liveness, 'LIVE_EMPLOYER_ATS');
   assert.equal(live.pay, null, 'employer typo $330,00.00 must not produce a range');
-  assert.match(live.degree, /^Bachelor.s degree in engineering/);
+  assert.equal(live.degree, '', 'mixed hard bachelor and optional advanced-degree equivalence requires review, not a truncated hard-degree claim');
   assert.equal(A.interpret(t, 200, wdBody({ canApply: false }), r).liveness, 'CLOSED_EMPLOYER_ATS');
   assert.equal(A.interpret(t, 404, '', r).liveness, 'CLOSED_EMPLOYER_404');
   for (const code of [0, 403, 429, 500, 503]) { const x = A.interpret(t, code, '', r); assert.equal(x.liveness, undefined); assert.match(x.result, /^ERROR_/); }

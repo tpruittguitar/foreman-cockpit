@@ -126,15 +126,11 @@
     }
     return list.length === 1 ? list[0] : null;
   }
-  var DEGREE_RE = /\b(bachelor'?s?|bachelors|degree|b\.?s\.?c?\.?|b\.?a\.?|m\.?b\.?a\.?|master'?s)\b/i;
-  /** The first requirement line that mentions a degree, verbatim (trimmed), or ''. */
+  function qualification() { return typeof module === 'object' && module.exports ? require('./PipelineQualification.gs') : PipelineQualification; }
+  /** Complete degree block and adjacent alternative; never a clipped first sentence. */
   function degreeFromText(text) {
-    var lines = String(text || '').split(/\n|[.;]\s+(?=[A-Z])/);
-    for (var i = 0; i < lines.length; i++) {
-      var l = lines[i].replace(/^[\s•\-–*]+/, '').trim();
-      if (l.length >= 12 && l.length <= 400 && DEGREE_RE.test(l) && !/\b(ms office|ms excel|ms word|ms project)\b/i.test(l)) return l;
-    }
-    return '';
+    var fact = qualification().parse(text);
+    return fact && fact.text !== 'NOT_STATED' ? fact.text : '';
   }
   function titleOk(rowTitle, apiTitle) {
     if (!apiTitle) return true;
@@ -217,7 +213,7 @@
     if (r.postedAt) f.ATS_POSTED_AT = String(r.postedAt).slice(0, 10);
     if (r.result !== 'LIVE') return f;
     if (r.pay) { f.PAY_POSTED = fmt(r.pay.low) + ' - ' + fmt(r.pay.high); f.PAY_POSTED_SOURCE = 'Employer ATS ' + target.provider + (r.payFromText ? ' posting text' : ' structured pay field'); f.PAY_POSTED_ASOF = d; }
-    if (r.degree) { f.ATS_DEGREE_TEXT = r.degree.slice(0, 400); if (!degreeKnown(row.p)) { f.DEGREE_TEXT = f.ATS_DEGREE_TEXT; f.DEGREE_EVIDENCE_URL = target.url; f.DEGREE_ASOF = d; } }
+    if (r.degree && r.degree.length <= qualification().MAX_EVIDENCE_LENGTH) { f.ATS_DEGREE_TEXT = r.degree; if (!degreeKnown(row.p)) { f.DEGREE_TEXT = f.ATS_DEGREE_TEXT; f.DEGREE_EVIDENCE_URL = target.url; f.DEGREE_ASOF = d; } }
     return f;
   }
 
