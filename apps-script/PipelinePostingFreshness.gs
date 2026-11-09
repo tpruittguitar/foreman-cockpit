@@ -6,10 +6,11 @@
   if(ACTIVE.indexOf(bucket)<0||/^YES/i.test(p.ANTI_RESURRECTION||'')||p.DO_NOT_REWORK)return {state:'PROTECTED',due:false};
   if(/^CLOSED/.test(p.LIVENESS||'')||/^CLOSED/.test(p.ATS_CHECK_RESULT||''))return {state:'CLOSED',due:false};
   var posted=latest(p,['POSTING_DATE','POSTED_DATE'],now),dates=['DISCOVERED_AT_ET','DATE_ADDED','MASTER_LOADED_AT'].map(function(k){return stamp(p[k]);}).filter(function(t){return t&&t<=now;}),discovered=dates.length?Math.min.apply(null,dates):0,base=posted||discovered;
-  if(!base)return {state:'UNDATED',due:false,reason:'Posting and discovery date unavailable'};
   var confirmed=0;if(/^LIVE(?:_|$)/.test(p.LIVENESS||''))confirmed=latest(p,['LIVENESS_ASOF'],now);if(p.ATS_CHECK_RESULT==='LIVE')confirmed=Math.max(confirmed,latest(p,['ATS_CHECK_ASOF'],now));
-  var next=Math.max(base+7*DAY,confirmed?confirmed+7*DAY:0),attempt=latest(p,['LIVENESS_ATTEMPT_ASOF','ATS_CHECK_ASOF'],now);if(attempt>confirmed)next=Math.max(next,attempt+DAY);
-  return {state:now>next?'DUE':'CURRENT',due:now>next,basis:posted?'POSTING_DATE':'FIRST_DISCOVERY',basisDate:new Date(base).toISOString().slice(0,10),nextCheckAt:new Date(next).toISOString(),reason:confirmed?'Reuse saved successful check for seven days':'Initial check only after job age exceeds seven days'};
+  // Missing dates must not exclude a row forever or bypass saved check/backoff evidence.
+  // Existing ATS batch and worklist caps bound initial checks; never synthesize an age basis.
+  var next=Math.max(base?base+7*DAY:0,confirmed?confirmed+7*DAY:0),attempt=latest(p,['LIVENESS_ATTEMPT_ASOF','ATS_CHECK_ASOF'],now);if(attempt>confirmed)next=Math.max(next,attempt+DAY);
+  return {state:now>next?'DUE':'CURRENT',due:now>next,basis:posted?'POSTING_DATE':discovered?'FIRST_DISCOVERY':'UNDATED',basisDate:base?new Date(base).toISOString().slice(0,10):null,nextCheckAt:next?new Date(next).toISOString():null,reason:confirmed?'Reuse saved successful check for seven days':attempt?'Retry after the saved attempt backoff':base?'Initial check only after job age exceeds seven days':'Initial check with posting and discovery date unavailable'};
  }
  return {assess:assess,stamp:stamp};
 });

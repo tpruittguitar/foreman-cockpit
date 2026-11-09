@@ -31,8 +31,8 @@ test('lanes select the right rows and exclude protected states', () => {
   // REV-106 (Tim 2026-10-20): newest first; the undated analyzed row 5 goes after the dated rows
   assert.deepEqual(ids('FORGE_ENRICH_FEASIBILITY'), ['V2I-000000000001', 'V2I-000000000006', 'V2I-000000000007', 'V2I-000000000005']);
   assert.ok(!ids('FORGE_ENRICH_FEASIBILITY').includes('V2I-000000000002'));
-  // fresh UNCONFIRMED (row 6) waits; stale UNCONFIRMED (row 7) and missing (row 1) are listed
-  assert.deepEqual(ids('FORGE_POSTING_VALIDATION'), ['V2I-000000000006', 'V2I-000000000007']);
+  // UNCONFIRMED is not successful evidence; dated rows are due and undated row 5 gets an initial check.
+  assert.deepEqual(ids('FORGE_POSTING_VALIDATION'), ['V2I-000000000006', 'V2I-000000000007', 'V2I-000000000005']);
   for (const lane of W.LANES) for (const id of ids(lane)) assert.ok(!['V2I-000000000003', 'V2I-000000000004'].includes(id));
 });
 
@@ -67,6 +67,18 @@ test('render is small, capped and well formed on the scrubbed fixture', () => {
     assert.ok(lines.length <= W.LIMIT);
     for (const l of lines) assert.ok(!/\| (APPLIED|REJECTED_BY_EMPLOYER|DECLINED_BY_TIM|DUPLICATE|CLOSED_DEAD|INVALID_DISCOVERY) \|/.test(l), l);
   }
+});
+
+test('undated posting-validation rows retain the normal render cap', () => {
+  const text = head + Array.from({ length: W.LIMIT + 5 }, (_, i) =>
+    row(i + 1, 'UNDATED-' + i, 'SCOUT_INTAKE', 'SOURCE_URL=https://example.invalid/jobs/' + i)
+  ).join('\n');
+  const built = W.build(text, { now: NOW });
+  assert.equal(built.lanes.FORGE_POSTING_VALIDATION.length, W.LIMIT + 5);
+  const out = W.render('FORGE_POSTING_VALIDATION', built, { generatedAt: NOW });
+  assert.equal(out.split('\n').filter(l => /^\d+\. UNDATED-/.test(l)).length, W.LIMIT);
+  assert.match(out, /ELIGIBLE_TOTAL=85 SHOWN=80/);
+  assert.match(out, /without inventing a date/);
 });
 
 test('REV-106: priority tiers — Shield AI, then Director+ US mfg/ops/quality, then the rest, Memphis last; newest first within a tier', () => {
