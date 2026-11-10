@@ -178,5 +178,35 @@
     "text": "Bachelor's degree required. Equivalent experience cannot be considered.",
     "req": "REQUIRED",
     "flex": "NO_FLEX"
+  },
+  {
+    "name": "MS&T department is not a masters credential",
+    "input": "The position partners closely with Engineering, Validation, Manufacturing, MS&T, Microbiology, Quality Control, Regulatory Affairs, Supply Chain, EHS, and project leadership to support successful project execution and operational excellence, while maintaining the appropriate level of Quality independence and authority for GMP decision-making, risk assessment and acceptance, release readiness, and quality-related escalation.",
+    "text": "NOT_STATED",
+    "req": "NOT_STATED"
+  },
+  {
+    "name": "MS&T does not mask actual education",
+    "input": "The position partners closely with Engineering, Validation, Manufacturing, MS&T, Microbiology, Quality Control, Regulatory Affairs, Supply Chain, EHS, and project leadership to support successful project execution and operational excellence, while maintaining the appropriate level of Quality independence and authority for GMP decision-making, risk assessment and acceptance, release readiness, and quality-related escalation.\nEducation\nBachelor's degree in Engineering required.",
+    "text": "Bachelor's degree in Engineering required.",
+    "req": "REQUIRED"
+  },
+  {
+    "name": "spaced and dotted MS&T departments",
+    "input": "Partner with MS & T and M.S.&T teams.",
+    "text": "NOT_STATED",
+    "req": "NOT_STATED"
+  },
+  {
+    "name": "MS masters abbreviation remains supported",
+    "input": "M.S. in Engineering required.",
+    "text": "M.S. in Engineering required.",
+    "req": "REQUIRED"
+  },
+  {
+    "name": "MS&T does not override preferred education",
+    "input": "The position partners closely with Engineering, Validation, Manufacturing, MS&T, Microbiology, Quality Control, Regulatory Affairs, Supply Chain, EHS, and project leadership to support successful project execution and operational excellence, while maintaining the appropriate level of Quality independence and authority for GMP decision-making, risk assessment and acceptance, release readiness, and quality-related escalation.\nPreferred Qualifications\nMS in Engineering.",
+    "text": "Preferred Qualifications MS in Engineering.",
+    "req": "PREFERRED"
   }
 ]
