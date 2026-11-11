@@ -4,7 +4,20 @@
   function date(t){return formatter.format(new Date(t));}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function age(t,now){var ms=now-Date.parse(t||'');if(!Number.isFinite(ms))return 'age unknown';var h=Math.max(0,ms/3600000);return h<1?Math.floor(h*60)+' min':h<48?Math.floor(h)+' h':Math.floor(h/24)+' d '+Math.floor(h%24)+' h';}
-  function source(r){var p=r.payload||{},s=[p.SCOUT_RUN_ID,p.DISCOVERY_SOURCE,p.SOURCE_PROVIDER].join(' ');if(/FORGE-(AUTO|SOURCE)-/.test(s))return 'Automatic sources';if(/EMAIL|GMAIL/i.test(s))return 'Email';if(/MANUAL|MI-/i.test(s))return 'Manual';return 'Other / legacy';}
+  function source(r){
+    var p=r.payload||{},run=String(p.SCOUT_RUN_ID||''),origin=[p.DISCOVERY_SOURCE,p.SOURCE_PROVIDER].join(' ');
+    // Origin and processor are separate: an email alert may be admitted by an
+    // automatic Writer run. Also repair historical display from retained origin
+    // metadata without changing the row, request identity or admission date.
+    if(/(?:^|[^A-Z0-9])(?:EMAIL|GMAIL)(?:$|[^A-Z0-9])/i.test(origin))return 'Email';
+    if(/(?:^|[^A-Z0-9])MANUAL(?:$|[^A-Z0-9])/i.test(origin))return 'Manual';
+    if(/^FORGE-EMAIL-/i.test(run))return 'Email';
+    if(/FORGE-(AUTO|SOURCE)-/i.test(run))return 'Automatic sources';
+    if(/MANUAL|MI-/i.test(run))return 'Manual';
+    // A LinkedIn/Indeed/ATS URL, recruiter email or later application receipt
+    // cannot establish the initiating discovery channel.
+    return 'Other / legacy';
+  }
   function recordedDay(r){var p=r.payload||{},loaded=p.MASTER_LOADED_AT||'',s=p.DATE_ADDED||'';if(/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d\d:\d\d)$/.test(loaded)&&Number.isFinite(Date.parse(loaded)))return date(Date.parse(loaded));if(!/^\d{4}-\d{2}-\d{2}/.test(s))s=p.DISCOVERED_AT_ET||'';if(!/^\d{4}-\d{2}-\d{2}/.test(s))return null;var key=s.slice(0,10),t=Date.parse(key+'T12:00:00Z');if(!Number.isFinite(t)||new Date(t).toISOString().slice(0,10)!==key)return null;return /T.*(?:Z|[+-]\d\d:\d\d)$/.test(s)&&Number.isFinite(Date.parse(s))?date(Date.parse(s)):key;}
   var INTERVIEW_STAGES={RECRUITER_SCREEN:'Recruiter screen',HIRING_MANAGER:'Hiring manager',ONSITE_PANEL:'Onsite / panel',OFFER:'Offer'};
   var INTERVIEW_PROGRESS={INVITED:'Invited',AWAITING_SCHEDULING:'Awaiting scheduling',SCHEDULED:'Scheduled',COMPLETED:'Completed',RECEIVED:'Received',CANCELED:'Canceled / needs update'};

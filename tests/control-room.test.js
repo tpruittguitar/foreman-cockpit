@@ -144,3 +144,27 @@ test('the intake buffer is explicitly discovery backlog with screening and hold 
  const f=fixture();f.health.processFlow={at,population:{reconciled:true,total:1},queues:{verification:0,enrichment:1,readyForReview:0,blockedClosed:0},upstream:{at,reconciled:true,total:5,accounted:5,sourceIdentities:5,aliasesMerged:0,waiting:5,counts:{WAITING:3,PRESENT:0,EXCLUDED:0,HELD:1,IDENTITY_HOLD:1,MISSING_PREVIOUSLY_PRESENT:0},reconciliation:{opening:5,arrivals:0,admitted:0,excluded:0,otherExits:0,closing:5},coverage:{unreadSourceWindows:0}}};
  const m=C.model(f),h=C.html(m);assert.match(h,/Discovery backlog/);assert.match(h,/3 need screening/);assert.match(h,/2 held/);assert.match(h,/not all are ready for intake/);assert.deepEqual(C.summary(m,{}).waiting[0].breakdown,{screening:3,held:2});
 });
+
+
+test('email initiation takes precedence over automatic intake method, including historical metadata',()=>{
+ const f=fixture();
+ f.master.rows=[
+  {...row('A','FORGE-AUTO-20261028'),payload:{...row('A','FORGE-AUTO-20261028').payload,DISCOVERY_SOURCE:'EMAIL',SOURCE_PROVIDER:'LINKEDIN'}},
+  {...row('B','FORGE-SOURCE-20261028'),payload:{...row('B','FORGE-SOURCE-20261028').payload,DISCOVERY_SOURCE:'GitHub source-trial',SOURCE_PROVIDER:'Gmail job alert'}},
+  row('C','FORGE-EMAIL-CHATGPT-20261028'),
+  {...row('D','FORGE-AUTO-20261028'),payload:{...row('D','FORGE-AUTO-20261028').payload,DISCOVERY_SOURCE:'Manual intake',SOURCE_PROVIDER:'Greenhouse'}}
+ ];
+ const original=JSON.stringify(f.master.rows),m=C.model(f);
+ assert.deepEqual(m.daily[6].sources,{Email:3,Manual:1});
+ assert.equal(m.intakeToday,4);assert.equal(JSON.stringify(f.master.rows),original,'display must not rewrite origin or processor metadata');
+});
+test('posting host, incidental email and missing origin do not invent email discovery',()=>{
+ const f=fixture();
+ f.master.rows=[
+  {...row('A','FORGE-AUTO-20261028'),payload:{...row('A','FORGE-AUTO-20261028').payload,SOURCE_PROVIDER:'LinkedIn',SOURCE_URL:'https://www.linkedin.com/jobs/view/123/',APP_CONFIRMATION:'EMAIL',APPLICATION_RECEIPT_GMAIL_ID:'1a1234567890abcd'}},
+  {...row('B','FORGE-SOURCE-20261028'),payload:{...row('B','FORGE-SOURCE-20261028').payload,SOURCE_PROVIDER:'EMAILIFY',SCOUT_NOTES:'Recruiter email available'}},
+  row('C','LEGACY'),
+  {...row('D','LEGACY'),payload:{...row('D','LEGACY').payload,SOURCE_PROVIDER:'Indeed',SOURCE_URL:'https://www.indeed.com/viewjob?jk=abc'}}
+ ];
+ const m=C.model(f);assert.deepEqual(m.daily[6].sources,{'Automatic sources':2,'Other / legacy':2});assert.equal(m.daily[6].sources.Email,undefined);
+});
