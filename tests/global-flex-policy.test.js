@@ -156,7 +156,7 @@ test('Load approved FLEX/URL update keeps saved structured FLEX keys',t =>{
 });
 
 // ---- Writer end-to-end: policy comes from the canonical Rules document, read once per transaction ----
-const RULES='1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
+const RULES='synthetic_canonical_rules_doc_id';
 function services(t,rowCount,rulesText){
   const rows=[];for(let i=1;i<=rowCount;i++)rows.push(i+' | V2F-ROW'+String(i).padStart(8,'0')+' | Acme '+i+' | Director | SCOUT_INTAKE | ANALYSIS_PENDING | - | REQ-'+i+' | Austin, TX | SOURCE_URL=https://example.com/'+i);
   return require('./helpers/writer-world').world(t, { rows, rulesText });
@@ -273,7 +273,7 @@ test('Single ruling result and receipt carry provenance; fallback warning reache
   r=freshExec(degree(1,'SF-'));
   assert.equal(r.ok,true,r.error);assert.equal(r.flexPolicySource,'DEFAULT_FALLBACK');assert.equal(s.opens[RULES],1);
   assert.match(s.receipts(),/FLEX_POLICY_SOURCE=DEFAULT_FALLBACK/);
-  assert.match(s.receipts(),/FLEX_POLICY_WARNING=Canonical FLEX policy read failed: No synthetic Doc: 1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE/);
+  assert.match(s.receipts(),/FLEX_POLICY_WARNING=Canonical FLEX policy read failed: No synthetic Doc: synthetic_canonical_rules_doc_id/);
   assert.equal(pl(s.row('V2F-ROW00000001')).FLEX_MODIFIER,'-10');
 });
 

@@ -1,5 +1,6 @@
 /* Isolated synthetic Writer benchmark. Never connects to production or certifies native capacity. */
 'use strict';
+require('../tests/helpers/writer-runtime-fixture.cjs'); // explicit synthetic benchmark configuration
 const fs=require('node:fs'),{performance}=require('node:perf_hooks'),{world}=require('../tests/helpers/writer-world'),Capacity=require('../pipeline-workload');
 const samples=[];
 for(const records of [5,10,20,30])for(let repeat=0;repeat<12;repeat++){

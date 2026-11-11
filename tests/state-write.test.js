@@ -54,7 +54,7 @@ function post(opts) {
   const sb = {
     mergeState_, DriveApp: { getFileById: () => ({ getParents: () => it([folder]) }), getRootFolder: () => folder },
     LockService: { getScriptLock: () => ({ waitLock() { if (opts.lockTimeout) throw new Error('Lock timeout'); }, releaseLock() {} }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, getProperties: () => ({}) }) },
+    PropertiesService: require('./helpers/writer-runtime-fixture.cjs').service(),
     MimeType: { PLAIN_TEXT: 'text/plain' },
     ContentService: { MimeType: { JSON: 'j' }, createTextOutput: t => ({ setMimeType() { return this; }, getContent: () => t }) },
     UrlFetchApp: { fetch: () => { throw new Error('no network'); } }

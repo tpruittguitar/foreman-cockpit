@@ -3,7 +3,7 @@
 // COMPLETE may only be recorded by a LATER execution that reads the persisted master.
 const test = require('node:test'), assert = require('node:assert/strict');
 const W = require('../apps-script/Code.gs');
-const MASTER = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8', DOCMIME = 'application/vnd.google-apps.document';
+const MASTER = 'synthetic_master_id', DOCMIME = 'application/vnd.google-apps.document';
 
 function rowLine(n, id, bucket) { return n + ' | ' + id + ' | Acme ' + n + ' | Director of Quality | ' + (bucket || 'SCOUT_INTAKE') + ' | ANALYSIS_PENDING | - | REQ-' + n + ' | Austin, TX | SOURCE_URL=https://example.com/' + n; }
 const A = 'V2F-AAAA00000001', B = 'V2F-BBBB00000002';

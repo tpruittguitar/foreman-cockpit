@@ -17,8 +17,39 @@ if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../p
  *
  * DEPLOY: apps-script/README.md.  Pure functions below are unit-tested in tests/*.test.js via CommonJS export.
  */
-var MASTER_ID = '1My9QYVPBblw8c7vFMFxGOAqgTSuH9gS8'; // plain text as of 2026-10-08; Doc 19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI is the frozen rollback
-var PASSPHRASE = '5150'; // Owner-approved default; deployment preserves the live Writer passphrase.
+/** Private Writer settings are provisioned separately with explicit security approval.
+ * Validate the complete property snapshot before any HTTP handler or installed trigger can run.
+ * Never print values, install defaults, migrate properties, or fall back to published credentials.
+ */
+function writerRuntimeConfig_(properties) {
+  var keys = ['MASTER_ID','FROZEN_MASTER_ID','CANONICAL_RULES_DOC_ID','DOCS_ROOT_ID','RESUMES_FOLDER_ID','COVER_LETTERS_FOLDER_ID','SUPPORTING_DOCS_FOLDER_ID','TIM_VOICE_FOLDER_ID','INTERVIEW_NOTES_FOLDER_ID'];
+  if (!properties || properties.WRITER_CONFIG_VERSION !== '1') throw new Error('WRITER_RUNTIME_CONFIG_INVALID');
+  var result = {}, passphrase = properties.WRITER_PASSPHRASE;
+  if (typeof passphrase !== 'string' || !passphrase.trim() || passphrase.length > 2048 || /^(change[-_ ]?me|placeholder)$/i.test(passphrase.trim())) throw new Error('WRITER_RUNTIME_CONFIG_INVALID');
+  keys.forEach(function (key) {
+    var value = properties['WRITER_' + key];
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{10,200}$/.test(value)) throw new Error('WRITER_RUNTIME_CONFIG_INVALID');
+    result[key] = value;
+  });
+  if (result.MASTER_ID === result.FROZEN_MASTER_ID) throw new Error('WRITER_RUNTIME_CONFIG_INVALID');
+  result.PASSPHRASE = passphrase;
+  return result;
+}
+function loadWriterRuntimeConfig_() {
+  var properties;
+  try { properties = PropertiesService.getScriptProperties().getProperties(); }
+  catch (e) { throw new Error('WRITER_RUNTIME_CONFIG_UNAVAILABLE'); }
+  return writerRuntimeConfig_(properties);
+}
+/** Manual readback after an independently approved migration; returns no configuration values. */
+function checkWriterRuntimeConfiguration() {
+  loadWriterRuntimeConfig_();
+  return { ok:true, schema:'forge.writer-runtime-config.v1', configured:true };
+}
+var WRITER_PRIVATE_CONFIG_ = loadWriterRuntimeConfig_();
+var MASTER_ID = WRITER_PRIVATE_CONFIG_.MASTER_ID;
+var FROZEN_MASTER_ID = WRITER_PRIVATE_CONFIG_.FROZEN_MASTER_ID;
+var PASSPHRASE = WRITER_PRIVATE_CONFIG_.PASSPHRASE;
 var STATE_FILE_NAME = 'PIPELINE_EXPLORER_STATE.json';
 var RECEIPTS_DOC_NAME = 'PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS';
 var DISCOVERY_REQUESTS_NAME = 'PIPELINE_DATA_DISCOVERY_REQUESTS.jsonl';
@@ -27,14 +58,14 @@ var DISCOVERY_REQUESTS_NAME = 'PIPELINE_DATA_DISCOVERY_REQUESTS.jsonl';
 var INTAKE_OUTCOMES = ['NEVER_CONSIDER_EXCLUDED', 'SCOUT_INTAKE_WRITTEN', 'DISCOVERY_LEAD_WRITTEN', 'EXISTING_MATCH', 'WRITE_FAILED'];
 var RUNS_FILE_NAME = 'SCOUT_RUN_METRICS.jsonl';
 var EVENT_LOG_NAME = 'PIPELINE_EVENT_LOG.jsonl';
-var CANONICAL_RULES_DOC_ID = '1uuIopBY2Et-leu_tOdxnWAJJLniKwk08rdLCypuM2BE';
+var CANONICAL_RULES_DOC_ID = WRITER_PRIVATE_CONFIG_.CANONICAL_RULES_DOC_ID;
 var RULESET_HISTORY_NAME = 'PIPELINE_RULESET_HISTORY.jsonl';
-var DOCS_ROOT_ID = '1CTLDseAewX18aTsH9Iyeq4xQvVoktFdG';
-var RESUMES_FOLDER_ID = '1mzR0WY_tZUGIWNoAVBG9PTWCppoBFOUf';
-var COVER_LETTERS_FOLDER_ID = '1o-mX_2HwYGNLHENPfWnQoX1jS0qUKo2v';
-var SUPPORTING_DOCS_FOLDER_ID = '1DyXxGRwEw5aHWiBamS1bWD1myHkNmvLG';
-var TIM_VOICE_FOLDER_ID = '1E8yeO34MazfKY0KINhUbbd6d7RrGDcB_';
-var INTERVIEW_NOTES_FOLDER_ID = '1rrmZb-pW_THx-DZMcFVczYuouTlNTkKz';
+var DOCS_ROOT_ID = WRITER_PRIVATE_CONFIG_.DOCS_ROOT_ID;
+var RESUMES_FOLDER_ID = WRITER_PRIVATE_CONFIG_.RESUMES_FOLDER_ID;
+var COVER_LETTERS_FOLDER_ID = WRITER_PRIVATE_CONFIG_.COVER_LETTERS_FOLDER_ID;
+var SUPPORTING_DOCS_FOLDER_ID = WRITER_PRIVATE_CONFIG_.SUPPORTING_DOCS_FOLDER_ID;
+var TIM_VOICE_FOLDER_ID = WRITER_PRIVATE_CONFIG_.TIM_VOICE_FOLDER_ID;
+var INTERVIEW_NOTES_FOLDER_ID = WRITER_PRIVATE_CONFIG_.INTERVIEW_NOTES_FOLDER_ID;
 var JOB_DOCS_CONFIG_NAME = 'JOB_DOCUMENTS_CANONICAL.json';
 var SCORING_MODEL_NAME = 'PIPELINE_SCORING_MODEL.json';
 var SCORING_MODEL_HISTORY_NAME = 'PIPELINE_SCORING_MODEL_HISTORY.jsonl';
@@ -140,7 +171,7 @@ function doGet(e) {
     if (a === 'runs') return out_({ ok: true, runs: readRuns_() });
     if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200), { deep: !!p.primaryId }) });
     if (a === 'interview_notes') return out_(readInterviewNotes_(p.primaryId || ''));
-    if (a === 'documents') return out_(readJobDocuments_());
+    if (a === 'documents') return out_(readJobDocuments_(p.profileResumeId));
     if (a === 'document_text') return out_(readDocumentText_(p.fileId || ''));
     if (a === 'discovery_requests') return out_(readDiscoveryRequests_(p.primaryId || '', +(p.limit || 100)));
     if (a === 'request_result') return out_(findRequestResult_(p.requestId || ''));
@@ -603,7 +634,7 @@ function linesFromMasterText_(text) {
 }
 function readMasterText_(id) {
   id = id || MASTER_ID;
-  if (id === '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI') throw new Error('FROZEN_MASTER_FORBIDDEN');
+  if (id === FROZEN_MASTER_ID) throw new Error('FROZEN_MASTER_FORBIDDEN');
   var file = DriveApp.getFileById(id);
   if (id === MASTER_ID && String(file.getMimeType()) !== 'text/plain') throw new Error('LIVE_MASTER_MIME_INVALID');
   if (String(file.getMimeType()) === 'application/vnd.google-apps.document') return DocumentApp.openById(file.getId()).getBody().getText();
@@ -2899,17 +2930,43 @@ function listFolderFiles_(id) {
   out.sort(function(a,b){ return String(b.modifiedTime).localeCompare(String(a.modifiedTime)); });
   return out;
 }
-function docsConfigFile_() {
+function docsConfigFile_(createIfMissing) {
   var folder=DriveApp.getFolderById(DOCS_ROOT_ID), it=folder.getFilesByName(JOB_DOCS_CONFIG_NAME);
   if (it.hasNext()) return it.next();
+  if (createIfMissing === false) return null;
   return folder.createFile(JOB_DOCS_CONFIG_NAME, JSON.stringify({ resume_folder_id:RESUMES_FOLDER_ID, cover_letter_folder_id:COVER_LETTERS_FOLDER_ID, supporting_docs_folder_id:SUPPORTING_DOCS_FOLDER_ID, tim_voice_folder_id:TIM_VOICE_FOLDER_ID, interview_notes_folder_id:INTERVIEW_NOTES_FOLDER_ID, latest_approved_resume_file_id:'', latest_approved_resume_name:'', approved_at_et:'', approved_by:'TIM' }, null, 2), MimeType.PLAIN_TEXT);
 }
-function readDocsConfig_() { try { return JSON.parse(docsConfigFile_().getBlob().getDataAsString() || '{}'); } catch(e) { return {}; } }
-function readJobDocuments_() {
-  return { ok:true, config:readDocsConfig_(), resumes:listFolderFiles_(RESUMES_FOLDER_ID), coverLetters:listFolderFiles_(COVER_LETTERS_FOLDER_ID), supporting:listFolderFiles_(SUPPORTING_DOCS_FOLDER_ID), timVoice:listFolderFiles_(TIM_VOICE_FOLDER_ID), interviewNotes:listFolderFiles_(INTERVIEW_NOTES_FOLDER_ID) };
+function readDocsConfig_(createIfMissing) { try { var file=docsConfigFile_(createIfMissing); return file ? JSON.parse(file.getBlob().getDataAsString() || '{}') : {}; } catch(e) { return {}; } }
+function readJobDocuments_(profileResumeId) {
+  var result = { ok:true, config:readDocsConfig_(false), resumes:listFolderFiles_(RESUMES_FOLDER_ID), coverLetters:listFolderFiles_(COVER_LETTERS_FOLDER_ID), supporting:listFolderFiles_(SUPPORTING_DOCS_FOLDER_ID), timVoice:listFolderFiles_(TIM_VOICE_FOLDER_ID), interviewNotes:listFolderFiles_(INTERVIEW_NOTES_FOLDER_ID) };
+  if (profileResumeId !== undefined) result.profileResume = readProfileResumeMetadata_(profileResumeId);
+  return result;
+}
+/** Read only the exact profile source's metadata, including when it lives outside the resume inventory.
+ * This proof never adds the file to the inventory or certifies its contents. Failures are isolated and sanitized.
+ */
+function readProfileResumeMetadata_(fileId) {
+  var result = { schema:'forge.profile-resume-metadata.v1', status:'UNKNOWN', source:'DIRECT_FILE_METADATA', id:'', modifiedTime:'', checkedAt:new Date().toISOString() };
+  if (typeof fileId !== 'string' || !/^[A-Za-z0-9_-]{10,200}$/.test(fileId)) { result.reason='INVALID_ID'; return result; }
+  result.id=fileId;
+  if (fileId === FROZEN_MASTER_ID) { result.reason='FROZEN_MASTER_FORBIDDEN'; return result; }
+  if (fileId === MASTER_ID) { result.reason='MASTER_FORBIDDEN'; return result; }
+  try {
+    var file=DriveApp.getFileById(fileId);
+    if (file.getId() !== fileId) { result.reason='FILE_ID_MISMATCH'; return result; }
+    if (file.isTrashed()) { result.reason='FILE_TRASHED'; return result; }
+    var mime=String(file.getMimeType() || '');
+    if (!mime || mime === 'application/vnd.google-apps.folder' || mime === 'application/vnd.google-apps.shortcut') { result.reason='FILE_TYPE_UNSUPPORTED'; return result; }
+    var modified=file.getLastUpdated();
+    if (!modified || typeof modified.getTime !== 'function' || !isFinite(modified.getTime())) { result.reason='INVALID_MODIFIED_TIME'; return result; }
+    result.modifiedTime=modified.toISOString();
+    result.checkedAt=new Date().toISOString();
+    result.status='VERIFIED';
+  } catch (e) { result.reason='FILE_UNAVAILABLE'; }
+  return result;
 }
 function readDocumentText_(fileId) {
-  var id=String(fileId||'').trim(); if(id === '19y5xtspYk3ze_E2uRMcUsK3CNh3tbtCILz-us8YtpDI') return {ok:false,error:'FROZEN_MASTER_FORBIDDEN'}; if(!id) return {ok:false,error:'fileId required'};
+  var id=String(fileId||'').trim(); if(id === FROZEN_MASTER_ID) return {ok:false,error:'FROZEN_MASTER_FORBIDDEN'}; if(!id) return {ok:false,error:'fileId required'};
   var f; try { f=DriveApp.getFileById(id); } catch(e) { return {ok:false,error:'document not found'}; }
   var mime=String(f.getMimeType()||''), text='', method='';
   try {

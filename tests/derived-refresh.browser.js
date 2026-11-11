@@ -1,3 +1,4 @@
+require('./helpers/writer-runtime-fixture.cjs'); // explicit synthetic config for Node Writer helpers
 /* Controlled refresh of stored policy-derived values: review, preconditions, batch-by-batch apply, stop at a failure, rerun, stop button,
  * and the verification re-read. The scripted Writer applies every request with the Writer's real mutateRow. Local test-only writer. */
 require('./helpers/block-production-writer.cjs'); // no request to the production Writer

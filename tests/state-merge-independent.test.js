@@ -200,7 +200,7 @@ function postWithUnreadableState(failure) {
       getRootFolder: () => folder
     },
     LockService: { getScriptLock: () => ({ waitLock() {}, tryLock: () => true, releaseLock() {} }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, getProperties: () => ({}) }) },
+    PropertiesService: require('./helpers/writer-runtime-fixture.cjs').service(),
     MimeType: { PLAIN_TEXT: 'text/plain' },
     ContentService: {
       MimeType: { JSON: 'application/json' },
