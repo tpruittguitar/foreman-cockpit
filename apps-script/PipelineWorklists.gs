@@ -138,12 +138,12 @@ function refreshWorklists_(force) {
   var props = PropertiesService.getScriptProperties(), last = +(props.getProperty('WORKLISTS_BUILT_AT') || 0);
   if (!force && Date.now() - last < WORKLIST_INTERVAL_MS_) return { ok: true, skipped: true, builtAt: last ? new Date(last).toISOString() : '' };
   var masterFile = DriveApp.getFileById(MASTER_ID), text = readMasterText_(MASTER_ID);
-  var built = PipelineWorklists.build(text);
+  var built = PipelineWorklists.build(text,{businessContext:typeof businessContext_==='function'?businessContext_():null});
   // Read the companion only when an otherwise eligible row might have a legacy research marker. Project compact
   // metadata in memory; the master, evidence, original Writer requests and verification status stay untouched.
   if (built.lanes.FORGE_ENRICH_STRATEGIC.some(function (r) { return /^EVC1:[1-9]\d*$/.test(r.p.EVIDENCE_REF || ''); })) {
     var routing = evidenceRouting_();
-    if (routing.active) built = PipelineWorklists.build(worklistResearchLines_(text.split(/\r?\n/), loadCompanionRecs_(routing)).join('\n'));
+    if (routing.active) built = PipelineWorklists.build(worklistResearchLines_(text.split(/\r?\n/), loadCompanionRecs_(routing)).join('\n'),{businessContext:typeof businessContext_==='function'?businessContext_():null});
   }
   var at = new Date().toISOString(), out = { ok: true, builtAt: at, rows: built.rows, lanes: {} };
   Object.keys(WORKLIST_FILES_).forEach(function (lane) {
