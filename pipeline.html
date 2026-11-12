@@ -463,6 +463,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-scoring-preview.js"></script>
 <link rel="stylesheet" href="pipeline-action-progress.css">
 <script src="pipeline-action-progress.js"></script>
+<script src="pipeline-status-reads.js"></script>
 <script src="pipeline-derived-refresh.js"></script>
 <script src="pipeline-manual-intake.js"></script>
 <script src="pipeline-target-companies.js"></script>
@@ -706,7 +707,7 @@ function renderWriterStatus_(){
 var writerRefreshTimer_=null,writerRefreshPromise_=null,writerNextRefreshAt_=0;
 function scheduleWriterRefresh_(){
   /* REV-058: after a failed read, check again in 8 s (was the regular 60 s), so a dropped request does not show UNREACHABLE for a minute */
-  var gap=S.writerStatus&&S.writerStatus.fetchError?8000:60000;clearTimeout(writerRefreshTimer_);writerNextRefreshAt_=hasWriter()?Date.now()+gap:0;
+  var gap=Math.max(statusReads_.remaining('writer_status'),S.writerStatus&&S.writerStatus.fetchError?8000:60000);clearTimeout(writerRefreshTimer_);writerNextRefreshAt_=hasWriter()?Date.now()+gap:0;
   PipelineProgress.clock({enabled:hasWriter(),busy:false,deadline:writerNextRefreshAt_});
   if(hasWriter()&&!document.hidden)writerRefreshTimer_=setTimeout(function(){loadWriterStatus_()},gap);
 }
@@ -716,7 +717,7 @@ function loadWriterStatus_(manual){
   if(S.writerBusy)return writerRefreshPromise_||Promise.resolve(S.writerStatus);
   clearTimeout(writerRefreshTimer_);S.writerBusy=true;PipelineProgress.clock({enabled:true,busy:true,deadline:0});
   if(manual||!S.aiUsageAt||Date.now()-S.aiUsageAt>120000){S.aiUsageAt=Date.now();PipelineAiUsage.load().then(function(r){S.aiUsage=r;S.aiUsageError='';renderWriterStatus_()}).catch(function(e){S.aiUsageError='AI usage readings unavailable: '+e.message;renderWriterStatus_()})}
-  writerRefreshPromise_=gsGet('writer_status').then(function(j){if(j&&j.ok)S.writerStatus=j;else if(j&&/unknown action/.test(j.error||''))S.writerStatus={unsupported:true};else S.writerStatus={fetchError:(j&&j.error)||'no response'};S.writerStatus.checkedAt=Date.now()}).catch(function(e){S.writerStatus={fetchError:e.message,checkedAt:Date.now()}}).then(function(){S.writerBusy=false;renderWriterStatus_();renderBuildIdentity_();scheduleWriterRefresh_();ntLoad_(false);if(S.tab==='needs-tim')ntPaint_();var rfv=rf_();if(rfv.view==='review'&&!rfv.busy)paintRefresh_();return S.writerStatus});
+  writerRefreshPromise_=statusReads_.get('writer_status').then(function(j){if(j&&j.ok)S.writerStatus=j;else if(j&&/unknown action/.test(j.error||''))S.writerStatus={unsupported:true};else S.writerStatus={fetchError:(j&&j.error)||'no response'};S.writerStatus.checkedAt=Date.now()}).catch(function(e){S.writerStatus={fetchError:e.message,checkedAt:Date.now()}}).then(function(){S.writerBusy=false;renderWriterStatus_();renderBuildIdentity_();scheduleWriterRefresh_();ntLoad_(false);if(S.tab==='needs-tim')ntPaint_();var rfv=rf_();if(rfv.view==='review'&&!rfv.busy)paintRefresh_();return S.writerStatus});
   return manual?PipelineProgress.track(writerRefreshPromise_,{control:$('writer-refresh'),label:'Reading Writer status'}):writerRefreshPromise_;
 }
 function loadBuildInfo_(){
@@ -751,6 +752,8 @@ function gsGet(action,extra){
   var ctl=new AbortController(),timer=setTimeout(function(){ctl.abort()},65000);
   return requestProgress_(fetch(u,{redirect:'follow',cache:'no-store',headers:standard?{'x-writer-key':requestKey}:{},signal:ctl.signal}).then(function(r){return r.text().then(function(t){var j;try{j=JSON.parse(t)}catch(e){throw new Error('Writer read HTTP '+r.status+' returned non-JSON')};if(!r.ok)throw new Error(j.error||('Writer read HTTP '+r.status));return j;});}).then(function(j){if(S.cfg.key!==requestKey)throw new Error('Writer credentials changed during request');return j;}).finally(function(){clearTimeout(timer)}),action,false);
 }
+// Only the passive monitor and operations display use this adapter. Direct gsGet preflights stay fresh.
+var statusReads_=PipelineStatusReads.create(gsGet,function(){return JSON.stringify([S.cfg.url,S.cfg.key]);});
 function requestIdForBody_(body){
   if(!body||body.action==='state')return'';
   var nestedKey={ruling:'ruling',upsert_application:'event',interview_note:'note',approve_resume:'selection',save_rules:'rules',save_scoring_model:'model',undo_ruling:'undo'}[body.action];
@@ -2889,7 +2892,7 @@ function refreshHealthMaster_(){
   healthMasterRead_=Promise.resolve(q.get('src')==='local'?loadLocalSqlite_(q):loadWriter_()).finally(function(){healthMasterRead_=null;});
   return healthMasterRead_;
 }
-var operationsUI_=PipelineOperationsUI.create({get:gsGet,post:gsPost,escape:esc,refreshMaster:refreshHealthMaster_,health:function(){return fetch('/api/pipeline-health',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Health feed HTTP '+r.status);return r.json();}).then(function(j){setDecisionReady_(j);return j;});},openDecisionReady:openDecisionReady_,openWaiting:openWaitingQueue_,master:function(){return {rows:S.rows||[],loaded:!!((S.rows||[]).length),freshness:S.load&&S.load.freshness,checkedAt:S.connection&&S.connection.lastRead};},alert:function(text,severity){var b=$('pipeline-health-alert');b.hidden=!text;b.textContent=text;b.className='cr-global-alert '+severity;b.onclick=function(){switchTab('automations');};},activity:function(){return fetch('/api/writer-activity',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Receipt activity HTTP '+r.status);return r.json();});},writerStatus:function(){return S.writerStatus||null;},loadStatus:function(){return S.load||{};},connection:function(){return S.connection||{};}});
+var operationsUI_=PipelineOperationsUI.create({get:statusReads_.get,post:gsPost,escape:esc,refreshMaster:refreshHealthMaster_,health:function(){return fetch('/api/pipeline-health',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Health feed HTTP '+r.status);return r.json();}).then(function(j){setDecisionReady_(j);return j;});},openDecisionReady:openDecisionReady_,openWaiting:openWaitingQueue_,master:function(){return {rows:S.rows||[],loaded:!!((S.rows||[]).length),freshness:S.load&&S.load.freshness,checkedAt:S.connection&&S.connection.lastRead};},alert:function(text,severity){var b=$('pipeline-health-alert');b.hidden=!text;b.textContent=text;b.className='cr-global-alert '+severity;b.onclick=function(){switchTab('automations');};},activity:function(){return fetch('/api/writer-activity',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('Receipt activity HTTP '+r.status);return r.json();});},writerStatus:function(){return S.writerStatus||null;},loadStatus:function(){return S.load||{};},connection:function(){return S.connection||{};}});
 operationsUI_.start();
 function renderAutomations(){operationsUI_.render($('view-automations'))}
 function renderScheduleReference_(){var v=$('view-automations');var list=autos().map(function(a){return{a:a,d:secsUntil(a.schedule)}}).sort(function(x,y){return (x.d==null?1e9:x.d)-(y.d==null?1e9:y.d)});
