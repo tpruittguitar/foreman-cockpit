@@ -19,3 +19,7 @@ Validation: nine new flow tests invoke the actual intake planner, ENRICH mutatio
 925 Node tests passed on the final code, including header-status hardening. Trusted-loader tests cover disabled configuration, fixed repository/path, current revision and exact definition, source failure, expiry and browser digest preparation. Read-only dry run over the complete 6,744-row downloaded master using only the four reviewed employers: 11 active disposition proposals and 15 preserved historical matches; no row writes. This is a full master scan against a four-employer sample, not exhaustive industry classification.
 
 A desktop/phone Chromium regression test was added, with production requests blocked. Execution is blocked by the environment: Chromium cannot create its local socket (Operation not permitted), including the authorized escalated attempt. No browser pass or visual verification is claimed.
+
+## Writer caller connection follow-up
+
+PR #287 implements the final Code.gs HTTP route and production intake and single/batch ENRICH caller connections. The earlier patch artifacts are historical and must not be applied over the implemented source. The approved same-value authentication migration replaces the plaintext source literal with a private WRITER_PASSPHRASE Script Property lookup. Missing configuration fails closed. See COMPANY_BUSINESS_WRITER_HANDOFF.md and WRITER_PRIVATE_PROPERTY_DEPLOY.md for deployment boundaries. Source integration does not establish deployment, activation or live disposition outcomes.
