@@ -4,7 +4,7 @@ This script runs in **your** Google account. It reads the canonical master and, 
 
 1. Open https://script.google.com and click **New project**.
 2. Delete the placeholder code, paste the full contents of `Code.gs` from this folder.
-3. Near the top, change `PASSPHRASE = 'CHANGE-ME'` to a passphrase of your own. Click the save icon.
+3. In **Project Settings → Script Properties**, set `WRITER_PASSPHRASE` to your private passphrase. For an existing Writer, preserve the exact current value. Code reads this property with no hardcoded fallback; missing configuration rejects authentication. Do not paste the value into repository files, coordination documents, logs or chat.
 4. Click **Deploy** (top right) → **New deployment** → gear icon → **Web app**.
    - Description: anything.
    - Execute as: **Me**.
@@ -31,7 +31,7 @@ The old paste-over instructions below are retained only as history. When `apps-s
 Files the script creates beside the master on first use (no action needed): `SCOUT_RUN_METRICS.jsonl` (telemetry). Existing: `PIPELINE_EXPLORER_STATE.json`, `PIPELINE_EXPLORER_STATE_CHANGE_RECEIPTS`.
 
 ## Automated deploys and AI access (2026-10-02)
-Nobody needs to paste code into the editor any more. `apps-script/deploy.sh` sets the live project to exactly this folder's `.gs` files, keeps the live passphrase, publishes a new version and points the existing web app at it, so the URL never changes. It needs a clasp login (`clasp login --no-localhost`) and the Apps Script API switched on at script.google.com/home/usersettings. `apps-script/deploy.sh --head` updates the code without touching the live web app.
+Nobody needs to paste code into the editor any more. `apps-script/deploy.sh` sets the live project to exactly this folder's `.gs` files, uses the separately verified private `WRITER_PASSPHRASE` setting, publishes a new version and points the existing web app at it, so the URL never changes. It needs a clasp login (`clasp login --no-localhost`) and the Apps Script API switched on at script.google.com/home/usersettings. `apps-script/deploy.sh --head` updates the code without touching the live web app.
 
 `Automation.gs` adds the Drive write queue (AI_Coordination/WRITER_QUEUE, claimed by a one-minute trigger). Run `installAutomation` once from the editor to approve the trigger permission and install the trigger. Queue files are transport only, never a second population. How the AIs write is described in `docs/WRITER_ACCESS.md`.
 
@@ -49,3 +49,9 @@ Canonical Rules and the scoring model live in `tpruittguitar/forge-policy` (`rul
 - `POLICY_SOURCE`: leave unset (GitHub). Set `DRIVE` only to roll back to the superseded Drive Doc and file.
 
 Run `checkPolicySource` from the editor after any change: it reports the live source, whether the token is set, and whether the GitHub rules file is readable.
+
+## Private Writer authentication
+
+The approved migration keeps the existing passphrase unchanged and moves its runtime source to the `WRITER_PASSPHRASE` Script Property in the existing Pipeline Explorer Writer Apps Script project. Project editors manage it under Project Settings → Script Properties. Clients continue using their existing passphrase; do not rotate or publish it as part of this change. Missing or unreadable properties fail closed. The browser company-business context response never includes this property.
+
+Configuring the private property alone does not change the deployed version: old deployed code continues its existing authentication until a separately authorized deployment adopts the property lookup. Follow the deployment preflight requirements in `deploy.sh` and verify the property equals the existing live value before any deployment. Source publication, merge, deployment and business-exclusion activation are distinct steps.
