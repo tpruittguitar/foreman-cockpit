@@ -801,7 +801,7 @@ var Source={
 function loadScoringGovernance_(){
   if(!hasWriter())return;
   loadCanonicalScoring_().then(function(){if(S.rows&&S.rows.length&&S.tab!=='scoring'&&changed())render()});
-  gsGet('business_context').then(function(j){return PipelineBusiness.prepareContext(j&&j.ok?j.businessContext:{enabled:false,status:'REVIEW_NEEDED',reason:'BUSINESS_CONTEXT_UNAVAILABLE',facts:[]})}).then(function(c){S.businessContext=c;attentionCache={};scoreCache={fp:'',rows:{}};scoringCfgMemo_.cfg=null;if(S.rows&&S.rows.length)render()}).catch(function(){S.businessContext={enabled:false,status:'REVIEW_NEEDED',reason:'BUSINESS_CONTEXT_UNAVAILABLE',facts:[]};if(S.rows&&S.rows.length)render()});
+  gsGet('business_context').then(function(j){return PipelineBusiness.prepareContext(j&&j.ok&&j.businessContext?j.businessContext:{enabled:false,status:'REVIEW_NEEDED',reason:'BUSINESS_CONTEXT_UNAVAILABLE',facts:[]})}).then(applyBusinessContext_).catch(function(){applyBusinessContext_({enabled:false,status:'REVIEW_NEEDED',reason:'BUSINESS_CONTEXT_UNAVAILABLE',facts:[]})});
   gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules();else if(S.rows&&S.rows.length&&changed())render()}}).catch(function(){});
   /* REV-093 (perf, Grok 00:26 ET live load): the published model and the FLEX rules arrive after the first paint. Each used to empty the score cache and
      redraw everything (re-scoring every row and rebuilding the table: two extra 2-3 s main-thread blocks on the live site),
@@ -810,6 +810,13 @@ function loadScoringGovernance_(){
   /* compared against the fingerprint of the last full render (S.renderFp_, set in render()), so a model that lands before the
      rows causes no extra redraw and one that matches what is on screen causes none either */
   function changed(){return S.renderFp_==null||scoringFp_()!==S.renderFp_}
+}
+// A late disabled/unavailable context changes notices, not row identities or scoring.
+function applyBusinessContext_(context){
+  function suppressed(c){return PipelineBusiness.partition(S.rows||[],c).suppressed.map(function(x){return x.row.PRIMARY_ID||x.row.id}).sort().join('|')}
+  var before=suppressed(S.businessContext);S.businessContext=context;
+  if(before!==suppressed(context)){attentionCache={};scoreCache={fp:'',rows:{}};scoringCfgMemo_.cfg=null;if(S.rows&&S.rows.length)render()}
+  renderLoadAlert_();
 }
 function loadCanonicalScoring_(){
   if(!hasWriter())return Promise.resolve(null);
