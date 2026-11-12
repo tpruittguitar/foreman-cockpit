@@ -6,9 +6,14 @@
 #
 # Needs: a clasp login as tpruitt.guitar@gmail.com (npm i -g @google/clasp; clasp login --no-localhost) and the
 # Apps Script API enabled at https://script.google.com/home/usersettings. gas_api.py reuses that login.
-# The live PASSPHRASE is read from the live project at deploy time and re-inserted, so the repo copy never has to carry it.
+# The unchanged credential must already be in the private WRITER_PASSPHRASE Script Property.
+# Independently verify it, then set WRITER_PRIVATE_PROPERTY_VERIFIED=1 and supply the same
+# WRITER_PASSPHRASE privately in the process environment. The flag is an attestation, not an API check.
+# Credentials are never reinserted into project source. No deployment should precede setting readback.
 # The project is set to EXACTLY the repo's files (plus the live manifest); anything else in the project is removed.
+set +x # Never trace commands in a process carrying a credential.
 set -euo pipefail
+umask 077
 SCRIPT_ID=1vsVq0tFs_EvKSxahpCR8TNCaXkkZ-iObA9b_wd7GJGkcmNcgNc_1gLGr
 DEPLOYMENT_ID=AKfycbwShspSkto70NeFWjgTuyIf-W3EDgUmKmoWevE-jZq95pm6SAulrJYHX1HmiPg8tx3i
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -17,23 +22,21 @@ DESC="${DEPLOY_DESC:-$(git -C "$HERE" log -1 --format='%h %s' 2>/dev/null | cut 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
 $API get-content "$SCRIPT_ID" "$WORK/live"
-LIVE_PASS_LINE="$(grep -hE "^var PASSPHRASE *= *'" "$WORK/live/Code.js" | head -1)"
-[ -n "$LIVE_PASS_LINE" ] || { echo "could not find live PASSPHRASE line; aborting" >&2; exit 1; }
-echo "$LIVE_PASS_LINE" | grep -q "'CHANGE-ME'" && { echo "live PASSPHRASE is the placeholder; aborting" >&2; exit 1; }
+node "$HERE/../scripts/writer-deploy-preflight.cjs" "$HERE/Code.gs" "$WORK/live/Code.js"
 
-# REV-017 gate G-2: prove the state merge against the LIVE state file before anything is deployed (read-only).
-if [ "${SKIP_STATE_CHECK:-}" != "1" ]; then
-  LIVE_KEY="$(echo "$LIVE_PASS_LINE" | sed -E "s/^var PASSPHRASE *= *'([^']*)'.*/\1/")"
-  node "$HERE/../scripts/state-merge-check.cjs" "https://script.google.com/macros/s/$DEPLOYMENT_ID/exec" "$LIVE_KEY" || { echo "state merge check failed; aborting deploy" >&2; exit 1; }
-fi
+# Mandatory even when SKIP_STATE_CHECK=1: authenticate the unchanged credential and
+# prove state-merge safety before any project-code mutation. The key stays out of argv.
+node "$HERE/../scripts/state-merge-check.cjs" "https://script.google.com/macros/s/$DEPLOYMENT_ID/exec" || { echo "state merge check failed; aborting deploy" >&2; exit 1; }
 mkdir -p "$WORK/out"
 cp "$WORK/live/appsscript.json" "$WORK/out/appsscript.json"
 for f in "$HERE"/*.gs; do
   n="$(basename "$f" .gs)"
-  awk -v line="$LIVE_PASS_LINE" '/^var PASSPHRASE *= *\x27/ && !done { print line; done=1; next } { print }' "$f" > "$WORK/out/$n.js"
+  cp "$f" "$WORK/out/$n.js"
   cp "$WORK/out/$n.js" "$WORK/check.js"; node --check "$WORK/check.js"
 done
-grep -qE "^var PASSPHRASE *= *'CHANGE-ME'" "$WORK/out/Code.js" && { echo "placeholder survived; aborting" >&2; exit 1; }
+if grep -qE "\bPASSPHRASE[[:space:]]*=[[:space:]]*[\'\"]" "$WORK/out/"*.js; then
+  echo "literal passphrase assignment survived; aborting" >&2; exit 1
+fi
 
 # Stamp the deployed identity (commit, PR, subject) into WRITER_BUILD so ping/writer_status report which PR is live.
 # The PR comes from DEPLOY_PR, else from a squash-merge subject ending "(#NN)"; a dirty tree is marked "+dirty".
