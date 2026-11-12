@@ -335,6 +335,10 @@ var STATUS_RECENT_HOLD_MS = 24 * 60 * 60 * 1000;
 /** GET action=writer_status: one cheap snapshot for the Explorer's writer monitor. Reads only; each part fails soft. */
 function writerStatus_() {
   var now = Date.now(), s = { ok: true, now: new Date(now).toISOString(), build: typeof WRITER_BUILD !== 'undefined' ? WRITER_BUILD : null, errors: [] };
+  // One fresh index snapshot per status invocation, including a shared read failure.
+  // Mutation and independent readback callers still call readIndex_ directly.
+  var indexRead=false,indexValue,indexError;
+  function statusIndex(){if(!indexRead){indexRead=true;try{indexValue=readIndex_();}catch(e){indexError=e;}}if(indexError)throw indexError;return indexValue;}
   function part(name, fn) { try { fn(); } catch (e) { s.errors.push(name + ': ' + String(e && e.message || e)); } }
   part('freeze', function () { s.freeze = readFreeze_(); });
   part('migration', function () { var st = readMigrationState_(); s.migration = st ? { migrationId: st.migrationId || '', mode: st.mode || '', status: st.status || '', updatedAt: st.updatedAt || '' } : null; });
@@ -366,7 +370,7 @@ function writerStatus_() {
     // request without a COMPLETE ID leaves the run unrecovered and its warning in place.
     var partials = s.recentHolds.concat(s.recentRuns).filter(function (r, i, all) { return /^(PARTIAL_HOLD|HOLD_UNCERTAIN|SUCCESS)$/.test(r.terminalStatus) && all.indexOf(r) === i; });
     if (partials.length) {
-      var idx = readIndex_(), states = (idx && idx.requests) || {};
+      var idx = statusIndex(), states = (idx && idx.requests) || {};
       partials.forEach(function (r) {
         r.recovered = false;
         if (!r.fileId) return;
@@ -378,7 +382,7 @@ function writerStatus_() {
     }
   });
   part('unverified', function () {
-    var idx = readIndex_(), pend = (idx && idx.pending) || [];
+    var idx = statusIndex(), pend = (idx && idx.pending) || [];
     s.unverified = { count: pend.length, oldestWrittenAt: pend.reduce(function (m, p) { return !m || p.writtenAt < m ? p.writtenAt : m; }, '') };
   });
   s.workload={state:'UNKNOWN',productionBenchmark:'NOT_TESTED',reason:'No independently approved production capacity profile',measurements:(s.recentRuns||[]).map(function(r){return {elapsedMs:r.totalMs,records:r.records,ok:r.terminalStatus==='SUCCESS',environment:'production',operation:r.action,build:r.writerBuild,storageModel:r.storageModel};})};
