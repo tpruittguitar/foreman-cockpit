@@ -449,6 +449,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-evidence.js"></script>
 <script src="pipeline-quality.js"></script>
 <script src="pipeline-charts.js"></script>
+<script src="pipeline-business.js"></script>
 <script src="pipeline-attention.js"></script>
 <script src="pipeline-trust.js"></script>
 <script src="pipeline-incidents.js"></script>
@@ -543,6 +544,9 @@ function noticeKey_(n){if(n.key)return n.key;return (n.source||'')+':'+(n.code||
 function dismissed_(){var d=LS.get('dismissed',{}),now=Date.now(),ch=false;Object.keys(d).forEach(function(k){if(!(now-d[k]<86400000)){delete d[k];ch=true}});if(ch)LS.set('dismissed',d);return d}
 function dismissNotice_(key){var d=dismissed_();d[key]=Date.now();LS.set('dismissed',d);renderLoadAlert_();renderWriterStatus_()}
 function loadNotices_(){var v=S.load||{},out=[],m=S.master;
+  if(S.businessContext&&S.businessContext.status==='REVIEW_NEEDED')out.push({source:'load',level:'DEGRADED',code:'BUSINESS_CONTEXT_UNAVAILABLE',title:'Company-business review unavailable',text:'Employer exclusion evidence could not be verified. Unknowns remain visible; no company exclusions were inferred.',retry:true});
+  if(S.businessContext&&S.businessContext.enabled&&S.rows){var bc=PipelineBusiness.partition(S.rows,S.businessContext);if(bc.suppressed.length)out.push({source:'load',level:'NOTICE',code:'BUSINESS_EXCLUSIONS',title:'Company-business exclusions',text:bc.suppressed.length+' records are excluded from active recommendations. All live and search preserve the records and history; canonical dispositions require Writer verification.'});}
+
   if(v.freshness==='NONE')out.push({source:'load',level:'FAULT',code:'MASTER_UNREADABLE',title:'FETCH FAILED · NO DATA',text:'The current canonical master could not be loaded ('+(v.error||'')+') and no cached copy exists on this device.',retry:true});
   else if(v.freshness==='STALE')out.push({source:'load',level:'DEGRADED',code:'MASTER_STALE',title:'STALE · FETCH FAILED',text:'The current canonical master could not be loaded ('+(v.error||'')+'). You are looking at a cached copy fetched '+fmtTime_(v.meta&&v.meta.fetchedAt)+'. It is NOT the live master; saving is disabled until a fresh read succeeds.',retry:true});
   else if(v.freshness==='LIVE'){
@@ -797,6 +801,7 @@ var Source={
 function loadScoringGovernance_(){
   if(!hasWriter())return;
   loadCanonicalScoring_().then(function(){if(S.rows&&S.rows.length&&S.tab!=='scoring'&&changed())render()});
+  gsGet('business_context').then(function(j){return PipelineBusiness.prepareContext(j&&j.ok?j.businessContext:{enabled:false,status:'REVIEW_NEEDED',reason:'BUSINESS_CONTEXT_UNAVAILABLE',facts:[]})}).then(function(c){S.businessContext=c;attentionCache={};scoreCache={fp:'',rows:{}};scoringCfgMemo_.cfg=null;if(S.rows&&S.rows.length)render()}).catch(function(){S.businessContext={enabled:false,status:'REVIEW_NEEDED',reason:'BUSINESS_CONTEXT_UNAVAILABLE',facts:[]};if(S.rows&&S.rows.length)render()});
   gsGet('canonical_rules').then(function(j){if(j.ok){S.canonicalRules=j;if(S.tab==='rules')renderRules();else if(S.rows&&S.rows.length&&changed())render()}}).catch(function(){});
   /* REV-093 (perf, Grok 00:26 ET live load): the published model and the FLEX rules arrive after the first paint. Each used to empty the score cache and
      redraw everything (re-scoring every row and rebuilding the table: two extra 2-3 s main-thread blocks on the live site),
@@ -1052,7 +1057,7 @@ function scoringCfg_(){var text=scoringRulesText_(),rev=scoringRev_(),m=scoringC
   if(m.cfg&&scoreCache.fp!==''&&m.scoring===S.scoring&&m.text===text&&m.rev===rev)return m.cfg;
   var cfg=buildScoringCfg_();scoringCfgMemo_={scoring:S.scoring,text:text,rev:rev,cfg:cfg,fp:PipelineScoring.fingerprint(cfg)};saveScoringSeed_();return cfg}
 function scoringFp_(){scoringCfg_();return scoringCfgMemo_.fp}
-function scoreFor_(r){if(!r)return null;var cfg=scoringCfg_(),fp=scoringCfgMemo_.fp;if(scoreCache.fp!==fp)scoreCache={fp:fp,rows:{}};if(scoreCache.rows[r.id])return scoreCache.rows[r.id];return scoreCache.rows[r.id]=PipelineScoring.scoreRow(r,cfg)}
+function scoreFor_(r){if(!r)return null;var cfg=scoringCfg_(),fp=scoringCfgMemo_.fp;var business=businessDecision_(r);if(business.suppressActiveConsideration)return Object.assign({},PipelineScoring.scoreRow(r,cfg),{overall:null,overallWithoutFlex:null,band:'BUSINESS EXCLUDED',businessDecision:business});if(scoreCache.fp!==fp)scoreCache={fp:fp,rows:{}};if(scoreCache.rows[r.id])return scoreCache.rows[r.id];return scoreCache.rows[r.id]=PipelineScoring.scoreRow(r,cfg)}
 // Percentile bands (display only; pipeline-bands.js). Population = open jobs that are not applied/terminal. Quantiles and minN come from tokens.css.
 var bandCache_={key:null,res:null,live:false};
 function bandTokens_(){var cs=getComputedStyle(document.documentElement),g=function(k){return cs.getPropertyValue(k).trim()};return {top:g('--pe-band-rank-top'),upper:g('--pe-band-rank-upper'),low:g('--pe-band-rank-low'),minN:g('--pe-band-min-n')}}
@@ -1377,7 +1382,9 @@ function renderPresets(){
 }
 /* ---------- filtering / sorting ---------- */
 function cmp(a,b){if(a===b)return 0;if(a===''||a==null)return 1;if(b===''||b==null)return -1;var na=parseFloat(a),nb=parseFloat(b);if(!isNaN(na)&&!isNaN(nb)&&/^[\d.\-]+$/.test(a)&&/^[\d.\-]+$/.test(b))return na-nb;return a<b?-1:1}
+function businessDecision_(r){return typeof PipelineBusiness!=='undefined'?PipelineBusiness.assess(r,S.businessContext):{status:'DISABLED'}}
 function passes(r){
+  if(!S.search&&S.preset!=='ALL'&&!historyPreset_(S.preset)&&businessDecision_(r).suppressActiveConsideration)return false;
   if(!allowedInView_(r,S.preset)||!PRESETS[S.preset].fn(r))return false;
   /* decided: out of default views at once (search and Decided still find it) */if(!S.search&&!DECISION_VIEWS_[S.preset]&&ruling(r)&&actRule_(r).hidden)return false;
   if(S.chartFilter&&S.chartFilter.ids.indexOf(r.id)<0)return false;
@@ -1893,7 +1900,7 @@ function outboxTick_(force){if(OUTBOX_.busy||!canSend()||!S.load||S.load.freshne
 function outboxDeferUnknown_(ru){var o=ru.outbox||(ru.outbox={tries:0});o.tries=(o.tries||0)+1;o.auto=true;o.nextAt=Date.now()+OUTBOX_DELAYS_[Math.min(o.tries,OUTBOX_DELAYS_.length-1)];ru.writeStatus='RESULT_UNKNOWN';ru.error='Waiting for independent Writer proof; original request retained';}
 function outboxSchedule_(){clearTimeout(OUTBOX_.timer);var next=Infinity;Object.keys(S.rulings).forEach(function(k){var ru=S.rulings[k];if(outboxRetryable_(ru))next=Math.min(next,ru.outbox&&ru.outbox.nextAt||Date.now())});if(next<Infinity)OUTBOX_.timer=setTimeout(function(){outboxTick_(false)},Math.max(1000,next-Date.now()))}
 /* ---------- Act Now (Simplify PR 1) ---------- */
-function actNowModel_(){return PipelineActNow.pick(distinctRows_().filter(function(r){return !terminalJob_(r)||ruling(r)}),{now:Date.now(),ruling:ruling,score:function(r){var s=scoreFor_(r);return s?s.overall:null},fitMeasured:hasMeasuredFit_,snoozes:S.anSnooze})}
+function actNowModel_(){return PipelineActNow.pick(distinctRows_().filter(function(r){return (!terminalJob_(r)||ruling(r))&&!businessDecision_(r).suppressActiveConsideration}),{now:Date.now(),ruling:ruling,score:function(r){var s=scoreFor_(r);return s?s.overall:null},fitMeasured:hasMeasuredFit_,snoozes:S.anSnooze})}
 function actNowHtml_(){if(!S.master||typeof PipelineActNow==='undefined')return '';if(!document.getElementById('an-css')){var st=document.createElement('style');st.id='an-css';st.textContent=PipelineActNow.CSS;document.head.appendChild(st)}
   return PipelineActNow.html(actNowModel_(),{collapsed:S.anCollapsed,posting:function(r){return PipelinePolicy.links(r).preferred||''},why:function(r){var p=r.payload||{};return String(p.WHY_FIT||p.FIT_SUMMARY||p.FIT_EVIDENCE||p.SCOPE_FIT_NOTE||'').slice(0,160)}})}
 function actNowSay_(id,t){var c=document.querySelector('#act-now [data-an-id="'+id+'"]');if(!c)return;var m=c.querySelector('.an-say');if(!m){m=document.createElement('div');m.className='an-why an-say';m.setAttribute('role','status');c.appendChild(m)}m.textContent=t}
@@ -2186,7 +2193,7 @@ function archivedCount_(){return distinctRows_().filter(isArchivedRow_).length}
 function bucketData(rows){rows=rows||chartRows_();var data=BUCKET_ORDER_DEFAULT.map(function(b,i){var match=rows.filter(function(r){return r.BUCKET===b});return{label:bucketLabel(b),value:match.length,color:PipelineCharts.colors[i],filter:chartFilter_(bucketLabel(b),match)}}),known=data.reduce(function(n,x){return n+x.value},0);if(rows.length>known)data.push({label:'Unparsed / other',value:rows.length-known,filter:chartFilter_('Unparsed / other',rows.filter(function(r){return BUCKET_ORDER_DEFAULT.indexOf(r.BUCKET)<0}))});return data}
 function workloadData(){var rows=distinctRows_();return ['READY_TO_PURSUE','SCOUT_INTAKE','DISCOVERY_LEAD','MANUAL_RESEARCH','BLOCKED','TIM_DECISION_REQUIRED'].map(function(b,i){var match=rows.filter(function(r){return r.BUCKET===b});return{label:bucketLabel(b),value:match.length,color:PipelineCharts.colors[i],filter:chartFilter_(bucketLabel(b),match)}})}
 var attentionCache={};
-function attentionFor_(r){if(attentionCache[r.id])return attentionCache[r.id];var a=PipelineAttention.evaluate(r),ru=ruling(r);if(ru&&(['DECLINE','REJECTED_BY_EMPLOYER','APPLIED','INVALID_DISCOVERY','CLOSED_DEAD','DUPLICATE'].indexOf(ru.kind)>=0||ru.kind==='APPLY_NOW'&&ru.value==='NO')){a.strong=false;a.active=false}return attentionCache[r.id]=a}
+function attentionFor_(r){if(attentionCache[r.id])return attentionCache[r.id];var a=PipelineAttention.evaluate(r),ru=ruling(r);if(businessDecision_(r).suppressActiveConsideration){a.active=false;a.strong=false;}if(ru&&(['DECLINE','REJECTED_BY_EMPLOYER','APPLIED','INVALID_DISCOVERY','CLOSED_DEAD','DUPLICATE'].indexOf(ru.kind)>=0||ru.kind==='APPLY_NOW'&&ru.value==='NO')){a.strong=false;a.active=false}return attentionCache[r.id]=a}
 function hasMeasuredFit_(r){return PipelineEvidence.fit((r&&r.payload)||{}).value!=null}
 function hasResolvedFlex_(r){var p=(r&&r.payload)||{},cls=String(p.FLEX_CLASS||'').toUpperCase();return /^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(cls)||(!PipelineTrust.missing(p.FLEX)&&!/^(UNKNOWN|NOT_STATED|NOT STATED|TBD|—|-)$/i.test(String(p.FLEX).trim()))}
 // A fixed REQ cell holding a sentinel (UNKNOWN, UNCAPTURED, -, blank) must not mask a usable payload REQ_ID; a usable fixed REQ still wins.
@@ -3357,7 +3364,7 @@ window.PEMobileBridge={
      real source. A reload clears the waiting-queue sets while it fetches, so the last good set (and when it loaded) is
      kept for the phone; decideState() reports it. */
   decideRows:function(){if(!S.master)return [];var ready=mDecideIds_();return distinctRows_().filter(function(r){
-      var b=String(r.BUCKET||'').toUpperCase();if(terminalJob_(r)||b==='APPLIED'||b!=='TIM_DECISION_REQUIRED'&&!ready.has(r.PRIMARY_ID))return false;
+      var b=String(r.BUCKET||'').toUpperCase();if(businessDecision_(r).suppressActiveConsideration||terminalJob_(r)||b==='APPLIED'||b!=='TIM_DECISION_REQUIRED'&&!ready.has(r.PRIMARY_ID))return false;
       var ru=ruling(r);if(!ru||ru.undone||!/^(APPLY_NOW|MANUAL_RESEARCH|DECLINE)$/.test(ru.kind)&&!PipelineActNow.DECIDING[ru.kind])return true;
       return PipelineActNow.saveState(ru)==='NOT_SAVED'||PipelineActNow.changes(r,ru,(scoreFor_(r)||{}).overall).length>0})},
   /* Stage 4. Jobs list: mine = the Decide queue; applied = APPLIED bucket; all = open jobs plus applied ones. */
