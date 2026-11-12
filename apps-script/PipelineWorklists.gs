@@ -91,11 +91,16 @@
   function build(text, opts) {
     opts = opts || {};
     var now = opts.now ? Date.parse(opts.now) : Date.now(), rows = parseRows(text), active = rows.filter(workable);
+    var businessAccounting=null;
+    if(opts.businessContext&&opts.businessContext.enabled===true){
+      var businessModule=typeof module==='object'&&module.exports?require('../pipeline-business'):PipelineBusiness;
+      businessAccounting=businessModule.partition(active,opts.businessContext);active=businessAccounting.kept;
+    }
     var strategic = ordered(active.filter(function (r) { return !analyzed(r); }), 'STRATEGIC_ATTEMPT_ASOF', now);
     var feasibility = ordered(active.filter(function (r) { return needs(r).length; }), 'FEASIBILITY_ATTEMPT_ASOF', now, analyzed);
     var freshness = typeof module === 'object' && module.exports ? require('./PipelinePostingFreshness.gs') : PipelinePostingFreshness;
     var postval = ordered(active.filter(function(r){return freshness.assess(r,now).due&&!ats().ownedByChecker(r.p);}), 'LIVENESS_ATTEMPT_ASOF', now);
-    return { rows: rows.length, lanes: { FORGE_ENRICH_STRATEGIC: strategic, FORGE_ENRICH_FEASIBILITY: feasibility, FORGE_POSTING_VALIDATION: postval } };
+    return { rows: rows.length, businessAccounting:businessAccounting, lanes: { FORGE_ENRICH_STRATEGIC: strategic, FORGE_ENRICH_FEASIBILITY: feasibility, FORGE_POSTING_VALIDATION: postval } };
   }
   function clip(s, n) { s = String(s || '').replace(/\s+/g, ' ').replace(/\|/g, '/').trim(); return s.length > n ? s.slice(0, n - 1) + '~' : s; }
   function line(r, i, lane) {
