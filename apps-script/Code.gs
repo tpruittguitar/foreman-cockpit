@@ -2126,7 +2126,7 @@ function timRuledApplied_(P, tags) {
   if (P.APP_CONFIRMATION) return P.APP_CONFIRMATION === 'TIM_RULING';
   return (tags || []).some(function (t) { return /^TIM_APPLIED_/.test(t); }) || /^Tim direct statement/.test(String(P.APP_STATUS_EVIDENCE || ''));
 }
-function mutateRow(line, ruling, flexPolicy) {
+function mutateRow(line, ruling, flexPolicy, businessContext) {
   var cells = line.split(' | ');
   if (cells.length < FIXED_N + 1) return { ok: false, error: 'row has fewer than 10 cells' };
   var fixed = cells.slice(0, FIXED_N), rest = cells.slice(FIXED_N).join(' | ');
@@ -2232,7 +2232,13 @@ function mutateRow(line, ruling, flexPolicy) {
   else { set('STATE_SOURCE', source); set('STATE_UPDATED_AT', ts); }
   fixed[6] = tags.length ? tags.filter(function (t, i) { return tags.indexOf(t) === i; }).join('; ') : '-';
   var after = fixed.join(' | ') + ' | ' + buildPayload(pp.lead, P, O);
-  return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7] };
+  var businessDecision = null;
+  if(kind==='ENRICH'&&businessContext&&businessContext.enabled===true){
+    var businessModule=typeof module==='object'&&module.exports?require('../pipeline-business'):PipelineBusiness;
+    businessDecision=businessModule.assess({PRIMARY_ID:fixed[1],COMPANY:fixed[2],BUCKET:fixed[4],p:P},businessContext);
+  }
+  // A proposal accompanies ENRICH; no state mutation or automatic disposition.
+  return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7], businessDecision:businessDecision };
 }
 /** Writer-owned calculation, shared byte-for-byte with the viewer. Called only for a requested row write, never by policy saves. */
 function deriveWriterScores_(fixed, P, set, policy) {
@@ -2753,6 +2759,15 @@ function planIntake(lines, records, rulesObj, ctx) {
     res.INTAKE_KEY = rec.INTAKE_KEY;
     if (batchKeys[rec.INTAKE_KEY]) { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
     var nc = classifyNeverConsider(rec, R);
+    // Trusted context only, never read activation or facts from candidate fields.
+    if(ctx.businessContext&&ctx.businessContext.enabled===true){
+      var businessModule=typeof module==='object'&&module.exports?require('../pipeline-business'):PipelineBusiness;
+      var businessDecision=businessModule.assess(rec,ctx.businessContext);
+      res.businessDecision=businessDecision;
+      // Existing canonical identities retain ordinary dedupe/protected-state handling.
+      var businessIdentity=matchExisting(rec,idx,{holdRelistedProtected:true});
+      if(businessDecision.status==='PROPOSE_INTAKE_EXCLUSION'&&businessIdentity.kind==='none')nc={outcome:'EXCLUDE',ruleId:businessDecision.ruleId,confidence:'HIGH',reason:'Confirmed employer primary business: '+businessDecision.category,basis:'REVIEWED_SHARED_EMPLOYER_FACT'};
+    }
     if (nc.outcome === 'EXCLUDE') {
       res.outcome = 'EXCLUDED'; res.result = 'NEVER_CONSIDER_EXCLUDED'; res.NEVER_CONSIDER_RULE_ID = nc.ruleId; res.detail = nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'; summary.NEVER_CONSIDER_EXCLUDED++; byRule[nc.ruleId] = (byRule[nc.ruleId] || 0) + 1;
       excluded.push({ SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis, SUBMITTED_VIA: via, DECIDED_BY: 'WRITER' });
