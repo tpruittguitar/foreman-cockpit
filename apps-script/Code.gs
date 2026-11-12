@@ -1,4 +1,4 @@
-if(typeof module==='object'&&module.exports){var businessContext_=require('./PipelineBusinessRuntime.gs');var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineEvidence=require('../pipeline-evidence');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');var ReceiptIndexStore=require('./ReceiptIndexStore.gs');}
+if(typeof module==='object'&&module.exports){var businessContext_=require('./PipelineBusinessRuntime.gs');var businessPreflight_=businessContext_.preflight;var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineEvidence=require('../pipeline-evidence');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');var ReceiptIndexStore=require('./ReceiptIndexStore.gs');}
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -135,7 +135,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','migrate_receipt_index','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','rotate_logs','evidence_repair','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['business_context','business_preflight','automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','migrate_receipt_index','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','rotate_logs','evidence_repair','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -144,6 +144,7 @@ function doGet(e) {
     if (a === 'migration_status') return out_({ ok: true, state: migrationSummary_(readMigrationState_()), freeze: readFreeze_() });
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') { var regR; try { regR = readLogArchives_().receipts; } catch (re) { regR = []; } return out_({ ok: true, text: readReceipts_(), archived: regR, note: regR.length ? 'Active receipt log only; older receipts are in the archived files listed (REV-134).' : '' }); }
+    if (a === 'business_preflight') return out_(businessPreflight_());
     if (a === 'business_context') return out_({ok:true,businessContext:businessContext_()});
     if (a === 'rules') { var R = readRules_(); return out_({ ok: R.status !== 'UNAVAILABLE', rules: R }); }
     if (a === 'runs') return out_({ ok: true, runs: readRuns_() });
