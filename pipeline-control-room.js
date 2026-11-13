@@ -5,18 +5,21 @@
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function age(t,now){var ms=now-Date.parse(t||'');if(!Number.isFinite(ms))return 'age unknown';var h=Math.max(0,ms/3600000);return h<1?Math.floor(h*60)+' min':h<48?Math.floor(h)+' h':Math.floor(h/24)+' d '+Math.floor(h%24)+' h';}
   function source(r){
-    var p=r.payload||{},run=String(p.SCOUT_RUN_ID||''),origin=[p.DISCOVERY_SOURCE,p.SOURCE_PROVIDER].join(' ');
-    // Origin and processor are separate: an email alert may be admitted by an
-    // automatic Writer run. Also repair historical display from retained origin
-    // metadata without changing the row, request identity or admission date.
-    if(/(?:^|[^A-Z0-9])(?:EMAIL|GMAIL)(?:$|[^A-Z0-9])/i.test(origin))return 'Email';
-    if(/(?:^|[^A-Z0-9])MANUAL(?:$|[^A-Z0-9])/i.test(origin))return 'Manual';
-    if(/^FORGE-EMAIL-/i.test(run))return 'Email';
-    if(/FORGE-(AUTO|SOURCE)-/i.test(run))return 'Automatic sources';
-    if(/MANUAL|MI-/i.test(run))return 'Manual';
-    // A LinkedIn/Indeed/ATS URL, recruiter email or later application receipt
-    // cannot establish the initiating discovery channel.
-    return 'Other / legacy';
+    var p=r.payload||{},run=String(p.SCOUT_RUN_ID||''),origin=String(p.DISCOVERY_SOURCE||'').trim().toUpperCase().replace(/[ -]+/g,'_'),provider=String(p.SOURCE_PROVIDER||'').trim().toUpperCase();
+    // First discovery, not the posting host or the processor that admitted it.
+    if(/^(EMAIL|GMAIL)(_|$)/.test(origin))return 'Email';
+    if(/^(EMPLOYER(_CAREER)?_SITES?|CAREER_SITES?|EMPLOYER_DIRECT|DIRECT_EMPLOYER)$/.test(origin))return 'Employer career sites';
+    if(/^(WEB|WEB_SEARCH|GENERAL_WEB|JOB_BOARDS?|LINKEDIN|INDEED)$/.test(origin))return 'General web / job boards';
+    if(/^(JOBSPY|HIRINGCAFE|HIRECAFE)(:|_|$)/.test(origin))return 'JobSpy / HiringCafe';
+    if(/^MANUAL(_|$)/.test(origin))return 'Manual';
+    // Retained historical origin labels; a platform name alone is insufficient.
+    if(/^(EMAIL|GMAIL)([ _-]|$)/.test(provider)||/^FORGE-EMAIL-/i.test(run))return 'Email';
+    // Source-trial records carry explicit collector tags, unlike LinkedIn/Indeed
+    // URLs or GitHub run IDs, which do not establish an initiating channel.
+    if(/^(JOBSPY:|HIRINGCAFE$|HIRECAFE$)/.test(provider))return 'JobSpy / HiringCafe';
+    if(/^BOARD:(GREENHOUSE|LEVER|ASHBY|WORKDAY|SMARTRECRUITERS|ICIMS|TALEO|SUCCESSFACTORS)$/.test(provider))return 'Employer career sites';
+    if(/^(MANUAL|MI-)/i.test(run))return 'Manual';
+    return 'Unknown / legacy';
   }
   function recordedDay(r){var p=r.payload||{},loaded=p.MASTER_LOADED_AT||'',s=p.DATE_ADDED||'';if(/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d\d:\d\d)$/.test(loaded)&&Number.isFinite(Date.parse(loaded)))return date(Date.parse(loaded));if(!/^\d{4}-\d{2}-\d{2}/.test(s))s=p.DISCOVERED_AT_ET||'';if(!/^\d{4}-\d{2}-\d{2}/.test(s))return null;var key=s.slice(0,10),t=Date.parse(key+'T12:00:00Z');if(!Number.isFinite(t)||new Date(t).toISOString().slice(0,10)!==key)return null;return /T.*(?:Z|[+-]\d\d:\d\d)$/.test(s)&&Number.isFinite(Date.parse(s))?date(Date.parse(s)):key;}
   var INTERVIEW_STAGES={RECRUITER_SCREEN:'Recruiter screen',HIRING_MANAGER:'Hiring manager',ONSITE_PANEL:'Onsite / panel',OFFER:'Offer'};
@@ -93,12 +96,12 @@
   }
   function decisionStageHtml(m){return '<li class="cr-process cr-decision-block" aria-label="Your decisions"><span class="cr-stage-number">04</span><h4>Your decisions</h4><div class="cr-applied"><strong>'+esc(m.rowsKnown?m.outcomes.applied:'Unknown')+'</strong><span>Applied · the goal</span></div><p class="cr-email-rejections" title="Distinct jobs with recorded rejection email evidence; includes archived jobs. Historical email coverage remains partial."><b>'+esc(m.outcomesKnown?'≥ '+m.outcomes.emailRejected:'Unknown')+'</b> Email rejections</p><p class="cr-declined"><b>'+esc(m.rowsKnown?m.counts.DECLINED_BY_TIM||0:'Unknown')+'</b> declined</p><small>'+esc(m.flow?m.flow.queues.readyForReview+' ready for your decision':'Review queue unknown')+' · '+m.decisions+' questions</small><button type="button" data-cr-decision-ready>View waiting jobs</button><p class="cr-note">Distinct jobs with recorded application evidence; a later rejection does not subtract an application.</p></li>';}
   function decisionsHtml(m){return '<div class="cr-decision-outcome-row"><section class="cr-recruiting-block" aria-label="Recruiting outcomes"><h4>Recruiting outcomes</h4><div class="cr-recruiting-kpis"><div><strong>'+esc(m.contactsKnown?'≥ '+m.outcomes.contacts:'Unknown')+'</strong><span>Recruiter contacts</span></div></div><ol class="cr-interview-stages">'+Object.keys(INTERVIEW_STAGES).map(function(k){return '<li><b>'+esc(m.contactsKnown?m.outcomes.recruiting.stages[k]:'—')+'</b><span>'+INTERVIEW_STAGES[k]+'</span></li>';}).join('')+'</ol><p class="cr-note">Latest known stage per job, including completed interviews followed by rejection. Scheduled does not mean completed. Email/calendar coverage is still partial.</p><details class="cr-interview-details"'+(m.outcomes.recruiting.needsStatus?' open':'')+'><summary>Interview status · '+m.outcomes.recruiting.jobs.length+' contacted jobs · '+m.outcomes.recruiting.needsStatus+' need status</summary>'+m.outcomes.recruiting.jobs.map(function(j){return '<form class="cr-interview-job" data-cr-interview-id="'+esc(j.primaryId)+'"><b>'+esc(j.company)+' · '+esc(j.title)+'</b><p>'+esc(j.stage==='UNKNOWN'?'What is the current interview status?':INTERVIEW_STAGES[j.stage]+' · '+INTERVIEW_PROGRESS[j.progress]+(j.outcome==='REJECTED'?' · Later rejected':'')+' · '+j.source)+'</p><label>Stage<select name="stage" aria-label="Interview stage for '+esc(j.company+' '+j.title)+'"><option value="UNKNOWN"'+(j.stage==='UNKNOWN'?' selected':'')+'>Not known / contact only</option>'+Object.keys(INTERVIEW_STAGES).map(function(k){return '<option value="'+k+'"'+(j.stage===k?' selected':'')+'>'+INTERVIEW_STAGES[k]+'</option>';}).join('')+'</select></label><label>Status<select name="progress" aria-label="Interview progress for '+esc(j.company+' '+j.title)+'">'+Object.keys(INTERVIEW_PROGRESS).map(function(k){return '<option value="'+k+'"'+(j.progress===k?' selected':'')+'>'+INTERVIEW_PROGRESS[k]+'</option>';}).join('')+'</select></label><button type="submit">Save status</button><span role="status" data-cr-interview-message></span></form>';}).join('')+'</details></section></div>';}
-  var COLORS={'Email':'#61cdbb','Automatic sources':'#3da5ff','Manual':'#c9aa77','Other / legacy':'#97a7bb'};
+  var COLORS={'Email':'#61cdbb','Employer career sites':'#83b875','General web / job boards':'#b69aff','JobSpy / HiringCafe':'#3da5ff','Manual':'#c9aa77','Unknown / legacy':'#97a7bb'};
   function intakeChart(m){
     if(!m.rowsKnown)return '<p class="cr-unknown">Intake is unknown until the canonical job population loads.</p>';
     var max=Math.max.apply(null,[1].concat(m.daily.map(function(d){return d.total;}))),svg='<svg viewBox="0 0 760 190" role="img" aria-label="Combined intake from all sources, last seven Eastern calendar days"><title>New jobs entered by recorded intake day; all sources combined</title>';
     m.daily.forEach(function(d,i){var x=48+i*99,y=147;Object.keys(COLORS).forEach(function(s){var n=d.sources[s]||0,bh=115*n/max;svg+='<rect x="'+x+'" y="'+(y-bh)+'" width="62" height="'+bh+'" fill="'+COLORS[s]+'"><title>'+esc(d.date+' · '+s+': '+n)+'</title></rect>';y-=bh;});svg+='<text x="'+(x+31)+'" y="'+(y-8)+'" text-anchor="middle" fill="#e3eee9" font-size="14">'+d.total+'</text><text x="'+(x+31)+'" y="174" text-anchor="middle" fill="#a8b8b0" font-size="12">'+d.date.slice(5)+'</text>';});
-    return svg+'</svg><div class="cr-legend">'+Object.keys(COLORS).map(function(s){return '<span><i style="background:'+COLORS[s]+'"></i>'+esc(s)+'</span>';}).join('')+'</div>';
+    return svg+'</svg><div class="cr-legend">'+Object.keys(COLORS).map(function(s){return '<span><i style="background:'+COLORS[s]+'"></i>'+esc(s)+'</span>';}).join('')+'</div><p class="cr-note">Discovery channel, not processor. GitHub runs the collection; it is not a source. Posting platform stays separate. Missing origin stays unknown; later email rediscovery does not change it.</p>';
   }
   function constraint(rates,backlogs,hours){
     hours=rateWindow(hours);

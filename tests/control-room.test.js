@@ -12,7 +12,7 @@ test('latched intake dominates idle Writer and useful updates; banner is never f
 });
 test('one intake chart combines all providers and deduplicates canonical IDs',()=>{
  const f=fixture();f.master.rows=[row('A','FORGE-EMAIL-CHATGPT'),row('A','FORGE-EMAIL-CHATGPT'),row('B','FORGE-SOURCE-ABC'),row('C','MANUAL-INTAKE'),row('D','LEGACY')];
- const m=C.model(f);assert.equal(m.intakeToday,4);assert.deepEqual(m.daily[6].sources,{'Email':1,'Automatic sources':1,'Manual':1,'Other / legacy':1});
+ const m=C.model(f);assert.equal(m.intakeToday,4);assert.deepEqual(m.daily[6].sources,{'Email':1,'Manual':1,'Unknown / legacy':2});
  assert.equal((C.html(m).match(/<svg /g)||[]).length,1);assert.match(C.html(m),/combined/);
 });
 
@@ -166,5 +166,25 @@ test('posting host, incidental email and missing origin do not invent email disc
   row('C','LEGACY'),
   {...row('D','LEGACY'),payload:{...row('D','LEGACY').payload,SOURCE_PROVIDER:'Indeed',SOURCE_URL:'https://www.indeed.com/viewjob?jk=abc'}}
  ];
- const m=C.model(f);assert.deepEqual(m.daily[6].sources,{'Automatic sources':2,'Other / legacy':2});assert.equal(m.daily[6].sources.Email,undefined);
+ const m=C.model(f);assert.deepEqual(m.daily[6].sources,{'Unknown / legacy':4});assert.equal(m.daily[6].sources.Email,undefined);
+});
+
+test('four discovery channels use initiating evidence, not processor or posting URL',()=>{
+ const f=fixture(),payloads=[
+  {DISCOVERY_SOURCE:'EMAIL',SOURCE_PROVIDER:'JOBSPY:linkedin'},
+  {DISCOVERY_SOURCE:'GitHub source-trial',SOURCE_PROVIDER:'BOARD:workday'},
+  {DISCOVERY_SOURCE:'WEB',SOURCE_PROVIDER:'Indeed'},
+  {DISCOVERY_SOURCE:'GitHub source-trial',SOURCE_PROVIDER:'JOBSPY:indeed'},
+  {DISCOVERY_SOURCE:'GitHub source-trial',SOURCE_PROVIDER:'HIRINGCAFE'},
+  {DISCOVERY_SOURCE:'EMPLOYER_CAREER_SITE',SOURCE_PROVIDER:'Greenhouse'},
+  {DISCOVERY_SOURCE:'SAVED_SOURCE_EVIDENCE',SOURCE_PROVIDER:'LinkedIn',sourceEmails:['later-email']},
+  {SOURCE_PROVIDER:'Greenhouse',SOURCE_URL:'https://boards.greenhouse.io/example'},
+  {DISCOVERY_SOURCE:'Manual intake',SOURCE_PROVIDER:'LinkedIn'}
+ ];
+ f.master.rows=payloads.map((p,i)=>({...row(String(i),'FORGE-CODE-CHATGPT-X'),payload:{...row(String(i),'FORGE-CODE-CHATGPT-X').payload,...p}}));
+ const before=JSON.stringify(f.master.rows),m=C.model(f);
+ assert.deepEqual(m.daily[6].sources,{Email:1,'Employer career sites':2,'General web / job boards':1,'JobSpy / HiringCafe':2,'Unknown / legacy':2,Manual:1});
+ assert.equal(m.daily[6].total,9);assert.equal(JSON.stringify(f.master.rows),before);
+ const h=C.html(m);for(const label of ['Email','Employer career sites','General web / job boards','JobSpy / HiringCafe','Manual','Unknown / legacy'])assert.ok(h.includes(label));
+ assert.doesNotMatch(h,/Automatic sources/);assert.match(h,/later email rediscovery does not change it/);
 });
