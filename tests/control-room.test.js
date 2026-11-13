@@ -188,3 +188,15 @@ test('four discovery channels use initiating evidence, not processor or posting 
  const h=C.html(m);for(const label of ['Email','Employer career sites','General web / job boards','JobSpy / HiringCafe','Manual','Unknown / legacy'])assert.ok(h.includes(label));
  assert.doesNotMatch(h,/Automatic sources/);assert.match(h,/later email rediscovery does not change it/);
 });
+
+test('automatic intake latch does not claim a write occurred and keeps uncertainty protection visible',()=>{
+ const f=fixture();f.health.issues.push({id:'auto-intake-latched:run',level:'BLOCKING',detail:'BLOCKED: Writer read not authorized'});
+ const m=C.model(f),html=C.html(m);
+ assert.equal(m.severity,'blocked');assert.match(html,/An earlier automatic intake run stopped and needs recovery/);
+ assert.match(html,/Later automatic runs are paused; email intake can still contribute/);
+ assert.match(html,/Never replay an uncertain write/);assert.doesNotMatch(html,/previous intake write|verify the earlier write/);
+});
+test('uncertain per-job holds retain their original evidence beside the run-level latch',()=>{
+ const f=fixture();f.health.issues.push({id:'auto-intake-identity-hold:request',level:'ACTION',title:'Unconfirmed intake: Example',detail:'Original submission is unconfirmed',action:'Reconcile original evidence without replay'});
+ const html=C.html(C.model(f));assert.match(html,/Original submission is unconfirmed/);assert.match(html,/Reconcile original evidence without replay/);
+});
