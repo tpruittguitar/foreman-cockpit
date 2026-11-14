@@ -216,6 +216,9 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer #d-body h3 .faint { font-size: var(--pe-fs-min) !important; color: var(--pe-text-secondary) !important; }
   #drawer #d-body, #drawer .ck-kd li, #drawer .ck-kd li span { font-family: var(--pe-font-ui); font-size: var(--pe-fs-body) !important; line-height: 20px !important; color: var(--pe-text-primary); }
   #drawer .ck-kd li .faint, #drawer .faint { color: var(--pe-text-secondary) !important; }
+  #grid td .conf.UNKNOWN, #drawer .conf.UNKNOWN { display: inline; margin: 0; padding: 0; border: 0; border-radius: 0; font: inherit; color: var(--caution) !important; }
+  /* Content sizing leaves this mark 1px over the cell, which turns on the cell ellipsis and hides the range. */
+  #grid td .conf.UNKNOWN { margin-right: -1px; }
   #drawer .ck-kd li svg { color: var(--pe-text-secondary); }
   /* LOOK-7 evidence rows (golden .reason): Plate, 3 px state bar, 32 px, gap 5; ✓ green / ✕ red / ? Secondary; row text Primary;
      label word mono 11 in the state colour. */

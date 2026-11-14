@@ -30,14 +30,26 @@ test("Tim's ruling: salary posted in the job description is verified; doubt and 
   assert.equal(T.salary({PAY_POSTED:'$189,000-$238,000',SALARY_BASE_POSTED:'$189,000-$238,000',SALARY_LABEL:'ESTIMATED',SALARY_BASIS:'EMPLOYER_POSTED',SALARY_CONF:'VERIFIED'}),'VERIFIED');
 });
 test('Salary cells show the figures, not a tag; anything not VERIFIED is marked approximate',()=>{
-  assert.deepEqual(T.salaryRange({PAY_POSTED:'$189,080-$283,630 base (employer posting)'}),{text:'$189k–$284k',approx:false,label:'VERIFIED',source:'PAY_POSTED'});
+  assert.deepEqual(T.salaryRange({PAY_POSTED:'$189,080-$283,630 base (employer posting)'}),{text:'$189k–$284k',approx:false,label:'VERIFIED',source:'PAY_POSTED',low:false});
   assert.equal(T.salaryRange({SALARY_LABEL:'POSTED',SALARY_BASE_EST:'$147760-$221640',SALARY_BASIS:'EMPLOYER_POSTED'}).text,'$148k–$222k');
   const est=T.salaryRange({SALARY_LABEL:'ESTIMATED',SALARY_BASE_LOW:'140000',SALARY_BASE_HIGH:'190000',SALARY_MIDPOINT:'165000',SALARY_CONF:'LOW'});
   assert.equal(est.text,'$140k–$190k');assert.equal(est.approx,true);assert.equal(est.label,'ESTIMATED · LOW');
   assert.equal(T.salaryRange({PAY_POSTED:'$125K-$150K Ladders-claimed (not employer-posted)',SALARY_LABEL:'ESTIMATED'}).approx,true);
   assert.equal(T.salaryRange({SALARY_MIDPOINT:'185000'}).text,'$185k mid');
   assert.equal(T.salaryRange({PAY_POSTED:'From $170,000'}).text,'$170k');
-  assert.deepEqual(T.salaryRange({}),{text:'',approx:false,label:'UNKNOWN',source:''});
+  assert.deepEqual(T.salaryRange({}),{text:'',approx:false,label:'UNKNOWN',source:'',low:false});
+});
+test('salaryRange.low agrees with lowConfidence',()=>{
+  const S=require('../pipeline-scoring');
+  const rows=[
+    {TITLE:'Director of Quality',LOCATION:'Austin, TX',payload:{SALARY_BASIS:'FORGE-ESTIMATE',SALARY_CONF:'LOW',SALARY_SOURCE:'BLS_OEWS',SALARY_MODEL_VERSION:'pay-sample-match-v6',SALARY_BASE_LOW:130000,SALARY_BASE_HIGH:210000,SALARY_MIDPOINT:170000}},
+    {TITLE:'Director of Quality',LOCATION:'Austin, TX',payload:{SALARY_BASIS:'FORGE-ESTIMATE',SALARY_CONF:'MED',SALARY_BASE_LOW:180000,SALARY_BASE_HIGH:240000,SALARY_MIDPOINT:210000}},
+    {TITLE:'Director of Quality',LOCATION:'Austin, TX',payload:{SALARY_BASIS:'EMPLOYER_POSTED',SALARY_CONF:'HIGH',PAY_POSTED:'$190,000-$230,000',SALARY_BASE_LOW:190000,SALARY_BASE_HIGH:230000}}
+  ];
+  rows.forEach(function(r){const pw=S.payWorth(r,S.defaults());assert.equal(T.salaryRange(r.payload).low,pw.lowConfidence)});
+  assert.equal(T.salaryRange(rows[0].payload).low,true);
+  assert.equal(T.salaryRange(rows[1].payload).low,false);
+  assert.equal(T.salaryRange(rows[2].payload).low,false);
 });
 test("Tim's ruling: FLEX known from the job description is verified; unretrieved or inferred wording is not",()=>{
   assert.equal(T.flex({FLEX_CLASS:'NO_FLEX',FLEX_BASIS:"First-party posting states Bachelor's required, no equivalent-experience route stated."}),'VERIFIED');

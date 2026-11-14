@@ -183,7 +183,9 @@ html.m-detail-open body{overflow:hidden}
 @media (prefers-reduced-motion:reduce){#m-root .m-ring-in .m-ring-arc{animation:none}}
 .m-ring-n{font:600 20px var(--m-mono);fill:var(--m-text)}
 #m-root .m-verdict-t{font:500 15px/1.4 var(--m-sans);color:var(--m-text)}
+#m-root .conf.UNKNOWN{display:inline;margin:0;padding:0;border:0;border-radius:0;font:inherit;color:var(--m-caution)!important}
 #m-root .m-pay{margin-top:6px;font:500 14px/1.35 var(--m-sans);color:var(--m-text-2);display:flex;align-items:flex-start}
+#m-root .m-pay .m-pay-t{min-width:0;flex:1}
 #m-root .m-pay .m-g{margin-top:3px}
 .m-sec{margin-top:12px;border:1px solid var(--m-border);border-radius:var(--m-radius);background:var(--m-panel)}
 #m-root .m-sec summary{min-height:48px;display:flex;align-items:center;padding:0 14px;font:600 12px/1 var(--m-mono);letter-spacing:.6px;text-transform:uppercase;color:var(--m-text);cursor:pointer;list-style:none}
