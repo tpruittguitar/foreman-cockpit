@@ -20,15 +20,17 @@ function salary(p){
 // The figures to show for a row's base pay: a compact range such as "$189k–$284k" (or a single figure / midpoint),
 // taken from whichever field the salary evidence uses. approx marks anything that is not VERIFIED; label keeps the
 // full trust label for a tooltip.
+var LOW_PAY_NOTE='Low confidence: estimated pay with no matching posted pay. Confirm pay before a pay decision.';
+function lowPay(p){var S=typeof module==='object'&&module.exports?require('./pipeline-scoring'):root.PipelineScoring;return !!(S&&S.lowConfidencePay&&S.lowConfidencePay(p))}
 function salaryRange(p){
-  p=p||{};var ev=Evidence&&Evidence.salary?Evidence.salary(p):{mid:null,source:''},label=salary(p);
-  if(ev.mid==null)return {text:'',approx:false,label:label,source:''};
+  p=p||{};var ev=Evidence&&Evidence.salary?Evidence.salary(p):{mid:null,source:''},label=salary(p),low=lowPay(p);
+  if(ev.mid==null)return {text:'',approx:false,label:label,source:'',low:low};
   var num=Evidence.moneyNumbers,k=function(n){return '$'+Math.round(n/1000)+'k'},lo=num(p.SALARY_BASE_LOW)[0],hi=num(p.SALARY_BASE_HIGH)[0],nums;
   if(ev.source==='SALARY_MIDPOINT'||ev.source==='SALARY_BASE_LOW/HIGH')nums=lo!=null&&hi!=null?[lo,hi]:[];
   else nums=num(p[ev.source]);
   nums=nums.filter(function(n){return n>=1000});
   var text=ev.mid<1000?String(p[ev.source]||'').slice(0,24):nums.length>=2&&nums[1]>nums[0]?k(nums[0])+'–'+k(nums[1]):nums.length?k(nums[0]):k(ev.mid)+' mid';
-  return {text:text,approx:label!=='VERIFIED',label:label,source:ev.source};
+  return {text:text,approx:label!=='VERIFIED',label:label,source:ev.source,low:low};
 }
 
 // Tim's ruling, 2026-10-05: FLEX known from the job description is verified. That is a FLEX class plus degree / FLEX
@@ -62,5 +64,5 @@ function writerClean(v){return String(v==null?'':v).replace(/[\r\n]+/g,' ').repl
 /* A decision is confirmed by its state (and, for declines, its reason code). The note travels with it but other lanes may
  * later rewrite TIM_NOTE, so a missing note never un-confirms a state change; only a NOTE ruling is judged by its text. */
 function matches(r,ru){if(!r||!ru)return false;var k=ru.kind,p=r.payload||{};if(k==='NOTE')return !!ru.note&&String(p.TIM_NOTE||'').includes(writerClean(ru.note));var buckets={APPLIED:'APPLIED',REJECTED_BY_EMPLOYER:'REJECTED_BY_EMPLOYER',DECLINE:'DECLINED_BY_TIM',MANUAL_RESEARCH:'MANUAL_RESEARCH',CLOSED_DEAD:'CLOSED_DEAD',INVALID_DISCOVERY:'INVALID_DISCOVERY',DUPLICATE:'DUPLICATE',APPLY_NOW:'READY_TO_PURSUE'};if(!buckets[k]||r.BUCKET!==buckets[k])return false;if(k==='DECLINE'&&ru.code&&p.DECLINE_REASON_CODE!==ru.code)return false;if(k==='DUPLICATE'&&ru.dupOf&&p.DUP_OF!==ru.dupOf)return false;if(k==='REJECTED_BY_EMPLOYER'&&ru.eventDate&&p.REJECTION_DATE!==ru.eventDate)return false;return true}
-var api={salary:salary,salaryRange:salaryRange,flex:flex,flexClass:flexClass,flexInfo:flexInfo,matches:matches,missing:missing};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineTrust=api;
+var api={salary:salary,salaryRange:salaryRange,LOW_PAY_NOTE:LOW_PAY_NOTE,flex:flex,flexClass:flexClass,flexInfo:flexInfo,matches:matches,missing:missing};if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.PipelineTrust=api;
 })(typeof window!=='undefined'?window:globalThis);

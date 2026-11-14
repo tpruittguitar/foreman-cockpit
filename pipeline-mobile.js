@@ -149,12 +149,18 @@
     if (v.need == null || v.salary.top == null) return 'unknown';
     return v.salary.top >= v.need ? 'ok' : 'below';
   }
+  function salaryShown(v) {
+    var s = v.salary || {}, t = s.text ? String(s.text).replace(/k/g, 'K') : '';
+    if (!t) return { html: '', name: '', plain: '' };
+    var q = s.low ? '<span class="conf UNKNOWN" aria-hidden="true">?</span> ' : '', tilde = s.approx ? '~' : '';
+    return { html: q + tilde + esc(t), plain: (s.low ? '? ' : '') + tilde + t, name: s.low ? 'low-confidence estimate, ' + t.replace(/\u2013/g, ' to ') : '' };
+  }
   function badges(v, opt) {
-    var out = [], ps = payState(v), st = v.salary.text ? (v.salary.approx ? '~' : '') + v.salary.text.replace(/k/g, 'K') : '';
-    if (ps === 'ok') out.push(['ok', gl('ok') + esc(st), 'Salary ' + st + ', meets the pay you need']);
-    else if (ps === 'below') out.push(['fault', gl('down') + esc(st), 'Salary ' + st + ', below the pay you need']);
+    var out = [], ps = payState(v), shown = salaryShown(v), st = shown.plain;
+    if (ps === 'ok') out.push(['ok', gl('ok') + shown.html, shown.name || ('Salary ' + st + ', meets the pay you need')]);
+    else if (ps === 'below') out.push(['fault', gl('down') + shown.html, shown.name || ('Salary ' + st + ', below the pay you need')]);
     else if (ps === 'missing') out.push(['caution m-i', gl('caution') + '— est. pending', 'Salary estimate pending']);
-    else out.push(['', esc(st), 'Salary ' + st]);
+    else out.push(['', shown.html, shown.name || ('Salary ' + st)]);
     if (v.fit == null) out.push(['caution', gl('caution') + 'Fit unknown', 'Fit not measured']);
     else if (v.fit < FIT_BORDER) out.push(['caution', '~ Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit) + ', borderline']);
     else out.push(['ok', gl('ok') + 'Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit) + ', strong']);   // every fit badge carries a glyph (Grok Bot GUI, Stage 5 review)
@@ -367,7 +373,8 @@
   }
   function detailHtml(v) {
     var ps = payState(v), a = ageDays(v);
-    var pay = v.salary.text ? 'Pays ' + (v.salary.approx ? '~' : '') + esc(v.salary.text.replace(/k/g, 'K')) + (v.need ? ' · you need ' + k$(v.need) + (v.needArea ? ' for ' + esc(v.needArea) : '') : '') : 'Salary estimate pending' + (v.need ? ' · you need ' + k$(v.need) + (v.needArea ? ' for ' + esc(v.needArea) : '') : '');
+    var shown = salaryShown(v), sentence = v.salary.text ? 'Pays ' + (shown.name ? '<span aria-label="' + esc(shown.name) + '">' + shown.html + '</span>' : shown.html) + (v.need ? ' · you need ' + k$(v.need) + (v.needArea ? ' for ' + esc(v.needArea) : '') : '') : 'Salary estimate pending' + (v.need ? ' · you need ' + k$(v.need) + (v.needArea ? ' for ' + esc(v.needArea) : '') : '');
+    var pay = '<span class="m-pay-t">' + sentence + '</span>';
     var payCls = ps === 'below' ? 'fault' : ps === 'missing' ? 'caution' : ps === 'ok' ? 'ok' : '';
     var payGl = ps === 'below' ? gl('down') : ps === 'missing' ? gl('caution') : ps === 'ok' ? gl('ok') : '';
     var verdict = ps === 'below' ? 'Pay is below what this location needs.' : ps === 'missing' ? 'Salary not known yet; check the posting before deciding.' : v.score != null && v.score >= SCORE_OK ? 'Strong match: worth pursuing.' : v.fit != null && v.fit < FIT_BORDER ? 'A stretch on fit; check the posting.' : 'Decent match; decide on the details.';
@@ -376,7 +383,7 @@
     return '<div class="m-dh" id="m-dh"><div class="m-grab" aria-hidden="true"></div><div class="m-dh-row"><button type="button" class="m-ic" id="m-d-back" aria-label="Back to the list">' + svg('back') + '</button>' +
       '<div class="m-dh-t"><h2 class="m-d-title" id="m-d-title">' + esc(v.title) + '</h2><p class="m-sub">' + esc([v.company, v.location].filter(Boolean).join(' · ')) + '</p></div></div></div>' +
       '<div class="m-db"><section class="m-verdict m-brackets">' + ring(v.score, v.band, true) + '<div><p class="m-verdict-t">' + esc(verdict) + '</p>' +
-        (BAND[v.band] ? '<p class="m-band-l m-b-' + BAND[v.band][0] + '" data-m-band>' + BAND[v.band][1] + (v.band === 'HOLD' ? '' : ' of open jobs') + '</p>' : '') + (ps === 'missing' ? '' : '<p class="m-pay ' + payCls + '">' + payGl + pay + '</p>') + '</div></section>' +
+        (BAND[v.band] ? '<p class="m-band-l m-b-' + BAND[v.band][0] + '" data-m-band>' + BAND[v.band][1] + (v.band === 'HOLD' ? '' : ' of open jobs') + '</p>' : '') + (ps === 'missing' ? '' : '<p class="m-pay ' + payCls + '">' + payGl + pay + '</p>' + (v.salary.low ? '<p class="m-faint">' + esc(root.PipelineTrust.LOW_PAY_NOTE) + '</p>' : '')) + '</div></section>' +
       badgeRow(v) +
       sec('Posting', (v.why ? '<p>' + esc(v.why) + '</p>' : '<p class="m-faint">No fit summary recorded.</p>') + (v.url ? '<p><a class="m-link" href="' + esc(v.url) + '" target="_blank" rel="noopener">Open the posting ↗</a></p>' : '')) +
       sec('Fit &amp; score', kv('Raw fit', v.fit == null ? '? not measured' : Math.round(v.fit)) + kv('Pay vs target', ps === 'ok' ? '✓ meets need' : ps === 'below' ? '↓ below need' : ps === 'missing' ? '? pending' : 'not known') +
