@@ -2681,17 +2681,28 @@ function parseCanonicalNeverConsiderRules(text) {
     if (employerLine) { out.employers.push(employerLine); continue; }
     var m = l.match(/^[-*]\s+(NC-\d+)\s+([A-Z0-9_\-]+):\s*(.+)$/i);
     if (!m) continue;
+    var structured = ncStructuredSpec_(l);
+    if (structured.error) {
+      out.status = 'POLICY_ERROR';
+      out.error = structured.error;
+      out.rules = [];
+      out.employers = [];
+      out.activeIds = [];
+      return out;
+    }
+    var prose = structured.spec ? ncStructuredProse_(m[3]) : m[3].trim();
     var rule = {
       RULE_ID: String(m[1]).toUpperCase(),
       CATEGORY: String(m[2]).toUpperCase(),
       ACTION: 'DO_NOT_ADD',
-      MATCH: m[3].trim(),
+      MATCH: prose,
       DO_NOT_MATCH: 'Industrial suppliers, equipment makers, automation/integration firms, software vendors, logistics providers, component suppliers, consulting firms, and engineering firms are not excluded merely because they serve this industry.',
-      REASON: m[3].trim(),
+      REASON: prose,
       EXCEPTION: 'Tim may override explicitly.',
       STATUS: 'ACTIVE',
       active: true
     };
+    if (structured.spec) rule.spec = structured.spec;
     out.rules.push(rule); out.activeIds.push(rule.RULE_ID);
   }
   var status = String(out.header.STATUS || '').toUpperCase();
@@ -2710,17 +2721,17 @@ function parseCanonicalNeverConsiderRules(text) {
 function ruleById(R, id) { id = String(id || '').trim().toUpperCase(); for (var i = 0; i < (R.rules || []).length; i++) if (String(R.rules[i].RULE_ID).toUpperCase() === id) return R.rules[i]; return null; }
 /** Words of a CATEGORY (e.g. FOOD_OR_BEVERAGE_MANUFACTURER) that may hint at the domain. Used only to flag a review, never to exclude. */
 function categoryTerms(cat) { var stop = { OR: 1, AND: 1, MANUFACTURER: 1, SERVICE: 1, OF: 1, THE: 1 }; return String(cat || '').toUpperCase().split(/[^A-Z]+/).filter(function (w) { return w && !stop[w] && w.length > 3; }).map(function (w) { return w.toLowerCase(); }); }
-/** Role rules whose category words (management, financial, role) must not flag ordinary jobs. Title rules cover NC-005 and NC-006; NC-015 is the same kind of rule. */
-var NC_DOMAIN_HINT_SKIP_ = { 'NC-005': 1, 'NC-006': 1, 'NC-015': 1 };
 /** Evidence that the employer is one of the cases every rule's DO_NOT_MATCH / general rule 2 protects: supplier, equipment/machine maker, automation, software, integrator, consultancy, engineering firm, logistics, component supplier, or "serving" an industry. */
 var PROTECTED_CASE_RE = /\b(supplier|supplies|serving|serves|customers? in|for the|equipment for|equipment maker|equipment manufacturer|packaging equipment|process equipment|machine builder|automation|integrator|integration|consult(ing|ancy)?|software|logistics|component|engineering firm|contract engineering|vendor|to the)\b/;
 var NEG_HINT_RE = PROTECTED_CASE_RE;
 function protectedCaseEvidence(rec) { var e = String((rec.EMPLOYER_DOMAIN_HINT || '') + ' ' + (rec.EMPLOYER_PRIMARY_BUSINESS || '')).toLowerCase(); var m = e.match(PROTECTED_CASE_RE); return m ? m[0] : ''; }
 /**
- * Classify one record. Outcome EXCLUDE at HIGH confidence when an employer line in SECTION=NEVER_CONSIDER matches,
- * when the title matches active NC-005 or NC-006, or when Scout cites an ACTIVE rule with EXCLUSION_CONFIDENCE=HIGH.
- * MED/LOW, an unknown rule id, an unavailable file, or a writer-side domain hint all yield REVIEW.
- * Unknown/incomplete information is never a basis. An existing master identity is not decided here: planIntake keeps matchExisting.
+ * Classify one record. Outcome EXCLUDE at HIGH confidence with decline code NEVER_CONSIDER when an employer line matches,
+ * or when a SECTION=NEVER_CONSIDER line's machine fields match. review_if on a matching line yields REVIEW (REVIEW_NEEDED).
+ * A prose line with no machine fields is not applied here. Missing location or business evidence means that rule does not fire.
+ * Scout may still cite an ACTIVE rule at EXCLUSION_CONFIDENCE=HIGH. MED/LOW, an unknown rule id, an unavailable file, or a
+ * writer-side domain hint yield REVIEW. An unparseable machine field is a policy error and does not route the row.
+ * An existing master identity is not decided here: planIntake keeps matchExisting.
  */
 function biospaceHiddenClient_(rec) {
   if (!rec) return false;
@@ -2735,15 +2746,17 @@ function biospaceHiddenClient_(rec) {
 }
 function classifyNeverConsider(rec, R) {
   R = R || { status: 'UNAVAILABLE', rules: [] };
+  if (R.status === 'POLICY_ERROR') return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
   var listed = neverConsiderEmployerHit_(rec, R);
   if (listed) {
     if (biospaceHiddenClient_(rec)) return { outcome: 'REVIEW', ruleId: listed.ruleId, confidence: 'MED', reason: 'BioSpace hidden client', basis: 'REVIEW_NEEDED', sourceUrl: listed.sourceUrl || '' };
     return { outcome: 'EXCLUDE', ruleId: listed.ruleId, confidence: 'HIGH', reason: listed.employer, basis: 'EMPLOYER_LINE', sourceUrl: listed.sourceUrl || '', code: 'NEVER_CONSIDER' };
   }
-  var titled = neverConsiderTitleMatch_(rec, R);
-  if (titled) {
-    if (biospaceHiddenClient_(rec)) return { outcome: 'REVIEW', ruleId: titled.RULE_ID, confidence: 'MED', reason: 'BioSpace hidden client', basis: 'REVIEW_NEEDED' };
-    return { outcome: 'EXCLUDE', ruleId: titled.RULE_ID, confidence: 'HIGH', reason: titled.REASON || titled.CATEGORY, basis: 'TITLE_RULE', code: 'NEVER_CONSIDER' };
+  var structured = neverConsiderStructuredMatch_(rec, R);
+  if (structured) {
+    if (biospaceHiddenClient_(rec)) return { outcome: 'REVIEW', ruleId: structured.rule.RULE_ID, confidence: 'MED', reason: 'BioSpace hidden client', basis: 'REVIEW_NEEDED' };
+    if (structured.outcome === 'REVIEW') return { outcome: 'REVIEW', ruleId: structured.rule.RULE_ID, confidence: 'MED', reason: structured.rule.REASON || structured.rule.CATEGORY, basis: 'REVIEW_NEEDED' };
+    return { outcome: 'EXCLUDE', ruleId: structured.rule.RULE_ID, confidence: 'HIGH', reason: structured.rule.REASON || structured.rule.CATEGORY, basis: 'TITLE_RULE', code: 'NEVER_CONSIDER' };
   }
   var cited = String(rec.NEVER_CONSIDER_RULE_ID || '').trim().toUpperCase();
   var conf = String(rec.EXCLUSION_CONFIDENCE || '').trim().toUpperCase(); if (conf === 'MEDIUM') conf = 'MED';
@@ -2765,7 +2778,7 @@ function classifyNeverConsider(rec, R) {
   // writer-side hint: the employer's stated primary business mentions a category word and does not read as a supplier/vendor to it
   var hint = String(rec.EMPLOYER_DOMAIN_HINT || rec.EMPLOYER_PRIMARY_BUSINESS || '').toLowerCase();
   if (hint && R.status !== 'UNAVAILABLE' && !NEG_HINT_RE.test(hint)) {
-    for (var i = 0; i < R.rules.length; i++) { var r = R.rules[i]; if (!r.active || NC_DOMAIN_HINT_SKIP_[String(r.RULE_ID).toUpperCase()]) continue;
+    for (var i = 0; i < R.rules.length; i++) { var r = R.rules[i]; if (!r.active || r.spec) continue;
       var terms = categoryTerms(r.CATEGORY); for (var j = 0; j < terms.length; j++) { if (new RegExp('(^|[^a-z])' + terms[j] + '([^a-z]|$)').test(hint)) return { outcome: 'REVIEW', ruleId: r.RULE_ID, confidence: 'MED', reason: 'employer primary business mentions "' + terms[j] + '"', basis: 'DOMAIN_HINT' }; } }
   }
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
@@ -2785,6 +2798,7 @@ function planIntake(lines, records, rulesObj, ctx) {
   ctx = ctx || {}; var results = [], newLines = [], excluded = [], summary = { NEVER_CONSIDER_EXCLUDED: 0, SCOUT_INTAKE_WRITTEN: 0, DISCOVERY_LEAD_WRITTEN: 0, EXISTING_MATCH: 0, WRITE_FAILED: 0, ENTERED_MASTER: 0, NEVER_CONSIDER_REVIEW_NEEDED: 0, REPLAY: 0, AMBIGUOUS_LEAD: 0 }, byRule = {};
   var R = rulesObj && rulesObj.rules ? rulesObj : { status: 'UNAVAILABLE', rules: [], activeIds: [] };
   if (!Array.isArray(records)) return { ok: false, error: 'records must be an array' };
+  if (R.status === 'POLICY_ERROR') return { ok: false, error: R.error || 'POLICY_ERROR' };
   // Scout's pre-excluded list is NOT accepted as already excluded: every entry is a candidate that goes through the same
   // classification/admission path below (the writer, not Scout, owns NEVER_CONSIDER_EXCLUDED). Kept for backward compatibility only.
   var pre = preExclusionCandidates(ctx.run || {});
@@ -2805,7 +2819,7 @@ function planIntake(lines, records, rulesObj, ctx) {
     res.INTAKE_KEY = rec.INTAKE_KEY;
     if (batchKeys[rec.INTAKE_KEY]) { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
     var nc = classifyNeverConsider(rec, R);
-    // Employer lines and NC-005/NC-006 title matches exclude a new identity. An existing master row keeps matchExisting.
+    // Employer lines and structured never-consider lines exclude a new identity. An existing master row keeps matchExisting.
     if (nc.outcome === 'EXCLUDE' && (nc.basis === 'EMPLOYER_LINE' || nc.basis === 'TITLE_RULE')) {
       var listedIdentity = matchExisting(rec, idx, { holdRelistedProtected: true });
       if (listedIdentity.kind !== 'none') nc = { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
@@ -3307,18 +3321,18 @@ function writeState_(state) {
     return { ok: true, seen: Object.keys(m.seen || {}).length, incidents: Object.keys((m.incidents && m.incidents.incidents) || {}).length, reviewed: Object.keys(m.reviewed || {}).length };
   } finally { lock.releaseLock(); }
 }
+/** key=value field on a SECTION=NEVER_CONSIDER line. Shared by employer lines and structured rule lines. */
+function neverConsiderField_(text, name) {
+  var m = String(text || '').match(new RegExp('(?:^|[;\\s])' + name + '\\s*=\\s*([^;]+)', 'i'));
+  return m ? m[1].trim() : '';
+}
 /** Any SECTION=NEVER_CONSIDER line that carries employer=. Fields: employer, rule, source_url. No employer name is special. */
 function parseNeverConsiderEmployerLine_(line) {
   var text = String(line || '').trim();
-  if (!/employer\s*=/i.test(text)) return null;
-  function field(name) {
-    var m = text.match(new RegExp('(?:^|[;\\s])' + name + '\\s*=\\s*([^;]+)', 'i'));
-    return m ? m[1].trim() : '';
-  }
-  var employer = field('employer');
+  var employer = neverConsiderField_(text, 'employer');
   if (!employer) return null;
   var id = text.match(/^[-*]?\s*(NC-\d+)\b/i);
-  return { employer: employer, ruleId: field('rule').toUpperCase(), lineId: id ? id[1].toUpperCase() : '', sourceUrl: field('source_url') };
+  return { employer: employer, ruleId: neverConsiderField_(text, 'rule').toUpperCase(), lineId: id ? id[1].toUpperCase() : '', sourceUrl: neverConsiderField_(text, 'source_url') };
 }
 function neverConsiderEmployerHit_(rec, R) {
   if (!R || R.status !== 'ACTIVE' || !R.employers || !R.employers.length) return null;
@@ -3333,27 +3347,196 @@ function neverConsiderEmployerHit_(rec, R) {
   }
   return null;
 }
-/** Title match for the two role rules already in SECTION=NEVER_CONSIDER. Not a general keyword blacklist. */
-var NC_TITLE_RULE_IDS_ = ['NC-005', 'NC-006'];
-var NC_TITLE_SKIP_RE_ = /\b(?:recruit\w*|placement|talent|sales|marketing|software|engineer|architect|developer|systems?|IT|technology|implementation|project|consulting|consultant|production controller|quality audit|financial systems?|finance systems?|finance transformation)\b/i;
-var NC_TITLE_MIXED_FINANCE_RE_ = /\b(?:finance|accounting)\s*(?:and|&)\s*(?:operations|manufacturing|production|facilities)\b/i;
-var NC_TITLE_INDUSTRIAL_RE_ = /\b(?:plant|manufacturing|factory|industrial|production|maintenance|capital projects)\b/i;
-var NC_TITLE_MATCH_PATTERNS_ = {
-  'NC-005': [/^(?:(?:senior|sr\.?|group|regional|global|corporate|fund|plant|assistant|associate|chief|vice president|vp|director|head|manager|analyst|intern|of)[ ,\u2013\u2014-]+)*(?:accounting|accountant|finance|financial planning|financial analysis|financial controller|chief financial officer|chief accounting officer|tax accountant|fp&a|treasury|tax preparation|tax advisory|payroll accounting)(?:[ ,\u2013\u2014-]+(?:senior|sr\.?|group|regional|global|corporate|director|head|manager|analyst|intern|manufacturing|summer|20[0-9]{2}))*$/i],
-  'NC-006': [/^(?:(?:senior|sr\.?|regional|global|assistant|associate|vice president|vp|director|head|manager|of)[ ,\u2013\u2014-]+)*(?:property manager|property management|real estate portfolio management|leasing operations)(?:[ ,\u2013\u2014-]+(?:director|manager|head|vice president|vp))*$/i, /^(?:General Manager \(Master-Planned HOA Community\)|Onsite Community Manager \([A-Za-z -]+ HOA\))$/i]
-};
-function neverConsiderTitleMatch_(rec, R) {
-  var title = String(rec && rec.TITLE || '').trim();
-  if (!title || !R || R.status !== 'ACTIVE') return null;
-  if (NC_TITLE_SKIP_RE_.test(title) || NC_TITLE_MIXED_FINANCE_RE_.test(title)) return null;
-  var hits = [];
-  for (var i = 0; i < NC_TITLE_RULE_IDS_.length; i++) {
-    var id = NC_TITLE_RULE_IDS_[i], rule = ruleById(R, id), patterns = NC_TITLE_MATCH_PATTERNS_[id] || [];
-    if (!rule || !rule.active) continue;
-    if (id === 'NC-006' && NC_TITLE_INDUSTRIAL_RE_.test(title)) continue;
-    for (var p = 0; p < patterns.length; p++) if (patterns[p].test(title)) { hits.push(rule); break; }
+var NC_MACHINE_KEYS_ = { title_any: 1, title_exempt: 1, level_exempt: 1, states: 1, city_any: 1, location_exempt: 1, employer_business_any: 1, employer_business_exempt: 1, review_if: 1 };
+function ncMachineKey_(key) {
+  key = String(key || '').toLowerCase();
+  return key === 'states' || /^(title|level|city|location|review)_/.test(key) || key.indexOf('employer_business') === 0;
+}
+function ncPipe_(value, label) {
+  var raw = String(value || '').trim();
+  if (!raw || /(?:^|\|)\s*(?:\||$)/.test(raw)) return { error: 'unparseable ' + label };
+  var parts = raw.split('|').map(function (s) { return s.trim(); });
+  if (!parts.length || parts.some(function (p) { return !p; })) return { error: 'unparseable ' + label };
+  return { parts: parts };
+}
+function ncStateCodeOk_(code) {
+  if (code === 'dc') return true;
+  for (var k in US_STATE_ABBR_) if (US_STATE_ABBR_[k] === code) return true;
+  return false;
+}
+function ncStructuredProse_(matchText) {
+  return String(matchText || '').replace(/(?:^|[;\s])(?:title_any|title_exempt|level_exempt|states|city_any|location_exempt|employer_business_any|employer_business_exempt|review_if)\s*=[\s\S]*$/i, '').replace(/[;\s]+$/, '').trim();
+}
+/** Machine fields on one NC line. A prose line returns no spec. A known field that cannot be read is a policy error. */
+function ncStructuredSpec_(line) {
+  var text = String(line || '');
+  var seen = {}, re = /(?:^|[;\s])([A-Za-z][A-Za-z0-9_]*)\s*=/g, found = false, km;
+  while ((km = re.exec(text))) {
+    var key = km[1].toLowerCase();
+    if (!ncMachineKey_(key)) continue;
+    found = true;
+    if (!NC_MACHINE_KEYS_[key]) return { error: 'unparseable ' + key };
+    if (seen[key]) return { error: 'unparseable ' + key };
+    seen[key] = 1;
+    if (new RegExp('(?:^|[;\\s])' + key + '\\s*=\\s*(?:;|$)', 'i').test(text)) return { error: 'unparseable ' + key };
   }
-  return hits.length === 1 ? hits[0] : null;
+  if (!found) return { spec: null };
+  var spec = { titleAny: [], titleExempt: [], levelPhrases: [], states: null, cities: [], locationExempt: {}, businessAny: [], businessExempt: [], review: [] };
+  function take(name) { return seen[name] ? neverConsiderField_(text, name) : ''; }
+  var titleAny = take('title_any'), titleExempt = take('title_exempt'), levelExempt = take('level_exempt');
+  var states = take('states'), cities = take('city_any'), locExempt = take('location_exempt');
+  var businessAny = take('employer_business_any'), businessExempt = take('employer_business_exempt'), reviewIf = take('review_if');
+  if (seen.title_any && !titleAny) return { error: 'unparseable title_any' };
+  if (seen.title_exempt && !titleExempt) return { error: 'unparseable title_exempt' };
+  if (titleAny) { var ta = ncPipe_(titleAny, 'title_any'); if (ta.error) return ta; spec.titleAny = ta.parts; }
+  if (titleExempt) { var te = ncPipe_(titleExempt, 'title_exempt'); if (te.error) return te; spec.titleExempt = te.parts; }
+  if (levelExempt) {
+    var le = ncPipe_(levelExempt, 'level_exempt'); if (le.error) return le;
+    spec.levelPhrases = le.parts;
+  }
+  if (states) {
+    var st = ncPipe_(states, 'states'); if (st.error) return st;
+    spec.states = {};
+    for (var s = 0; s < st.parts.length; s++) {
+      var code = st.parts[s].toLowerCase();
+      if (!/^[a-z]{2}$/.test(code) || !ncStateCodeOk_(code)) return { error: 'unparseable states ' + st.parts[s] };
+      spec.states[code] = 1;
+    }
+  }
+  if (cities) {
+    var cy = ncPipe_(cities, 'city_any'); if (cy.error) return cy;
+    spec.cities = cy.parts.map(function (c) { return normTitle(c); }).filter(Boolean);
+    if (spec.cities.length !== cy.parts.length) return { error: 'unparseable city_any' };
+  }
+  if (locExempt) {
+    var lx = ncPipe_(locExempt, 'location_exempt'); if (lx.error) return lx;
+    for (var n = 0; n < lx.parts.length; n++) {
+      var mode = lx.parts[n].toLowerCase();
+      if (mode !== 'remote' && mode !== 'multi_location') return { error: 'unparseable location_exempt ' + lx.parts[n] };
+      spec.locationExempt[mode] = 1;
+    }
+  }
+  if (businessAny) { var ba = ncPipe_(businessAny, 'employer_business_any'); if (ba.error) return ba; spec.businessAny = ba.parts; }
+  if (businessExempt) { var be = ncPipe_(businessExempt, 'employer_business_exempt'); if (be.error) return be; spec.businessExempt = be.parts; }
+  if (reviewIf) {
+    var rv = ncPipe_(reviewIf, 'review_if'); if (rv.error) return rv;
+    for (var r = 0; r < rv.parts.length; r++) {
+      var clause = rv.parts[r], pay = clause.match(/^base_pay>=(\d+)$/i);
+      if (pay) { spec.review.push({ kind: 'base_pay', min: parseInt(pay[1], 10) }); continue; }
+      if (/^title_level>=VP$/i.test(clause)) { spec.review.push({ kind: 'title_level', level: 'VP' }); continue; }
+      if (/^head_of$/i.test(clause)) { spec.review.push({ kind: 'head_of' }); continue; }
+      var pe = clause.match(/^priority_employer=([A-Za-z][A-Za-z0-9]*(?:,[A-Za-z][A-Za-z0-9]*)*)$/);
+      if (pe) { spec.review.push({ kind: 'priority_employer', terms: pe[1].toLowerCase().split(',') }); continue; }
+      return { error: 'unparseable review_if ' + clause };
+    }
+  }
+  if (!spec.titleAny.length && !spec.states && !spec.cities.length && !spec.businessAny.length) return { error: 'unparseable structured rule with no inclusion field' };
+  return { spec: spec };
+}
+/** Case-insensitive whole phrase. The last word may be a simple plural (s/es). Not a substring and not a stem. */
+function ncHasPhrase_(title, phrase) {
+  var tw = normTitle(title).split(' ').filter(Boolean), pw = normTitle(phrase).split(' ').filter(Boolean);
+  if (!tw.length || !pw.length || pw.length > tw.length) return false;
+  for (var i = 0; i + pw.length <= tw.length; i++) {
+    var ok = true;
+    for (var j = 0; j < pw.length; j++) {
+      var word = tw[i + j], part = pw[j];
+      var plural = j === pw.length - 1 && (word === part + 's' || word === part + 'es');
+      if (word !== part && !plural) { ok = false; break; }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+function ncWorkMode_(rec) {
+  var hybrid = String(rec && rec.REMOTE_HYBRID || ''), loc = String(rec && rec.LOCATION || '');
+  var blob = hybrid + ' ' + loc;
+  if (/\bmulti[-\s]?location\b|\bmultiple locations\b|\bvarious locations\b/i.test(blob)) return 'multi_location';
+  if (/\bremote\b/i.test(hybrid) || /^\s*remote\b/i.test(loc)) return 'remote';
+  return '';
+}
+function ncPlace_(location) {
+  var raw = String(location || '');
+  if (!raw.trim() || /not[_\s-]*stated|^-$|^unknown$/i.test(raw.trim())) return { state: '', city: '' };
+  var t = raw.toLowerCase().replace(/\bd\.c\./g, 'dc').replace(/\bdistrict of columbia\b/g, 'dc');
+  var s = normLocation(t);
+  if (!s) return { state: '', city: '' };
+  var m = s.match(/^(?:(.*)\s+)?([a-z]{2})$/);
+  if (m && ncStateCodeOk_(m[2])) return { state: m[2], city: (m[1] || '').trim() };
+  return { state: '', city: s };
+}
+function ncBusinessText_(rec) {
+  return normTitle(String((rec && rec.EMPLOYER_PRIMARY_BUSINESS || '') + ' ' + (rec && rec.EMPLOYER_DOMAIN_HINT || '')));
+}
+function ncHasBusinessEvidence_(rec) {
+  return !!(String(rec && rec.EMPLOYER_PRIMARY_BUSINESS || '').trim() || String(rec && rec.EMPLOYER_DOMAIN_HINT || '').trim());
+}
+function ncTermHit_(text, term) {
+  var p = normTitle(term);
+  return !!(p && (' ' + text + ' ').indexOf(' ' + p + ' ') >= 0);
+}
+function ncPostedBase_(rec) {
+  var raw = rec && (rec.SALARY_BASE_POSTED || rec.PAY_POSTED) || '';
+  if (!String(raw).trim() || typeof PipelineEvidence === 'undefined' || !PipelineEvidence.moneyNumbers) return null;
+  var nums = PipelineEvidence.moneyNumbers(raw);
+  return nums.length ? Math.min.apply(null, nums) : null;
+}
+function ncPriorityHit_(text, term) {
+  if (term === 'ai') return ncTermHit_(text, 'ai') || ncTermHit_(text, 'artificial intelligence');
+  if (term === 'space') return ncTermHit_(text, 'space') || ncTermHit_(text, 'aerospace');
+  return ncTermHit_(text, term);
+}
+function ncTitleAtLeastVp_(title) {
+  return /\b(svp|evp|vp|vice president|president|chief|ceo|coo|cto|cfo|cio)\b/i.test(String(title || ''));
+}
+function ncSpecMatches_(rec, spec) {
+  var title = String(rec && rec.TITLE || '');
+  if (spec.titleAny.length || spec.titleExempt.length || spec.levelPhrases.length) {
+    if (spec.titleExempt.some(function (p) { return ncHasPhrase_(title, p); })) return false;
+    if (spec.levelPhrases.some(function (p) { return ncHasPhrase_(title, p); })) return false;
+    if (!spec.titleAny.length || !spec.titleAny.some(function (p) { return ncHasPhrase_(title, p); })) return false;
+  }
+  if (spec.states || spec.cities.length) {
+    var mode = ncWorkMode_(rec);
+    if ((mode === 'remote' && spec.locationExempt.remote) || (mode === 'multi_location' && spec.locationExempt.multi_location)) return false;
+    var place = ncPlace_(rec && rec.LOCATION);
+    if (!place.state && !place.city) return false;
+    var inState = !!(place.state && spec.states && spec.states[place.state]);
+    var inCity = !!(spec.cities.length && place.city && (!place.state || place.state === 'il') && spec.cities.some(function (c) { return (' ' + place.city + ' ').indexOf(' ' + c + ' ') >= 0; }));
+    if (!inState && !inCity) return false;
+  }
+  if (spec.businessAny.length || spec.businessExempt.length) {
+    if (!ncHasBusinessEvidence_(rec)) return false;
+    var biz = ncBusinessText_(rec);
+    if (spec.businessExempt.some(function (term) { return ncTermHit_(biz, term); })) return false;
+    if (spec.businessAny.length && !spec.businessAny.some(function (term) { return ncTermHit_(biz, term); })) return false;
+  }
+  return true;
+}
+function ncReviewHit_(rec, spec) {
+  for (var i = 0; i < spec.review.length; i++) {
+    var c = spec.review[i];
+    if (c.kind === 'base_pay') { var pay = ncPostedBase_(rec); if (pay != null && pay >= c.min) return c; }
+    else if (c.kind === 'title_level') { if (ncTitleAtLeastVp_(rec && rec.TITLE)) return c; }
+    else if (c.kind === 'head_of') { if (/\bhead of\b/i.test(String(rec && rec.TITLE || ''))) return c; }
+    else if (c.kind === 'priority_employer' && ncHasBusinessEvidence_(rec)) {
+      var text = ncBusinessText_(rec);
+      if (c.terms.some(function (term) { return ncPriorityHit_(text, term); })) return c;
+    }
+  }
+  return null;
+}
+function neverConsiderStructuredMatch_(rec, R) {
+  if (!rec || !R || R.status !== 'ACTIVE' || !R.rules) return null;
+  for (var i = 0; i < R.rules.length; i++) {
+    var rule = R.rules[i];
+    if (!rule.active || !rule.spec) continue;
+    if (!ncSpecMatches_(rec, rule.spec)) continue;
+    var review = ncReviewHit_(rec, rule.spec);
+    if (review) return { outcome: 'REVIEW', rule: rule, review: review };
+    return { outcome: 'EXCLUDE', rule: rule };
+  }
+  return null;
 }
 /** Extract the runtime Never-Consider rules from active TIM_PIPELINE_RULES_CANONICAL.
  * The historical standalone TIM_NEVER_CONSIDER_RULES file is no longer consulted at runtime.
