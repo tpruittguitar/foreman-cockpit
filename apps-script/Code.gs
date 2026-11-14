@@ -2666,7 +2666,7 @@ function parseRulesText(text) {
   return out;
 }
 function parseCanonicalNeverConsiderRules(text) {
-  var out = { source: 'TIM_PIPELINE_RULES_CANONICAL', status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: '' };
+  var out = { source: 'TIM_PIPELINE_RULES_CANONICAL', status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], employers: [], activeIds: [], error: '' };
   if (!text || typeof text !== 'string') { out.error = 'empty canonical rules text'; return out; }
   var lines = text.replace(/\\_/g, '_').split(/\r?\n/), inSection = false;
   for (var i = 0; i < lines.length; i++) {
@@ -2677,6 +2677,8 @@ function parseCanonicalNeverConsiderRules(text) {
     if (inSection && /^SECTION=/i.test(l)) break;
     if (!inSection) continue;
     if (/^DEFAULT_ACTION=/i.test(l)) { out.defaultAction = l.split('=').slice(1).join('=').trim() || 'ALLOW_INTAKE'; continue; }
+    var employerLine = parseNeverConsiderEmployerLine_(l);
+    if (employerLine) { out.employers.push(employerLine); continue; }
     var m = l.match(/^[-*]\s+(NC-\d+)\s+([A-Z0-9_\-]+):\s*(.+)$/i);
     if (!m) continue;
     var rule = {
@@ -2698,6 +2700,7 @@ function parseCanonicalNeverConsiderRules(text) {
     out.error = 'canonical rules STATUS is not ACTIVE';
     out.rules.forEach(function(r){ r.active = false; r.STATUS = 'INACTIVE'; });
     out.activeIds = [];
+    out.employers = [];
     return out;
   }
   out.status = out.rules.length ? 'ACTIVE' : 'UNAVAILABLE';
@@ -2712,15 +2715,17 @@ var PROTECTED_CASE_RE = /\b(supplier|supplies|serving|serves|customers? in|for t
 var NEG_HINT_RE = PROTECTED_CASE_RE;
 function protectedCaseEvidence(rec) { var e = String((rec.EMPLOYER_DOMAIN_HINT || '') + ' ' + (rec.EMPLOYER_PRIMARY_BUSINESS || '')).toLowerCase(); var m = e.match(PROTECTED_CASE_RE); return m ? m[0] : ''; }
 /**
- * Classify one record. Outcome EXCLUDE when the employer is on the company-business list, or when Scout cites an ACTIVE rule
- * with EXCLUSION_CONFIDENCE=HIGH (the file says Scout classifies; the writer verifies against the canonical file). MED/LOW, an unknown
- * rule id, an unavailable file, or a writer-side domain hint all yield REVIEW (admit + NEVER_CONSIDER_REVIEW_NEEDED). Unknown/incomplete
- * information is never a basis. Title is never a basis. An existing master identity is not decided here: planIntake keeps matchExisting.
+ * Classify one record. Outcome EXCLUDE at HIGH confidence when an employer line in SECTION=NEVER_CONSIDER matches,
+ * when the title matches active NC-005 or NC-006, or when Scout cites an ACTIVE rule with EXCLUSION_CONFIDENCE=HIGH.
+ * MED/LOW, an unknown rule id, an unavailable file, or a writer-side domain hint all yield REVIEW.
+ * Unknown/incomplete information is never a basis. An existing master identity is not decided here: planIntake keeps matchExisting.
  */
 function classifyNeverConsider(rec, R) {
   R = R || { status: 'UNAVAILABLE', rules: [] };
-  var listed = companyBusinessListHit_(rec, R);
-  if (listed) return { outcome: 'EXCLUDE', ruleId: listed.ruleId, confidence: 'HIGH', reason: listed.industry || '', basis: 'COMPANY_BUSINESS_LIST', sourceUrl: listed.sourceUrl || '' };
+  var listed = neverConsiderEmployerHit_(rec, R);
+  if (listed) return { outcome: 'EXCLUDE', ruleId: listed.ruleId, confidence: 'HIGH', reason: listed.employer, basis: 'EMPLOYER_LINE', sourceUrl: listed.sourceUrl || '' };
+  var titled = neverConsiderTitleMatch_(rec, R);
+  if (titled) return { outcome: 'EXCLUDE', ruleId: titled.RULE_ID, confidence: 'HIGH', reason: titled.REASON || titled.CATEGORY, basis: 'TITLE_RULE' };
   var cited = String(rec.NEVER_CONSIDER_RULE_ID || '').trim().toUpperCase();
   var conf = String(rec.EXCLUSION_CONFIDENCE || '').trim().toUpperCase(); if (conf === 'MEDIUM') conf = 'MED';
   var reason = rec.EXCLUSION_REASON || rec.NEVER_CONSIDER_REASON || '';
@@ -2781,8 +2786,8 @@ function planIntake(lines, records, rulesObj, ctx) {
     res.INTAKE_KEY = rec.INTAKE_KEY;
     if (batchKeys[rec.INTAKE_KEY]) { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
     var nc = classifyNeverConsider(rec, R);
-    // The company-business list excludes a new employer. An existing master identity keeps matchExisting (exact, conflict, or ambiguous).
-    if (nc.outcome === 'EXCLUDE' && nc.basis === 'COMPANY_BUSINESS_LIST') {
+    // Employer lines and NC-005/NC-006 title matches exclude a new identity. An existing master row keeps matchExisting.
+    if (nc.outcome === 'EXCLUDE' && (nc.basis === 'EMPLOYER_LINE' || nc.basis === 'TITLE_RULE')) {
       var listedIdentity = matchExisting(rec, idx, { holdRelistedProtected: true });
       if (listedIdentity.kind !== 'none') nc = { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
     }
@@ -3020,7 +3025,6 @@ function automationEnvelopeError_(req,live){
  * recommended for reads), GITHUB_POLICY_REPO, GITHUB_POLICY_BRANCH, GITHUB_POLICY_RULES_PATH, GITHUB_POLICY_SCORING_PATH.
  * In GITHUB mode a failed read takes the same degraded path a failed Drive read takes today; it never silently falls back to Drive. */
 var POLICY_GITHUB_DEFAULTS = { repo: 'tpruittguitar/forge-policy', branch: 'main', rulesPath: 'rules/TIM_PIPELINE_RULES_CANONICAL.txt', scoringPath: 'scoring/PIPELINE_SCORING_MODEL.json' };
-var COMPANY_BUSINESS_EXCLUSIONS_PATH = 'rules/COMPANY_BUSINESS_EXCLUSIONS.csv';
 var POLICY_CACHE_ = {};
 function policyConfig_() {
   var p = {};
@@ -3282,76 +3286,61 @@ function writeState_(state) {
     return { ok: true, seen: Object.keys(m.seen || {}).length, incidents: Object.keys((m.incidents && m.incidents.incidents) || {}).length, reviewed: Object.keys(m.reviewed || {}).length };
   } finally { lock.releaseLock(); }
 }
-function parseCsvRow_(line) {
-  var out = [], cur = '', quoted = false;
-  for (var i = 0; i < line.length; i++) {
-    var c = line.charAt(i);
-    if (quoted) {
-      if (c === '"') { if (line.charAt(i + 1) === '"') { cur += '"'; i++; } else quoted = false; }
-      else cur += c;
-    } else if (c === '"') quoted = true;
-    else if (c === ',') { out.push(cur); cur = ''; }
-    else cur += c;
-  }
-  out.push(cur);
-  return out;
+/** One employer exclusion line inside SECTION=NEVER_CONSIDER: employer, NC rule, source URL.
+ * forge-policy #16 is still settling the exact shape. Change only this pattern when that line format lands.
+ */
+var NEVER_CONSIDER_EMPLOYER_LINE_RE = /^[-*]?\s*EMPLOYER=(.+?)\s+RULE=(NC-\d+)\s+SOURCE=(https?:\/\/\S+)\s*$/i;
+function parseNeverConsiderEmployerLine_(line) {
+  var m = String(line || '').trim().match(NEVER_CONSIDER_EMPLOYER_LINE_RE);
+  if (!m || !m[1].trim()) return null;
+  return { employer: m[1].trim(), ruleId: String(m[2]).toUpperCase(), sourceUrl: m[3] };
 }
-/** Plain employer list beside the never-consider rules. Header: employer,industry,rule ID,source URL. */
-function parseCompanyBusinessExclusions(text) {
-  var out = { source: 'COMPANY_BUSINESS_EXCLUSIONS', path: COMPANY_BUSINESS_EXCLUSIONS_PATH, status: 'UNAVAILABLE', entries: [], error: '' };
-  if (!text || typeof text !== 'string') { out.error = 'empty company-business exclusion list'; return out; }
-  var lines = text.replace(/^\uFEFF/, '').split(/\r?\n/), seenHeader = false;
-  for (var i = 0; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
-    var cols = parseCsvRow_(lines[i].replace(/\s+$/, '')).map(function (s) { return s.trim(); });
-    if (!seenHeader) {
-      seenHeader = true;
-      if (cols.join(',').toLowerCase() !== 'employer,industry,rule id,source url') { out.error = 'company-business exclusion list header must be employer,industry,rule ID,source URL'; return out; }
-      continue;
-    }
-    if (!cols[0] || cols.length < 4 || !cols[2]) continue;
-    out.entries.push({ employer: cols[0], industry: cols[1], ruleId: cols[2], sourceUrl: cols.slice(3).join(',') });
-  }
-  if (!seenHeader) { out.error = 'empty company-business exclusion list'; return out; }
-  out.status = out.entries.length ? 'ACTIVE' : 'UNAVAILABLE';
-  if (!out.entries.length) out.error = 'no employer rows in company-business exclusion list';
-  return out;
-}
-function companyBusinessListHit_(rec, R) {
-  var entries = R && R.companyBusinessExclusions && R.companyBusinessExclusions.entries;
-  if (!entries || !entries.length) return null;
+function neverConsiderEmployerHit_(rec, R) {
+  if (!R || R.status !== 'ACTIVE' || !R.employers || !R.employers.length) return null;
   var name = normEmployer(rec && rec.COMPANY);
   if (!name) return null;
-  for (var i = 0; i < entries.length; i++) if (normEmployer(entries[i].employer) === name) return entries[i];
+  for (var i = 0; i < R.employers.length; i++) {
+    var row = R.employers[i];
+    if (normEmployer(row.employer) !== name) continue;
+    var rule = ruleById(R, row.ruleId);
+    if (!rule || !rule.active) continue;
+    return row;
+  }
   return null;
 }
-/** Same GitHub read as the canonical rules (policyConfig_ + githubPolicyRead_). A missing list excludes nobody. */
-function readCompanyBusinessExclusions_() {
-  var empty = { source: 'COMPANY_BUSINESS_EXCLUSIONS', path: COMPANY_BUSINESS_EXCLUSIONS_PATH, status: 'UNAVAILABLE', entries: [], error: '' };
-  try {
-    var cfg = policyConfig_();
-    if (cfg.source !== 'GITHUB') { empty.error = 'company-business exclusion list is read from forge-policy with the canonical rules'; return empty; }
-    var g = githubPolicyRead_(cfg, COMPANY_BUSINESS_EXCLUSIONS_PATH, false);
-    if (!g.ok) { empty.error = g.error; return empty; }
-    if (!g.exists) { empty.error = 'GitHub company-business exclusion list not found: ' + g.id; return empty; }
-    var parsed = parseCompanyBusinessExclusions(g.text);
-    parsed.id = g.id; parsed.sha = g.sha; parsed.policySource = cfg.source;
-    return parsed;
-  } catch (e) { empty.error = String(e && e.message || e); return empty; }
+/** Title match for the two role rules already in SECTION=NEVER_CONSIDER. Not a general keyword blacklist. */
+var NC_TITLE_RULE_IDS_ = ['NC-005', 'NC-006'];
+var NC_TITLE_SKIP_RE_ = /\b(?:recruit\w*|placement|talent|sales|marketing|software|engineer|architect|developer|systems?|IT|technology|implementation|project|consulting|consultant|production controller|quality audit|financial systems?|finance systems?|finance transformation)\b/i;
+var NC_TITLE_MIXED_FINANCE_RE_ = /\b(?:finance|accounting)\s*(?:and|&)\s*(?:operations|manufacturing|production|facilities)\b/i;
+var NC_TITLE_INDUSTRIAL_RE_ = /\b(?:plant|manufacturing|factory|industrial|production|maintenance|capital projects)\b/i;
+var NC_TITLE_MATCH_PATTERNS_ = {
+  'NC-005': [/^(?:(?:senior|sr\.?|group|regional|global|corporate|fund|plant|assistant|associate|chief|vice president|vp|director|head|manager|analyst|intern|of)[ ,\u2013\u2014-]+)*(?:accounting|accountant|finance|financial planning|financial analysis|financial controller|chief financial officer|chief accounting officer|tax accountant|fp&a|treasury|tax preparation|tax advisory|payroll accounting)(?:[ ,\u2013\u2014-]+(?:senior|sr\.?|group|regional|global|corporate|director|head|manager|analyst|intern|manufacturing|summer|20[0-9]{2}))*$/i],
+  'NC-006': [/^(?:(?:senior|sr\.?|regional|global|assistant|associate|vice president|vp|director|head|manager|of)[ ,\u2013\u2014-]+)*(?:property manager|property management|real estate portfolio management|leasing operations)(?:[ ,\u2013\u2014-]+(?:director|manager|head|vice president|vp))*$/i, /^(?:General Manager \(Master-Planned HOA Community\)|Onsite Community Manager \([A-Za-z -]+ HOA\))$/i]
+};
+function neverConsiderTitleMatch_(rec, R) {
+  var title = String(rec && rec.TITLE || '').trim();
+  if (!title || !R || R.status !== 'ACTIVE') return null;
+  if (NC_TITLE_SKIP_RE_.test(title) || NC_TITLE_MIXED_FINANCE_RE_.test(title)) return null;
+  var hits = [];
+  for (var i = 0; i < NC_TITLE_RULE_IDS_.length; i++) {
+    var id = NC_TITLE_RULE_IDS_[i], rule = ruleById(R, id), patterns = NC_TITLE_MATCH_PATTERNS_[id] || [];
+    if (!rule || !rule.active) continue;
+    if (id === 'NC-006' && NC_TITLE_INDUSTRIAL_RE_.test(title)) continue;
+    for (var p = 0; p < patterns.length; p++) if (patterns[p].test(title)) { hits.push(rule); break; }
+  }
+  return hits.length === 1 ? hits[0] : null;
 }
 /** Extract the runtime Never-Consider rules from active TIM_PIPELINE_RULES_CANONICAL.
  * The historical standalone TIM_NEVER_CONSIDER_RULES file is no longer consulted at runtime.
- * The company-business list is read from the same forge-policy source, at rules/COMPANY_BUSINESS_EXCLUSIONS.csv.
+ * Employer lines in SECTION=NEVER_CONSIDER are read by parseNeverConsiderEmployerLine_.
  */
 function readRules_() {
-  var exclusions = readCompanyBusinessExclusions_();
   try {
     var c = canonicalRulesText_(), text = c.text;
     var R = parseCanonicalNeverConsiderRules(text); R.id = c.id; R.raw = text; R.policySource = c.source;
     R.modifiedTime = c.modifiedTime;
-    R.companyBusinessExclusions = exclusions;
     return R;
-  } catch (e) { return { source: 'TIM_PIPELINE_RULES_CANONICAL', id: CANONICAL_RULES_DOC_ID, status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: String(e && e.message || e), companyBusinessExclusions: exclusions }; }
+  } catch (e) { return { source: 'TIM_PIPELINE_RULES_CANONICAL', id: CANONICAL_RULES_DOC_ID, status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], employers: [], activeIds: [], error: String(e && e.message || e) }; }
 }
 function readRuns_() { var it = folder_().getFilesByName(RUNS_FILE_NAME); if (!it.hasNext()) return []; var txt = it.next().getBlob().getDataAsString(); return foldRunVerifications_(txt.split('\n').filter(Boolean).map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean)); }
 /** Pure: apply WRITE_VERIFICATION records to their run (by WRITE_ID); runs written before durable verification stay as recorded. */
@@ -3374,4 +3363,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, parseCompanyBusinessExclusions: parseCompanyBusinessExclusions, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, worklistResearchLines_: worklistResearchLines_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, parseNeverConsiderEmployerLine_: parseNeverConsiderEmployerLine_, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, worklistResearchLines_: worklistResearchLines_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
