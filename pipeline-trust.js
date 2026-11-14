@@ -20,7 +20,7 @@ function salary(p){
 // The figures to show for a row's base pay: a compact range such as "$189k–$284k" (or a single figure / midpoint),
 // taken from whichever field the salary evidence uses. approx marks anything that is not VERIFIED; label keeps the
 // full trust label for a tooltip.
-var LOW_PAY_NOTE='Low confidence: BLS wage data only, no matching posted pay. Confirm pay before a pay decision.';
+var LOW_PAY_NOTE='Low confidence: estimated pay with no matching posted pay. Confirm pay before a pay decision.';
 function lowPay(p){var S=typeof module==='object'&&module.exports?require('./pipeline-scoring'):root.PipelineScoring;return !!(S&&S.lowConfidencePay&&S.lowConfidencePay(p))}
 function salaryRange(p){
   p=p||{};var ev=Evidence&&Evidence.salary?Evidence.salary(p):{mid:null,source:''},label=salary(p),low=lowPay(p);
