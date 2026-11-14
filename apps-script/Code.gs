@@ -2710,6 +2710,8 @@ function parseCanonicalNeverConsiderRules(text) {
 function ruleById(R, id) { id = String(id || '').trim().toUpperCase(); for (var i = 0; i < (R.rules || []).length; i++) if (String(R.rules[i].RULE_ID).toUpperCase() === id) return R.rules[i]; return null; }
 /** Words of a CATEGORY (e.g. FOOD_OR_BEVERAGE_MANUFACTURER) that may hint at the domain. Used only to flag a review, never to exclude. */
 function categoryTerms(cat) { var stop = { OR: 1, AND: 1, MANUFACTURER: 1, SERVICE: 1, OF: 1, THE: 1 }; return String(cat || '').toUpperCase().split(/[^A-Z]+/).filter(function (w) { return w && !stop[w] && w.length > 3; }).map(function (w) { return w.toLowerCase(); }); }
+/** Role rules whose category words (management, financial, role) must not flag ordinary jobs. Title rules cover NC-005 and NC-006; NC-015 is the same kind of rule. */
+var NC_DOMAIN_HINT_SKIP_ = { 'NC-005': 1, 'NC-006': 1, 'NC-015': 1 };
 /** Evidence that the employer is one of the cases every rule's DO_NOT_MATCH / general rule 2 protects: supplier, equipment/machine maker, automation, software, integrator, consultancy, engineering firm, logistics, component supplier, or "serving" an industry. */
 var PROTECTED_CASE_RE = /\b(supplier|supplies|serving|serves|customers? in|for the|equipment for|equipment maker|equipment manufacturer|packaging equipment|process equipment|machine builder|automation|integrator|integration|consult(ing|ancy)?|software|logistics|component|engineering firm|contract engineering|vendor|to the)\b/;
 var NEG_HINT_RE = PROTECTED_CASE_RE;
@@ -2723,9 +2725,9 @@ function protectedCaseEvidence(rec) { var e = String((rec.EMPLOYER_DOMAIN_HINT |
 function classifyNeverConsider(rec, R) {
   R = R || { status: 'UNAVAILABLE', rules: [] };
   var listed = neverConsiderEmployerHit_(rec, R);
-  if (listed) return { outcome: 'EXCLUDE', ruleId: listed.ruleId, confidence: 'HIGH', reason: listed.employer, basis: 'EMPLOYER_LINE', sourceUrl: listed.sourceUrl || '' };
+  if (listed) return { outcome: 'EXCLUDE', ruleId: listed.ruleId, confidence: 'HIGH', reason: listed.employer, basis: 'EMPLOYER_LINE', sourceUrl: listed.sourceUrl || '', code: 'NEVER_CONSIDER' };
   var titled = neverConsiderTitleMatch_(rec, R);
-  if (titled) return { outcome: 'EXCLUDE', ruleId: titled.RULE_ID, confidence: 'HIGH', reason: titled.REASON || titled.CATEGORY, basis: 'TITLE_RULE' };
+  if (titled) return { outcome: 'EXCLUDE', ruleId: titled.RULE_ID, confidence: 'HIGH', reason: titled.REASON || titled.CATEGORY, basis: 'TITLE_RULE', code: 'NEVER_CONSIDER' };
   var cited = String(rec.NEVER_CONSIDER_RULE_ID || '').trim().toUpperCase();
   var conf = String(rec.EXCLUSION_CONFIDENCE || '').trim().toUpperCase(); if (conf === 'MEDIUM') conf = 'MED';
   var reason = rec.EXCLUSION_REASON || rec.NEVER_CONSIDER_REASON || '';
@@ -2746,7 +2748,7 @@ function classifyNeverConsider(rec, R) {
   // writer-side hint: the employer's stated primary business mentions a category word and does not read as a supplier/vendor to it
   var hint = String(rec.EMPLOYER_DOMAIN_HINT || rec.EMPLOYER_PRIMARY_BUSINESS || '').toLowerCase();
   if (hint && R.status !== 'UNAVAILABLE' && !NEG_HINT_RE.test(hint)) {
-    for (var i = 0; i < R.rules.length; i++) { var r = R.rules[i]; if (!r.active) continue;
+    for (var i = 0; i < R.rules.length; i++) { var r = R.rules[i]; if (!r.active || NC_DOMAIN_HINT_SKIP_[String(r.RULE_ID).toUpperCase()]) continue;
       var terms = categoryTerms(r.CATEGORY); for (var j = 0; j < terms.length; j++) { if (new RegExp('(^|[^a-z])' + terms[j] + '([^a-z]|$)').test(hint)) return { outcome: 'REVIEW', ruleId: r.RULE_ID, confidence: 'MED', reason: 'employer primary business mentions "' + terms[j] + '"', basis: 'DOMAIN_HINT' }; } }
   }
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
@@ -2793,7 +2795,9 @@ function planIntake(lines, records, rulesObj, ctx) {
     }
     if (nc.outcome === 'EXCLUDE') {
       res.outcome = 'EXCLUDED'; res.result = 'NEVER_CONSIDER_EXCLUDED'; res.NEVER_CONSIDER_RULE_ID = nc.ruleId; res.detail = nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'; summary.NEVER_CONSIDER_EXCLUDED++; byRule[nc.ruleId] = (byRule[nc.ruleId] || 0) + 1;
-      excluded.push({ SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis, SUBMITTED_VIA: via, DECIDED_BY: 'WRITER' });
+      var excludedRow = { SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis, SUBMITTED_VIA: via, DECIDED_BY: 'WRITER' };
+      if (nc.code) excludedRow.DECLINE_REASON_CODE = nc.code;
+      excluded.push(excludedRow);
       results.push(res); continue;
     }
     if (nc.outcome === 'REVIEW') { res.NEVER_CONSIDER_REVIEW_NEEDED = nc.ruleId; summary.NEVER_CONSIDER_REVIEW_NEEDED++; }
@@ -3286,14 +3290,18 @@ function writeState_(state) {
     return { ok: true, seen: Object.keys(m.seen || {}).length, incidents: Object.keys((m.incidents && m.incidents.incidents) || {}).length, reviewed: Object.keys(m.reviewed || {}).length };
   } finally { lock.releaseLock(); }
 }
-/** One employer exclusion line inside SECTION=NEVER_CONSIDER: employer, NC rule, source URL.
- * forge-policy #16 is still settling the exact shape. Change only this pattern when that line format lands.
- */
-var NEVER_CONSIDER_EMPLOYER_LINE_RE = /^[-*]?\s*EMPLOYER=(.+?)\s+RULE=(NC-\d+)\s+SOURCE=(https?:\/\/\S+)\s*$/i;
+/** Any SECTION=NEVER_CONSIDER line that carries employer=. Fields: employer, rule, source_url. No employer name is special. */
 function parseNeverConsiderEmployerLine_(line) {
-  var m = String(line || '').trim().match(NEVER_CONSIDER_EMPLOYER_LINE_RE);
-  if (!m || !m[1].trim()) return null;
-  return { employer: m[1].trim(), ruleId: String(m[2]).toUpperCase(), sourceUrl: m[3] };
+  var text = String(line || '').trim();
+  if (!/employer\s*=/i.test(text)) return null;
+  function field(name) {
+    var m = text.match(new RegExp('(?:^|[;\\s])' + name + '\\s*=\\s*([^;]+)', 'i'));
+    return m ? m[1].trim() : '';
+  }
+  var employer = field('employer');
+  if (!employer) return null;
+  var id = text.match(/^[-*]?\s*(NC-\d+)\b/i);
+  return { employer: employer, ruleId: field('rule').toUpperCase(), lineId: id ? id[1].toUpperCase() : '', sourceUrl: field('source_url') };
 }
 function neverConsiderEmployerHit_(rec, R) {
   if (!R || R.status !== 'ACTIVE' || !R.employers || !R.employers.length) return null;
