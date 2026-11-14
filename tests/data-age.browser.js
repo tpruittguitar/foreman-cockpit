@@ -228,10 +228,27 @@ function isoAge(min) { return new Date(Date.now() - min * MIN).toISOString(); }
 
   s = await desktop(61);
   cell = await syncCell(s.page);
-  assert.strictEqual(cell.text, 'Last sync DATA AS OF ' + clock(generatedAt), cell.text);
-  assert.match(cell.cls, /\bbad\b/);
+  assert.strictEqual(cell.text, 'Last sync ? DATA AS OF ' + clock(generatedAt), cell.text);
+  assert.match(cell.cls, /\bage\b/);
+  assert.ok(!/\bbad\b/.test(cell.cls), 'data age is not a sync failure: ' + cell.cls);
   assert.strictEqual(cell.aria, 'Data may be out of date, as of ' + clock(generatedAt));
-  if (shots) await s.page.locator('header').screenshot({ path: path.join(shots, 'desktop-header-61min.png') });
+  const tone = await s.page.evaluate(() => {
+    const b = document.querySelectorAll('#hstat .hcell')[1].querySelector('b');
+    const probe = document.createElement('i');
+    probe.style.color = 'var(--caution)';
+    document.body.appendChild(probe);
+    const caution = getComputedStyle(probe).color;
+    const unknown = document.createElement('span');
+    unknown.className = 'conf UNKNOWN';
+    document.body.appendChild(unknown);
+    const conf = getComputedStyle(unknown).color;
+    probe.remove(); unknown.remove();
+    return { text: b.textContent, color: getComputedStyle(b).color, caution, conf };
+  });
+  assert.ok(tone.text.startsWith('?'), tone.text);
+  assert.strictEqual(tone.color, tone.caution, 'age value uses the caution token');
+  assert.strictEqual(tone.color, tone.conf, 'same yellow as .conf.UNKNOWN');
+  if (shots) await s.page.locator('header').screenshot({ path: path.join(shots, 'desktop-header-61min-fixed.png') });
   await s.page.locator('#rail [data-tab="automations"]').click();
   await s.page.waitForFunction(() => /Structured snapshot/.test(document.getElementById('view-automations').textContent), null, { timeout: 20000 });
   const row61 = await s.page.evaluate(() => {

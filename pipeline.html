@@ -1014,8 +1014,9 @@ function renderLoadAlert_(){
 }
 function renderHeaderStatus_(){var h=$('hstat');if(!h)return;var w=S.writerStatus,q=w&&w.queue,n=q?(q.pending||0)+((q.processing||[]).length):null,v=S.load||{},lr=S.connection&&S.connection.lastRead,mins=lr?Math.max(0,Math.round((Date.now()-new Date(lr).getTime())/60000)):null,stale=v.freshness==='STALE';
   var age=!stale&&S.meta&&S.meta.source==='structured-runtime'?PipelineDataAge.from((S.meta.structured||{}).generatedAt):null,lab=age&&PipelineDataAge.words(age);
-  var sync=stale?'stale':lab?lab.word:mins==null?'—':mins<1?'now':mins<60?mins+'m':Math.round(mins/60)+'h';
-  h.innerHTML='<span class="hcell"><small>Queue</small><b>'+(n==null?'—':n)+'</b></span><span class="hcell'+(stale?' bad':lab?' bad age':'')+'"'+(lab?' aria-label="'+esc(lab.aria)+'" title="'+esc(lab.aria)+'"':' title="Last verified master read"')+'><small>Last sync</small><b>'+(lab?esc(lab.word):sync)+'</b></span>'}
+  var sync=stale?'stale':mins==null?'—':mins<1?'now':mins<60?mins+'m':Math.round(mins/60)+'h';
+  var aged=lab?(lab.word.charAt(0)==='?'?lab.word:'? '+lab.word):'';
+  h.innerHTML='<span class="hcell"><small>Queue</small><b>'+(n==null?'—':n)+'</b></span><span class="hcell'+(stale?' bad':lab?' age':'')+'"'+(lab?' aria-label="'+esc(lab.aria)+'" title="'+esc(lab.aria)+'"':' title="Last verified master read"')+'><small>Last sync</small><b>'+(lab?esc(aged):sync)+'</b></span>'}
 function freshnessLabel_(){var v=S.load||{};if(v.freshness==='STALE')return '<span class="bad">STALE · FETCH FAILED · cached '+esc(fmtTime_(v.meta&&v.meta.fetchedAt))+'</span>';if(v.freshness==='LOADING')return 'Loading current master…';
   var parts=[esc(S.connection.state)];if(v.archive&&v.archive.state==='PENDING'||v.evidence&&v.evidence.state==='PENDING')parts.push('loading archive/evidence…'+(S.loadRetry&&S.loadRetry.action!=='master'?' (retrying '+esc(S.loadRetry.action)+' '+S.loadRetry.attempt+'/'+S.loadRetry.of+')':''));if(v.archive&&v.archive.state==='FAILED')parts.push('<span class="bad">ARCHIVE UNAVAILABLE</span>');if(v.evidence&&v.evidence.state==='FAILED')parts.push('<span class="bad">EVIDENCE UNAVAILABLE</span>');
   return parts.join(' · ')+' · read '+esc(S.connection.lastRead?new Date(S.connection.lastRead).toLocaleTimeString():'not verified');}
