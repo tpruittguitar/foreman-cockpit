@@ -2321,6 +2321,21 @@ function timFlexChoice_(ruling) {
   if (v === 'UNKNOWN') return '';
   return /^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(v) ? v : null;
 }
+/* Lengths that refuse the write. DEGREE_TEXT keeps its raw-length intake check. EMPLOYER_PRIMARY_BUSINESS is measured after clean_ and is never clipped. */
+var FIELD_LENGTH_LIMITS = { DEGREE_TEXT: 12000, EMPLOYER_PRIMARY_BUSINESS: 80 };
+function fieldTooLongDetail_(raw, cleaned) {
+  var keys = Object.keys(FIELD_LENGTH_LIMITS);
+  for (var i = 0; i < keys.length; i++) {
+    var k = keys[i], src = k === 'EMPLOYER_PRIMARY_BUSINESS' ? cleaned : raw;
+    if (src && String(src[k] || '').length > FIELD_LENGTH_LIMITS[k]) return k + '_TOO_LONG';
+  }
+  return '';
+}
+function fieldTooLongFailure_(k) {
+  var detail = k + '_TOO_LONG';
+  if (k === 'DEGREE_TEXT') return { ok: false, error: detail + ': send the complete requirements block within ' + FIELD_LENGTH_LIMITS.DEGREE_TEXT + ' characters' };
+  return { ok: false, result: 'WRITE_FAILED', detail: detail, error: detail };
+}
 function applyFields_(fields, P, O, set, flexPolicy) {
   var changed = [];
   if (!fields) return { ok: true, changed: changed };
@@ -2337,8 +2352,9 @@ function applyFields_(fields, P, O, set, flexPolicy) {
     if (IDENTITY_FIXED_KEYS.indexOf(k) >= 0 || k === 'POSSIBLE_MATCHES') return { ok: false, error: 'field ' + k + ' cannot be set through fields: identity columns and POSSIBLE_MATCHES change only through kind IDENTITY (fixed columns + evidence + reconciliation), so a payload copy can never contradict the row' };
     var v = fields[keys[i]]; if (v === undefined || v === null) continue;
     v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v));
-    if(k==='DEGREE_TEXT'&&v.length>12000)return {ok:false,error:'DEGREE_TEXT_TOO_LONG: send the complete requirements block within 12000 characters'};
-    v=v.slice(0,k==='DEGREE_TEXT'?12000:1500);
+    var limit = FIELD_LENGTH_LIMITS[k];
+    if (limit != null && v.length > limit) return fieldTooLongFailure_(k);
+    if (k !== 'EMPLOYER_PRIMARY_BUSINESS') v = v.slice(0, k === 'DEGREE_TEXT' ? FIELD_LENGTH_LIMITS.DEGREE_TEXT : 1500);
     if (v === '') continue;
     if (['SOURCE_URL','INITIATING_URL','COMPANY_SOURCE_URL'].indexOf(k)>=0 && !/^https?:\/\/[^\s]+$/i.test(v)) return { ok: false, error: 'URL must be a usable http(s) initiating or company source link' };
     if ((k === 'FLEX' || k === 'FLEX_HINT') && !/^(YES|HIGH_FLEX|SOFT|SOFT_FLEX|NO|NO_FLEX|STRICT_NO|STRICT|UNKNOWN)$/i.test(v)) return { ok: false, error: k + ' must be YES, SOFT, NO, STRICT_NO, or UNKNOWN' };
@@ -2739,7 +2755,7 @@ function classifyNeverConsider(rec, R) {
 var INTAKE_FACT_KEYS = ['PAY_POSTED', 'SALARY_BASE_POSTED', 'SALARY_BASE_EST', 'SALARY_BASIS', 'SALARY_CONF', 'SALARY_SOURCE', 'SALARY_ASOF', 'SALARY_NOTE', 'SALARY_BASE_LOW', 'SALARY_BASE_HIGH', 'SALARY_MIDPOINT', 'SALARY_SCORE_POINT', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
-  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'IDENTITY_SITE_SOURCE_URL', 'IDENTITY_SITE_VALUE', 'IDENTITY_SITE_EVIDENCE', 'IDENTITY_SITE_MODE', 'OPERATING_SCOPE', 'OPERATING_SCOPE_SOURCE_URL', 'OPERATING_SCOPE_EVIDENCE', 'IDENTITY_PRIOR_SCOPE_EVIDENCE', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) out[k] = clean_(rec[k]).slice(0,k==='DEGREE_TEXT'?12000:400); });
+  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'IDENTITY_SITE_SOURCE_URL', 'IDENTITY_SITE_VALUE', 'IDENTITY_SITE_EVIDENCE', 'IDENTITY_SITE_MODE', 'OPERATING_SCOPE', 'OPERATING_SCOPE_SOURCE_URL', 'OPERATING_SCOPE_EVIDENCE', 'IDENTITY_PRIOR_SCOPE_EVIDENCE', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) { var cleaned = clean_(rec[k]); out[k] = k === 'EMPLOYER_PRIMARY_BUSINESS' ? cleaned : cleaned.slice(0, k === 'DEGREE_TEXT' ? FIELD_LENGTH_LIMITS.DEGREE_TEXT : 400); } });
   var unk = rec.INITIAL_UNKNOWN_FIELDS; out.INITIAL_UNKNOWN_FIELDS = Array.isArray(unk) ? unk.map(clean_).filter(Boolean).join(',') : clean_(unk || '');
   out.SOURCE_URL=PipelinePolicy.links(out).preferred;
   if (out.SOURCE_URL && !/^https?:\/\//i.test(out.SOURCE_URL)) out.SOURCE_URL = '';
@@ -2764,7 +2780,8 @@ function planIntake(lines, records, rulesObj, ctx) {
     var via = records[i] && records[i].SUBMITTED_VIA === 'RUN_PRE_EXCLUSION' ? 'RUN_PRE_EXCLUSION' : 'RECORDS';
     var res = { obligationId: 'C-' + hashHex(runId + '|' + i + '|' + JSON.stringify(records[i])).slice(0,20), source: records[i], index: i, SUBMITTED_VIA: via, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '', NEVER_CONSIDER_RULE_ID: '', NEVER_CONSIDER_REVIEW_NEEDED: '' };
     if (!rec || !rec.COMPANY || !rec.TITLE) { res.result = 'WRITE_FAILED'; res.detail = 'INVALID_INPUT: COMPANY and TITLE are required' + (via === 'RUN_PRE_EXCLUSION' ? ' (pre-excluded entry lacks them; resubmit as a record)' : ''); summary.WRITE_FAILED++; results.push(res); continue; }
-    if(records[i]&&String(records[i].DEGREE_TEXT||'').length>12000){res.result='WRITE_FAILED';res.detail='DEGREE_TEXT_TOO_LONG';summary.WRITE_FAILED++;results.push(res);continue;}
+    var tooLong = fieldTooLongDetail_(records[i], rec);
+    if (tooLong) { res.result = 'WRITE_FAILED'; res.detail = tooLong; summary.WRITE_FAILED++; results.push(res); continue; }
     if (!rec.INTAKE_KEY) rec.INTAKE_KEY = 'IK-' + hashHex([runId, normEmployer(rec.COMPANY), normTitle(rec.TITLE), normLocation(rec.LOCATION), reqCore(rec.REQ_ID), canonUrl(rec.SOURCE_URL)].join('|')).slice(0, 16);
     res.INTAKE_KEY = rec.INTAKE_KEY;
     if (batchKeys[rec.INTAKE_KEY]) { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
