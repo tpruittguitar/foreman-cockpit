@@ -77,7 +77,29 @@
 
   function val(p, k) { var v = p[k]; return v === undefined ? '' : String(v).trim(); }
   function dateMs(s) { var m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)) : 0; }
-  function workable(r) { return ACTIVE.indexOf(r.BUCKET) >= 0 && !/^YES/i.test(val(r.p, 'ANTI_RESURRECTION')) && !val(r.p, 'DO_NOT_REWORK'); }
+  function writerFns_() {
+    if (typeof classifyNeverConsider === 'function') return { classifyNeverConsider: classifyNeverConsider, declineNeverConsiderRow_: typeof declineNeverConsiderRow_ === 'function' ? declineNeverConsiderRow_ : null };
+    if (typeof module === 'object' && module.exports) return require('./Code.gs');
+    return null;
+  }
+  function neverConsiderRec_(r) {
+    var p = r.p || {}, rec = { COMPANY: r.COMPANY, TITLE: r.TITLE, LOCATION: r.LOCATION };
+    ['REMOTE_HYBRID', 'EMPLOYER_DOMAIN_HINT', 'EMPLOYER_PRIMARY_BUSINESS', 'SALARY_BASE_POSTED', 'PAY_POSTED', 'SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SCOUT_NOTES', 'CLIENT_EMPLOYER', 'NEVER_CONSIDER_RULE_ID', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON', 'NEVER_CONSIDER_REASON'].forEach(function (k) { if (p[k]) rec[k] = p[k]; });
+    return rec;
+  }
+  /* Never-consider runs before ATS detection, pay extraction, or liveness. A match is declined and not checked. */
+  function workable(r, rules, declines) {
+    if (ACTIVE.indexOf(r.BUCKET) < 0 || /^YES/i.test(val(r.p, 'ANTI_RESURRECTION')) || val(r.p, 'DO_NOT_REWORK')) return false;
+    if (rules) {
+      var fns = writerFns_();
+      var nc = fns && fns.classifyNeverConsider ? fns.classifyNeverConsider(neverConsiderRec_(r), rules) : { outcome: 'ALLOW' };
+      if (nc.outcome === 'EXCLUDE') {
+        if (declines && fns && fns.declineNeverConsiderRow_) declines.push(fns.declineNeverConsiderRow_(r, nc));
+        return false;
+      }
+    }
+    return true;
+  }
   function due(r, now) {
     var freshness=typeof module==='object'&&module.exports?require('./PipelinePostingFreshness.gs'):PipelinePostingFreshness;
     return freshness.assess(r,now).due;
@@ -86,15 +108,17 @@
   /** Rows the checker owns this run: active, ATS-detectable, due. Never-checked first, then by bucket priority and oldest check. */
   function select(rows, opts) {
     opts = opts || {};
-    var now = opts.now ? Date.parse(opts.now) : Date.now(), limit = opts.limit || BATCH_LIMIT, out = [];
-    rows.forEach(function (r) { if (!workable(r)) return; var d = detect(r.p); if (d && due(r, now)) out.push({ row: r, target: d }); });
+    var now = opts.now ? Date.parse(opts.now) : Date.now(), limit = opts.limit || BATCH_LIMIT, out = [], declines = [];
+    rows.forEach(function (r) { if (!workable(r, opts.rules, declines)) return; var d = detect(r.p); if (d && due(r, now)) out.push({ row: r, target: d }); });
     out.sort(function (a, b) {
       var ca = dateMs(val(a.row.p, 'ATS_CHECK_ASOF')), cb = dateMs(val(b.row.p, 'ATS_CHECK_ASOF'));
       if (!ca !== !cb) return ca ? 1 : -1;
       var pa = PRIORITY[a.row.BUCKET] !== undefined ? PRIORITY[a.row.BUCKET] : 9, pb = PRIORITY[b.row.BUCKET] !== undefined ? PRIORITY[b.row.BUCKET] : 9;
       return pa - pb || ca - cb || b.row.INV_NUM - a.row.INV_NUM;
     });
-    return out.slice(0, limit);
+    var picked = out.slice(0, limit);
+    picked.declines = declines;
+    return picked;
   }
 
   /** True when the checker will handle this row itself (AI posting-validation skips it until the checker reports residue). */
@@ -308,7 +332,8 @@ function runAtsCheck_(force, dryRun) {
   if (!force && Date.now() - last < ATS_CHECK_INTERVAL_MS_) return { ok: true, skipped: true, lastAt: last ? new Date(last).toISOString() : '' };
   var f = queueFolders_();
   if (!dryRun && listPending_(f.queue).some(function (x) { return x.getName().replace(/^PROCESSING__/, '').indexOf(ATS_CHECK_FILE_PREFIX_) === 0; })) return { ok: true, skipped: true, reason: 'previous ATS batch still queued' };
-  var now = new Date().toISOString(), rows = PipelineWorklists.parseRows(readMasterText_(MASTER_ID)), picked = PipelineAts.select(rows, { now: now });
+  var now = new Date().toISOString(), rules = typeof readRules_ === 'function' ? readRules_() : null, rows = PipelineWorklists.parseRows(readMasterText_(MASTER_ID)), picked = PipelineAts.select(rows, { now: now, rules: rules });
+  if (!dryRun && picked.declines && picked.declines.length && typeof queueNeverConsiderDeclines_ === 'function') queueNeverConsiderDeclines_(picked.declines);
   if (!dryRun) props.setProperty('ATS_CHECK_AT', String(Date.now()));
   if (!picked.length) return { ok: true, checked: 0, at: now };
   var apis = [], index = {};
