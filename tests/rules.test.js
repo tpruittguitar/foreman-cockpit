@@ -55,4 +55,29 @@ ok(added.activeIds.length === 5 && W.classifyNeverConsider({ COMPANY: 'Altria', 
 const bad = W.parseRulesText('');
 ok(bad.status === 'UNAVAILABLE' && W.classifyNeverConsider({ COMPANY: 'Pfizer', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH' }, bad).outcome === 'REVIEW', 'unreadable rules file: default ALLOW_INTAKE, nothing excluded, review flagged');
 ok(W.categoryTerms('FOOD_OR_BEVERAGE_MANUFACTURER').join(',') === 'food,beverage', 'category terms derive from the CATEGORY name (no hard-coded category list)');
+const listText = [
+  'employer,industry,rule ID,source URL',
+  'AbbVie,PHARMACEUTICALS,ASK-20261023-CLAUDE-1312,https://investors.abbvie.com/',
+  'Amgen,PHARMACEUTICALS,ASK-20261023-CLAUDE-1312,https://www.amgen.com/about',
+  'Stryker,MEDICAL_DEVICES,ASK-20261023-CLAUDE-1312,https://www.stryker.com/us/en/about.html',
+  'Medtronic,MEDICAL_DEVICES,ASK-20261023-CLAUDE-1312,https://www.medtronic.com/no-nn/about.html'
+].join('\n');
+const list = W.parseCompanyBusinessExclusions(listText);
+ok(list.status === 'ACTIVE' && list.entries.map(e => e.employer).join(',') === 'AbbVie,Amgen,Stryker,Medtronic', 'company-business list parses the four seed employers');
+ok(list.entries[0].ruleId === 'ASK-20261023-CLAUDE-1312' && list.entries[0].industry === 'PHARMACEUTICALS' && list.entries[0].sourceUrl === 'https://investors.abbvie.com/', 'list columns stay employer, industry, rule ID, source URL');
+const listed = Object.assign({}, CR, { companyBusinessExclusions: list });
+['AbbVie', 'Amgen Inc.', 'Stryker', 'Medtronic'].forEach(function (company) {
+  const hit = W.classifyNeverConsider({ COMPANY: company, TITLE: 'Director of Manufacturing' }, listed);
+  ok(hit.outcome === 'EXCLUDE' && hit.basis === 'COMPANY_BUSINESS_LIST' && hit.ruleId === 'ASK-20261023-CLAUDE-1312', company + ' on the company-business list returns EXCLUDE');
+});
+ok(W.classifyNeverConsider({ COMPANY: 'Anduril', TITLE: 'Director of Manufacturing' }, listed).outcome === 'ALLOW', 'an employer absent from the list is not excluded by it');
+ok(W.classifyNeverConsider({ COMPANY: 'AbbVie' }, CR).outcome === 'ALLOW', 'without the list, a named employer is not excluded');
+const abbvieRow = '1 | V2I-ABB | AbbVie | Director of Manufacturing | SCOUT_INTAKE | OPEN | - | REQ-123 | Austin, TX | SOURCE_URL=https://example.com/jobs/123';
+const abbvieCard = { COMPANY: 'AbbVie', TITLE: 'Director of Manufacturing', LOCATION: 'Austin, TX', SOURCE_URL: 'https://example.com/jobs/123', REQ_ID: 'REQ-123' };
+const intakeCtx = { now: '2026-11-14T12:00:00.000Z', nowET: '2026-11-14 07:00 ET' };
+const existing = W.planIntake([abbvieRow], [abbvieCard], listed, intakeCtx);
+ok(existing.results[0].result === 'EXISTING_MATCH' && existing.results[0].PRIMARY_ID === 'V2I-ABB' && existing.summary.ENTERED_MASTER === 0 && existing.summary.NEVER_CONSIDER_EXCLUDED === 0, 'an existing master identity still follows matchExisting');
+const freshLines = ['V2_CURRENT_POPULATION_MASTER', 'COUNTS: TOTAL=0', 'END V2_CURRENT_POPULATION_MASTER TOTAL=0'];
+const fresh = W.planIntake(freshLines, [abbvieCard], listed, intakeCtx);
+ok(fresh.results[0].result === 'NEVER_CONSIDER_EXCLUDED' && fresh.results[0].NEVER_CONSIDER_RULE_ID === 'ASK-20261023-CLAUDE-1312', 'a new employer on the list is excluded at intake');
 console.log(fails ? ('\n' + fails + ' FAILED') : '\nALL PASS'); process.exit(fails ? 1 : 0);

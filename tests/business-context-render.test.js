@@ -1,8 +1,0 @@
-'use strict';
-const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const html=fs.readFileSync(require('node:path').join(__dirname,'../pipeline.html'),'utf8');
-const source=html.slice(html.indexOf('function applyBusinessContext_('),html.indexOf('function loadCanonicalScoring_('));
-function harness(){const calls={render:0,notice:0},ctx={S:{rows:[{PRIMARY_ID:'job-1'}]},PipelineBusiness:{partition:(rows,c)=>({suppressed:c&&c.enabled?rows.map(row=>({row})):[]})},attentionCache:{saved:true},scoreCache:{saved:true},scoringCfgMemo_:{cfg:{}},render:()=>calls.render++,renderLoadAlert_:()=>calls.notice++};vm.createContext(ctx);vm.runInContext(source,ctx);return {ctx,calls}}
-test('late missing/disabled context preserves table nodes and scoring caches',()=>{const {ctx,calls}=harness();const cache=ctx.scoreCache;ctx.applyBusinessContext_({enabled:false,status:'REVIEW_NEEDED'});ctx.applyBusinessContext_({enabled:false,status:'DISABLED'});assert.equal(calls.render,0);assert.equal(calls.notice,2);assert.equal(ctx.scoreCache,cache)});
-test('changed suppression redraws; identical suppression only updates notices',()=>{const {ctx,calls}=harness();ctx.applyBusinessContext_({enabled:true});assert.equal(calls.render,1);ctx.applyBusinessContext_({enabled:true});assert.equal(calls.render,1);ctx.applyBusinessContext_({enabled:false});assert.equal(calls.render,2);assert.equal(calls.notice,3)});
-test('browser fixture identifies raw parser records by PRIMARY_ID',()=>{const s=fs.readFileSync(require('node:path').join(__dirname,'business-exclusion.browser.js'),'utf8');assert.match(s,/target\.PRIMARY_ID/);assert.doesNotMatch(s,/target\.id\b/)});

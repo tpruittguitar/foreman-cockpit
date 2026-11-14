@@ -25,19 +25,6 @@ test('missing, empty, malformed or unavailable property fails closed',()=>{
  const box={};vm.createContext(box);vm.runInContext(source,box);
  assert.equal(Boolean(box.auth_('')),false);
 });
-test('business context route authenticates first and uses trusted context only',()=>{
- const {box}=runtime('test-only');
- box.ContentService={MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType(){return this;},getContent:()=>text})};
- let calls=0;box.businessContext_=()=>{calls++;return {enabled:false,status:'DISABLED'};};
- let out=JSON.parse(box.doGet({parameter:{action:'business_context',key:'wrong'}}).getContent());
- assert.equal(out.ok,false);assert.equal(calls,0);
- out=JSON.parse(box.doGet({parameter:{action:'business_context',key:'test-only',businessContext:{enabled:true}}}).getContent());
- assert.equal(out.ok,true);assert.equal(out.businessContext.enabled,false);assert.equal(calls,1);
-});
-test('production intake and both ENRICH call paths consume trusted context',()=>{
- assert.equal((source.match(/mutateRow\(before, ruling, flexPolicy, businessContext_\(\)\)/g)||[]).length,2);
- assert.match(source,/relistingApproved: internal && internal.relistingApproved, businessContext: businessContext_\(\)/);
- assert.match(source,/businessDecision:mu.businessDecision/);
- assert.match(source,/businessDecision:res.businessDecision/);
+test('Writer source has no hardcoded passphrase',()=>{
  assert.doesNotMatch(source,/var PASSPHRASE\s*=\s*['"]/);
 });

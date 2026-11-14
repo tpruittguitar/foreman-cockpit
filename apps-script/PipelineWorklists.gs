@@ -91,16 +91,11 @@
   function build(text, opts) {
     opts = opts || {};
     var now = opts.now ? Date.parse(opts.now) : Date.now(), rows = parseRows(text), active = rows.filter(workable);
-    var businessAccounting=null;
-    if(opts.businessContext&&opts.businessContext.enabled===true){
-      var businessModule=typeof module==='object'&&module.exports?require('../pipeline-business'):PipelineBusiness;
-      businessAccounting=businessModule.partition(active,opts.businessContext);active=businessAccounting.kept;
-    }
     var strategic = ordered(active.filter(function (r) { return !analyzed(r); }), 'STRATEGIC_ATTEMPT_ASOF', now);
     var feasibility = ordered(active.filter(function (r) { return needs(r).length; }), 'FEASIBILITY_ATTEMPT_ASOF', now, analyzed);
     var freshness = typeof module === 'object' && module.exports ? require('./PipelinePostingFreshness.gs') : PipelinePostingFreshness;
     var postval = ordered(active.filter(function(r){return freshness.assess(r,now).due&&!ats().ownedByChecker(r.p);}), 'LIVENESS_ATTEMPT_ASOF', now);
-    return { rows: rows.length, businessAccounting:businessAccounting, lanes: { FORGE_ENRICH_STRATEGIC: strategic, FORGE_ENRICH_FEASIBILITY: feasibility, FORGE_POSTING_VALIDATION: postval } };
+    return { rows: rows.length, lanes: { FORGE_ENRICH_STRATEGIC: strategic, FORGE_ENRICH_FEASIBILITY: feasibility, FORGE_POSTING_VALIDATION: postval } };
   }
   function clip(s, n) { s = String(s || '').replace(/\s+/g, ' ').replace(/\|/g, '/').trim(); return s.length > n ? s.slice(0, n - 1) + '~' : s; }
   function line(r, i, lane) {
@@ -138,12 +133,12 @@ function refreshWorklists_(force) {
   var props = PropertiesService.getScriptProperties(), last = +(props.getProperty('WORKLISTS_BUILT_AT') || 0);
   if (!force && Date.now() - last < WORKLIST_INTERVAL_MS_) return { ok: true, skipped: true, builtAt: last ? new Date(last).toISOString() : '' };
   var masterFile = DriveApp.getFileById(MASTER_ID), text = readMasterText_(MASTER_ID);
-  var built = PipelineWorklists.build(text,{businessContext:typeof businessContext_==='function'?businessContext_():null});
+  var built = PipelineWorklists.build(text);
   // Read the companion only when an otherwise eligible row might have a legacy research marker. Project compact
   // metadata in memory; the master, evidence, original Writer requests and verification status stay untouched.
   if (built.lanes.FORGE_ENRICH_STRATEGIC.some(function (r) { return /^EVC1:[1-9]\d*$/.test(r.p.EVIDENCE_REF || ''); })) {
     var routing = evidenceRouting_();
-    if (routing.active) built = PipelineWorklists.build(worklistResearchLines_(text.split(/\r?\n/), loadCompanionRecs_(routing)).join('\n'),{businessContext:typeof businessContext_==='function'?businessContext_():null});
+    if (routing.active) built = PipelineWorklists.build(worklistResearchLines_(text.split(/\r?\n/), loadCompanionRecs_(routing)).join('\n'));
   }
   var at = new Date().toISOString(), out = { ok: true, builtAt: at, rows: built.rows, lanes: {} };
   Object.keys(WORKLIST_FILES_).forEach(function (lane) {
