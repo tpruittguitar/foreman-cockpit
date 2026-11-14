@@ -2722,12 +2722,29 @@ function protectedCaseEvidence(rec) { var e = String((rec.EMPLOYER_DOMAIN_HINT |
  * MED/LOW, an unknown rule id, an unavailable file, or a writer-side domain hint all yield REVIEW.
  * Unknown/incomplete information is never a basis. An existing master identity is not decided here: planIntake keeps matchExisting.
  */
+function biospaceHiddenClient_(rec) {
+  if (!rec) return false;
+  var src = [rec.SOURCE, rec.SOURCE_PROVIDER, rec.DISCOVERY_SOURCE, rec.SOURCE_URL, rec.INITIATING_URL, rec.COMPANY_SOURCE_URL].join(' ');
+  if (!/biospace/i.test(src) && !/biospace/i.test(String(rec.COMPANY || ''))) return false;
+  var notes = String(rec.SCOUT_NOTES || '');
+  var company = String(rec.COMPANY || '').trim();
+  var client = String(rec.CLIENT_EMPLOYER || '').trim();
+  if (client && !/^unknown$/i.test(client)) return false;
+  if (/CLIENT\s*=\s*UNKNOWN|hidden\s+client/i.test(notes)) return true;
+  return !company || /^(biospace|confidential|hidden|unknown)$/i.test(company);
+}
 function classifyNeverConsider(rec, R) {
   R = R || { status: 'UNAVAILABLE', rules: [] };
   var listed = neverConsiderEmployerHit_(rec, R);
-  if (listed) return { outcome: 'EXCLUDE', ruleId: listed.ruleId, confidence: 'HIGH', reason: listed.employer, basis: 'EMPLOYER_LINE', sourceUrl: listed.sourceUrl || '', code: 'NEVER_CONSIDER' };
+  if (listed) {
+    if (biospaceHiddenClient_(rec)) return { outcome: 'REVIEW', ruleId: listed.ruleId, confidence: 'MED', reason: 'BioSpace hidden client', basis: 'REVIEW_NEEDED', sourceUrl: listed.sourceUrl || '' };
+    return { outcome: 'EXCLUDE', ruleId: listed.ruleId, confidence: 'HIGH', reason: listed.employer, basis: 'EMPLOYER_LINE', sourceUrl: listed.sourceUrl || '', code: 'NEVER_CONSIDER' };
+  }
   var titled = neverConsiderTitleMatch_(rec, R);
-  if (titled) return { outcome: 'EXCLUDE', ruleId: titled.RULE_ID, confidence: 'HIGH', reason: titled.REASON || titled.CATEGORY, basis: 'TITLE_RULE', code: 'NEVER_CONSIDER' };
+  if (titled) {
+    if (biospaceHiddenClient_(rec)) return { outcome: 'REVIEW', ruleId: titled.RULE_ID, confidence: 'MED', reason: 'BioSpace hidden client', basis: 'REVIEW_NEEDED' };
+    return { outcome: 'EXCLUDE', ruleId: titled.RULE_ID, confidence: 'HIGH', reason: titled.REASON || titled.CATEGORY, basis: 'TITLE_RULE', code: 'NEVER_CONSIDER' };
+  }
   var cited = String(rec.NEVER_CONSIDER_RULE_ID || '').trim().toUpperCase();
   var conf = String(rec.EXCLUSION_CONFIDENCE || '').trim().toUpperCase(); if (conf === 'MEDIUM') conf = 'MED';
   var reason = rec.EXCLUSION_REASON || rec.NEVER_CONSIDER_REASON || '';

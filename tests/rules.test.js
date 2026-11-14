@@ -87,6 +87,10 @@ ok(W.classifyNeverConsider({ COMPANY: 'Discrete Metals', TITLE: 'Quality Manager
 ok(W.classifyNeverConsider({ COMPANY: 'Discrete Metals', TITLE: 'Operations Manager', EMPLOYER_PRIMARY_BUSINESS: 'financial oversight of manufacturing operations' }, withRoles).outcome === 'ALLOW', 'an operations manager title with financial in the business text is not flagged by the domain hint');
 ok(W.classifyNeverConsider({ COMPANY: 'Generic Pharma Works', EMPLOYER_DOMAIN_HINT: 'pharmaceutical manufacturer' }, withRoles).outcome === 'REVIEW', 'a real category word still flags review after role rules are skipped');
 ok(W.classifyNeverConsider({ COMPANY: 'Any Co', TITLE: 'Head of Accounting' }, CR).outcome === 'ALLOW', 'NC-005 does not exclude when that rule is absent');
+const hidden = W.classifyNeverConsider({ COMPANY: 'BioSpace', TITLE: 'Head of Accounting', SOURCE_URL: 'https://www.biospace.com/jobs/123', SCOUT_NOTES: 'CLIENT=UNKNOWN' }, withRoles);
+ok(hidden.outcome === 'REVIEW' && hidden.basis === 'REVIEW_NEEDED' && hidden.ruleId === 'NC-005', 'a BioSpace hidden-client row is REVIEW_NEEDED, not EXCLUDE');
+const namedOnBioSpace = W.classifyNeverConsider({ COMPANY: 'AbbVie', TITLE: 'Director of Manufacturing', SOURCE_URL: 'https://www.biospace.com/jobs/abb' }, withEmployers);
+ok(namedOnBioSpace.outcome === 'EXCLUDE' && namedOnBioSpace.ruleId === 'NC-001', 'a named employer on BioSpace still follows the employer line');
 const abbvieRow = '1 | V2I-ABB | AbbVie | Director of Manufacturing | SCOUT_INTAKE | OPEN | - | REQ-123 | Austin, TX | SOURCE_URL=https://example.com/jobs/123';
 const abbvieCard = { COMPANY: 'AbbVie', TITLE: 'Director of Manufacturing', LOCATION: 'Austin, TX', SOURCE_URL: 'https://example.com/jobs/123', REQ_ID: 'REQ-123' };
 const intakeCtx = { now: '2026-11-14T12:00:00.000Z', nowET: '2026-11-14 07:00 ET' };
