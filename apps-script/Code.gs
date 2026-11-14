@@ -3381,7 +3381,7 @@ function ncStructuredSpec_(line) {
     if (new RegExp('(?:^|[;\\s])' + key + '\\s*=\\s*(?:;|$)', 'i').test(text)) return { error: 'unparseable ' + key };
   }
   if (!found) return { spec: null };
-  var spec = { titleAny: [], titleExempt: [], levelExempt: {}, states: null, cities: [], locationExempt: {}, businessAny: [], businessExempt: [], review: [] };
+  var spec = { titleAny: [], titleExempt: [], levelPhrases: [], states: null, cities: [], locationExempt: {}, businessAny: [], businessExempt: [], review: [] };
   function take(name) { return seen[name] ? neverConsiderField_(text, name) : ''; }
   var titleAny = take('title_any'), titleExempt = take('title_exempt'), levelExempt = take('level_exempt');
   var states = take('states'), cities = take('city_any'), locExempt = take('location_exempt');
@@ -3392,11 +3392,7 @@ function ncStructuredSpec_(line) {
   if (titleExempt) { var te = ncPipe_(titleExempt, 'title_exempt'); if (te.error) return te; spec.titleExempt = te.parts; }
   if (levelExempt) {
     var le = ncPipe_(levelExempt, 'level_exempt'); if (le.error) return le;
-    for (var i = 0; i < le.parts.length; i++) {
-      var lv = le.parts[i].toLowerCase();
-      if (lv !== 'manager' && lv !== 'leadership') return { error: 'unparseable level_exempt ' + le.parts[i] };
-      spec.levelExempt[lv] = 1;
-    }
+    spec.levelPhrases = le.parts;
   }
   if (states) {
     var st = ncPipe_(states, 'states'); if (st.error) return st;
@@ -3437,31 +3433,20 @@ function ncStructuredSpec_(line) {
   if (!spec.titleAny.length && !spec.states && !spec.cities.length && !spec.businessAny.length) return { error: 'unparseable structured rule with no inclusion field' };
   return { spec: spec };
 }
+/** Case-insensitive whole phrase. The last word may be a simple plural (s/es). Not a substring and not a stem. */
 function ncHasPhrase_(title, phrase) {
-  var t = normTitle(title), p = normTitle(phrase);
-  if (!t || !p) return false;
-  if ((' ' + t + ' ').indexOf(' ' + p + ' ') >= 0) return true;
-  var parts = p.split(' '), last = parts[parts.length - 1];
-  return ['s', 'es'].some(function (suf) {
-    parts[parts.length - 1] = last + suf;
-    return (' ' + t + ' ').indexOf(' ' + parts.join(' ') + ' ') >= 0;
-  });
-}
-function ncHasToken_(title, token) {
-  if (ncHasPhrase_(title, token)) return true;
-  var p = normTitle(token);
-  if (!p || p.indexOf(' ') >= 0 || p.length < 3) return false;
-  var words = normTitle(title).split(' ');
-  for (var i = 0; i < words.length; i++) {
-    if (words[i].indexOf(p) !== 0) continue;
-    var rest = words[i].slice(p.length);
-    if (rest === 's' || rest === 'es' || rest === 'ing') return true;
+  var tw = normTitle(title).split(' ').filter(Boolean), pw = normTitle(phrase).split(' ').filter(Boolean);
+  if (!tw.length || !pw.length || pw.length > tw.length) return false;
+  for (var i = 0; i + pw.length <= tw.length; i++) {
+    var ok = true;
+    for (var j = 0; j < pw.length; j++) {
+      var word = tw[i + j], part = pw[j];
+      var plural = j === pw.length - 1 && (word === part + 's' || word === part + 'es');
+      if (word !== part && !plural) { ok = false; break; }
+    }
+    if (ok) return true;
   }
   return false;
-}
-function ncIsLeadership_(title) {
-  var t = ' ' + normTitle(title) + ' ';
-  return ['director', 'vice president', 'vp', 'head', 'chief', 'president', 'ceo', 'coo', 'cto', 'cfo', 'cio', 'svp', 'evp'].some(function (w) { return t.indexOf(' ' + w + ' ') >= 0; });
 }
 function ncWorkMode_(rec) {
   var hybrid = String(rec && rec.REMOTE_HYBRID || ''), loc = String(rec && rec.LOCATION || '');
@@ -3506,11 +3491,10 @@ function ncTitleAtLeastVp_(title) {
 }
 function ncSpecMatches_(rec, spec) {
   var title = String(rec && rec.TITLE || '');
-  if (spec.titleAny.length || spec.titleExempt.length || spec.levelExempt.manager || spec.levelExempt.leadership) {
+  if (spec.titleAny.length || spec.titleExempt.length || spec.levelPhrases.length) {
     if (spec.titleExempt.some(function (p) { return ncHasPhrase_(title, p); })) return false;
-    if (spec.levelExempt.manager && ncHasToken_(title, 'manager')) return false;
-    if (spec.levelExempt.leadership && ncIsLeadership_(title)) return false;
-    if (!spec.titleAny.length || !spec.titleAny.some(function (p) { return ncHasToken_(title, p); })) return false;
+    if (spec.levelPhrases.some(function (p) { return ncHasPhrase_(title, p); })) return false;
+    if (!spec.titleAny.length || !spec.titleAny.some(function (p) { return ncHasPhrase_(title, p); })) return false;
   }
   if (spec.states || spec.cities.length) {
     var mode = ncWorkMode_(rec);
