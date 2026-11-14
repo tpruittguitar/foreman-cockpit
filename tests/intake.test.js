@@ -13,9 +13,9 @@ const existing = base.rows.find(r => r.REQ.startsWith('LI-') && r.BUCKET === 'RE
 const existingUrlRow = base.rows.find(r => (r.payload.SOURCE || '').includes('greenhouse'));
 const records = [
   { COMPANY: 'Nova Forge Robotics', TITLE: 'Director of Manufacturing', LOCATION: 'Huntsville, AL', REQ_ID: 'GH-7777777001', SOURCE_URL: 'https://job-boards.greenhouse.io/novaforge/jobs/7777777001', SOURCE_PROVIDER: 'Greenhouse', DISCOVERY_SOURCE: 'Scout direct ATS', IDENTITY_CONFIDENCE: 'HIGH', INITIAL_UNKNOWN_FIELDS: ['PAY', 'DEGREE', 'FLEX', 'FIT', 'LIVENESS', 'REPORTING_LEVEL'] },
-  { SOURCE: 'https://example.test/initiating/0', COMPANY: 'Quiet Signal Systems', TITLE: 'Head of Production', LOCATION: '', SOURCE_PROVIDER: 'LinkedIn', IDENTITY_CONFIDENCE: 'LOW', INITIAL_UNKNOWN_FIELDS: 'REQ,URL,PAY,DEGREE,FLEX,FIT,LIVENESS' },   // -> DISCOVERY_LEAD
+  { SOURCE: 'https://example.test/initiating/0', COMPANY: 'Quiet Signal Systems', TITLE: 'Head of Production', LOCATION: 'Huntsville, AL', SOURCE_PROVIDER: 'LinkedIn', IDENTITY_CONFIDENCE: 'LOW', INITIAL_UNKNOWN_FIELDS: 'REQ,URL,PAY,DEGREE,FLEX,FIT,LIVENESS' },   // low confidence -> DISCOVERY_LEAD
   { COMPANY: existing.COMPANY, TITLE: 'Totally Different Title', LOCATION: 'Nowhere', REQ_ID: existing.REQ },                                    // exact req dup -> EXISTING_MATCH
-  { COMPANY: 'X', TITLE: 'Y', SOURCE_URL: existingUrlRow.payload.SOURCE },                                                                          // url dup -> EXISTING_MATCH
+  { COMPANY: 'X', TITLE: 'Y', LOCATION: 'Boston, MA', SOURCE_URL: existingUrlRow.payload.SOURCE },                                                                          // url dup -> identity conflict
   { COMPANY: 'Pillcorp Therapeutics', TITLE: 'Director of Manufacturing', LOCATION: 'Boston, MA', SOURCE: 'LinkedIn', SOURCE_URL: 'https://www.linkedin.com/jobs/view/4488888801', DISCOVERED_AT_ET: '2026-10-01 07:55 ET', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'pharmaceutical manufacturer (primary business)', REQ_ID: 'R-123456789' }, // never-consider, HIGH
   { SOURCE: 'https://example.test/initiating/1', COMPANY: 'Steel Automation Partners', TITLE: 'Plant Manager', LOCATION: 'Dayton, OH', EMPLOYER_DOMAIN_HINT: 'industrial automation supplier serving pharmaceutical plants', REQ_ID: 'WD-555555501', PROPOSED_BUCKET: 'READY_TO_PURSUE' }, // supplier is NOT pharma; proposed final bucket must be refused
   { COMPANY: '', TITLE: 'no company' },                                                                                                             // invalid
@@ -41,7 +41,7 @@ ok(R.every(r => W.INTAKE_OUTCOMES.indexOf(r.result) >= 0), 'every result is one 
 // run-level counters in the canonical vocabulary. The writer, not Scout, owns NEVER_CONSIDER_EXCLUDED: entries in
 // run.NEVER_CONSIDER_EXCLUDED (legacy transport) are candidates that go through the same adjudication as records.
 const preEx = [
-  { COMPANY: 'Burger Barn', TITLE: 'GM', NEVER_CONSIDER_RULE_ID: 'NC-004', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'restaurant operator', EMPLOYER_DOMAIN_HINT: 'fast-food restaurant chain' },   // legitimately excluded by the writer
+  { COMPANY: 'Burger Barn', TITLE: 'GM', LOCATION: 'Dayton, OH', NEVER_CONSIDER_RULE_ID: 'NC-004', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'restaurant operator', EMPLOYER_DOMAIN_HINT: 'fast-food restaurant chain' },   // legitimately excluded by the writer
   { COMPANY: 'Mystery Co', NEVER_CONSIDER_RULE_ID: 'NC-042', EXCLUSION_CONFIDENCE: 'HIGH' }   // no TITLE: cannot be adjudicated -> WRITE_FAILED (nothing silently disappears)
 ];
 const runEx = { SCOUT_RUN_ID: 'RUN-TEST-1', GROSS_FOUND: 10, NEVER_CONSIDER_EXCLUDED: preEx };
@@ -76,7 +76,7 @@ ok(respOver.ok === false && respOver.WRITE_VERIFIED === true && respOver.RUN_ACC
 const respFail = W.intakeResponse_(false, ctrFail, rcpt, planEx, 'COUNTS: x', 'END x');
 ok(respFail.ok === false && respFail.WRITE_VERIFIED === false && respFail.COMPLETION_STATUS === 'FAILED', 'readback failure -> ok:false, WRITE_VERIFIED:false, FAILED');
 // telemetry never alters population: excluding does not touch a single master line
-const exclOnly = W.planIntake(lines0, [{ COMPANY: 'Pillcorp Therapeutics', TITLE: 'QA Director', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH' }], rules, ctx);
+const exclOnly = W.planIntake(lines0, [{ COMPANY: 'Pillcorp Therapeutics', TITLE: 'QA Director', LOCATION: 'Boston, MA', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH' }], rules, ctx);
 ok(exclOnly.newLines.length === 0 && exclOnly.excluded.length === 1 && W.applyPlanToLines(lines0, exclOnly).join('\n') === lines0.join('\n'), 'never-consider telemetry does not alter canonical master population counts (master byte-identical)');
 // review-needed admission
 const rev = W.planIntake(lines0, [{ SOURCE: 'https://example.test/initiating/3', COMPANY: 'Northline Holdings', TITLE: 'Plant Manager', LOCATION: 'Toledo, OH', REQ_ID: 'GH-6600000001', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'MED', EXCLUSION_REASON: 'mixed pharma packaging / chemicals' }], rules, ctx);
@@ -100,32 +100,50 @@ const lines2 = W.applyPlanToLines(lines1, plan2);
 ok(lines2.join('\n') === lines1.join('\n'), 'replay leaves the master byte-identical');
 // intake cannot set final buckets
 ['READY_TO_PURSUE', 'APPLIED', 'REJECTED_BY_EMPLOYER', 'DECLINED_BY_TIM', 'CLOSED_DEAD', 'DUPLICATE', 'INVALID_DISCOVERY'].forEach(b => {
-  const p = W.planIntake(lines0, [{ SOURCE_URL: 'https://example.test/probe/'+b, COMPANY: 'Bucket Probe ' + b, TITLE: 'Director', REQ_ID: 'GH-9' + b.length + '0000001', PROPOSED_BUCKET: b }], rules, ctx);
+  const p = W.planIntake(lines0, [{ SOURCE_URL: 'https://example.test/probe/'+b, COMPANY: 'Bucket Probe ' + b, TITLE: 'Director', LOCATION: 'Dayton, OH', REQ_ID: 'GH-9' + b.length + '0000001', PROPOSED_BUCKET: b }], rules, ctx);
   ok(/_WRITTEN$/.test(p.results[0].result) && ['SCOUT_INTAKE', 'DISCOVERY_LEAD'].indexOf(p.results[0].BUCKET) >= 0, 'intake cannot create ' + b + ' (got ' + p.results[0].BUCKET + ')');
 });
-// ambiguous identity fails closed on merge -> DISCOVERY_LEAD with POSSIBLE_MATCHES
+// a location that is not an explicit place stays held; it is not a second opportunity
 const dupTitleCompany = base.rows.find(r => base.rows.filter(x => x.COMPANY === r.COMPANY && x.TITLE === r.TITLE && x.LOCATION !== r.LOCATION).length >= 1);
 if (dupTitleCompany) {
   const p = W.planIntake(lines0, [{ SOURCE_URL:'https://example.test/ambiguous', COMPANY: dupTitleCompany.COMPANY, TITLE: dupTitleCompany.TITLE, LOCATION: 'Somewhere Else, ZZ' }], rules, ctx);
-  ok(p.results[0].outcome === 'AMBIGUOUS_MATCH' && p.newLines.length === 0 && p.results[0].source, 'ambiguous same-employer identity held with its original evidence, no speculative row');
+  ok(p.results[0].outcome === 'AMBIGUOUS_MATCH' && p.newLines.length === 0 && p.results[0].source, 'a non-explicit location stays held with its original evidence, no speculative row');
 } else ok(false, 'fixture lacks an ambiguous-identity case');
-// (Forge review item 2) employer+title with a missing location never becomes exact identity, across runs
-const runA = W.planIntake(lines0, [{ SOURCE: 'https://example.test/initiating/4', COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', REQ_ID: 'GH-8800000001', SOURCE_URL: 'https://job-boards.greenhouse.io/twinreq/jobs/8800000001' }], rules, { run: { SCOUT_RUN_ID: 'RUN-A' }, now: '2026-10-01T12:00:00.000Z', nowET: '2026-10-01 08:00 ET' });
-ok(runA.results[0].result === 'SCOUT_INTAKE_WRITTEN', 'run A: first Twin Req role (no location) admitted as SCOUT_INTAKE');
-const linesA = W.applyPlanToLines(lines0, runA);
-const runB = W.planIntake(linesA, [{ SOURCE: 'https://example.test/initiating/4', COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', REQ_ID: 'GH-8800000002' }], rules, { run: { SCOUT_RUN_ID: 'RUN-B' }, now: '2026-10-03T12:00:00.000Z', nowET: '2026-10-03 08:00 ET' });
-ok(runB.results[0].result === 'SCOUT_INTAKE_WRITTEN' && runB.results[0].PRIMARY_ID !== runA.results[0].PRIMARY_ID, 'distinct employer-bound requisition preserves a separate job despite missing location');
-const runB2 = W.planIntake(linesA, [{ SOURCE: 'https://example.test/initiating/4', COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', LOCATION: 'Mobile, AL' }], rules, ctx);
-ok(runB2.results[0].outcome === 'AMBIGUOUS_MATCH' && runB2.newLines.length === 0, 'missing requisition and unmatched location remains a durable ambiguity');
+// missing company or location is refused. A blank location is not a second job, even with a new requisition.
+const missingLoc = W.planIntake(lines0, [{ SOURCE: 'https://example.test/initiating/4', COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', REQ_ID: 'GH-8800000001', SOURCE_URL: 'https://job-boards.greenhouse.io/twinreq/jobs/8800000001' }], rules, { run: { SCOUT_RUN_ID: 'RUN-A' }, now: '2026-10-01T12:00:00.000Z', nowET: '2026-10-01 08:00 ET' });
+ok(missingLoc.results[0].result === 'WRITE_FAILED' && /INVALID_INPUT/.test(missingLoc.results[0].detail) && missingLoc.newLines.length === 0, 'missing location is refused');
+const missingLocReq = W.planIntake(lines0, [{ SOURCE: 'https://example.test/initiating/4', COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', LOCATION: 'NOT_STATED', REQ_ID: 'GH-8800000002', SOURCE_URL: 'https://job-boards.greenhouse.io/twinreq/jobs/8800000002' }], rules, { run: { SCOUT_RUN_ID: 'RUN-B' }, now: '2026-10-03T12:00:00.000Z', nowET: '2026-10-03 08:00 ET' });
+ok(missingLocReq.results[0].result === 'WRITE_FAILED' && missingLocReq.newLines.length === 0, 'a placeholder location is refused even when the requisition differs');
+const bareLoc = '9000 | V2I-TWINLOC0001 | Twin Req Industries | Plant Manager | SCOUT_INTAKE | INTAKE/AWAITING_ANALYSIS | - | UNCAPTURED | NOT_STATED | SOURCE_URL=https://job-boards.greenhouse.io/twinreq/jobs/8800000001';
+const runB2 = W.planIntake(lines0.concat([bareLoc]), [{ SOURCE: 'https://example.test/initiating/4', COMPANY: 'Twin Req Industries', TITLE: 'Plant Manager', LOCATION: 'Mobile, AL' }], rules, ctx);
+ok(runB2.results[0].outcome === 'AMBIGUOUS_MATCH' && runB2.newLines.length === 0, 'an existing blank location against one explicit place remains a durable ambiguity');
 const sameLocRow = base.rows.find(r => r.LOCATION && r.LOCATION !== 'NOT_STATED' && base.rows.filter(x => x.COMPANY === r.COMPANY && x.TITLE === r.TITLE).length === 1);
 const exactId = W.planIntake(lines0, [{ COMPANY: sameLocRow.COMPANY, TITLE: sameLocRow.TITLE, LOCATION: sameLocRow.LOCATION }], rules, ctx);
 ok(exactId.results[0].result === 'EXISTING_MATCH' && exactId.results[0].matchedBy === 'EMPLOYER_TITLE_LOCATION' && exactId.results[0].PRIMARY_ID === sameLocRow.PRIMARY_ID, 'employer+title with both locations present and equal, single candidate -> EXISTING_MATCH');
+ok(W.normTitle('VP of Operations') === W.normTitle('Vice President of Operations'), 'VP and Vice President are the same title');
+ok(W.normTitle('Plant Manager (m/f/d)') === W.normTitle('Plant Manager') && W.normLocation('Knoxville, TN (m/f/d)') === W.normLocation('Knoxville, TN'), '(m/f/d) and other parenthetical suffixes are stripped');
+const placeholderCo = W.planIntake(lines0, [{ COMPANY: 'CONFIDENTIAL', TITLE: 'Director of Operations', LOCATION: 'Nashville, TN', SOURCE_URL: 'https://example.test/placeholder-co' }], rules, ctx);
+ok(placeholderCo.results[0].result === 'WRITE_FAILED' && /INVALID_INPUT/.test(placeholderCo.results[0].detail) && placeholderCo.newLines.length === 0, 'a placeholder company is refused');
+const howmetTn = '1 | V2I-HOWMET00001 | Howmet | VP of Operations | SCOUT_INTAKE | INTAKE/AWAITING_ANALYSIS | - | UNCAPTURED | Morristown, TN | SOURCE_URL=https://example.test/howmet/tn';
+const howmetTnLater = '2 | V2I-HOWMET00002 | Howmet | Vice President of Operations (m/f/d) | SCOUT_INTAKE | INTAKE/AWAITING_ANALYSIS | - | UNCAPTURED | Morristown, Tennessee | SOURCE_URL=https://example.test/howmet/tn-2';
+const howmetLines = ['V2_CURRENT_POPULATION_MASTER', 'COUNTS: TOTAL=2 SCOUT_INTAKE=2', howmetTn, howmetTnLater, 'END V2_CURRENT_POPULATION_MASTER (2 rows)'];
+const howmetAgain = W.planIntake(howmetLines, [{ COMPANY: 'Howmet', TITLE: 'Vice President of Operations', LOCATION: 'Morristown, TN', SOURCE_URL: 'https://example.test/howmet/again' }], rules, ctx);
+ok(howmetAgain.results[0].result === 'EXISTING_MATCH' && howmetAgain.results[0].PRIMARY_ID === 'V2I-HOWMET00001' && howmetAgain.summary.EXISTING_MATCH === 1 && howmetAgain.newLines.length === 0, 'the earliest row stays occurrence #1 and the new one is counted as a duplicate, not admitted');
+const howmetIn = W.planIntake(howmetLines, [{ COMPANY: 'Howmet', TITLE: 'Vice President of Operations', LOCATION: 'La Porte, IN', SOURCE_URL: 'https://example.test/howmet/in' }], rules, ctx);
+ok(howmetIn.results[0].result === 'SCOUT_INTAKE_WRITTEN' && howmetIn.results[0].identity.kind === 'distinct' && howmetIn.newLines.length === 1, 'Howmet in Tennessee and Howmet in Indiana are two rows');
+const howmetLinesIn = W.applyPlanToLines(howmetLines, howmetIn);
+ok(howmetLinesIn.filter(l => /^\d+ \| /.test(l)).length === 3, 'the Indiana opportunity is admitted beside the Tennessee row');
+const howmetNc = W.planIntake(howmetLines, [{ COMPANY: 'Howmet', TITLE: 'Vice President of Operations', LOCATION: 'La Porte, IN', SOURCE_URL: 'https://example.test/howmet/nc', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH', EXCLUSION_REASON: 'pharmaceutical manufacturer' }], rules, ctx);
+ok(howmetNc.results[0].result === 'NEVER_CONSIDER_EXCLUDED' && howmetNc.newLines.length === 0, 'the never-consider gate runs before matching and does not admit the distinct place');
+const heldPosting = '3 | V2I-HOWMET00003 | Howmet | Vice President of Operations | DECLINED_BY_TIM | CLOSED | - | GH-1111111111 | La Porte, IN | SOURCE_URL=https://job-boards.greenhouse.io/howmet/jobs/1111111111';
+const postingConflict = W.planIntake(howmetLines.concat([heldPosting]), [{ COMPANY: 'Howmet', TITLE: 'Vice President of Operations', LOCATION: 'La Porte, IN', REQ_ID: 'GH-2222222222', SOURCE_URL: 'https://job-boards.greenhouse.io/howmet/jobs/2222222222' }], rules, ctx);
+ok(postingConflict.results[0].outcome === 'IDENTITY_CONFLICT' && /PROTECTED_IDENTITY_REQ_CONFLICT/.test(postingConflict.results[0].detail) && postingConflict.newLines.length === 0, 'a repeat with a conflicting posting ID stays in review');
 // (Forge review item 3) requisition ids are employer-bound
 const reqRow = base.rows.find(r => /^(LI|GH)-\d{5,}/.test(r.REQ));
-const otherEmp = W.planIntake(lines0, [{ SOURCE: 'https://example.test/initiating/5', COMPANY: 'Completely Different Employer LLC', TITLE: 'Plant Manager', REQ_ID: reqRow.REQ }], rules, ctx);
+const otherEmp = W.planIntake(lines0, [{ SOURCE: 'https://example.test/initiating/5', COMPANY: 'Completely Different Employer LLC', TITLE: 'Plant Manager', LOCATION: 'Dayton, OH', REQ_ID: reqRow.REQ }], rules, ctx);
 ok(otherEmp.results[0].result === 'SCOUT_INTAKE_WRITTEN', 'employer-local requisition token alone does not collapse unrelated companies');
 const urlRow = base.rows.find(r => (r.payload.SOURCE || '').includes('linkedin.com/jobs/view/') && /^LI-\d{5,}/.test(r.REQ) && r.payload.SOURCE.endsWith(r.REQ.slice(3)));
-const urlBound = W.planIntake(lines0, [{ COMPANY: 'Different Name For Same Employer', TITLE: 'X', REQ_ID: urlRow.REQ, SOURCE_URL: urlRow.payload.SOURCE }], rules, ctx);
+const urlBound = W.planIntake(lines0, [{ COMPANY: 'Different Name For Same Employer', TITLE: 'X', LOCATION: 'Austin, TX', REQ_ID: urlRow.REQ, SOURCE_URL: urlRow.payload.SOURCE }], rules, ctx);
 ok(urlBound.results[0].outcome === 'IDENTITY_CONFLICT' && urlBound.newLines.length === 0, 'shared URL cannot bind an unrelated employer to a protected row');
 // many unknowns admitted
 const p3 = W.planIntake(lines0, [{ COMPANY: 'Unknown Everything Co', TITLE: 'VP Operations', INITIAL_UNKNOWN_FIELDS: ['PAY', 'DEGREE', 'FLEX', 'FIT', 'LIVENESS', 'REPORTING_LEVEL', 'REQ_ID', 'LOCATION', 'URL'] }], rules, ctx);

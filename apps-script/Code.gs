@@ -2123,7 +2123,7 @@ function identityConflicts_(lines, lineIndex, after, ruling, archiveRows) {
   if (badDup.length) return 'DUPLICATE_RESOLVED requires the other row to be DUPLICATE already: ' + badDup.map(function (p) { return p + ' is ' + (bucketOf[p] || 'missing'); }).join(', ');
   var usable = function (v) { v = String(v || '').trim(); return !!v && !IDENTITY_PLACEHOLDER_RE.test(v); };
   var m = matchExisting({ COMPANY: c[2], TITLE: c[3], LOCATION: c[8], REQ_ID: usable(c[7]) ? c[7] : (P.REQ_ID || ''), SOURCE_URL: P.COMPANY_SOURCE_URL || P.SOURCE_URL || '' }, indexExisting(others));
-  if (m.kind === 'none') return '';
+  if (m.kind === 'none' || m.kind === 'distinct') return '';
   var hit = m.rows.map(function (r) { return r.id; }).filter(function (id) { return id !== self && !rec[id]; });
   return hit.length ? 'IDENTITY_COLLISION: corrected identity matches ' + hit.join(', ') + ' by ' + m.by + ' (reconcile it as DISTINCT or resolve the duplicate first)' : '';
 }
@@ -2486,10 +2486,11 @@ function normEmployer(s) {
   s = s.replace(/&/g, ' and ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\b(inc|llc|l l c|corp|corporation|co|company|ltd|limited|plc|group|holdings|the|careers)\b/g, ' ').replace(/\s+/g, ' ').trim();
   return s;
 }
-function normTitle(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\bsr\b/g, 'senior').replace(/\bjr\b/g, 'junior').replace(/\b(the|of|and|a|an)\b/g, ' ').replace(/\s+/g, ' ').trim(); }
+function stripParenSuffix_(s) { var t = String(s || ''); var prev; do { prev = t; t = t.replace(/\s*\([^)]*\)\s*$/, ''); } while (t !== prev); return t; }
+function normTitle(s) { return stripParenSuffix_(s).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\bvp\b/g, 'vice president').replace(/\bsr\b/g, 'senior').replace(/\bjr\b/g, 'junior').replace(/\b(the|of|and|a|an)\b/g, ' ').replace(/\s+/g, ' ').trim(); }
 var US_STATE_ABBR_ = {alabama:'al',alaska:'ak',arizona:'az',arkansas:'ar',california:'ca',colorado:'co',connecticut:'ct',delaware:'de',florida:'fl',georgia:'ga',hawaii:'hi',idaho:'id',illinois:'il',indiana:'in',iowa:'ia',kansas:'ks',kentucky:'ky',louisiana:'la',maine:'me',maryland:'md',massachusetts:'ma',michigan:'mi',minnesota:'mn',mississippi:'ms',missouri:'mo',montana:'mt',nebraska:'ne',nevada:'nv','new hampshire':'nh','new jersey':'nj','new mexico':'nm','new york':'ny','north carolina':'nc','north dakota':'nd',ohio:'oh',oklahoma:'ok',oregon:'or',pennsylvania:'pa','rhode island':'ri','south carolina':'sc','south dakota':'sd',tennessee:'tn',texas:'tx',utah:'ut',vermont:'vt',virginia:'va',washington:'wa','west virginia':'wv',wisconsin:'wi',wyoming:'wy'};
 // Full state names become postal codes so "Costa Mesa, California, United States" and "Costa Mesa, CA" compare equal (2026-10-13).
-function normLocation(s) { s = String(s || '').toLowerCase(); if (!s || /not_stated|not stated|unknown|^-$/.test(s)) return ''; s = s.replace(/\b(metropolitan area|metro area|area|united states|usa|us)\b/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); return s.replace(/\b(new hampshire|new jersey|new mexico|new york|north carolina|north dakota|rhode island|south carolina|south dakota|west virginia|[a-z]+)$/, function (m) { return US_STATE_ABBR_[m] || m; }); }
+function normLocation(s) { s = stripParenSuffix_(s).toLowerCase(); if (!s || /not_stated|not stated|unknown|^-$/.test(s)) return ''; s = s.replace(/\b(metropolitan area|metro area|area|united states|usa|us)\b/g, ' ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); return s.replace(/\b(new hampshire|new jersey|new mexico|new york|north carolina|north dakota|rhode island|south carolina|south dakota|west virginia|[a-z]+)$/, function (m) { return US_STATE_ABBR_[m] || m; }); }
 /** ATS job numbers carried in a posting URL (Greenhouse job id, gh_jid, Workday R-number). They are the same identity as a GH-/R- requisition token on an older row (2026-10-13 Anduril duplicates). */
 function atsJobIds(text) { var out = []; String(text || '').replace(/https?:\/\/[^\s"<>|;]+/gi, function (u) { var m; if ((m = u.match(/greenhouse\.io\/[^\/?#]+\/jobs\/(\d{6,})/i)) || (m = u.match(/[?&]gh_jid=(\d{6,})/i)) || (m = u.match(/myworkdayjobs\.com\/[^?#]*_(?:JR|R)-?(\d{4,})/i))) { if (out.indexOf(m[1]) < 0) out.push(m[1]); } }); return out; }
 function reqTokens(s) { var out = []; String(s || '').replace(/[A-Za-z]*[-_ ]?\d{5,}[A-Za-z0-9-]*/g, function (m) { out.push(m.replace(/[^A-Za-z0-9]/g, '').toUpperCase()); }); return out; }
@@ -2555,7 +2556,7 @@ function indexExisting(lines) {
   }
   return rows;
 }
-/** Find matches for one intake record. Returns {kind:'none'|'exact'|'ambiguous', rows:[...], by:''} */
+/** Find matches for one intake record. Returns {kind:'none'|'exact'|'ambiguous'|'conflict'|'distinct', rows:[...], by:''} */
 function matchExisting(rec, idx, opts) {
   opts = opts || {};
   var ne = normEmployer(rec.COMPANY), nt = normTitle(rec.TITLE), nl = normLocation(rec.LOCATION);
@@ -2577,6 +2578,7 @@ function matchExisting(rec, idx, opts) {
   }
   function verdict(kind, rows, by) { return { kind:kind, rows:rows, by:by,
     compared:{employer:ne, requisition:rc, title:nt, location:nl, sourceUrl:rec.SOURCE_URL || ''} }; }
+  function guardedSamePlace() { return idx.filter(function (r) { return r.protectedIdentity && compatible(r) && r.nt === nt && nl && r.nl === nl; }); }
   function compatible(r) { return ne && (r.ne === ne || (rec.EMPLOYER_RELATIONSHIP_EVIDENCE && PipelinePolicy.validUrl(rec.EMPLOYER_RELATIONSHIP_URL) && String(rec.EMPLOYER_ALIASES||'').split(',').some(function(alias){return normEmployer(alias)===r.ne;}))); }
   var recEmpReq = employerReqCores(reqTokens(rec.REQ_ID || ''), boardJobIds([cu, canonUrl(rec.INITIATING_URL || '')]))[0] || '';
   // Only employer requisitions can make two otherwise identical postings different jobs; job-board ids never can.
@@ -2608,11 +2610,13 @@ function matchExisting(rec, idx, opts) {
     var byId = idx.filter(function (r) { return compatible(r) && r.nt === nt && !conflictingReq(r); });
     if (byId.length) {
       var sameLoc = byId.filter(function (r) { return nl && r.nl && r.nl === nl; });
-      if (sameLoc.length === 1) {
+      if (sameLoc.length) {
+        // The earliest row is occurrence #1. A later intake of that identity is a duplicate and is not admitted.
+        var kept = sameLoc.slice().sort(function (a, b) { return a.inv - b.inv; })[0];
         // Tim 2026-10-22: a protected role reaching intake through a different listing (none of its URLs or requisitions
         // matched above) may be a second chance. Hold it for him: never insert it, never silently treat it as a no-op.
-        if (opts.holdRelistedProtected && sameLoc[0].protectedIdentity && (cu.length > 12 || rc || recAts.length)) return verdict('conflict', sameLoc, 'PROTECTED_IDENTITY_RELISTED');
-        return verdict('exact', sameLoc, 'EMPLOYER_TITLE_LOCATION');
+        if (opts.holdRelistedProtected && kept.protectedIdentity && (cu.length > 12 || rc || recAts.length)) return verdict('conflict', [kept], 'PROTECTED_IDENTITY_RELISTED');
+        return verdict('exact', [kept], 'EMPLOYER_TITLE_LOCATION');
       }
       // The agency is not its undisclosed client. A generic title advertised in
       // another explicit state is a separate placement opportunity; do not make
@@ -2629,11 +2633,20 @@ function matchExisting(rec, idx, opts) {
       var localRole=/^(general manager|plant manager|facility manager|site manager|director of plant operations)$/.test(nt);
       if(!sameLoc.length&&state&&localRole&&String(rec.OPERATING_SCOPE||'').toUpperCase()==='SINGLE_FACILITY'&&scopeSource&&scopeSource===scopeUrl&&/\b(facility|plant|site)\b/i.test(String(rec.OPERATING_SCOPE_EVIDENCE||''))&&/\b(facility|plant|site)\b/i.test(String(rec.IDENTITY_PRIOR_SCOPE_EVIDENCE||''))&&/^on.?site$/i.test(String(rec.REMOTE_HYBRID||''))&&/^on.?site$/i.test(String(rec.IDENTITY_SITE_MODE||''))&&byId.every(function(r){var source=canonUrl(rec.IDENTITY_SITE_SOURCE_URL||''),other=recoveredState(r);return r.urls.indexOf(source)>=0&&!/remote|hybrid/i.test(r.workMode||'')&&other&&other!==state;}))
         return verdict('none', [], 'PROVEN_DISTINCT_FACILITIES');
+      // Same employer, title and location as a protected row, kept apart only by a differing requisition: hold for Tim.
+      // This stays ahead of the distinct-location return so a conflicting posting is not admitted as a new place.
+      var guarded = guardedSamePlace();
+      if (guarded.length) return verdict('conflict', guarded, 'PROTECTED_IDENTITY_REQ_CONFLICT');
+      // Tim: two explicit places are two opportunities. Howmet in Tennessee and Howmet in Indiana both stay.
+      // A blank, placeholder, remote, or regional location is not explicit and stays unresolved.
+      var explicitState = function (raw) { var value = String(raw || '').trim(); return value && !IDENTITY_PLACEHOLDER_RE.test(value) && normLocation(value) ? localState(value, true) : ''; };
+      var incomingState = explicitState(rec.LOCATION);
+      if (incomingState && byId.every(function (r) { var other = explicitState(r.location); return other && other !== incomingState; }))
+        return verdict('distinct', [], 'EXPLICIT_DISTINCT_LOCATIONS');
       return verdict('ambiguous', sameLoc.length ? sameLoc : byId, 'EMPLOYER_TITLE_NEEDS_LOCATION');
     }
-    // Same employer, title and location as a protected row, kept apart only by a differing requisition: hold for Tim.
-    var guarded = idx.filter(function (r) { return r.protectedIdentity && compatible(r) && r.nt === nt && nl && r.nl === nl; });
-    if (guarded.length) return verdict('conflict', guarded, 'PROTECTED_IDENTITY_REQ_CONFLICT');
+    var guardedOnly = guardedSamePlace();
+    if (guardedOnly.length) return verdict('conflict', guardedOnly, 'PROTECTED_IDENTITY_REQ_CONFLICT');
   }
   // Requisition numbers are employer-local. A shared token alone does not merge unrelated employers.
   return verdict('none', [], 'NO_SUPPORTED_MATCH');
@@ -2812,7 +2825,9 @@ function planIntake(lines, records, rulesObj, ctx) {
     var rec = sanitizeRecord(records[i]);
     var via = records[i] && records[i].SUBMITTED_VIA === 'RUN_PRE_EXCLUSION' ? 'RUN_PRE_EXCLUSION' : 'RECORDS';
     var res = { obligationId: 'C-' + hashHex(runId + '|' + i + '|' + JSON.stringify(records[i])).slice(0,20), source: records[i], index: i, SUBMITTED_VIA: via, INTAKE_KEY: '', result: '', PRIMARY_ID: '', INV: null, BUCKET: '', matchedBy: '', detail: '', NEVER_CONSIDER_RULE_ID: '', NEVER_CONSIDER_REVIEW_NEEDED: '' };
-    if (!rec || !rec.COMPANY || !rec.TITLE) { res.result = 'WRITE_FAILED'; res.detail = 'INVALID_INPUT: COMPANY and TITLE are required' + (via === 'RUN_PRE_EXCLUSION' ? ' (pre-excluded entry lacks them; resubmit as a record)' : ''); summary.WRITE_FAILED++; results.push(res); continue; }
+    var companyMissing = !rec || !String(rec.COMPANY || '').trim() || IDENTITY_PLACEHOLDER_RE.test(String(rec.COMPANY).trim());
+    var locationMissing = !rec || !String(rec.LOCATION || '').trim() || IDENTITY_PLACEHOLDER_RE.test(String(rec.LOCATION).trim()) || !normLocation(rec.LOCATION);
+    if (!rec || !rec.TITLE || companyMissing || locationMissing) { res.result = 'WRITE_FAILED'; res.detail = 'INVALID_INPUT: COMPANY, TITLE, and LOCATION are required and must be real values, not placeholders' + (via === 'RUN_PRE_EXCLUSION' ? ' (pre-excluded entry lacks them; resubmit as a record)' : ''); summary.WRITE_FAILED++; results.push(res); continue; }
     var tooLong = fieldTooLongDetail_(records[i], rec);
     if (tooLong) { res.result = 'WRITE_FAILED'; res.detail = tooLong; summary.WRITE_FAILED++; results.push(res); continue; }
     if (!rec.INTAKE_KEY) rec.INTAKE_KEY = 'IK-' + hashHex([runId, normEmployer(rec.COMPANY), normTitle(rec.TITLE), normLocation(rec.LOCATION), reqCore(rec.REQ_ID), canonUrl(rec.SOURCE_URL)].join('|')).slice(0, 16);
@@ -2822,7 +2837,8 @@ function planIntake(lines, records, rulesObj, ctx) {
     // Employer lines and structured never-consider lines exclude a new identity. An existing master row keeps matchExisting.
     if (nc.outcome === 'EXCLUDE' && (nc.basis === 'EMPLOYER_LINE' || nc.basis === 'TITLE_RULE')) {
       var listedIdentity = matchExisting(rec, idx, { holdRelistedProtected: true });
-      if (listedIdentity.kind !== 'none') nc = { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
+      // distinct is a new place, not an existing master row. The gate already ran; do not clear it.
+      if (listedIdentity.kind !== 'none' && listedIdentity.kind !== 'distinct') nc = { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
     }
     if (nc.outcome === 'EXCLUDE') {
       res.outcome = 'EXCLUDED'; res.result = 'NEVER_CONSIDER_EXCLUDED'; res.NEVER_CONSIDER_RULE_ID = nc.ruleId; res.detail = nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'; summary.NEVER_CONSIDER_EXCLUDED++; byRule[nc.ruleId] = (byRule[nc.ruleId] || 0) + 1;
