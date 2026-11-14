@@ -75,7 +75,8 @@
     if (focusSearch) { var s = $('m-q'); if (s) { s.parentNode.classList.add('m-open'); s.focus(); } }
   }
 
-  /* Header readout: one square dot and one word. Tap opens Status. */
+  /* Header readout: one square dot and one word. Tap opens Status. The "?" glyph already marks unknown age, so the word does not repeat it. */
+  function ageWord(lab) { return lab.word.replace(/^\? /, ''); }
   function renderSys() {
     var b = B(), h = b && b.health ? b.health() : { state: 'LOADING' };
     var word = { OK: 'SYS OK', DELAYED: 'SYS DELAYED', FAULT: 'SYS FAULT', LOADING: 'SYS …' }[h.state] || 'SYS …';
@@ -95,6 +96,11 @@
         el.setAttribute('aria-label', down ? 'Decision queue down: it could not be loaded. Open Status.' : 'Decision queue stale: showing an older queue because the refresh failed. Open Status.');
         return;
       }
+    }
+    /* Snapshot age outranks SYS OK only. QUEUE DOWN and QUEUE STALE already returned. Yellow "?" is the delayed glyph. */
+    if (word === 'SYS OK' && h.dataAge) {
+      var lab = root.PipelineDataAge.words(h.dataAge);
+      if (lab) { el.className = 'm-sys m-delayed'; $('m-sys-word').textContent = ageWord(lab); $('m-sys-ic').innerHTML = svg('delayed', 14); el.setAttribute('aria-label', lab.aria); return; }
     }
     el.className = 'm-sys m-' + k; $('m-sys-word').textContent = word; $('m-sys-ic').innerHTML = svg(k, 14);
     el.setAttribute('aria-label', 'System status: ' + word.replace('SYS ', '').toLowerCase() + '. Open Status.');
@@ -520,12 +526,20 @@
     }).join('');
     function tile(label, v) { return '<div class="m-tile"><b class="m-num">' + (v == null ? '—' : n$(v)) + '</b><span class="m-label">' + label + '</span></div>'; }
     var hs = h.state === 'OK' ? ['ok', gl('ok'), 'SYS OK'] : h.state === 'FAULT' ? ['fault', gl('no'), 'SYS FAULT'] : h.state === 'DELAYED' ? ['caution', gl('caution'), 'SYS DELAYED'] : ['', '', 'SYS …'];
+    var qv = queueState().view, freshAria = '';
+    if (h.state !== 'FAULT' && h.state !== 'LOADING' && (qv === 'unavailable' || qv === 'stale')) {
+      var down = qv === 'unavailable';
+      hs = [down ? 'm-down-note' : 'caution', gl(down ? 'warn' : 'caution'), down ? 'QUEUE DOWN' : 'QUEUE STALE'];
+    } else if (hs[2] === 'SYS OK' && h.dataAge) {
+      var lab = root.PipelineDataAge.words(h.dataAge);
+      if (lab) { hs = ['caution', gl('caution'), ageWord(lab)]; freshAria = lab.aria; }
+    }
     var sync = h.lastRead ? new Date(h.lastRead).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : 'unknown';
     setHtml(p, '<p class="m-label m-sec-l">Pipeline constraint</p><ol class="m-flow" aria-label="Pipeline stages">' + flow + '</ol>' +
       '<p class="m-cr-note">' + esc(s.constraintReason) + '</p>' +
       '<div class="m-tiles">' + tile('Need decision', queueState().view === 'unavailable' ? null : b.decideRows().length) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
       '<ul class="m-legend" aria-label="Legend"><li class="ok">' + gl('ok') + 'OK</li><li class="caution">' + gl('caution') + 'Caution</li><li class="attn">' + gl('warn') + 'Constraint</li><li class="fault">' + gl('no') + 'Fault</li></ul>' +
-      '<p class="m-fresh ' + hs[0] + '">' + hs[1] + hs[2] + ' · SYNC ' + esc(sync) + (h.writer === false ? ' · ' + gl('warn') + 'NO WRITER' : '') + '</p>' +
+      '<p class="m-fresh ' + hs[0] + '"' + (freshAria ? ' aria-label="' + esc(freshAria) + '"' : '') + '>' + hs[1] + hs[2] + ' · SYNC ' + esc(sync) + (h.writer === false ? ' · ' + gl('warn') + 'NO WRITER' : '') + '</p>' +
       (s.details ? '<details class="m-sec"><summary>Details</summary><div class="m-sec-b"><p>' + esc(s.details) + '</p></div></details>' : ''));
   }
 

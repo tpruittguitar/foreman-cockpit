@@ -38,7 +38,7 @@ html.m-shell:not(.m-legacy) body{display:block;margin:0;background:var(--m-bg);c
   display:flex;align-items:center;gap:4px;background:var(--m-panel);border-bottom:1px solid var(--m-border);transition:transform var(--m-dur) ease}
 .m-hd.m-hide{transform:translateY(-100%)}
 #m-root .m-brand{font:600 16px/1 var(--m-mono);letter-spacing:2px;color:var(--m-text);margin-right:auto}
-#m-root .m-sys{display:inline-flex;align-items:center;gap:8px;min-height:var(--m-tap);padding:0 8px;font:600 12px/1 var(--m-mono);letter-spacing:.6px;color:var(--m-text-2)}
+#m-root .m-sys{display:inline-flex;align-items:center;gap:8px;flex:none;white-space:nowrap;min-height:var(--m-tap);padding:0 8px;font:600 12px/1 var(--m-mono);letter-spacing:.6px;color:var(--m-text-2)}
 .m-sys .m-dot{width:8px;height:8px;background:currentColor;flex:none}
 .m-sys svg{flex:none}
 /* State colors need the #m-root prefix to beat the button reset; every state also carries a glyph and a word. */

@@ -69,8 +69,8 @@
       items.push({area:'Terminal archive',state:label(a.state),detail:a.error||('archive rows '+(a.rows?a.rows.length:'not loaded')),bad:a.state==='FAILED'});
       items.push({area:'Evidence companion',state:label(e.state),detail:e.error||('evidence records '+(e.recs?e.recs.length:'not loaded')),bad:e.state==='FAILED'});
       if(v.meta&&v.meta.source==='structured-runtime'){
-        var sm=v.meta.structured||{},generated=sm.generatedAt||v.meta.modifiedTime||'',age=generated?ageText(generated):'UNKNOWN',rows=v.meta.total||v.meta.rows||'UNKNOWN';
-        items.push({area:'Structured snapshot',state:sm.source?'OK':'UNKNOWN',detail:'rows '+rows+' · generated '+(generated||'UNKNOWN')+' · age '+age,bad:false});
+        var sm=v.meta.structured||{},generated=sm.generatedAt||'',rows=v.meta.total||v.meta.rows||'UNKNOWN',snap=PipelineDataAge.from(generated);
+        items.push({area:'Structured snapshot',state:snap.stale?'STALE':(sm.source?'OK':'UNKNOWN'),detail:'rows '+rows+' · generated '+(generated||'UNKNOWN')+' · age '+(generated?ageText(generated):'UNKNOWN'),bad:snap.stale});
       }
       var bad=items.filter(function(x){return x.bad;}).length,pending=items.filter(function(x){return x.state==='PENDING';}).length;
       return {items:items,state:bad?'DEGRADED':pending?'LOADING':'OK'};
