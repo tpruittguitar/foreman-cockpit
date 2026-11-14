@@ -52,12 +52,6 @@ Run `checkPolicySource` from the editor after any change: it reports the live so
 
 ## Private Writer authentication
 
-The approved migration keeps the existing passphrase unchanged and moves its runtime source to the `WRITER_PASSPHRASE` Script Property in the existing Pipeline Explorer Writer Apps Script project. Project editors manage it under Project Settings → Script Properties. Clients continue using their existing passphrase; do not rotate or publish it as part of this change. Missing or unreadable properties fail closed. The browser company-business context response never includes this property.
+The approved migration keeps the existing passphrase unchanged and moves its runtime source to the `WRITER_PASSPHRASE` Script Property in the existing Pipeline Explorer Writer Apps Script project. Project editors manage it under Project Settings → Script Properties. Clients continue using their existing passphrase; do not rotate or publish it as part of this change. Missing or unreadable properties fail closed. The passphrase is never written into a browser response or a repository file.
 
-Configuring the private property alone does not change the deployed version: old deployed code continues its existing authentication until a separately authorized deployment adopts the property lookup. Follow the deployment preflight requirements in `deploy.sh` and verify the property equals the existing live value before any deployment. Source publication, merge, deployment and business-exclusion activation are distinct steps.
-
-## Company-business source readiness (read-only)
-
-Authenticated `action=business_preflight` checks the configured GitHub canonical policy and the fixed `forge-coordination/main/reference/EMPLOYER_BUSINESS_CLASSIFICATIONS.json` source with fresh reads, even when company exclusions are off. It returns only readiness, safe reason codes, revision IDs and fact counts. `enabled` reports the existing runtime flag; `ready` reports source/binding readiness, not activation, full employer coverage, master impact or authorization to write.
-
-The route never enables exclusions, returns employer facts/credentials, changes master data, or seeds the active business-context cache. No periodic polling is added. Use it once before an approved activation or after a source/binding change; a failed result remains unready. Deploy the Writer module/route and the read-proxy allowlist together. Authentication remains the existing Writer key.
+Configuring the private property alone does not change the deployed version: old deployed code continues its existing authentication until a separately authorized deployment adopts the property lookup. Follow the deployment preflight requirements in `deploy.sh` and verify the property equals the existing live value before any deployment. Source publication, merge, and deployment are distinct steps.

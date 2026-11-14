@@ -69,7 +69,6 @@ function isoAge(min) { return new Date(Date.now() - min * MIN).toISOString(); }
       const u = new URL(r.request().url());
       if (/writer-activity/.test(u.pathname)) return r.fallback();
       const a = u.searchParams.get('action');
-      if (a === 'business_context') return r.fulfill({ json: { ok: true, businessContext: { enabled: false, status: 'DISABLED', facts: [] } } });
       if (a === 'master') return r.fulfill({ json: { ok: true, text: fixture, fetchedAt: new Date().toISOString(), modifiedTime: new Date().toISOString() } });
       if (a === 'writer_status') return r.fulfill({ json: { ok: true, level: 'ok', warnings: [], queue: { processing: [], pending: 0 }, unverified: { count: 0 }, triggerInstalled: true } });
       return r.fulfill({ json: { ok: true } });

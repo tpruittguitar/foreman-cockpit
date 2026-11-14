@@ -1,7 +1,7 @@
 // Read-only same-origin transport. Writer validates the caller's existing key.
 // Never accept a destination URL or proxy a GET action with mutation side effects.
 const WRITER = 'https://script.google.com/macros/s/AKfycbwShspSkto70NeFWjgTuyIf-W3EDgUmKmoWevE-jZq95pm6SAulrJYHX1HmiPg8tx3i/exec';
-const READS = new Set(['ping','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','business_context','business_preflight','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','receipt_index','archive','evidence','migration_status','operations','schedules','automation_alignment','held_emails']);
+const READS = new Set(['ping','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','receipt_index','archive','evidence','migration_status','operations','schedules','automation_alignment','held_emails']);
 const HEADERS = {'content-type':'application/json; charset=utf-8','cache-control':'private, no-store','vary':'x-writer-key','x-content-type-options':'nosniff'};
 const fail = (error,status) => Response.json({ok:false,error},{status,headers:HEADERS});
 export async function onRequest({request}) {

@@ -34,7 +34,6 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     return feed.snapshot==='ok'?r.fulfill({json:snapshotBody()}):r.fulfill({status:503,body:'down'})});
   await page.route('**/api/pipeline-health*',async r=>{if(feed.delay)await wait(feed.delay);return feed.health==='ok'?r.fulfill({json:healthBody()}):r.fulfill({status:503,body:'down'})});
   await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');
-    if(a==='business_context')return r.fulfill({json:{ok:true,businessContext:{enabled:false,status:'DISABLED',facts:[]}}});
     if(a==='master')return r.fulfill({json:{ok:true,text:fixture,modifiedTime:new Date().toISOString(),fetchedAt:new Date().toISOString()}});
     return r.fulfill({json:{ok:true}})});
   await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#m-pane-decide');

@@ -1,4 +1,4 @@
-if(typeof module==='object'&&module.exports){var businessContext_=require('./PipelineBusinessRuntime.gs');var businessPreflight_=businessContext_.preflight;var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineEvidence=require('../pipeline-evidence');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');var ReceiptIndexStore=require('./ReceiptIndexStore.gs');}
+if(typeof module==='object'&&module.exports){var PipelineAlignment=require('../pipeline-alignment');var PipelinePolicy=require('../pipeline-policy');var PipelineScoring=require('../pipeline-scoring');var PipelineEvidence=require('../pipeline-evidence');var PipelineOperations=require('../pipeline-operations');var PipelineScheduler=require('../pipeline-scheduler');var WriterTransactions=require('./WriterTransactions.gs');var ReceiptIndexStore=require('./ReceiptIndexStore.gs');}
 /**
  * PIPELINE EXPLORER STATE WRITER (Google Apps Script)
  * Runs as Tim. The ONLY canonical mutations the Explorer makes go through this script, against the
@@ -135,7 +135,7 @@ function doGet(e) {
   if (!auth_(p.key)) return out_({ ok: false, error: 'bad key' });
   var a = p.action || 'master';
   try {
-    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['business_context','business_preflight','automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','migrate_receipt_index','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','rotate_logs','evidence_repair','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
+    if (a === 'ping') return out_({ ok: true, now: new Date().toISOString(), master: MASTER_ID, build: WRITER_BUILD, actions: ['automation_alignment','writer_status','queue_stats','row_readback','master','state','receipts','rules','runs','canonical_rules','scoring','events','interview_notes','documents','document_text','discovery_requests','request_result','ruling','intake','data_discovery','upsert_application','interview_note','approve_resume','save_rules','save_scoring_model','undo_ruling','install_automation','batch','rotate_receipts','correct_receipts','reconcile_intake_receipt','migrate_receipt_index','receipt_index','verify_pending','archive','evidence','migration_status','migration','freeze_writer','unfreeze_writer','restore_archived','rotate_logs','evidence_repair','operations','schedules','record_operations','catch_up','acknowledge_obligation','save_schedule_proposal','refresh_worklists','ats_check'] });
     if (a === 'operations') return out_(operationsRead_());
     if (a === 'schedules') return out_(schedulerRead_());
     if (a === 'master') return out_(p.hydrate ? readMasterHydrated_(p.doc || '') : readMaster_());
@@ -144,8 +144,6 @@ function doGet(e) {
     if (a === 'migration_status') return out_({ ok: true, state: migrationSummary_(readMigrationState_()), freeze: readFreeze_() });
     if (a === 'state') return out_({ ok: true, state: readState_() });
     if (a === 'receipts') { var regR; try { regR = readLogArchives_().receipts; } catch (re) { regR = []; } return out_({ ok: true, text: readReceipts_(), archived: regR, note: regR.length ? 'Active receipt log only; older receipts are in the archived files listed (REV-134).' : '' }); }
-    if (a === 'business_preflight') return out_(businessPreflight_());
-    if (a === 'business_context') return out_({ok:true,businessContext:businessContext_()});
     if (a === 'rules') { var R = readRules_(); return out_({ ok: R.status !== 'UNAVAILABLE', rules: R }); }
     if (a === 'runs') return out_({ ok: true, runs: readRuns_() });
     if (a === 'events') return out_({ ok: true, events: readEvents_(p.primaryId || '', +(p.limit || 200), { deep: !!p.primaryId }) });
@@ -351,7 +349,7 @@ function applyRulingBatchToMaster_(requests) {
         continue;
       }
       seenBatchPid[pid] = true;
-      var li = byPid[pid], before = snapshot[li], mu = mutateRow(before, ruling, flexPolicy, businessContext_());
+      var li = byPid[pid], before = snapshot[li], mu = mutateRow(before, ruling, flexPolicy);
       if (!mu.ok) { results.push({ index: rix, ok: false, error: mu.error, primaryId: pid }); continue; }
       if (String(ruling.kind || '').toUpperCase() === 'IDENTITY') {
         if (!identityArchive) identityArchive = archiveRowsLive_();
@@ -361,7 +359,7 @@ function applyRulingBatchToMaster_(requests) {
       mu.after = externalizeEvidence_(evidenceRouting_(), before, mu.after, String(ruling.actor || 'TIM').toUpperCase() + ':' + requestId, new Date().toISOString());
       lines[li] = mu.after;
       changed.push({ index: rix, lineIndex: li, before: before, after: mu.after, mutation: mu, ruling: ruling });
-      results.push({ index: rix, ok: true, mode: 'PLANNED', primaryId: pid, requestId: requestId, changes: mu.changes, businessDecision:mu.businessDecision });
+      results.push({ index: rix, ok: true, mode: 'PLANNED', primaryId: pid, requestId: requestId, changes: mu.changes });
     }
 
     t.PLAN_MS = Date.now() - planStart;
@@ -1699,7 +1697,7 @@ function applyRulingToMaster_(ruling) {
     if (hits.length !== 1) return fail_('identity not unique: ' + hits.length + ' rows match ' + pid + ' (fail closed)', ruling);
     var before = snapshot[hits[0]];
     var flexPolicy = readFlexPolicy_();
-    var res = mutateRow(before, ruling, flexPolicy, businessContext_());
+    var res = mutateRow(before, ruling, flexPolicy);
     if (!res.ok) return writerRejectedBeforeMutation_({ ok: false, error: res.error }, [ruling.requestId || ''], 'REJECTED_INPUT');
     if (String(ruling.kind || '').toUpperCase() === 'IDENTITY') { var idConflict = identityConflicts_(snapshot, hits[0], res.after, ruling, archiveRowsLive_()); if (idConflict) return { ok: false, mode: 'HOLD', error: idConflict, primaryId: pid }; }
     var routing = evidenceRouting_();
@@ -1723,7 +1721,7 @@ function applyRulingToMaster_(ruling) {
     var writeId = stageVerification_('RULING', [{ pid: pid, op: 'REPLACE', before: before, after: res.after }], [receipt], newCounts, executedAt);
     receipt.WRITE_ID = writeId;
     appendEvent_({ type: 'TIM_RULING', primaryId: pid, actor: ruling.actor || 'TIM', ts: executedAt, requestId: ruling.requestId || '', kind: ruling.kind || '', code: ruling.code || '', note: ruling.note || '', before: before, after: res.after, verified: false, verification: 'PENDING', writeId: writeId });
-    return { ok: true, verification: 'PENDING', writeId: writeId, receipt: receipt, businessDecision:res.businessDecision, before: before, after: res.after, counts: newCounts, docAccess: docAccessSummary_(), flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
+    return { ok: true, verification: 'PENDING', writeId: writeId, receipt: receipt, before: before, after: res.after, counts: newCounts, docAccess: docAccessSummary_(), flexPolicySource: flexPolicy._SOURCE || 'UNKNOWN', flexPolicyWarning: flexPolicy._WARNING || '' };
   } finally { lock.releaseLock(); }
 }
 /* ================= AI data-discovery request queue ================= */
@@ -1967,7 +1965,7 @@ function applyIntakeToMaster_(req, internal) {
     var rules = readRules_();
     // Dedupe (and next INV numbering) against live rows AND archived terminal history, so a declined/closed/rejected job is not re-admitted.
     var flexPolicy = readFlexPolicy_();
-    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_(), flexPolicy: flexPolicy, relistingApproved: internal && internal.relistingApproved, businessContext: businessContext_() });
+    var plan = planIntake(lines.concat(archiveRowsLive_()), req.records || [], rules, { run: req.run || {}, now: new Date().toISOString(), nowET: nowET_(), flexPolicy: flexPolicy, relistingApproved: internal && internal.relistingApproved });
     if (!plan.ok) return { ok: false, error: plan.error, results: plan.results || [] };
     // A protected role listed again is held for Tim in Needs Tim (same store as held emails); nothing is written for it.
     var relisted = plan.results.filter(function (r) { return r.holdPlan; });
@@ -2136,7 +2134,7 @@ function timRuledApplied_(P, tags) {
   if (P.APP_CONFIRMATION) return P.APP_CONFIRMATION === 'TIM_RULING';
   return (tags || []).some(function (t) { return /^TIM_APPLIED_/.test(t); }) || /^Tim direct statement/.test(String(P.APP_STATUS_EVIDENCE || ''));
 }
-function mutateRow(line, ruling, flexPolicy, businessContext) {
+function mutateRow(line, ruling, flexPolicy) {
   var cells = line.split(' | ');
   if (cells.length < FIXED_N + 1) return { ok: false, error: 'row has fewer than 10 cells' };
   var fixed = cells.slice(0, FIXED_N), rest = cells.slice(FIXED_N).join(' | ');
@@ -2242,13 +2240,7 @@ function mutateRow(line, ruling, flexPolicy, businessContext) {
   else { set('STATE_SOURCE', source); set('STATE_UPDATED_AT', ts); }
   fixed[6] = tags.length ? tags.filter(function (t, i) { return tags.indexOf(t) === i; }).join('; ') : '-';
   var after = fixed.join(' | ') + ' | ' + buildPayload(pp.lead, P, O);
-  var businessDecision = null;
-  if(kind==='ENRICH'&&businessContext&&businessContext.enabled===true){
-    var businessModule=typeof module==='object'&&module.exports?require('../pipeline-business'):PipelineBusiness;
-    businessDecision=businessModule.assess({PRIMARY_ID:fixed[1],COMPANY:fixed[2],BUCKET:fixed[4],p:P},businessContext);
-  }
-  // A proposal accompanies ENRICH; no state mutation or automatic disposition.
-  return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7], businessDecision:businessDecision };
+  return { ok: true, after: after, changes: changes, beforeState: beforeState, afterState: fixed[4] + ' / ' + fixed[5], company: fixed[2], title: fixed[3], req: fixed[7] };
 }
 /** Writer-owned calculation, shared byte-for-byte with the viewer. Called only for a requested row write, never by policy saves. */
 function deriveWriterScores_(fixed, P, set, policy) {
@@ -2674,7 +2666,7 @@ function parseRulesText(text) {
   return out;
 }
 function parseCanonicalNeverConsiderRules(text) {
-  var out = { source: 'TIM_PIPELINE_RULES_CANONICAL', status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: '' };
+  var out = { source: 'TIM_PIPELINE_RULES_CANONICAL', status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], employers: [], activeIds: [], error: '' };
   if (!text || typeof text !== 'string') { out.error = 'empty canonical rules text'; return out; }
   var lines = text.replace(/\\_/g, '_').split(/\r?\n/), inSection = false;
   for (var i = 0; i < lines.length; i++) {
@@ -2685,6 +2677,8 @@ function parseCanonicalNeverConsiderRules(text) {
     if (inSection && /^SECTION=/i.test(l)) break;
     if (!inSection) continue;
     if (/^DEFAULT_ACTION=/i.test(l)) { out.defaultAction = l.split('=').slice(1).join('=').trim() || 'ALLOW_INTAKE'; continue; }
+    var employerLine = parseNeverConsiderEmployerLine_(l);
+    if (employerLine) { out.employers.push(employerLine); continue; }
     var m = l.match(/^[-*]\s+(NC-\d+)\s+([A-Z0-9_\-]+):\s*(.+)$/i);
     if (!m) continue;
     var rule = {
@@ -2706,6 +2700,7 @@ function parseCanonicalNeverConsiderRules(text) {
     out.error = 'canonical rules STATUS is not ACTIVE';
     out.rules.forEach(function(r){ r.active = false; r.STATUS = 'INACTIVE'; });
     out.activeIds = [];
+    out.employers = [];
     return out;
   }
   out.status = out.rules.length ? 'ACTIVE' : 'UNAVAILABLE';
@@ -2715,17 +2710,41 @@ function parseCanonicalNeverConsiderRules(text) {
 function ruleById(R, id) { id = String(id || '').trim().toUpperCase(); for (var i = 0; i < (R.rules || []).length; i++) if (String(R.rules[i].RULE_ID).toUpperCase() === id) return R.rules[i]; return null; }
 /** Words of a CATEGORY (e.g. FOOD_OR_BEVERAGE_MANUFACTURER) that may hint at the domain. Used only to flag a review, never to exclude. */
 function categoryTerms(cat) { var stop = { OR: 1, AND: 1, MANUFACTURER: 1, SERVICE: 1, OF: 1, THE: 1 }; return String(cat || '').toUpperCase().split(/[^A-Z]+/).filter(function (w) { return w && !stop[w] && w.length > 3; }).map(function (w) { return w.toLowerCase(); }); }
+/** Role rules whose category words (management, financial, role) must not flag ordinary jobs. Title rules cover NC-005 and NC-006; NC-015 is the same kind of rule. */
+var NC_DOMAIN_HINT_SKIP_ = { 'NC-005': 1, 'NC-006': 1, 'NC-015': 1 };
 /** Evidence that the employer is one of the cases every rule's DO_NOT_MATCH / general rule 2 protects: supplier, equipment/machine maker, automation, software, integrator, consultancy, engineering firm, logistics, component supplier, or "serving" an industry. */
 var PROTECTED_CASE_RE = /\b(supplier|supplies|serving|serves|customers? in|for the|equipment for|equipment maker|equipment manufacturer|packaging equipment|process equipment|machine builder|automation|integrator|integration|consult(ing|ancy)?|software|logistics|component|engineering firm|contract engineering|vendor|to the)\b/;
 var NEG_HINT_RE = PROTECTED_CASE_RE;
 function protectedCaseEvidence(rec) { var e = String((rec.EMPLOYER_DOMAIN_HINT || '') + ' ' + (rec.EMPLOYER_PRIMARY_BUSINESS || '')).toLowerCase(); var m = e.match(PROTECTED_CASE_RE); return m ? m[0] : ''; }
 /**
- * Classify one record. Outcome EXCLUDE only when Scout cites an ACTIVE rule with EXCLUSION_CONFIDENCE=HIGH (the file says Scout classifies;
- * the writer verifies against the canonical file). MED/LOW, an unknown rule id, an unavailable file, or a writer-side domain hint all
- * yield REVIEW (admit + NEVER_CONSIDER_REVIEW_NEEDED). Unknown/incomplete information is never a basis. Title is never a basis.
+ * Classify one record. Outcome EXCLUDE at HIGH confidence when an employer line in SECTION=NEVER_CONSIDER matches,
+ * when the title matches active NC-005 or NC-006, or when Scout cites an ACTIVE rule with EXCLUSION_CONFIDENCE=HIGH.
+ * MED/LOW, an unknown rule id, an unavailable file, or a writer-side domain hint all yield REVIEW.
+ * Unknown/incomplete information is never a basis. An existing master identity is not decided here: planIntake keeps matchExisting.
  */
+function biospaceHiddenClient_(rec) {
+  if (!rec) return false;
+  var src = [rec.SOURCE, rec.SOURCE_PROVIDER, rec.DISCOVERY_SOURCE, rec.SOURCE_URL, rec.INITIATING_URL, rec.COMPANY_SOURCE_URL].join(' ');
+  if (!/biospace/i.test(src) && !/biospace/i.test(String(rec.COMPANY || ''))) return false;
+  var notes = String(rec.SCOUT_NOTES || '');
+  var company = String(rec.COMPANY || '').trim();
+  var client = String(rec.CLIENT_EMPLOYER || '').trim();
+  if (client && !/^unknown$/i.test(client)) return false;
+  if (/CLIENT\s*=\s*UNKNOWN|hidden\s+client/i.test(notes)) return true;
+  return !company || /^(biospace|confidential|hidden|unknown)$/i.test(company);
+}
 function classifyNeverConsider(rec, R) {
   R = R || { status: 'UNAVAILABLE', rules: [] };
+  var listed = neverConsiderEmployerHit_(rec, R);
+  if (listed) {
+    if (biospaceHiddenClient_(rec)) return { outcome: 'REVIEW', ruleId: listed.ruleId, confidence: 'MED', reason: 'BioSpace hidden client', basis: 'REVIEW_NEEDED', sourceUrl: listed.sourceUrl || '' };
+    return { outcome: 'EXCLUDE', ruleId: listed.ruleId, confidence: 'HIGH', reason: listed.employer, basis: 'EMPLOYER_LINE', sourceUrl: listed.sourceUrl || '', code: 'NEVER_CONSIDER' };
+  }
+  var titled = neverConsiderTitleMatch_(rec, R);
+  if (titled) {
+    if (biospaceHiddenClient_(rec)) return { outcome: 'REVIEW', ruleId: titled.RULE_ID, confidence: 'MED', reason: 'BioSpace hidden client', basis: 'REVIEW_NEEDED' };
+    return { outcome: 'EXCLUDE', ruleId: titled.RULE_ID, confidence: 'HIGH', reason: titled.REASON || titled.CATEGORY, basis: 'TITLE_RULE', code: 'NEVER_CONSIDER' };
+  }
   var cited = String(rec.NEVER_CONSIDER_RULE_ID || '').trim().toUpperCase();
   var conf = String(rec.EXCLUSION_CONFIDENCE || '').trim().toUpperCase(); if (conf === 'MEDIUM') conf = 'MED';
   var reason = rec.EXCLUSION_REASON || rec.NEVER_CONSIDER_REASON || '';
@@ -2746,7 +2765,7 @@ function classifyNeverConsider(rec, R) {
   // writer-side hint: the employer's stated primary business mentions a category word and does not read as a supplier/vendor to it
   var hint = String(rec.EMPLOYER_DOMAIN_HINT || rec.EMPLOYER_PRIMARY_BUSINESS || '').toLowerCase();
   if (hint && R.status !== 'UNAVAILABLE' && !NEG_HINT_RE.test(hint)) {
-    for (var i = 0; i < R.rules.length; i++) { var r = R.rules[i]; if (!r.active) continue;
+    for (var i = 0; i < R.rules.length; i++) { var r = R.rules[i]; if (!r.active || NC_DOMAIN_HINT_SKIP_[String(r.RULE_ID).toUpperCase()]) continue;
       var terms = categoryTerms(r.CATEGORY); for (var j = 0; j < terms.length; j++) { if (new RegExp('(^|[^a-z])' + terms[j] + '([^a-z]|$)').test(hint)) return { outcome: 'REVIEW', ruleId: r.RULE_ID, confidence: 'MED', reason: 'employer primary business mentions "' + terms[j] + '"', basis: 'DOMAIN_HINT' }; } }
   }
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
@@ -2786,18 +2805,16 @@ function planIntake(lines, records, rulesObj, ctx) {
     res.INTAKE_KEY = rec.INTAKE_KEY;
     if (batchKeys[rec.INTAKE_KEY]) { res.outcome = 'EXISTING_MATCH'; res.result = 'EXISTING_MATCH'; res.PRIMARY_ID = batchKeys[rec.INTAKE_KEY]; res.matchedBy = 'INTAKE_KEY (same batch)'; res.detail = 'REPLAY'; summary.EXISTING_MATCH++; summary.REPLAY++; results.push(res); continue; }
     var nc = classifyNeverConsider(rec, R);
-    // Trusted context only, never read activation or facts from candidate fields.
-    if(ctx.businessContext&&ctx.businessContext.enabled===true){
-      var businessModule=typeof module==='object'&&module.exports?require('../pipeline-business'):PipelineBusiness;
-      var businessDecision=businessModule.assess(rec,ctx.businessContext);
-      res.businessDecision=businessDecision;
-      // Existing canonical identities retain ordinary dedupe/protected-state handling.
-      var businessIdentity=matchExisting(rec,idx,{holdRelistedProtected:true});
-      if(businessDecision.status==='PROPOSE_INTAKE_EXCLUSION'&&businessIdentity.kind==='none')nc={outcome:'EXCLUDE',ruleId:businessDecision.ruleId,confidence:'HIGH',reason:'Confirmed employer primary business: '+businessDecision.category,basis:'REVIEWED_SHARED_EMPLOYER_FACT'};
+    // Employer lines and NC-005/NC-006 title matches exclude a new identity. An existing master row keeps matchExisting.
+    if (nc.outcome === 'EXCLUDE' && (nc.basis === 'EMPLOYER_LINE' || nc.basis === 'TITLE_RULE')) {
+      var listedIdentity = matchExisting(rec, idx, { holdRelistedProtected: true });
+      if (listedIdentity.kind !== 'none') nc = { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
     }
     if (nc.outcome === 'EXCLUDE') {
       res.outcome = 'EXCLUDED'; res.result = 'NEVER_CONSIDER_EXCLUDED'; res.NEVER_CONSIDER_RULE_ID = nc.ruleId; res.detail = nc.ruleId + ' ' + nc.confidence + ' (' + nc.basis + ')'; summary.NEVER_CONSIDER_EXCLUDED++; byRule[nc.ruleId] = (byRule[nc.ruleId] || 0) + 1;
-      excluded.push({ SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis, SUBMITTED_VIA: via, DECIDED_BY: 'WRITER' });
+      var excludedRow = { SCOUT_RUN_ID: runId || 'UNSPECIFIED', DISCOVERED_AT_ET: rec.DISCOVERED_AT_ET || nowET, COMPANY: rec.COMPANY, TITLE: rec.TITLE, LOCATION: rec.LOCATION || 'NOT_STATED', SOURCE: rec.DISCOVERY_SOURCE || 'Scout', SOURCE_URL: rec.SOURCE_URL || '', NEVER_CONSIDER_RULE_ID: nc.ruleId, EXCLUSION_CONFIDENCE: nc.confidence, EXCLUSION_REASON: nc.reason, TIM_OVERRIDE: 'NO', INTAKE_KEY: rec.INTAKE_KEY, BASIS: nc.basis, SUBMITTED_VIA: via, DECIDED_BY: 'WRITER' };
+      if (nc.code) excludedRow.DECLINE_REASON_CODE = nc.code;
+      excluded.push(excludedRow);
       results.push(res); continue;
     }
     if (nc.outcome === 'REVIEW') { res.NEVER_CONSIDER_REVIEW_NEEDED = nc.ruleId; summary.NEVER_CONSIDER_REVIEW_NEEDED++; }
@@ -3290,8 +3307,57 @@ function writeState_(state) {
     return { ok: true, seen: Object.keys(m.seen || {}).length, incidents: Object.keys((m.incidents && m.incidents.incidents) || {}).length, reviewed: Object.keys(m.reviewed || {}).length };
   } finally { lock.releaseLock(); }
 }
+/** Any SECTION=NEVER_CONSIDER line that carries employer=. Fields: employer, rule, source_url. No employer name is special. */
+function parseNeverConsiderEmployerLine_(line) {
+  var text = String(line || '').trim();
+  if (!/employer\s*=/i.test(text)) return null;
+  function field(name) {
+    var m = text.match(new RegExp('(?:^|[;\\s])' + name + '\\s*=\\s*([^;]+)', 'i'));
+    return m ? m[1].trim() : '';
+  }
+  var employer = field('employer');
+  if (!employer) return null;
+  var id = text.match(/^[-*]?\s*(NC-\d+)\b/i);
+  return { employer: employer, ruleId: field('rule').toUpperCase(), lineId: id ? id[1].toUpperCase() : '', sourceUrl: field('source_url') };
+}
+function neverConsiderEmployerHit_(rec, R) {
+  if (!R || R.status !== 'ACTIVE' || !R.employers || !R.employers.length) return null;
+  var name = normEmployer(rec && rec.COMPANY);
+  if (!name) return null;
+  for (var i = 0; i < R.employers.length; i++) {
+    var row = R.employers[i];
+    if (normEmployer(row.employer) !== name) continue;
+    var rule = ruleById(R, row.ruleId);
+    if (!rule || !rule.active) continue;
+    return row;
+  }
+  return null;
+}
+/** Title match for the two role rules already in SECTION=NEVER_CONSIDER. Not a general keyword blacklist. */
+var NC_TITLE_RULE_IDS_ = ['NC-005', 'NC-006'];
+var NC_TITLE_SKIP_RE_ = /\b(?:recruit\w*|placement|talent|sales|marketing|software|engineer|architect|developer|systems?|IT|technology|implementation|project|consulting|consultant|production controller|quality audit|financial systems?|finance systems?|finance transformation)\b/i;
+var NC_TITLE_MIXED_FINANCE_RE_ = /\b(?:finance|accounting)\s*(?:and|&)\s*(?:operations|manufacturing|production|facilities)\b/i;
+var NC_TITLE_INDUSTRIAL_RE_ = /\b(?:plant|manufacturing|factory|industrial|production|maintenance|capital projects)\b/i;
+var NC_TITLE_MATCH_PATTERNS_ = {
+  'NC-005': [/^(?:(?:senior|sr\.?|group|regional|global|corporate|fund|plant|assistant|associate|chief|vice president|vp|director|head|manager|analyst|intern|of)[ ,\u2013\u2014-]+)*(?:accounting|accountant|finance|financial planning|financial analysis|financial controller|chief financial officer|chief accounting officer|tax accountant|fp&a|treasury|tax preparation|tax advisory|payroll accounting)(?:[ ,\u2013\u2014-]+(?:senior|sr\.?|group|regional|global|corporate|director|head|manager|analyst|intern|manufacturing|summer|20[0-9]{2}))*$/i],
+  'NC-006': [/^(?:(?:senior|sr\.?|regional|global|assistant|associate|vice president|vp|director|head|manager|of)[ ,\u2013\u2014-]+)*(?:property manager|property management|real estate portfolio management|leasing operations)(?:[ ,\u2013\u2014-]+(?:director|manager|head|vice president|vp))*$/i, /^(?:General Manager \(Master-Planned HOA Community\)|Onsite Community Manager \([A-Za-z -]+ HOA\))$/i]
+};
+function neverConsiderTitleMatch_(rec, R) {
+  var title = String(rec && rec.TITLE || '').trim();
+  if (!title || !R || R.status !== 'ACTIVE') return null;
+  if (NC_TITLE_SKIP_RE_.test(title) || NC_TITLE_MIXED_FINANCE_RE_.test(title)) return null;
+  var hits = [];
+  for (var i = 0; i < NC_TITLE_RULE_IDS_.length; i++) {
+    var id = NC_TITLE_RULE_IDS_[i], rule = ruleById(R, id), patterns = NC_TITLE_MATCH_PATTERNS_[id] || [];
+    if (!rule || !rule.active) continue;
+    if (id === 'NC-006' && NC_TITLE_INDUSTRIAL_RE_.test(title)) continue;
+    for (var p = 0; p < patterns.length; p++) if (patterns[p].test(title)) { hits.push(rule); break; }
+  }
+  return hits.length === 1 ? hits[0] : null;
+}
 /** Extract the runtime Never-Consider rules from active TIM_PIPELINE_RULES_CANONICAL.
  * The historical standalone TIM_NEVER_CONSIDER_RULES file is no longer consulted at runtime.
+ * Employer lines in SECTION=NEVER_CONSIDER are read by parseNeverConsiderEmployerLine_.
  */
 function readRules_() {
   try {
@@ -3299,7 +3365,7 @@ function readRules_() {
     var R = parseCanonicalNeverConsiderRules(text); R.id = c.id; R.raw = text; R.policySource = c.source;
     R.modifiedTime = c.modifiedTime;
     return R;
-  } catch (e) { return { source: 'TIM_PIPELINE_RULES_CANONICAL', id: CANONICAL_RULES_DOC_ID, status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], activeIds: [], error: String(e && e.message || e) }; }
+  } catch (e) { return { source: 'TIM_PIPELINE_RULES_CANONICAL', id: CANONICAL_RULES_DOC_ID, status: 'UNAVAILABLE', defaultAction: 'ALLOW_INTAKE', header: {}, rules: [], employers: [], activeIds: [], error: String(e && e.message || e) }; }
 }
 function readRuns_() { var it = folder_().getFilesByName(RUNS_FILE_NAME); if (!it.hasNext()) return []; var txt = it.next().getBlob().getDataAsString(); return foldRunVerifications_(txt.split('\n').filter(Boolean).map(function (l) { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean)); }
 /** Pure: apply WRITE_VERIFICATION records to their run (by WRITE_ID); runs written before durable verification stay as recorded. */
@@ -3322,4 +3388,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { businessContext_:businessContext_, readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, worklistResearchLines_: worklistResearchLines_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, parseNeverConsiderEmployerLine_: parseNeverConsiderEmployerLine_, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, worklistResearchLines_: worklistResearchLines_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

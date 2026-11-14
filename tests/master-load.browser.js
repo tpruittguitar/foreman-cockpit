@@ -28,7 +28,7 @@ async function go(page,tab){const rail=page.locator('#rail');if(await rail.isVis
       if(fail[a]==='html-once'&&gets.filter(x=>x===a).length===1)return r.fulfill({status:404,contentType:'text/html',body:HTML404});
       if(fail[a]==='html-once')delete fail[a];
       if(fail[a])return r.fulfill({json:fail[a]});
-      const body=a==='business_context'?{ok:true,businessContext:{enabled:false,status:'DISABLED',facts:[]}}:a==='master'?{ok:true,id:'M',fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-05T03:49:50Z',text:MASTER}:a==='archive'?{ok:true,archiveId:'ARCH',text:ARCHIVE}:a==='migration_status'?{ok:true,state:MIG}:a==='document_text'?{ok:true,fileId:u.searchParams.get('fileId'),text:COMPANION}:a==='evidence'?{ok:true,primaryId:u.searchParams.get('primaryId'),fields:{SCOUT_NOTES:'on-demand narrative'}}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true};
+      const body=a==='master'?{ok:true,id:'M',fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-05T03:49:50Z',text:MASTER}:a==='archive'?{ok:true,archiveId:'ARCH',text:ARCHIVE}:a==='migration_status'?{ok:true,state:MIG}:a==='document_text'?{ok:true,fileId:u.searchParams.get('fileId'),text:COMPANION}:a==='evidence'?{ok:true,primaryId:u.searchParams.get('primaryId'),fields:{SCOUT_NOTES:'on-demand narrative'}}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true};
       await r.fulfill({json:body});});
     // Failures now retry for real (3 s + 8 s) before the page settles, so wait for the settled state, not a fixed time.
     await page.goto(base+'/pipeline.html');
@@ -45,10 +45,7 @@ async function go(page,tab){const rail=page.locator('#rail');if(await rail.isVis
   assert.equal(s.errors.length,0,s.errors.join('\n'));await s.page.waitForTimeout(300);
   // REV-093: the last full view is kept in IndexedDB (localStorage holds none of it)
   const liveCache=await s.page.evaluate(()=>new Promise((ok,no)=>{const q=indexedDB.open('pipeline-explorer',1);q.onsuccess=()=>{const g=q.result.transaction('kv').objectStore('kv').get('master');g.onsuccess=()=>ok(g.result?JSON.stringify(g.result):null);g.onerror=no};q.onerror=no}));
-  assert.ok(liveCache&&JSON.parse(liveCache).text.length>1000,'the full view is cached in IndexedDB');assert.equal(await s.page.evaluate(()=>localStorage.getItem('px.cache')),null,'nothing cached in localStorage');await s.page.close();
-  // Missing/unavailable evidence stays observable; disabled is an explicit capability response above.
-  s=await scenario('business context unavailable',{business_context:{ok:false,error:'unavailable'}});
-  assert.equal(s.freshness,'live');assert.match(s.alert,/Company-business review unavailable/);assert.equal(s.posts.length,0);await s.page.close();
+  assert.ok(liveCache&&JSON.parse(liveCache).text.length>1000,'the full view is cached in IndexedDB');  assert.equal(await s.page.evaluate(()=>localStorage.getItem('px.cache')),null,'nothing cached in localStorage');await s.page.close();
   // one transient HTML 404 on the master: retried after 3 s and recovered; LIVE, no warning, no write
   s=await scenario('master 404 once (retried)',{master:'html-once'});
   assert.equal(s.freshness,'live');assert.equal(s.alertVisible,false);assert.match(s.readout,/Connected/);
