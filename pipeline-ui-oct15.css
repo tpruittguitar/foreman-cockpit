@@ -59,6 +59,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   header .hcell { flex-direction: row !important; align-items: center !important; gap: 6px !important; min-height: 38px; padding: 0 0 0 14px !important; border-left: 0 !important; }
   header .hcell small, header .hcell b { font-family: var(--pe-font-label) !important; font-size: var(--pe-fs-crumb) !important; font-weight: 400 !important; letter-spacing: var(--pe-label-tracking) !important; text-transform: uppercase; color: var(--pe-text-secondary) !important; line-height: 1 !important; }
   header .hcell.bad b { color: var(--pe-red) !important; }
+  header .hcell.age b { color: var(--caution) !important; }
   /* Header controls (golden .hdr-ctl): mono text controls, no boxes. */
   header #compare-open, header #density-toggle, header #refresh, header #settings, header #layout-toggle, header .build-badge:not(.writer-badge) {
     min-height: var(--pe-target-desktop-min); padding: 0 6px; border: 0 !important; border-radius: var(--pe-radius); background: transparent !important; box-shadow: none !important;

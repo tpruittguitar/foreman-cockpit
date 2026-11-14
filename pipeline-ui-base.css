@@ -17,6 +17,8 @@ header .brand small{text-transform:uppercase}
 .hcell,header .writer-badge{display:flex;flex-direction:column;justify-content:center;align-items:flex-start;gap:2px;padding:0 14px;border:0;border-left:1px solid var(--forge-line);background:transparent;border-radius:0;text-transform:none;letter-spacing:0;min-height:38px}
 .hcell small,header .writer-badge small{font:10px var(--mono);letter-spacing:1.6px;text-transform:uppercase;color:var(--forge-dim)}
 .hcell b,header .writer-badge b{font:600 17px/1.05 var(--sans);color:#fff;letter-spacing:.2px}
+.hcell.age,.hcell.age small,.hcell.age b{white-space:nowrap}
+.hcell.age b{color:var(--caution)}
 .hcell.bad b{color:var(--forge-red)}
 header .writer-badge .sys-dot{display:none}
 header .writer-badge.ok,header .writer-badge.ok b{color:var(--forge-green);border-color:var(--forge-line)}
