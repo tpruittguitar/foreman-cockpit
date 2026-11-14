@@ -180,5 +180,5 @@ ok(W.classifyNeverConsider({ COMPANY: 'Any Co', TITLE: 'Director of Manufacturin
 const badPlan = W.planIntake(freshLines, [{ COMPANY: 'Any Co', TITLE: 'Director of Manufacturing', LOCATION: 'Newark, NJ', SOURCE_URL: 'https://example.com/jobs/nj', REMOTE_HYBRID: 'On-site' }], badField, intakeCtx);
 ok(badPlan.ok === false && /unparseable/i.test(badPlan.error), 'a policy error does not route intake rows');
 const missingPlan = W.planIntake(freshLines, [{ COMPANY: 'Garden State Metals', TITLE: 'Director of Manufacturing', SOURCE_URL: 'https://example.com/jobs/miss', REMOTE_HYBRID: 'On-site' }], SR, intakeCtx);
-ok(missingPlan.results[0].result === 'SCOUT_INTAKE_WRITTEN' && !missingPlan.results[0].NEVER_CONSIDER_REVIEW_NEEDED && missingPlan.summary.NEVER_CONSIDER_REVIEW_NEEDED === 0 && missingPlan.summary.NEVER_CONSIDER_EXCLUDED === 0, 'missing location is admitted with no review flag');
+ok(missingPlan.results[0].result === 'WRITE_FAILED' && /INVALID_INPUT/.test(missingPlan.results[0].detail) && missingPlan.newLines.length === 0 && missingPlan.summary.NEVER_CONSIDER_REVIEW_NEEDED === 0 && missingPlan.summary.NEVER_CONSIDER_EXCLUDED === 0, 'missing location is refused at intake and is not a never-consider flag');
 console.log(fails ? ('\n' + fails + ' FAILED') : '\nALL PASS'); process.exit(fails ? 1 : 0);
