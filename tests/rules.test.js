@@ -169,6 +169,18 @@ ok(directorLead.outcome === 'EXCLUDE' && directorLead.ruleId === 'NC-021', 'a di
   ok(hit.outcome === 'ALLOW', title + ' passes (' + (hit.outcome === 'ALLOW' ? 'no rule' : hit.outcome + ' ' + hit.ruleId) + ')');
 });
 ok(sc({ TITLE: 'Quality Engineer' }).outcome === 'EXCLUDE' && sc({ TITLE: 'Quality Engineer' }).ruleId === 'NC-020', 'Quality Engineer is still the whole word engineer');
+// NC-020 title_exempt: split and reordered Staff/Principal Engineer titles (28 wrongly declined 2026-11-14, plus three named forms)
+['Sr. Staff Manufacturing Engineer, Power Electronics', 'Mechanical Engineer, Senior Staff', 'Facilities Engineer Senior Principal – Projects', 'Senior Staff Systems Engineer – Systems Strategy & Survivability', 'Senior / Staff Dry Etch Process Development Engineer', 'Principal Mechanical Engineer - Thermal Projects', 'Principal Manufacturing Engineer (Propulsion)', 'Staff Manufacturing Engineer, Autonomous Airpower', 'Senior Staff / Senior Full Stack Engineer (Clearance Required)', 'Sentinel - Sr. Staff Systems Engineer', 'Senior Principal Materials Engineer', 'Sr. Principal Mechanical Engineer', 'Sr Staff Systems Engineer', 'Staff Manufacturing Engineer, Barracuda', 'Principal Manufacturing Engineer (Payloads)', 'Senior Staff Systems Engineer', 'Staff Software Engineer, Manufacturing Design Technology', 'Senior Staff Optical Engineer, Geo', 'Senior/Staff Automation Controls Engineer', 'Staff Aeronautical Engineer -Test and Evaluation Lead', 'Senior / Staff Probe Card Engineer', 'Staff Systems Engineer - Model-Based Systems Engineer (MBSE)', 'Staff Manufacturing Engineer, Automation Equipment', 'Project Engineer Senior Staff', 'Staff Steering Engineer, Chassis', 'Staff Robotics Manufacturing Engineer, Optimus General Assembly, Line Lead', 'Staff Vehicle Product Management Engineer', 'Principal Manufacturing Engineer',
+  'Staff Manufacturing Engineer', 'Principal Mechanical Engineer', 'Facilities Engineer Senior Principal'].forEach(function (title) {
+  const hit = sc({ TITLE: title });
+  ok(hit.outcome === 'ALLOW', 'NC-020 title_exempt: ' + title + ' passes (' + (hit.outcome === 'ALLOW' ? 'no rule' : hit.outcome + ' ' + hit.ruleId) + ')');
+});
+['Process Engineer', 'Quality Engineer'].forEach(function (title) {
+  const hit = sc({ TITLE: title });
+  ok(hit.outcome === 'EXCLUDE' && hit.ruleId === 'NC-020', 'NC-020 title_exempt: plain ' + title + ' is still EXCLUDE');
+});
+ok(sc({ TITLE: 'Process Engineer (Senior Staff)' }).outcome === 'ALLOW', 'NC-020 title_exempt reads the parenthetical suffix');
+ok(sc({ TITLE: 'Process Engineer (Contract)' }).ruleId === 'NC-020', 'NC-020 a non-exempt parenthetical suffix is still EXCLUDE');
 ok(sc({ TITLE: 'Director of Manufacturing', EMPLOYER_PRIMARY_BUSINESS: 'commercial construction' }).ruleId === 'NC-022', 'NC-022 excludes a construction employer');
 ok(sc({ TITLE: 'Director of Manufacturing', EMPLOYER_PRIMARY_BUSINESS: 'construction equipment manufacturing' }).outcome === 'ALLOW', 'a manufacturer is exempt from NC-022');
 ok(sc({ COMPANY: 'Centene', TITLE: 'Director of Quality' }).ruleId === 'NC-016' && sc({ COMPANY: 'Centene', TITLE: 'Director of Quality' }).basis === 'EMPLOYER_LINE', 'NC-024 employer line still excludes through NC-016');
