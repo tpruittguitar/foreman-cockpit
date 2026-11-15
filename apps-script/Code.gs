@@ -2134,6 +2134,30 @@ function timRuledApplied_(P, tags) {
   if (P.APP_CONFIRMATION) return P.APP_CONFIRMATION === 'TIM_RULING';
   return (tags || []).some(function (t) { return /^TIM_APPLIED_/.test(t); }) || /^Tim direct statement/.test(String(P.APP_STATUS_EVIDENCE || ''));
 }
+/** Existing DECLINE ruling for a row classifyNeverConsider already excluded. No new gate: the lane calls this and stops. */
+function declineNeverConsiderRow_(r, nc) {
+  r = r || {}; nc = nc || {};
+  var ruling = { primaryId: r.PRIMARY_ID, kind: 'DECLINE', code: nc.code || 'NEVER_CONSIDER', note: nc.reason || nc.ruleId || 'NEVER_CONSIDER', actor: 'WRITER', requestId: 'NC-' + r.PRIMARY_ID };
+  var fixed = [r.INV || r.INV_NUM || '0', r.PRIMARY_ID, r.COMPANY || '', r.TITLE || '', r.BUCKET || '', r.DISPOSITION || 'OPEN', r.TAGS || '-', r.REQ || '', r.LOCATION || ''];
+  var payload = Object.keys(r.p || {}).map(function (k) { return k + '=' + String(r.p[k] == null ? '' : r.p[k]).replace(/\|/g, '/'); }).join('; ');
+  var res = mutateRow(fixed.join(' | ') + ' | ' + payload, ruling);
+  return { ok: !!res.ok, primaryId: r.PRIMARY_ID, ruling: ruling, after: res.after, error: res.error || '' };
+}
+/** Queue DECLINE rulings on the existing Writer queue. One file per 50, skipped while an earlier file is still pending. */
+function queueNeverConsiderDeclines_(declines) {
+  var pending = (declines || []).filter(function (d) { return d && d.ok && d.ruling && d.ruling.primaryId; });
+  if (!pending.length || typeof queueFolders_ !== 'function') return { queued: 0 };
+  var f = queueFolders_();
+  if (typeof listPending_ === 'function' && listPending_(f.queue).some(function (x) { return x.getName().replace(/^PROCESSING__/, '').indexOf('NCDECLINE_') === 0; })) return { queued: 0, skipped: true };
+  var stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14), queued = 0;
+  for (var i = 0; i < pending.length; i += 50) {
+    var chunk = pending.slice(i, i + 50);
+    var body = { action: 'batch', requestId: 'NCDECLINE-' + stamp + '-' + i, requests: chunk.map(function (d) { return { action: 'ruling', ruling: d.ruling }; }) };
+    f.queue.createFile('NCDECLINE_' + body.requestId + '.json', JSON.stringify(body), MimeType.PLAIN_TEXT);
+    queued += chunk.length;
+  }
+  return { queued: queued };
+}
 function mutateRow(line, ruling, flexPolicy) {
   var cells = line.split(' | ');
   if (cells.length < FIXED_N + 1) return { ok: false, error: 'row has fewer than 10 cells' };
@@ -2141,6 +2165,15 @@ function mutateRow(line, ruling, flexPolicy) {
   var pp = parsePayload(rest), P = pp.payload, O = pp.order;
   function set(k, v) { if (O.indexOf(k) < 0) O.push(k); P[k] = clean_(v); }
   var ts = ruling.ts || new Date().toISOString(), d = today_(ts), kind = String(ruling.kind || '').toUpperCase(), val = String(ruling.value || '').toUpperCase();
+  if (kind === 'ENRICH' && flexPolicy && flexPolicy._NEVER_CONSIDER) {
+    var ncRec = { COMPANY: fixed[2], TITLE: fixed[3], LOCATION: fixed[8] };
+    ['REMOTE_HYBRID', 'EMPLOYER_DOMAIN_HINT', 'EMPLOYER_PRIMARY_BUSINESS', 'SALARY_BASE_POSTED', 'PAY_POSTED', 'SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SCOUT_NOTES', 'CLIENT_EMPLOYER', 'NEVER_CONSIDER_RULE_ID', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON', 'NEVER_CONSIDER_REASON'].forEach(function (k) { if (P[k]) ncRec[k] = P[k]; });
+    var ncLane = classifyNeverConsider(ncRec, flexPolicy._NEVER_CONSIDER);
+    if (ncLane.outcome === 'EXCLUDE') {
+      ruling = { primaryId: ruling.primaryId, kind: 'DECLINE', code: ncLane.code || 'NEVER_CONSIDER', note: ncLane.reason || ncLane.ruleId || 'NEVER_CONSIDER', actor: ruling.actor || 'WRITER', requestId: ruling.requestId, ts: ruling.ts };
+      kind = 'DECLINE';
+    }
+  }
   var note = clean_(ruling.note || '');
   var evDate = /^\d{4}-\d{2}-\d{2}/.test(String(ruling.eventDate || '')) ? String(ruling.eventDate).slice(0, 10) : d;
   var evidence = clean_(ruling.evidence || '');
@@ -3029,6 +3062,7 @@ function readFlexPolicy_() {
     if (!sec) {
       defaults._SOURCE = 'CANONICAL_DEFAULTS';
       defaults._WARNING = 'SECTION=DEGREE_FLEX not found; production defaults used';
+      defaults._NEVER_CONSIDER = neverConsiderFromRulesText_(text);
       return defaults;
     }
     var raw = { POLICY_VERSION: (String(text).match(/^POLICY_VERSION=(.+)$/m) || [])[1] || '' }, structured = 0;
@@ -3043,12 +3077,18 @@ function readFlexPolicy_() {
     if(PipelinePolicy.isV4(policy)){var scoring=readScoringModel_();if(scoring.ok&&scoring.exists)policy._SCORING_MODEL=scoring.model;else policy._SCORING_ERROR=scoring.error||'Published scoring model missing';}
     policy._SOURCE = structured ? 'CANONICAL_STRUCTURED' : 'CANONICAL_DEFAULTS';
     policy._WARNING = structured ? '' : 'No structured FLEX policy keys found; production defaults used';
+    policy._NEVER_CONSIDER = neverConsiderFromRulesText_(text);
     return policy;
   } catch (e) {
     defaults._SOURCE = 'DEFAULT_FALLBACK';
     defaults._WARNING = 'Canonical FLEX policy read failed: ' + String(e && e.message || e).replace(/\s+/g, ' ');
+    defaults._NEVER_CONSIDER = { status: 'UNAVAILABLE', rules: [], employers: [], error: String(e && e.message || e) };
     return defaults;
   }
+}
+function neverConsiderFromRulesText_(text) {
+  try { return parseCanonicalNeverConsiderRules(text || ''); }
+  catch (e) { return { status: 'UNAVAILABLE', rules: [], employers: [], error: String(e && e.message || e) }; }
 }
 
 // This endpoint establishes live authority identity, not native provider adoption.
@@ -3587,4 +3627,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, parseNeverConsiderEmployerLine_: parseNeverConsiderEmployerLine_, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, worklistResearchLines_: worklistResearchLines_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, parseNeverConsiderEmployerLine_: parseNeverConsiderEmployerLine_, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, declineNeverConsiderRow_: declineNeverConsiderRow_, queueNeverConsiderDeclines_: queueNeverConsiderDeclines_, normEmployer: normEmployer, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, worklistResearchLines_: worklistResearchLines_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };

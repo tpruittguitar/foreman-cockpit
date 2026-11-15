@@ -53,7 +53,29 @@
   function date(s) { var m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})/); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : 0; }
   function recency(r) { return date(val(r, 'DISCOVERED_AT_ET')) || date(val(r, 'DATE_ADDED')) || date(val(r, 'STATE_UPDATED_AT')); }
   function recent(r, k, days, now) { var d = date(val(r, k)); return !!d && now - d < days * DAY; }
-  function workable(r) { return ACTIVE.indexOf(r.BUCKET) >= 0 && !/^YES/i.test(val(r, 'ANTI_RESURRECTION')) && !val(r, 'DO_NOT_REWORK'); }
+  function writerFns_() {
+    if (typeof classifyNeverConsider === 'function') return { classifyNeverConsider: classifyNeverConsider, declineNeverConsiderRow_: typeof declineNeverConsiderRow_ === 'function' ? declineNeverConsiderRow_ : null };
+    if (typeof module === 'object' && module.exports) return require('./Code.gs');
+    return null;
+  }
+  function neverConsiderRec_(r) {
+    var p = r.p || {}, rec = { COMPANY: r.COMPANY, TITLE: r.TITLE, LOCATION: r.LOCATION };
+    ['REMOTE_HYBRID', 'EMPLOYER_DOMAIN_HINT', 'EMPLOYER_PRIMARY_BUSINESS', 'SALARY_BASE_POSTED', 'PAY_POSTED', 'SOURCE', 'SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SCOUT_NOTES', 'CLIENT_EMPLOYER', 'NEVER_CONSIDER_RULE_ID', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON', 'NEVER_CONSIDER_REASON'].forEach(function (k) { if (p[k]) rec[k] = p[k]; });
+    return rec;
+  }
+  /* Never-consider runs before pay, enrichment, or liveness selection. A match is declined and left out of every lane. */
+  function workable(r, rules, declines) {
+    if (ACTIVE.indexOf(r.BUCKET) < 0 || /^YES/i.test(val(r, 'ANTI_RESURRECTION')) || val(r, 'DO_NOT_REWORK')) return false;
+    if (rules) {
+      var fns = writerFns_();
+      var nc = fns && fns.classifyNeverConsider ? fns.classifyNeverConsider(neverConsiderRec_(r), rules) : { outcome: 'ALLOW' };
+      if (nc.outcome === 'EXCLUDE') {
+        if (declines && fns && fns.declineNeverConsiderRow_) declines.push(fns.declineNeverConsiderRow_(r, nc));
+        return false;
+      }
+    }
+    return true;
+  }
   function analyzed(r) { return Evidence.fit(r.p).value != null || STRATEGIC_MARK_KEYS.some(function (k) { return known(r, k); }); }
   function degreeKnown(r) { if (known(r, 'DEGREE_REQ')) return true; var t = val(r, 'DEGREE_TEXT'); return !!t && !DEGREE_FROM_ALERT_RE.test(t); }
   function needs(r) {
@@ -90,12 +112,13 @@
   }
   function build(text, opts) {
     opts = opts || {};
-    var now = opts.now ? Date.parse(opts.now) : Date.now(), rows = parseRows(text), active = rows.filter(workable);
+    var now = opts.now ? Date.parse(opts.now) : Date.now(), rows = parseRows(text), declines = [];
+    var active = rows.filter(function (r) { return workable(r, opts.rules, declines); });
     var strategic = ordered(active.filter(function (r) { return !analyzed(r); }), 'STRATEGIC_ATTEMPT_ASOF', now);
     var feasibility = ordered(active.filter(function (r) { return needs(r).length; }), 'FEASIBILITY_ATTEMPT_ASOF', now, analyzed);
     var freshness = typeof module === 'object' && module.exports ? require('./PipelinePostingFreshness.gs') : PipelinePostingFreshness;
     var postval = ordered(active.filter(function(r){return freshness.assess(r,now).due&&!ats().ownedByChecker(r.p);}), 'LIVENESS_ATTEMPT_ASOF', now);
-    return { rows: rows.length, lanes: { FORGE_ENRICH_STRATEGIC: strategic, FORGE_ENRICH_FEASIBILITY: feasibility, FORGE_POSTING_VALIDATION: postval } };
+    return { rows: rows.length, declines: declines, lanes: { FORGE_ENRICH_STRATEGIC: strategic, FORGE_ENRICH_FEASIBILITY: feasibility, FORGE_POSTING_VALIDATION: postval } };
   }
   function clip(s, n) { s = String(s || '').replace(/\s+/g, ' ').replace(/\|/g, '/').trim(); return s.length > n ? s.slice(0, n - 1) + '~' : s; }
   function line(r, i, lane) {
@@ -133,12 +156,13 @@ function refreshWorklists_(force) {
   var props = PropertiesService.getScriptProperties(), last = +(props.getProperty('WORKLISTS_BUILT_AT') || 0);
   if (!force && Date.now() - last < WORKLIST_INTERVAL_MS_) return { ok: true, skipped: true, builtAt: last ? new Date(last).toISOString() : '' };
   var masterFile = DriveApp.getFileById(MASTER_ID), text = readMasterText_(MASTER_ID);
-  var built = PipelineWorklists.build(text);
+  var rules = typeof readRules_ === 'function' ? readRules_() : null;
+  var built = PipelineWorklists.build(text, { rules: rules });
   // Read the companion only when an otherwise eligible row might have a legacy research marker. Project compact
   // metadata in memory; the master, evidence, original Writer requests and verification status stay untouched.
   if (built.lanes.FORGE_ENRICH_STRATEGIC.some(function (r) { return /^EVC1:[1-9]\d*$/.test(r.p.EVIDENCE_REF || ''); })) {
     var routing = evidenceRouting_();
-    if (routing.active) built = PipelineWorklists.build(worklistResearchLines_(text.split(/\r?\n/), loadCompanionRecs_(routing)).join('\n'));
+    if (routing.active) built = PipelineWorklists.build(worklistResearchLines_(text.split(/\r?\n/), loadCompanionRecs_(routing)).join('\n'), { rules: rules });
   }
   var at = new Date().toISOString(), out = { ok: true, builtAt: at, rows: built.rows, lanes: {} };
   Object.keys(WORKLIST_FILES_).forEach(function (lane) {
@@ -146,6 +170,7 @@ function refreshWorklists_(force) {
     DriveApp.getFileById(WORKLIST_FILES_[lane]).setContent(body);
     out.lanes[lane] = { fileId: WORKLIST_FILES_[lane], eligible: built.lanes[lane].length, bytes: body.length };
   });
+  if (built.declines && built.declines.length && typeof queueNeverConsiderDeclines_ === 'function') out.declines = queueNeverConsiderDeclines_(built.declines);
   props.setProperty('WORKLISTS_BUILT_AT', String(Date.now()));
   return out;
 }
