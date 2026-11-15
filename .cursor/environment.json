@@ -1,0 +1,3 @@
+{
+  "install": "[ ! -d '/agent/repos/foreman-cockpit' ] || cd '/agent/repos/foreman-cockpit' || exit $?\nnpm ci"
+}
