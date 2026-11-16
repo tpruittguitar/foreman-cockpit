@@ -10,7 +10,7 @@ function mockFetch(files) {
   const calls = [];
   const f = async (url, o = {}) => {
     calls.push({ url, method: o.method || 'GET', body: o.body, auth: o.headers && o.headers.Authorization });
-    if (url.startsWith('https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/control/OFFICE_STATUS.json')) return Response.json({ bots: [{ bot: 'QA bot', bot_id: BOT }] });
+    if (url.startsWith('https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/control/OFFICE_STATUS.json')) return Response.json({ bots: [{ bot: 'QA', bot_id: BOT }] });
     const m = /^https:\/\/api\.github\.com\/repos\/tpruittguitar\/office-mailbox\/contents\/(.*)$/.exec(url);
     if (!m) return new Response('unexpected ' + url, { status: 500 });
     if (o.method === 'PUT') return Response.json({ content: {} }, { status: 201 });
@@ -56,11 +56,11 @@ test('GET merges inbox messages with their outbox replies, oldest first', async 
     ['inbox/' + BOT]: ['a1.json', 'a2.json'], ['outbox/' + BOT]: ['a1.json'],
     ['inbox/' + BOT + '/a1.json']: { id: 'a1', at: '2026-11-16T06:00:00Z', from: 'tim', text: 'EXAMPLE one' },
     ['inbox/' + BOT + '/a2.json']: { id: 'a2', at: '2026-11-16T06:05:00Z', from: 'tim', text: 'EXAMPLE two' },
-    ['outbox/' + BOT + '/a1.json']: { id: 'a1', at: '2026-11-16T06:02:00Z', from: 'QA bot', text: 'EXAMPLE reply' }
+    ['outbox/' + BOT + '/a1.json']: { id: 'a1', at: '2026-11-16T06:02:00Z', from: 'QA', text: 'EXAMPLE reply' }
   };
   const r = await handle(req('GET', { q: '?bot=' + BOT }), ENV, mockFetch(files));
   assert.equal(r.status, 200);
-  assert.deepEqual((await r.json()).messages.map(m => [m.from, m.text]), [['tim', 'EXAMPLE one'], ['QA bot', 'EXAMPLE reply'], ['tim', 'EXAMPLE two']]);
+  assert.deepEqual((await r.json()).messages.map(m => [m.from, m.text]), [['tim', 'EXAMPLE one'], ['QA', 'EXAMPLE reply'], ['tim', 'EXAMPLE two']]);
 });
 test('per-IP rate limit', async () => {
   const { handle, resetCaches, RATE_PER_MIN } = await load(); resetCaches();

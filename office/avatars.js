@@ -53,45 +53,48 @@ export const SIDEBAR_MARKS = {
   '7bcb0d85-ec55-4e17-907f-3e71688e8799': ['wedge', 'yellow'], // ChatGPT
   '811cc842-4bef-47c2-98d2-0f4bb78f7169': ['flower', 'blue'], // Edgar
   'a8b4a0b2-acfd-4485-8444-7ab27007df4a': ['clover', 'red'],  // GUI
-  'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': ['sparkle', 'cyan'], // Software
+  'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': ['sparkle', 'cyan'], // Cursor
   'c95408dd-c07f-460e-aaa0-9d515fe5be7d': ['', ''],           // Archive · Application State Tracker
   'd4118f0c-1b06-4e9a-982f-f5314451c841': ['star', 'brown'],  // Claude
   'f1a70b7a-6051-45d7-8031-e46a4cba066f': ['', 'gray']        // Usage Budget
 };
 
-/* Sidebar name -> Grok Bot bot_id. Used only when a caller has a name but no id (e.g. item owners). */
+/* Sidebar name -> Grok Bot bot_id. Used only when a caller has a name but no id (e.g. item owners). Short sidebar names (item 17);
+   the old long names stay as lookups so older status files still resolve. */
 export const BOT_IDS = {
   'President': '431e8cf1-f077-4548-82b7-46c1959dc4c9',
-  'Root': '70f0889b-ecd4-457b-a69c-304cd2aff540',
-  'Software': 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f',
-  'GUI': 'a8b4a0b2-acfd-4485-8444-7ab27007df4a',
-  'QA bot': '338fc1b1-fecc-475d-ba9e-acd49bcadcfc',
-  'Sniffer': '321469c4-1299-43e7-bd32-1704f58777be',
-  'Comp': '424e5611-fb8f-4ae1-a360-051e61e63e8a',
-  'ChatGPT': '7bcb0d85-ec55-4e17-907f-3e71688e8799',
+  'QA': '338fc1b1-fecc-475d-ba9e-acd49bcadcfc',
+  'HR': '372936ae-81e1-4013-b0d0-9ee47d97a3c4',
+  'Cursor': 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f',
   'Claude': 'd4118f0c-1b06-4e9a-982f-f5314451c841',
-  'Usage Budget': 'f1a70b7a-6051-45d7-8031-e46a4cba066f',
-  'Archive \u00b7 Application State Tracker': 'c95408dd-c07f-460e-aaa0-9d515fe5be7d',
-  'HR - Bot Trainer': '372936ae-81e1-4013-b0d0-9ee47d97a3c4',
+  'ChatGPT': '7bcb0d85-ec55-4e17-907f-3e71688e8799',
+  'Root': '70f0889b-ecd4-457b-a69c-304cd2aff540',
+  'Usage': 'f1a70b7a-6051-45d7-8031-e46a4cba066f',
+  'Edgar': '811cc842-4bef-47c2-98d2-0f4bb78f7169',
+  'Comp': '424e5611-fb8f-4ae1-a360-051e61e63e8a',
   'Gauge': '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6',
-  'Edgar': '811cc842-4bef-47c2-98d2-0f4bb78f7169'
+  'Sniffer': '321469c4-1299-43e7-bd32-1704f58777be',
+  'GUI': 'a8b4a0b2-acfd-4485-8444-7ab27007df4a',
+  'Archive': 'c95408dd-c07f-460e-aaa0-9d515fe5be7d',
+  'QA bot': '338fc1b1-fecc-475d-ba9e-acd49bcadcfc', 'HR - Bot Trainer': '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'Software': 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f',
+  'Usage Budget': 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'Archive \u00b7 Application State Tracker': 'c95408dd-c07f-460e-aaa0-9d515fe5be7d'
 };
-/* bot_id -> { shape, rot, color }. Keyed by id so renames never break an avatar. */
+/* bot_id -> { shape, rot, color }, matched to the current sidebar avatars (item 17). Keyed by id so renames never break an avatar. */
 export const AVATARS = {
-  '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' }, // Root
-  'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'star4', rot: 0.35, color: '#22b8a2' }, // Software
-  'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' }, // GUI
-  '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'teardrop', rot: 0, color: '#f2399a' }, // QA bot
-  '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: -0.22, color: '#2382f2' }, // Sniffer
-  '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.05, color: '#1cc26d' }, // Comp
-  '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'wedge', rot: -0.18, color: '#f79a1d' }, // ChatGPT
-  'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'cookie6', rot: 0.2, color: '#a8733f' }, // Claude
-  'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'wedge', rot: 0.25, color: '#7c7b79' }, // Usage Budget
-  'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'pentagon', rot: 0.25, color: '#f2389b' }, // Archive · Application State Tracker
-  '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'roundsquare', rot: -0.12, color: '#8f6ee8' }, // HR - Bot Trainer
-  '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' }, // President
-  '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'dial', rot: 0, color: '#e0369b', prop: 'gauge' }, // Gauge: round dial with a needle (sidebar magenta)
-  '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'flower', rot: 0.3, color: '#2f7cf0', prop: 'quill' } // Edgar: blue flower + quill (stand-in until a picture exists)
+  '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' },            // President: round face, dark hair (original art)
+  '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'teardrop', rot: 0, color: '#f2399a' },           // QA: magenta teardrop blob
+  '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'blob', rot: 0, color: '#e8423f' },               // HR: red round blob
+  'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'blob', rot: 0.3, color: '#22b8a2' },             // Cursor: teal round blob
+  'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'cookie6', rot: 0.2, color: '#a8733f' },          // Claude: brown starburst
+  '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'wedge', rot: -0.18, color: '#f79a1d' },          // ChatGPT: orange wedge blob
+  '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' },     // Root: gray rounded square
+  'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'wedge', rot: 0.25, color: '#7c7b79' },           // Usage: gray wedge
+  '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'flower', rot: 0.3, color: '#2f7cf0', prop: 'quill' }, // Edgar: blue flower + quill
+  '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.05, color: '#1cc26d' },           // Comp: green wedge
+  '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
+  '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'blob', rot: -0.2, color: '#2382f2' },            // Sniffer: blue round blob
+  'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' },         // GUI: red clover
+  'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'clover4', rot: 0.2, color: '#f2389b' }           // Archive: pink clover
 };
 /* bot_id -> short tag, used only when the full name does not fit the label. */
 export const SHORT_TAGS = { 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive' };

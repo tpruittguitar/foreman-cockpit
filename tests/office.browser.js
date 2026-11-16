@@ -96,7 +96,7 @@ function colours(buf) {
       const info = await page.evaluate(() => window.__office.info());
       assert.match(info.poses.find(p => p.startsWith('Root:')), /wave|walk/, 'needs Tim bot waves at its desk');
       assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk'].includes(info.plan.Claude.act), 'working bots work (with short breaks)');
-      assert.ok(!info.poses.some(p => /^(QA bot|Sniffer):wave/.test(p)), 'blocked / waiting bots never raise a hand');
+      assert.ok(!info.poses.some(p => /^(QA|Sniffer):wave/.test(p)), 'blocked / waiting bots never raise a hand');
       // item 11/14: a plain mouse click on a bot opens its popup with the chat box (no pointer lock, no Escape)
       let botPt = null, who = null;
       for (const n of ['Root', 'President', 'Claude', 'GUI', 'Edgar', 'Gauge', 'Sniffer']) {
@@ -145,11 +145,11 @@ function colours(buf) {
       // second demo poll (6 s) starts the example meeting: members walk to the conference table and sit
       await demoMeeting(page, true);
       const mi = await page.evaluate(() => window.__office.info());
-      assert.deepEqual(['Software', 'Comp'].map(n => mi.plan[n].act), ['meeting', 'meeting'], 'meeting members head for the conference table');
-      await page.waitForFunction(() => window.__office.info().goals.some(g => /^Software:meeting:0:/.test(g)), null, { timeout: 60000 }); // may queue behind the walking cap first
+      assert.deepEqual(['Cursor', 'Comp'].map(n => mi.plan[n].act), ['meeting', 'meeting'], 'meeting members head for the conference table');
+      await page.waitForFunction(() => window.__office.info().goals.some(g => /^Cursor:meeting:0:/.test(g)), null, { timeout: 60000 }); // may queue behind the walking cap first
       if (shots) {
         // software rendering here runs at a few frames a second, so give the walk time (not asserted)
-        await page.waitForFunction(() => window.__office.info().poses.filter(p => /^(Software|Comp):meet$/.test(p)).length === 2, null, { timeout: 50000 }).catch(() => {}); await page.evaluate(() => window.__office.view([-5.4, 2.6, -4.6], [-9.9, 0.7, -8.0])); await page.waitForTimeout(4000); await shot(page, 'desktop-meeting.png'); }
+        await page.waitForFunction(() => window.__office.info().poses.filter(p => /^(Cursor|Comp):meet$/.test(p)).length === 2, null, { timeout: 50000 }).catch(() => {}); await page.evaluate(() => window.__office.view([-5.4, 2.6, -4.6], [-9.9, 0.7, -8.0])); await page.waitForTimeout(4000); await shot(page, 'desktop-meeting.png'); }
     }
         // a plain click on a bot opens its panel without pointer lock (no Esc needed), and the panel links the bot's chat
     if (await page.evaluate(() => window.__office.webgl)) {
