@@ -91,43 +91,46 @@ function makeCue() {
   m.rotation.x = Math.PI / 2; const g = new THREE.Group(); g.add(m); return g;
 }
 
-/* ---------- faces ---------- */
-function makeFace(frontZ, scale, eyeDark, noMouth) {
+/* ---------- faces ----------
+   Every face keeps all its parts and drives them from a set of expression WEIGHTS (L.exprParams) plus a blink amount, so a
+   change of expression eases in (L.blendExpression) instead of snapping, and eyes blink at random (L.createBlinker). */
+function makeFace(frontZ, scale, eyeDark, noMouth, tilt) {
   const f = new THREE.Group(); f.position.z = frontZ;
   const eyeM = black();
-  const eye = geo('eye', () => new THREE.SphereGeometry(1, 14, 10));
-  const eyes = [-1, 1].map(sx => { const e = new THREE.Mesh(eye, eyeM); e.scale.set(0.042 * scale, 0.072 * scale, 0.03); e.position.set(sx * 0.085 * scale, 0.05 * scale, 0); f.add(e); return e; });
+  const eye = geo('eye', () => new THREE.SphereGeometry(1, 20, 14));
+  const eyes = [-1, 1].map(sx => { const e = new THREE.Mesh(eye, eyeM); e.userData.sy = 0.072 * scale; e.scale.set(0.042 * scale, e.userData.sy, 0.03); e.position.set(sx * 0.085 * scale, 0.05 * scale, 0); e.rotation.z = tilt || 0; f.add(e); return e; });
   const shine = geo('shine', () => new THREE.SphereGeometry(1, 8, 6));
-  eyes.forEach(e => { const s = new THREE.Mesh(shine, white()); s.scale.set(0.012 * scale, 0.016 * scale, 0.01); s.position.set(e.position.x + 0.012 * scale, e.position.y + 0.025 * scale, 0.024); f.add(s); });
+  const shines = eyes.map(e => { const s = new THREE.Mesh(shine, white()); s.scale.set(0.012 * scale, 0.016 * scale, 0.01); s.position.set(e.position.x + 0.012 * scale, e.position.y + 0.025 * scale, 0.024); f.add(s); return s; });
   const arcG = geo('arc', () => new THREE.TorusGeometry(0.05, 0.012, 6, 16, Math.PI));
-  const smile = new THREE.Mesh(arcG, eyeM); smile.rotation.z = Math.PI; smile.position.set(0, -0.05 * scale, 0.005); smile.scale.setScalar(scale);
-  const frown = new THREE.Mesh(arcG, eyeM); frown.position.set(0, -0.1 * scale, 0.005); frown.scale.set(scale * 0.8, scale * 0.6, scale);
+  const smile = new THREE.Mesh(arcG, eyeM); smile.rotation.z = Math.PI; smile.position.set(0, -0.05 * scale, 0.005);
+  const frown = new THREE.Mesh(arcG, eyeM); frown.position.set(0, -0.1 * scale, 0.005);
   const flat = new THREE.Mesh(geo('flat', () => new THREE.CapsuleGeometry(0.011, 0.045, 2, 6)), eyeM); flat.rotation.z = Math.PI / 2 + 0.25; flat.position.set(0.02 * scale, -0.07 * scale, 0.005);
   const oh = new THREE.Mesh(geo('oh', () => new THREE.TorusGeometry(0.022, 0.009, 6, 12)), eyeM); oh.position.set(0, -0.07 * scale, 0.005);
   const browG = geo('brow', () => new THREE.CapsuleGeometry(0.01, 0.055, 2, 6));
   const brows = [-1, 1].map(sx => { const b = new THREE.Mesh(browG, eyeM); b.rotation.z = Math.PI / 2; b.position.set(sx * 0.085 * scale, 0.16 * scale, 0.004); f.add(b); return b; });
-  const lids = [-1, 1].map(sx => { const l = new THREE.Mesh(arcG, eyeM); l.scale.set(0.55 * scale, 0.5 * scale, scale); l.rotation.z = Math.PI; l.position.set(sx * 0.085 * scale, 0.05 * scale, 0.004); f.add(l); return l; });
+  const lids = [-1, 1].map(sx => { const l = new THREE.Mesh(arcG, eyeM); l.rotation.z = Math.PI; l.position.set(sx * 0.085 * scale, 0.05 * scale, 0.004); f.add(l); return l; });
   const drop = new THREE.Mesh(geo('drop', () => new THREE.SphereGeometry(0.025, 10, 8)), mat('drop', () => new THREE.MeshStandardMaterial({ color: 0x9fd3ff, roughness: 0.1, transparent: true, opacity: 0.85 })));
-  drop.scale.set(0.8, 1.2, 0.6); drop.position.set(0.2 * scale, 0.12 * scale, -0.01);
+  drop.position.set(0.2 * scale, 0.12 * scale, -0.01);
   f.add(smile, frown, flat, oh, drop);
-  let cur = '';
-  f.userData.set = expr => {
-    if (expr === cur) return; cur = expr;
-    smile.visible = !noMouth && (expr === 'happy' || expr === 'neutral');
-    smile.scale.y = expr === 'neutral' ? 0.45 * scale : scale;
-    frown.visible = !noMouth && expr === 'worried';
-    flat.visible = !noMouth && expr === 'puzzled';
-    oh.visible = !noMouth && expr === 'sleepy';
-    drop.visible = expr === 'worried';
-    const sleepy = expr === 'sleepy';
-    eyes.forEach(e => (e.visible = !sleepy)); lids.forEach(l => (l.visible = sleepy));
+  const W = v => Math.max(0.02, v);
+  f.userData.apply = (p, blink) => {
+    const open = (1 - p.lid) * (1 - blink);
+    eyes.forEach((e, i) => { e.visible = p.lid < 0.6; e.scale.y = e.userData.sy * Math.max(0.1, open); shines[i].visible = e.visible && open > 0.5; });
+    lids.forEach(l => { l.visible = p.lid > 0.05; l.scale.set(0.55 * scale, 0.5 * scale * W(p.lid), scale); });
+    smile.visible = !noMouth && p.smile > 0.02; smile.scale.set(scale, scale * W(p.smile), scale);
+    frown.visible = !noMouth && p.frown > 0.02; frown.scale.set(scale * 0.8, scale * 0.6 * W(p.frown), scale);
+    flat.visible = !noMouth && p.flat > 0.02; flat.scale.setScalar(W(p.flat));
+    oh.visible = !noMouth && p.oh > 0.02; oh.scale.setScalar(W(p.oh));
+    drop.visible = p.drop > 0.02; drop.scale.set(0.8 * W(p.drop), 1.2 * W(p.drop), 0.6 * W(p.drop));
     brows.forEach((b, i) => {
-      b.visible = expr === 'worried' || expr === 'puzzled';
-      const sx = i ? 1 : -1;
-      if (expr === 'worried') { b.rotation.z = Math.PI / 2 - sx * 0.45; b.position.y = 0.155 * scale; }
-      else { b.rotation.z = Math.PI / 2 + (i ? -0.2 : 0); b.position.y = (i ? 0.18 : 0.15) * scale; b.visible = expr === 'puzzled' && i === 1 ? true : expr === 'worried'; }
+      const sx = i ? 1 : -1, w = p.worry + (i === 1 ? p.puzzle : 0);
+      b.visible = w > 0.03; b.scale.set(1, W(Math.min(1, w)), 1);
+      b.rotation.z = Math.PI / 2 - sx * 0.45 * p.worry + (i ? -0.2 : 0) * p.puzzle;
+      b.position.y = (0.15 + 0.005 * p.worry + (i ? 0.03 : 0) * p.puzzle) * scale;
     });
   };
+  f.userData.eyes = eyes; f.userData.shines = shines; f.userData.brows = brows;
+  f.userData.apply(window.OfficeLogic.exprParams('happy'), 0);
   return f;
 }
 
@@ -145,8 +148,16 @@ export function makeBot(name, hiQuality, botId, override) {
   const key = 'body:' + a.shape + ':' + a.rot;
   const bodyG = geo(key, () => {
     const pts = shapePoints(a).map(([x, y]) => new THREE.Vector2(x, y));
-    const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: 0.2, bevelEnabled: true, bevelThickness: 0.13, bevelSize: 0.08, bevelSegments: hiQuality ? 6 : 3, curveSegments: 8 });
-    g.center(); g.scale(0.85, 0.85, 0.85); g.computeBoundingBox(); g.computeVertexNormals(); return g;
+    // Tim item 7: rounded 3D bodies, not flat front and back. Thin slab + deep round bevel, then the faces are pushed out
+    // into a pillow dome (strongest at the centre, none at the rim) so the front and back are curved too.
+    const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: 0.06, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.09, bevelSegments: hiQuality ? 10 : 6, curveSegments: 14 });
+    g.center(); g.computeBoundingBox();
+    const hb = g.boundingBox, hx = (hb.max.x - hb.min.x) / 2, hy = (hb.max.y - hb.min.y) / 2, pos = g.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const nx = pos.getX(i) / hx, ny = pos.getY(i) / hy, r2 = Math.min(1, nx * nx * 0.5 + ny * ny * 0.5 + Math.abs(nx * ny) * 0.0), dome = 0.16 * Math.pow(1 - r2, 0.8);
+      pos.setZ(i, pos.getZ(i) + Math.sign(pos.getZ(i)) * dome);
+    }
+    g.scale(0.85, 0.85, 0.85); g.computeBoundingBox(); g.computeVertexNormals(); return g;
   });
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
   const bodyM = jelly(a.color, hiQuality);
@@ -196,7 +207,7 @@ function shirtTexture() {
   });
 }
 function makePresident(hi) {
-  const seg = hi ? 48 : 24;
+  const seg = hi ? 64 : 32;
   const skin = new THREE.MeshStandardMaterial({ color: 0xf3c29c, roughness: 0.62 });
   const shirt = new THREE.MeshStandardMaterial({ color: 0x1b1b1e, roughness: 0.72 });
   const pants = new THREE.MeshStandardMaterial({ color: 0x2c2d31, roughness: 0.75 });
@@ -228,22 +239,34 @@ function makePresident(hi) {
     const hand = new THREE.Mesh(geo('pHand2', () => new THREE.SphereGeometry(0.048, 16, 12)), skin); hand.position.y = -0.22; p.add(hand); p.userData.len = 0.26; p.position.set(side * 0.215, 0.33, 0); p.rotation.z = side * 0.18; return p; };
   const armR = arm(-1), armL = arm(1); body.add(armR, armL);
   // big round smooth head
-  const head = new THREE.Group(); head.position.y = 0.66; body.add(head);
-  const skull = new THREE.Mesh(geo('pHead2', () => new THREE.SphereGeometry(0.25, seg, Math.round(seg * 0.75))), skin); skull.scale.set(1.06, 0.98, 0.96); head.add(skull);
-  for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar', () => new THREE.SphereGeometry(0.05, 16, 12)), skin); ear.scale.set(0.55, 1, 0.8); ear.position.set(sx * 0.262, -0.02, -0.01); head.add(ear); }
-  // messy hair: a smooth cap plus soft swept spikes (rounded cones) over the top, sides and a fringe
-  const cap = new THREE.Mesh(geo('pHair2', () => new THREE.SphereGeometry(0.262, seg, 20, 0, Math.PI * 2, 0, Math.PI * 0.5)), hair); cap.scale.set(1.07, 1.02, 1.0); cap.rotation.x = 0.38; cap.position.set(0, 0.06, -0.02); head.add(cap);
-  const back = new THREE.Mesh(geo('pHairB', () => new THREE.SphereGeometry(0.26, seg, 16, Math.PI, Math.PI, Math.PI * 0.3, Math.PI * 0.42)), hair); back.rotation.x = 0.2; // back half only back.scale.set(1.08, 1, 1.02); head.add(back);
-  const spikeG = geo('pSpike2', () => { const g = new THREE.ConeGeometry(0.075, 0.15, 14, 1); g.translate(0, 0.06, 0); return g; });
-  const spikes = [[0, 0.22, 0.1, -0.7, 0.1], [-0.11, 0.21, 0.08, -0.6, 0.6], [0.12, 0.2, 0.08, -0.6, -0.6], [-0.21, 0.12, 0.04, -0.2, 1.2], [0.21, 0.12, 0.04, -0.2, -1.2],
-    [0.03, 0.25, -0.04, 0.2, -0.2], [-0.14, 0.23, -0.1, 0.6, 0.6], [0.14, 0.23, -0.1, 0.6, -0.5], [-0.23, 0.04, -0.06, 0.4, 1.6], [0.23, 0.04, -0.06, 0.4, -1.6], [0, 0.12, -0.23, 1.5, 0],
-    [-0.08, 0.19, 0.17, -1.75, 0.5], [0.07, 0.185, 0.18, -1.85, -0.35], [-0.18, 0.13, 0.14, -1.5, 0.9], [0.17, 0.13, 0.15, -1.55, -0.8]];
-  spikes.forEach(([x, y, z, rx, rz], k) => { const sp = new THREE.Mesh(spikeG, hair); sp.position.set(x, y, z); sp.rotation.set(rx, k * 0.4, rz); sp.scale.set(1, 0.6 + (k % 3) * 0.12, 0.55); head.add(sp); });
-  // face: tall oval eyes, pink blush, no mouth
-  const face = makeFace(0.236, 1.45, false, true); face.position.y = -0.04; head.add(face);
-  const blushM = mat('blush2', () => new THREE.MeshStandardMaterial({ color: 0xf2a39a, roughness: 0.9, transparent: true, opacity: 0.85 }));
-  for (const sx of [-1, 1]) { const b = new THREE.Mesh(geo('blush2', () => new THREE.SphereGeometry(0.035, 16, 10)), blushM); b.scale.set(1.3, 0.6, 0.3); b.position.set(sx * 0.15, -0.09, 0.215); head.add(b); }
-  return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.3, sitLift: 0.1, kind: 'president', head });
+  const head = new THREE.Group(); head.position.y = 0.69; body.add(head);
+  const skull = new THREE.Mesh(geo('pHead3', () => new THREE.SphereGeometry(0.25, seg, Math.round(seg * 0.75))), skin); skull.scale.set(1.06, 0.98, 0.96); head.add(skull);
+  for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar', () => new THREE.SphereGeometry(0.05, 24, 16)), skin); ear.scale.set(0.55, 1, 0.8); ear.position.set(sx * 0.262, -0.02, -0.01); head.add(ear); }
+  // Tim item 6 (ref: president_head_ref_1116.png): bigger chibi head, higher polygon count (64x48 skull, bendable 14x8 hair strands),
+  // messy black hair with a swept, curled fringe over the forehead and lighter grey tips, tall slanted oval eyes, wide blush, no mouth.
+  const hair2 = mat('hair2', () => new THREE.MeshStandardMaterial({ color: 0x3a3836, roughness: 0.55 }));
+  const strandG = (len, w, bend) => geo('strand' + len + ':' + w + ':' + bend, () => { const g = new THREE.ConeGeometry(w, len, 14, 8); g.translate(0, len / 2, 0); const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const u = p.getY(i) / len; p.setX(i, p.getX(i) + bend * u * u); p.setZ(i, p.getZ(i) * 0.6); } g.computeVertexNormals(); return g; });
+  head.scale.setScalar(1.1);
+  const cap = new THREE.Mesh(geo('pHair3', () => new THREE.SphereGeometry(0.262, seg, 32, 0, Math.PI * 2, 0, Math.PI * 0.52)), hair); cap.scale.set(1.07, 1.02, 1.0); cap.rotation.x = 0.28; cap.position.set(0, 0.08, -0.03); head.add(cap);
+  const back = new THREE.Mesh(geo('pHairB3', () => new THREE.SphereGeometry(0.26, seg, 24, Math.PI, Math.PI, Math.PI * 0.3, Math.PI * 0.42)), hair); back.rotation.x = 0.2; back.scale.set(1.08, 1, 1.02); head.add(back);
+  // [x, y, z, rotX, rotZ, len, width, bend, light?]: crown / sides / back tufts
+  const tufts = [[0, 0.23, 0.04, -0.5, 0.1, 0.17, 0.08, 0.04], [-0.1, 0.22, 0.05, -0.55, 0.6, 0.17, 0.075, -0.05, 1], [0.12, 0.21, 0.05, -0.55, -0.6, 0.17, 0.075, 0.05],
+    [-0.2, 0.14, 0.03, -0.2, 1.15, 0.16, 0.07, -0.05, 1], [0.2, 0.14, 0.03, -0.2, -1.15, 0.16, 0.07, 0.05], [0.04, 0.25, -0.05, 0.25, -0.25, 0.16, 0.08, 0.05, 1],
+    [-0.14, 0.23, -0.1, 0.6, 0.6, 0.16, 0.075, -0.04], [0.14, 0.23, -0.1, 0.6, -0.5, 0.16, 0.075, 0.04, 1], [-0.23, 0.04, -0.07, 0.4, 1.6, 0.15, 0.07, -0.04],
+    [0.23, 0.04, -0.07, 0.4, -1.6, 0.15, 0.07, 0.04, 1], [0, 0.12, -0.24, 1.5, 0, 0.16, 0.08, 0.03], [-0.1, 0.1, -0.23, 1.35, 0.4, 0.14, 0.07, -0.03, 1], [0.1, 0.1, -0.23, 1.35, -0.4, 0.14, 0.07, 0.03]];
+  tufts.forEach(([x, y, z, rx, rz, len, w, bend, lt], k) => { const sp = new THREE.Mesh(strandG(len, w, bend), lt ? hair2 : hair); sp.position.set(x, y, z); sp.rotation.set(rx, k * 0.4, rz); head.add(sp); });
+  // swept fringe: long curled strands over the forehead (the curve in the reference), slightly right of centre
+  const fringe = [[-0.13, 0.205, 0.17, -1.2, 0.5, 0.2, 0.05, -0.07], [-0.04, 0.215, 0.18, -1.3, 0.1, 0.22, 0.05, 0.06, 1], [0.04, 0.215, 0.18, -1.3, -0.15, 0.25, 0.05, 0.08],
+    [0.12, 0.205, 0.17, -1.2, -0.5, 0.22, 0.05, 0.07, 1], [0.19, 0.17, 0.14, -1.0, -0.9, 0.2, 0.05, 0.06], [-0.19, 0.17, 0.14, -1.0, 0.9, 0.18, 0.05, -0.06, 1]];
+  fringe.forEach(([x, y, z, rx, rz, len, w, bend, lt]) => { const sp = new THREE.Mesh(strandG(len, w, bend), lt ? hair2 : hair); sp.position.set(x, y, z); sp.rotation.set(rx, 0, rz); head.add(sp); });
+  // face: tall slanted oval eyes (closer together than the bots'), big pink blush, no mouth
+  const face = makeFace(0.238, 0.95, false, true, -0.2); face.position.y = -0.02; head.add(face);
+  face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1; e.position.x = sx * 0.1; e.position.y = 0.04; e.scale.x = 0.037 * 0.95 * 1.1; e.userData.sy = 0.072 * 0.95 * 0.95; e.scale.y = e.userData.sy; face.userData.shines[i].position.set(sx * 0.1 + 0.011, 0.066, 0.024); });
+  face.userData.brows.forEach((b, i) => (b.position.x = (i ? 1 : -1) * 0.1));
+  const blushM = mat('blush3', () => new THREE.MeshStandardMaterial({ color: 0xe9a58d, roughness: 0.9, transparent: true, opacity: 0.8 }));
+  for (const sx of [-1, 1]) { const b = new THREE.Mesh(geo('blush3', () => new THREE.SphereGeometry(0.035, 20, 12)), blushM); b.scale.set(1.7, 0.85, 0.25); b.rotation.z = sx * 0.12; b.position.set(sx * 0.14, -0.1, 0.216); head.add(b); }
+  return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.36, sitLift: 0.1, kind: 'president', head });
 }
 
 function finish(c) {
@@ -252,15 +275,25 @@ function finish(c) {
   const hold = new THREE.Group(); hold.position.y = -(r.userData.len || 0.2) * 0.95; r.add(hold);
   c.cup = makeCup(); c.can = makeCan(canStyle(c.name)); c.cue = makeCue();
   c.card = new THREE.Mesh(geo('heldCard', () => new THREE.BoxGeometry(0.12, 0.09, 0.006)), mat('cardM', () => new THREE.MeshStandardMaterial({ color: 0xeef3ff, emissive: 0x334466, emissiveIntensity: 0.4 }))); c.card.visible = false;
+  c.box = new THREE.Group(); // item 10: restock box carried to the fridge (plain cardboard, no artwork)
+  { const bm = mat('cardboard', () => new THREE.MeshStandardMaterial({ color: 0xb98b56, roughness: 0.8 })), tape = mat('tape', () => new THREE.MeshStandardMaterial({ color: 0xd9c08f, roughness: 0.6 }));
+    c.box.add(new THREE.Mesh(geo('boxB', () => new THREE.BoxGeometry(0.3, 0.2, 0.22)), bm)); const t = new THREE.Mesh(geo('boxT', () => new THREE.BoxGeometry(0.06, 0.205, 0.225)), tape); c.box.add(t); }
+  c.box.visible = false; c.body.add(c.box); c.box.position.set(0, 0.08, 0.3);
   c.cup.visible = c.can.visible = c.cue.visible = false;
   hold.add(c.cup, c.can, c.card); c.body.add(c.cue); c.cue.position.set(-0.05, 0.05, 0.35);
   c.warn = makeWarn(); c.warn.position.y = c.top + 0.32; c.warn.visible = false; c.root.add(c.warn);
-  c.quest = makeQuestion(); c.quest.position.y = c.top + 0.25; c.quest.visible = false; c.root.add(c.quest);
+  c.quest = makeQuestion(); c.quest.position.y = c.top + 0.25; c.quest.visible = false; c.root.add(c.quest); // never shown for idle / stale bots (Tim, item 3)
   c.zzz = makeZzz(); c.zzz.visible = false; c.root.add(c.zzz);
   c.grey = new THREE.Color(0x6d6f73);
   c.setFrozen = on => c.mats.forEach((m, i) => m.color.copy(on ? c.grey : c.colors[i]));
-  c.setExpression = e => c.face.userData.set(e);
-  c.setExpression('happy');
+  const L = window.OfficeLogic, rng = L.makeRng(L.hash('blink:' + c.name));
+  c.expr = L.exprParams('happy'); c.exprTarget = 'happy'; c.blinker = L.createBlinker(rng, 0); c.blinkRng = rng;
+  c.setExpression = e => { c.exprTarget = e; };
+  c.updateFace = (dt, t) => { // blend towards the target expression, then blink (call once per frame)
+    c.expr = L.blendExpression(c.expr, c.exprTarget, dt, 9);
+    c.face.userData.apply(c.expr, c.blinkRng ? L.blinkAmount(c.blinker, t, c.blinkRng) : 0);
+  };
+  c.face.userData.apply(c.expr, 0);
   c.root.traverse(o => { if (o.isMesh) o.userData.charName = c.name; });
   return c;
 }
@@ -274,6 +307,7 @@ export function animate(c, pose, t, dt, opts) {
   c.cup.visible = (pose === 'coffee' && opts.holding);
   c.can.visible = (pose === 'fridge' && opts.holding) || (!!opts.can && ['talk', 'stand', 'walk'].includes(pose));
   c.cue.visible = pose === 'pool';
+  c.box.visible = !!opts.box && (pose === 'walk' || pose === 'restock');
   c.zzz.visible = pose === 'nap' || pose === 'deskSleep';
   c.card.visible = !!opts.carry;
   const sideR = 1;
@@ -282,7 +316,7 @@ export function animate(c, pose, t, dt, opts) {
   const glance = still ? 0 : Math.max(0, Math.sin(t * 0.7 + ph * 3) - 0.85) / 0.15;
   switch (pose) {
     case 'walk': {
-      const s = Math.sin(t * 9 + ph); legX = s * 0.6; armR.x = -s * 0.5; armL.x = s * 0.5; bob = Math.abs(Math.cos(t * 9 + ph)) * 0.03; break;
+      const s = Math.sin(t * 9 + ph); legX = s * 0.6; armR.x = -s * 0.5; armL.x = s * 0.5; bob = Math.abs(Math.cos(t * 9 + ph)) * 0.03; if (opts.box) { armR.x = armL.x = -1.25; armR.z = c.rest.armR.z * 0.3; armL.z = c.rest.armL.z * 0.3; } break;
     }
     case 'bike': { // exercise bike: seated, pedalling
       lift = c.sitLift + 0.12; const s = still ? 0 : Math.sin(t * 6 + ph); legX = -1.0 + s * 0.45; armR.x = -1.1; armL.x = -1.1; lean = 0.25; bob = still ? 0 : 0.01 * Math.abs(s);
@@ -312,14 +346,14 @@ export function animate(c, pose, t, dt, opts) {
     }
     case 'wave': {
       // needs Tim: stands at its own desk waving both arms, looping
+      // (Tim, item 9) ONE arm waves high to get Tim's attention, the other rests
       const w = still ? 0 : Math.sin(t * 9 + ph);
-      armR.z = -(2.55 + 0.35 * w) * sideR; armR.x = 0;
-      armL.z = 2.55 - 0.35 * w; armL.x = 0;
-      bob = still ? 0 : Math.abs(Math.sin(t * 4.5 + ph)) * 0.025; break;
+      armR.z = -(2.6 + 0.4 * w) * sideR; armR.x = 0;
+      bob = still ? 0 : Math.abs(Math.sin(t * 4.5 + ph)) * 0.012; break;
     }
     case 'pool': {
-      const stroke = still ? 0 : Math.max(0, Math.sin(t * 1.6 + ph)) ** 3;
-      armR.x = -1.3; armL.x = -1.45; c.cue.position.z = 0.35 + stroke * 0.18; c.cue.position.y = 0.0; bob = 0; break;
+      const stroke = still ? 0 : opts.stroke != null ? opts.stroke : Math.max(0, Math.sin(t * 1.6 + ph)) ** 3; // opts.stroke: L.poolShot (-0.6 pull back .. 1 strike)
+      armR.x = -1.3; armL.x = -1.45; c.cue.position.z = 0.35 + stroke * 0.18; c.cue.position.y = 0.0; lean = 0.18 + 0.1 * stroke; bob = 0; break;
     }
     case 'nap': {
       lieZ = Math.PI / 2; lieY = c.kind === 'president' ? 0.75 : 0.88; legX = -0.2;
@@ -332,6 +366,10 @@ export function animate(c, pose, t, dt, opts) {
       else { const sip = still ? 0 : Math.max(0, Math.sin(t * 0.9 + ph)) ** 6; armR.x = -0.6 - sip * 1.4; armR.z = c.rest.armR.z - sip * 0.5; }
       break;
     }
+    case 'stretch': { // short stretch at the desk: both arms up, lean back, slow sway
+      const sw = still ? 0 : Math.sin(t * 2 + ph); armR.x = -2.9 + 0.08 * sw; armL.x = -2.9 - 0.08 * sw; armR.z = c.rest.armR.z * 0.3; armL.z = c.rest.armL.z * 0.3; lean = -0.2; bob = still ? 0 : 0.01 * Math.abs(sw); break;
+    }
+    case 'restock': { armR.x = -1.25; armL.x = -1.25; armR.z = c.rest.armR.z * 0.3; armL.z = c.rest.armL.z * 0.3; if (!still && opts.holding) bob = 0.01 * Math.sin(t * 5); break; }
     case 'board': armR.x = -2.4; armR.z = c.rest.armR.z; break;
     case 'talk': if (!still) { armR.x = (opts.can ? -0.9 : -0.5) + 0.35 * Math.sin(t * 3 + ph); armL.x = -0.3 + 0.2 * Math.sin(t * 2.3 + ph); } bob = still ? 0 : 0.01 * Math.sin(t * 6); turnY = 0.5 * glance; break;
     case 'frozen': break;

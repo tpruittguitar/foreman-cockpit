@@ -329,14 +329,14 @@ test('floor plan: HR - Bot Trainer visits idle bots, and trains two at the table
   const train = L.planOffice(bots, [], base + 5000, 'live');
   assert.equal(train.plans['HR - Bot Trainer'].act, 'lead');
   assert.deepEqual(train.training.trainees.slice().sort(), ['Comp', 'GUI']);
-  assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(train.plans.Claude.act));
+  assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk'].includes(train.plans.Claude.act));
   const visit = L.planOffice(bots, [], base + (L.TRAIN_S + 1) * 1000, 'live');
   const v = visit.plans['HR - Bot Trainer'];
   assert.equal(v.act, 'visit'); assert.ok(['Comp', 'GUI'].includes(v.partner));
   assert.deepEqual([visit.plans[v.partner].act, visit.plans[v.partner].partner], ['listen', 'HR - Bot Trainer']);
   const meet = L.planOffice(bots, [{ id: 'm', title: 'x', members: ['Claude'] }], base + 5000, 'live');
   assert.equal(meet.plans['HR - Bot Trainer'].act, 'visit', 'no training while a meeting holds the table');
-  assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(L.planOffice([{ bot: 'HR - Bot Trainer', status: 'working' }, { bot: 'Comp', status: 'idle' }], [], base + 5000, 'live').plans['HR - Bot Trainer'].act));
+  assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk'].includes(L.planOffice([{ bot: 'HR - Bot Trainer', status: 'working' }, { bot: 'Comp', status: 'idle' }], [], base + 5000, 'live').plans['HR - Bot Trainer'].act));
 });
 test('ambient chatter is generic, deterministic and never empty', () => {
   for (const k of ['chat', 'visit', 'reply', 'train', 'other']) { const a = L.ambientLine(k, 'seed', 3); assert.ok(a && a === L.ambientLine(k, 'seed', 3)); }

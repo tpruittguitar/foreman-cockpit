@@ -3,13 +3,16 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawWhiteboard, drawAutomations, drawWriterHealth, WRITER_METRICS } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawWhiteboard, drawAutomations, drawWriterHealth, WRITER_METRICS, drawTown, drawPipelineWall } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
+import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
+const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
 const TAG_MAX_PX = 240; // full bot name unless the label would be wider than this (or 30% of the screen)
 
 const L = window.OfficeLogic;
 const Q = new URLSearchParams(location.search);
 const DEMO = Q.get('demo') === '1', TV = Q.get('tv') === '1';
+const SEED = Q.has('seed') ? Number(Q.get('seed')) >>> 0 : (Math.random() * 4294967296) >>> 0; // seedable idle rotation (?seed=N)
 const OWNER = 'tpruittguitar';
 const STATUS_PATH = 'control/OFFICE_STATUS.json', AUTO_PATH = 'control/AUTOMATIONS_STATUS.json';
 const API_FILE = p => `https://api.github.com/repos/${OWNER}/forge-coordination/contents/${p}?ref=main`;
@@ -40,7 +43,7 @@ const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
   pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
   readings: [], readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', auto: null, autoErr: '',
-  glow: new Set(), demoStep: 0, work: null
+  glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null
 };
 const gate = L.createGate(); // one GitHub API budget shared by status, PR list and asks
 const fetchFn = (u, o) => fetch(u, o);
@@ -128,7 +131,12 @@ function workDiff(parsed) {
   if (first && !DEMO) return; // first load: no animations
   for (const e of evs) queuePickup({ bot: e.bot, itemId: 'w:' + e.id, reason: e.kind });
 }
-function queuePickup(p) { const c = chars.get(p.bot); if (c && !c.pickups.some(x => x.itemId === p.itemId)) c.pickups.push(p); else if (!c) pendingPickups.push(p); }
+function queuePickup(p) {
+  const c = chars.get(p.bot);
+  if (!c) { pendingPickups.push(p); return; }
+  if (L.JOB_ASSIGN_REASONS.includes(p.reason)) { if (!(c.job && c.job.itemId === p.itemId) && !c.jobs.some(x => x.itemId === p.itemId)) c.jobs.push(p); } // item 12: assigned -> board, desk, board
+  else if (!c.pickups.some(x => x.itemId === p.itemId)) c.pickups.push(p);
+}
 const pendingPickups = [];
 function bots() { return S.parsed ? S.parsed.bots : []; }
 /* checksheet items + every bot's work cards, with live PR state applied */
@@ -487,7 +495,8 @@ function enter3D() {
 function buildWorld() {
   const canvasTest = document.createElement('canvas');
   if (!(canvasTest.getContext('webgl2') || canvasTest.getContext('webgl'))) throw new Error('no WebGL');
-  const renderer = new THREE.WebGLRenderer({ antialias: !LOW, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ antialias: !LOW, powerPreference: 'high-performance', alpha: true });
+  renderer.setClearColor(0x0e1013, 0);
   const fitRatio = () => Math.min(devicePixelRatio || 1, LOW ? 1.5 : 2, 2880 / Math.max(innerWidth, innerHeight));
   renderer.setPixelRatio(fitRatio());
   renderer.setSize(innerWidth, innerHeight);
@@ -496,7 +505,6 @@ function buildWorld() {
   renderer.shadowMap.enabled = false;
   $('stage').appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0e1013);
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 60);
   const fitFov = () => { const asp = innerWidth / innerHeight; camera.fov = asp >= 1 ? 62 : Math.min(100, 2 * Math.atan(Math.tan(0.62) / asp) * 180 / Math.PI); camera.updateProjectionMatrix(); };
   fitFov();
@@ -517,7 +525,7 @@ function buildWorld() {
     felt: std(0x2a4a5a, 0.9), wood: std(0x3a3c40, 0.5, { metalness: 0.2 }), fabric: std(0x3a3e45, 0.95), cushion: std(0x4a515c, 0.95), white: std(0xe6e9ed, 0.35),
     glass: new THREE.MeshStandardMaterial({ color: 0x9ec9e6, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.16, depthWrite: false }),
     cyan: glow(0x37e0ff, 1.8), ledW: glow(0xeaf4ff, 1.4), stone: std(0x4a4d52, 0.95), leaf: std(0x3f7a52, 0.8), leafDk: std(0x2c5c3e, 0.85), pot: std(0x2d3036, 0.4, { metalness: 0.5 }), bark: std(0x4a3a2c, 0.9),
-    lineFaint: new THREE.LineBasicMaterial({ color: 0x37e0ff, transparent: true, opacity: 0.14 }),
+    lineFaint: new THREE.LineBasicMaterial({ color: 0xc58cff, transparent: true, opacity: 0.16 }), // item 16: the original faint purple card-to-PC lines (as in #305)
     lineHi: new THREE.LineBasicMaterial({ color: 0xc58cff, transparent: true, opacity: 0.95 }),
     focus: new THREE.MeshStandardMaterial({ color: 0xc58cff, emissive: 0xc58cff, emissiveIntensity: 1.2 }),
     hover: new THREE.MeshStandardMaterial({ color: 0xc58cff, emissive: 0xc58cff, emissiveIntensity: 0.6, transparent: true, opacity: 0.6 })
@@ -546,9 +554,12 @@ function buildWorld() {
     add(box(w, 0.03, d), MAT.ledW, x, RH - 0.12, z);       // white cove LED under the ceiling
   }
   add(box(1.3, 2.3, 0.06), MAT.metal, 0.3, 1.15, RD / 2 - 0.03); add(box(1.5, 0.05, 0.1), MAT.cyan, 0.3, 2.35, RD / 2 - 0.05);
-  const glassMat = new THREE.MeshStandardMaterial({ color: 0x0d1630, emissive: 0x0d1a3a, emissiveIntensity: 1 });
+  // Tim item 5: the window looks out on a small town whose sky, sun / moon and lit windows follow America/New_York time (L.skyState)
+  const town = canvasTex(640, 360);
   add(box(0.12, 2.0, 3.2), MAT.trim, -RW / 2 + 0.05, 2.2, -2.2);
-  for (const dz of [-0.78, 0.78]) add(box(0.05, 1.8, 1.45), glassMat, -RW / 2 + 0.13, 2.2, -2.2 + dz);
+  add(new THREE.PlaneGeometry(3.0, 1.8), screenMat(town.t), -RW / 2 + 0.115, 2.2, -2.2).rotation.y = Math.PI / 2;
+  add(box(0.05, 1.8, 0.05), MAT.trim, -RW / 2 + 0.13, 2.2, -2.2);
+  const windowGlow = new THREE.PointLight(0xdbe9ff, 0, 9, 1.4); windowGlow.position.set(-RW / 2 + 1.2, 2.2, -2.2); scene.add(windowGlow);
   for (const x of [-8, -2.5, 3, 8.5]) for (const z of [-6, 0, 6]) { add(box(1.8, 0.05, 0.9), MAT.panel, x, RH - 0.03, z); add(box(1.84, 0.012, 0.94), MAT.cyan, x, RH - 0.06, z); }
   scene.add(new THREE.HemisphereLight(0xeef3ff, 0x4a4d55, 2.4));
   scene.add(new THREE.AmbientLight(0xe6ecf5, 1.0));
@@ -616,6 +627,30 @@ function buildWorld() {
   const writer = makeBoard('writer', 2.6, 1.7, 0 + 4.2, 2.3, RD / 2 - 0.05, Math.PI, LOW ? 512 : 768, LOW ? 335 : 502);
   const boards = { project, usage, needs, autos, writer };
 
+  /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
+     Desktop: the live page (https://foreman-cockpit.pages.dev/pipeline) in an iframe on a CSS3D plane that sits behind the WebGL
+     canvas and shows through a transparent "hole" in the wall plane. Click it to browse it like a browser (Esc / the bar to
+     leave). Phone / TV / no-embed: a plain wall face; click opens the page in a new tab. */
+  const PW = 3.4, PH = 1.91, PX = RW / 2 - 0.1, PY = 3.05, PZ = 5.4, PK = 100, PFRAME = [1280, 720];
+  const pipe = { live: !LOW && !TV && !touch && !NO_APP && !Q.has('nopipeline'), css: null, browsing: false };
+  { const g = new THREE.Group(); g.position.set(PX, PY, PZ); g.rotation.y = -Math.PI / 2; scene.add(g);
+    add(box(PW + 0.16, PH + 0.16, 0.06), MAT.trim, 0, 0, 0, g); add(box(PW + 0.18, 0.02, 0.05), MAT.cyan, 0, -PH / 2 - 0.1, 0.03, g);
+    if (pipe.live) pipe.mesh = add(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, side: THREE.DoubleSide, blending: THREE.NoBlending }), 0, 0, 0.035, g);
+    else { const t = canvasTex(1024, 574); drawPipelineWall(t.ctx, 1024, 574, {}); t.t.needsUpdate = true; pipe.mesh = add(new THREE.PlaneGeometry(PW, PH), screenMat(t.t), 0, 0, 0.035, g); }
+    pipe.mesh.userData.board = 'pipeline'; }
+  if (pipe.live) try {
+    const cssScene = new THREE.Scene(), cssCam = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.05 * PK, 60 * PK), r = new CSS3DRenderer();
+    r.setSize(innerWidth, innerHeight); r.domElement.className = 'css3d'; $('stage').insertBefore(r.domElement, renderer.domElement);
+    const wrap = document.createElement('div'); wrap.style.cssText = `width:${PFRAME[0]}px;height:${PFRAME[1]}px;background:#0d1014`;
+    const fr = document.createElement('iframe'); fr.src = PIPELINE_URL; fr.title = 'Pipeline Explorer (live)'; fr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox');
+    fr.style.cssText = 'width:100%;height:100%;border:0;background:#fff'; wrap.appendChild(fr);
+    const obj = new CSS3DObject(wrap); obj.position.set((PX - 0.035) * PK, PY * PK, PZ * PK); obj.rotation.y = -Math.PI / 2; obj.scale.setScalar(PW * PK / PFRAME[0]); cssScene.add(obj);
+    const bar = document.createElement('div'); bar.id = 'browse-bar'; bar.hidden = true;
+    bar.innerHTML = '<span>Pipeline Explorer · browsing live</span><a href="' + PIPELINE_URL + '" target="_blank" rel="noopener">Open in new tab ↗</a><button type="button" id="browse-exit">Back to the office (Esc)</button>';
+    document.body.appendChild(bar);
+    pipe.css = { r, cssScene, cssCam, obj, bar, frame: fr };
+  } catch (e) { console.warn('pipeline embed unavailable:', e && e.message); pipe.css = null; pipe.live = false; pipe.mesh.visible = true; }
+
   /* ---------- lounge: corner sectional, couch, futon, coffee table, exercise bike, plants, waterfall, bonsai ---------- */
   const SIT = []; // lounge sit / nap spots {id, kind:'sit'|'nap'|'bike', x, z, face, lie}
   const seatBlock = (g, len, depth) => { add(box(depth, 0.38, len), MAT.fabric, 0, 0.19, 0, g); add(box(0.22, 0.72, len), MAT.fabric, depth / 2 - 0.11, 0.5, 0, g);
@@ -643,12 +678,12 @@ function buildWorld() {
   block(9.4, 7.3, 0.65, 0.38);
   bonsai(9.3, 0.44, 7.3, 1.1);
   // exercise bike
-  const bike = new THREE.Group(); bike.position.set(7.4, 0, 3.3); bike.rotation.y = -Math.PI / 2; scene.add(bike);
+  const bike = new THREE.Group(); bike.position.set(9.2, 0, 1.3); // Tim item 1: well clear of the desks (was 7.4, 3.3 beside Edgar's desk) bike.rotation.y = -Math.PI / 2; scene.add(bike);
   add(box(0.25, 0.05, 1.0), MAT.dark, 0, 0.03, 0, bike); const fw = add(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 24), MAT.metal, 0, 0.3, 0.35, bike); fw.rotation.z = Math.PI / 2;
   add(box(0.05, 0.62, 0.05), MAT.metal, 0, 0.36, -0.15, bike).rotation.x = -0.25; add(box(0.2, 0.05, 0.28), MAT.dark, 0, 0.68, -0.22, bike);
   add(box(0.05, 0.7, 0.05), MAT.metal, 0, 0.6, 0.38, bike).rotation.x = 0.2; add(box(0.42, 0.04, 0.04), MAT.metal, 0, 0.95, 0.45, bike); add(box(0.43, 0.012, 0.012), MAT.cyan, 0, 0.98, 0.45, bike);
-  block(7.4, 3.3, 0.55, 0.2);
-  SIT.push({ id: 'bike', kind: 'bike', x: 7.4 + 0.22, z: 3.3, face: -Math.PI / 2 });
+  block(9.2, 1.3, 0.55, 0.2);
+  SIT.push({ id: 'bike', kind: 'bike', x: 9.2 + 0.22, z: 1.3, face: -Math.PI / 2 });
   // indoor waterfall: stone wall, a sheet of moving water (scrolling texture, no extra lights) and a basin
   const wf = canvasTex(64, 256); { const g = wf.ctx; g.fillStyle = '#5c8fb0'; g.fillRect(0, 0, 64, 256); for (let k = 0; k < 90; k++) { g.fillStyle = `rgba(230,245,255,${0.15 + (k % 5) * 0.08})`; g.fillRect((k * 23) % 64, (k * 71) % 256, 1 + k % 2, 18 + (k * 13) % 40); } }
   wf.t.wrapS = wf.t.wrapT = THREE.RepeatWrapping; wf.t.repeat.set(2, 1.5); wf.t.needsUpdate = true;
@@ -666,8 +701,8 @@ function buildWorld() {
   const pool = new THREE.Group(); pool.position.set(8.9, 0, -1.6); scene.add(pool);
   add(box(1.3, 0.18, 2.4), MAT.wood, 0, 0.72, 0, pool); add(box(1.12, 0.03, 2.22), MAT.felt, 0, 0.82, 0, pool); add(box(1.32, 0.015, 2.42), MAT.cyan, 0, 0.62, 0, pool);
   for (const [lx, lz] of [[-0.55, -1.05], [0.55, -1.05], [-0.55, 1.05], [0.55, 1.05]]) add(box(0.1, 0.66, 0.1), MAT.metal, lx, 0.33, lz, pool);
-  const ballG = new THREE.SphereGeometry(0.03, 10, 8);
-  [0xffffff, 0xf2c200, 0x1b4fd8, 0xd8261b, 0x6b2fb3, 0xf07a10, 0x157a3a, 0x111111].forEach((c, k) => add(ballG, std(c, 0.2), -0.2 + (k % 4) * 0.13, 0.865, -0.4 + Math.floor(k / 4) * 0.12 + (k ? 0.5 : -0.2), pool));
+  const ballG = new THREE.SphereGeometry(0.03, 10, 8); let cueBall = null;
+  [0xffffff, 0xf2c200, 0x1b4fd8, 0xd8261b, 0x6b2fb3, 0xf07a10, 0x157a3a, 0x111111].forEach((c, k) => { const m = add(ballG, std(c, 0.2), -0.2 + (k % 4) * 0.13, 0.865, -0.4 + Math.floor(k / 4) * 0.12 + (k ? 0.5 : -0.2), pool); if (!k) cueBall = m; }); // item 13: ball 0 is the cue ball (L.poolShot)
   block(8.9, -1.6, 0.65, 1.2);
   const coffee = new THREE.Group(); coffee.position.set(11.3, 0, -6.0); scene.add(coffee);
   add(box(0.7, 0.9, 1.6), MAT.desk, 0, 0.45, 0, coffee); add(box(0.74, 0.04, 1.64), MAT.dark, 0, 0.92, 0, coffee); add(box(0.02, 0.02, 1.6), MAT.cyan, -0.36, 0.9, 0, coffee);
@@ -689,13 +724,14 @@ function buildWorld() {
   add(box(0.06, 0.16, 0.8), [MAT.dark, screenMat(fs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark], -0.37, 2.1, 0, fridge);
   block(11.3, -8.4, 0.42, 0.45);
   // energy cans: two InstancedMeshes (one per lookalike style), stock / desk cans alternate deterministically per slot
-  const fridgeCans = [];
+  const fridgeCans = []; const fridgeRng = L.makeRng(SEED ^ 0x51ed); let fridgeStock = 9 + Math.floor(fridgeRng() * 8), fridgeDrain = 0, lastDeskCans = []; // item 10: simulated stock (no real inventory data)
   for (const y of shelfY) for (let k = 0; k < 5; k++) fridgeCans.push([11.3 - 0.1 + (k % 2) * 0.12, y + 0.0625, -8.4 - 0.3 + k * 0.15]);
   const canSets = [0, 1].map(st => { const m = new THREE.InstancedMesh(canGeometry(), canMaterials(st), 64); m.count = 0; scene.add(m); return m; });
   function layoutCans(deskCans) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1); canSets.forEach(s => (s.count = 0));
     const put = (st, pos, rot) => { const set = canSets[st]; if (set.count >= 64) return; q.setFromEuler(new THREE.Euler(0, rot, 0)); set.setMatrixAt(set.count++, m.compose(pos, q, one)); };
-    fridgeCans.forEach(([x, y, z], k) => put(k % 2, new THREE.Vector3(x, y, z), Math.PI + (k % 3) * 0.2));
+    lastDeskCans = deskCans;
+    fridgeCans.forEach(([x, y, z], k) => { if (k < fridgeStock) put(k % 2, new THREE.Vector3(x, y, z), Math.PI + (k % 3) * 0.2); });
     deskCans.forEach(([x, z, seed]) => put(canStyle(seed), new THREE.Vector3(x, 0.8325, z), seed.length * 1.7));
     canSets.forEach(s => (s.instanceMatrix.needsUpdate = true));
   }
@@ -706,11 +742,11 @@ function buildWorld() {
     lampBase: new THREE.CylinderGeometry(0.07, 0.08, 0.025, 14), lampArm: new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6), shade: new THREE.ConeGeometry(0.09, 0.12, 14, 1, true), bulb: new THREE.SphereGeometry(0.035, 10, 8),
     plate: box(0.42, 0.09, 0.05), mug: new THREE.CylinderGeometry(0.04, 0.035, 0.1, 12), card: box(0.12, 0.004, 0.09),
     seat: box(0.5, 0.07, 0.48), back: box(0.48, 0.5, 0.06), pole: new THREE.CylinderGeometry(0.03, 0.03, 0.38, 8), spoke: box(0.04, 0.03, 0.32), ring: new THREE.TorusGeometry(1.15, 0.035, 8, 48) };
-  const CONF = { x: -9.7, z: -8.3 };
+  const CONF = { x: -9.0, z: 7.4 }; // Tim item 4: front-left corner, same wall as the entry door (was back-left)
   const conf = new THREE.Group(); conf.position.set(CONF.x, 0, CONF.z); scene.add(conf);
   add(box(3.0, 0.06, 1.2), MAT.desk, 0, 0.74, 0, conf); add(box(3.0, 0.015, 1.2), MAT.cyan, 0, 0.7, 0, conf).scale.set(0.98, 1, 0.96);
   for (const [lx, lz] of [[-1.35, -0.48], [1.35, -0.48], [-1.35, 0.48], [1.35, 0.48]]) add(deskGeo.leg, MAT.metal, lx, 0.36, lz, conf);
-  add(box(0.04, 2.4, 3.6), MAT.glass, CONF.x + 2.35, 1.2, CONF.z + 0.2).visible = !LOW; // glass partition
+  add(box(0.04, 2.4, 3.6), MAT.glass, CONF.x + 2.35, 1.2, CONF.z + 0.4).visible = !LOW; // glass partition
   const CONF_SEATS = [[-1.0, -1.05, 0], [-1.0, 1.05, Math.PI], [0, -1.05, 0], [0, 1.05, Math.PI], [1.0, -1.05, 0], [1.0, 1.05, Math.PI], [1.95, 0, -Math.PI / 2]]
     .map(([dx, dz, face]) => ({ x: CONF.x + dx, z: CONF.z + dz, face }));
   for (const st of CONF_SEATS) {
@@ -719,8 +755,8 @@ function buildWorld() {
     for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); }
     block(ch.position.x, ch.position.z, 0.28, 0.28, true);
   }
-  const TRAINER_SPOT = { x: -11.3, z: CONF.z, face: Math.PI / 2 };
-  const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(-RW / 2 + 0.05, 1.6, CONF.z); wbG.rotation.y = Math.PI / 2; scene.add(wbG);
+  const TRAINER_SPOT = { x: CONF.x, z: 9.3, face: Math.PI }; // in front of the whiteboard on the front wall, facing the table
+  const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(CONF.x, 1.7, RD / 2 - 0.05); wbG.rotation.y = Math.PI; scene.add(wbG);
   add(box(1.75, 0.95, 0.05), MAT.metal, 0, 0, 0, wbG);
   add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
   let wbKey = '';
@@ -842,9 +878,9 @@ function buildWorld() {
     { id: 'pool1', kind: 'pool', x: 7.95 - CL, z: -2.0, face: Math.PI / 2 }, { id: 'pool2', kind: 'pool', x: 9.85 + CL, z: -1.1, face: -Math.PI / 2 },
     { id: 'coffee1', kind: 'coffee', x: 10.5 - CL, z: -6.4, face: Math.PI / 2 }, { id: 'coffee2', kind: 'coffee', x: 10.5 - CL, z: -5.4, face: Math.PI / 2 },
     { id: 'fridge1', kind: 'fridge', x: 10.45 - CL, z: -8.2, face: Math.PI / 2 }, { id: 'fridge2', kind: 'fridge', x: 9.6 - CL, z: -8.9, face: Math.PI / 2 },
-    { id: 'lo1', kind: 'loiter', x: 6.4, z: 1.0, face: Math.PI / 2 }, { id: 'lo2', kind: 'loiter', x: 6.6, z: -4.6, face: Math.PI / 2 }, { id: 'lo3', kind: 'loiter', x: 6.2, z: 5.2, face: Math.PI },
-    { id: 'lo4', kind: 'loiter', x: -6.6, z: 6.2, face: 0 }, { id: 'lo5', kind: 'loiter', x: 1.5, z: 6.0, face: 0 }, { id: 'lo6', kind: 'loiter', x: -3, z: 6.4, face: 0 }
-  ].concat(SIT);
+    { id: 'lo1', kind: 'loiter', x: 6.4, z: 1.0, face: Math.PI / 2 }, { id: 'lo2', kind: 'loiter', x: 5.0, z: -6.6, face: Math.PI / 2 }, { id: 'lo3', kind: 'loiter', x: 6.2, z: 5.2, face: Math.PI },
+    { id: 'lo4', kind: 'loiter', x: -5.2, z: 4.9, face: 0 }, { id: 'lo5', kind: 'loiter', x: 1.5, z: 6.0, face: 0 }, { id: 'lo6', kind: 'loiter', x: -3, z: 6.4, face: 0 }
+  ].concat(SIT, CONF_SEATS.map((c, i) => Object.assign({ id: 'conf' + i, kind: 'conf' }, c)), L.groupChatSlots(7.2, -5.0, 4, 0.75).map((c, i) => Object.assign({ id: 'gc' + i, kind: 'gchat' }, c)));
   function takeSlot(c, kinds) {
     const mine = book.slotOf(c.name), cur = mine && SLOTS.concat(BOARD_SLOTS).find(s => s.id === mine);
     if (cur && kinds.includes(cur.kind)) return cur;
@@ -860,7 +896,7 @@ function buildWorld() {
     for (const b of bots()) {
       if (chars.has(b.bot) || !deskOf(b.bot)) continue;
       const c = makeBot(b.bot, !LOW, b.bot_id, b), d = deskOf(b.bot);
-      c.phase = (L.hash(b.bot) % 600) / 100; c.pickups = []; c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
+      c.phase = (L.hash(b.bot) % 600) / 100; c.pickups = []; c.jobs = []; c.job = null; c.idle = L.createIdleState(); c.rng = L.makeRng(SEED ^ L.hash(b.bot)); c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
       c.root.position.set(d.seat.x, 0, d.seat.z); c.root.rotation.y = Math.PI; c.pose = 'sit'; c.wantSince = 0; c.carry = false;
       scene.add(c.root); chars.set(b.bot, c); c.botId = b.bot_id;
       c.tag = document.createElement('div'); c.tag.className = 'tag'; $('labels').appendChild(c.tag);
@@ -871,23 +907,62 @@ function buildWorld() {
   }
   function cardCenter(itemId) {
     const h = project.hits.find(x => x.id === itemId);
-    if (!h) return new THREE.Vector3(-2, 2.3, -RD / 2 + 0.1);
-    return new THREE.Vector3(-2 + (h.x + h.w / 2 - 0.5) * BW, 2.3 + (0.5 - (h.y + h.h / 2)) * BH, -RD / 2 + 0.1);
+    if (!h) return new THREE.Vector3(-2, 2.3, -RD / 2 + 0.13);
+    return new THREE.Vector3(-2 + (h.x + h.w / 2 - 0.5) * BW, 2.3 + (0.5 - (h.y + h.h / 2)) * BH, -RD / 2 + 0.13); // z in front of the board face so the line starts ON the card
   }
   let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
+  const IDLE_PLAN = new Set(['wander', 'coffee', 'chat', 'fridge', 'lounge', 'bike', 'sleep', 'visitdesk', 'game']); // planOffice acts that mean "idle life"; the idle rotation (item 11) replaces them
   function updatePlan() {
     const t = performance.now(); if (t - planAt < 500) return; planAt = t;
     const now = Date.now(), list = bots().filter(b => deskOf(b.bot)), ctx = signalCtx();
     S.fresh = Object.fromEntries(list.map(b => [b.bot, freshOf(withRoutine(b), now, ctx)]));
     plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh);
+    S.needsSet = S.state === 'failed' ? new Set() : L.needsTimNames(needsData()); // item 3 / 9: only a real needs_tim item waves
+    const idleNames = list.filter(b => { const c = chars.get(b.bot), p = plan.plans[b.bot]; return c && p && !p.brk && IDLE_PLAN.has(p.act) && L.statusStyle(b.status).behavior !== 'work' && !S.needsSet.has(b.bot) && !c.job && !c.jobs.length; }).map(b => b.bot);
+    S.restocker = L.pickRestocker(idleNames, fridgeStock, S.restocker); // item 10: an idle bot restocks when the fridge runs low
     drawWB(plan.meeting);
   }
   const charPos = n => { const o = chars.get(n); return o ? { x: o.pos.x, z: o.pos.y } : null; };
   const seated = p => ['sit', 'type', 'game', 'meet', 'deskSleep', 'nap', 'lounge', 'bike'].includes(p);
+  /* item 12: job flow (L.jobStep): receive at the board -> work at the desk -> log at the board */
+  function jobGoal(c, d) {
+    if (!c.job) c.job = L.jobStart(c.jobs.shift().itemId, clock);
+    const j = c.job, key = 'job:' + j.itemId + ':' + j.phase, it = items().find(i => i.id === j.itemId), finished = !it || L.columnFor(it) === 'done';
+    const here = c.goalKey === key && !!c.arrived, held = here ? clock - c.arrivedAt : -1;
+    if (j.phase !== 'work' && here && !S.glow.has(j.itemId)) { S.glow.add(j.itemId); boardDirty = true; }
+    if (j.phase === 'work' && here && c.carry) { c.carry = false; d.card.visible = true; }
+    const nx = L.jobStep(j, { arrived: here, heldFor: held, finished, now: clock });
+    if (nx !== j) {
+      S.glow.delete(j.itemId); boardDirty = true; book.release(c.name); c.job = nx;
+      if (j.phase === 'receive') c.carry = true;
+      if (!nx) { c.carry = false; return c.jobs.length ? jobGoal(c, d) : null; }
+      return jobGoal(c, d);
+    }
+    if (j.phase === 'work') return { key, spot: d.seat, pose: 'type' };
+    return { key, spot: takeSlot(c, ['board']) || BOARD_SLOTS[0], pose: 'board' };
+  }
+  /* item 11 / 10 / 13: idle activity -> where the bot goes and what it does */
+  function idleGoal(c, d, slotted) {
+    if (c.restocked && c.goal && c.goal.pose === 'restock' && clock - c.restockedAt < 2.5) return Object.assign({}, c.goal, { box: false }); // set the box down, then move on
+    const ctx = { restock: S.restocker === c.name ? 'force' : (fridgeStock >= L.FRIDGE_CAP || S.restocker) ? 'no' : 'ok' };
+    const act = L.idleTick(c.idle, c.rng, clock, ctx); c.idleAct = act;
+    const own = (key, pose) => { book.release(c.name); return { key, spot: d.seat, pose }; };
+    switch (act) {
+      case 'couch_sleep': return slotted(['nap']) || own('sleep', 'deskSleep');
+      case 'desk_nap': return own('sleep', 'deskSleep');
+      case 'hr_training': return Object.assign(slotted(['conf']) || own('seat', 'sit'), { ambient: 'reply' });
+      case 'video_game': return own('game', 'game');
+      case 'exercise_bike': return slotted(['bike']) || slotted(['sit']) || slotted(['loiter']) || own('seat', 'sit');
+      case 'group_chat': return Object.assign(slotted(['gchat']) || slotted(['loiter']) || own('seat', 'sit'), { ambient: 'group' });
+      case 'restock_fridge': { const g = slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); return Object.assign(g, { key: 'restock:' + g.key, pose: g.spot.kind === 'fridge' ? 'restock' : g.pose, box: !c.restocked }); }
+      case 'pool': return slotted(['pool']) || slotted(['loiter']) || own('seat', 'sit');
+    }
+    return slotted(['loiter']) || own('seat', 'sit');
+  }
   function decide(c, b, convo) {
-    const st0 = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name);
+    const st0 = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name), needsTim = S.needsSet.has(c.name);
     if (c.spot) return { key: 'spot', spot: c.spot, pose: 'stand' }; // test/screenshot hook only
-    if (st0.alert) { book.release(c.name); return { key: 'stand', spot: d.stand, pose: 'wave' }; } // needs Tim: stays at its own desk, waving
+    if (needsTim) { book.release(c.name); return { key: 'stand', spot: d.stand, pose: 'wave' }; } // real needs_tim item only: stays at its own desk, one arm waving
     if (c.pickups.length) { // board card life: pin a new card, or take one off the board and carry it to the desk
       const pk = c.pickups[0], id = pk.itemId, key = 'pick:' + id;
       if (c.goalKey === key && c.arrived) {
@@ -897,13 +972,17 @@ function buildWorld() {
       const s = takeSlot(c, ['board']) || BOARD_SLOTS[0];
       return { key, spot: s, pose: 'board' };
     }
+    if (c.job || c.jobs.length) { const jg = jobGoal(c, d); if (jg) return jg; } // item 12: walk to the board for the job, work at the desk, walk back to log it
     if (c.carry) { if (c.goalKey === 'carry' && c.arrived) { c.carry = false; d.card.visible = true; } else return { key: 'carry', spot: d.seat, pose: 'sit' }; }
     if (convo && deskOf(convo.to)) { book.release(c.name); const dd = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: dd.visit, pose: 'talk', faceBot: convo.to }; }
     const p = plan.plans[c.name] || { act: S.fresh[c.name] && S.fresh[c.name].stale ? 'stale' : st0.behavior === 'work' ? 'work' : 'wander' };
-    const slotted = kinds => { const s = takeSlot(c, kinds); return s ? { key: 'slot:' + s.id, spot: s, pose: s.kind === 'loiter' ? 'stand' : s.kind === 'sit' ? 'lounge' : s.kind, lie: s.lie, can: p.can } : null; };
+    const POSE_OF = { loiter: 'stand', sit: 'lounge', conf: 'meet', gchat: 'talk' };
+    const slotted = kinds => { const s = takeSlot(c, kinds); return s ? { key: 'slot:' + s.id, spot: s, pose: POSE_OF[s.kind] || s.kind, lie: s.lie, can: p.can } : null; };
+    if (!p.brk && IDLE_PLAN.has(p.act) && st0.behavior !== 'work') return idleGoal(c, d, slotted); // item 11: idle activity rotation
     if (!['coffee', 'fridge', 'lounge', 'bike', 'wander', 'sleep', 'replay_board'].includes(p.act)) book.release(c.name);
     switch (p.act) {
-      case 'stale': return { key: 'stale', spot: d.stand, pose: 'stand', stale: true }; // no fresh signal for 2 h: never typing
+      case 'stale': return { key: 'stale', spot: d.seat, pose: 'sit', stale: true }; // no fresh signal for 2 h: sits quietly, no "?" (Tim, item 3)
+      case 'stretch': return { key: 'stretch', spot: d.stand, pose: 'stretch' }; // item 9: short stretch beside the desk, then back to work
       case 'work': case 'replay': return { key: 'seat:' + p.act, spot: d.seat, pose: 'type', recent: p.replay };
       case 'replay_board': return Object.assign(slotted(['board']) || { key: 'seat', spot: d.seat, pose: 'type' }, { pose: 'board', recent: p.replay });
       case 'meeting': case 'train': return { key: p.act + ':' + p.seat, spot: CONF_SEATS[p.seat], pose: 'meet', ambient: p.act === 'train' ? 'reply' : '' };
@@ -924,14 +1003,14 @@ function buildWorld() {
     return slotted(['loiter', 'pool']) || { key: 'seat', spot: d.seat, pose: 'sit' };
   }
   const angLerp = (a, b, k) => { let d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; };
-  let walkingNow = 0;
+  let walkingNow = 0, poolNow = L.poolShot(0);
   function updateChar(c, dt) {
     const b = botByName(c.name), reduced = reducedMQ.matches;
     const frozen = S.state === 'failed';
     c.setFrozen(frozen);
-    const st = L.statusStyle(b ? b.status : 'idle');
+    const st = L.statusStyle(b ? b.status : 'idle'), needs = S.needsSet.has(c.name) && !frozen;
     if (frozen) {
-      c.warn.visible = false; c.quest.visible = true; c.zzz.visible = false; c.setExpression('puzzled');
+      c.warn.visible = false; c.quest.visible = false; c.zzz.visible = false; c.setExpression('puzzled'); c.updateFace(dt, clock);
       animate(c, c.pose === 'type' || c.pose === 'sit' ? 'sit' : 'frozen', clock, dt, { reduced: true, holding: false });
       return;
     }
@@ -940,8 +1019,8 @@ function buildWorld() {
     if (g.key !== c.goalKey) {
       // walking cap: at most a third of the bots on the move; others wait where they are (alerts never wait)
       const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
-      if (far && !st.alert && walkingNow >= L.walkCap(chars.size)) { if (!c.wantSince) c.wantSince = clock; }
-      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); if (far) walkingNow++; }
+      if (far && !needs && walkingNow >= L.walkCap(chars.size)) { if (!c.wantSince) c.wantSince = clock; }
+      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) c.restocked = false; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); if (far) walkingNow++; }
     }
     const goal = c.goalKey === g.key ? g : (c.goal || g);
     let pose = goal.pose;
@@ -963,11 +1042,15 @@ function buildWorld() {
     }
     c.pose = pose;
     c.goalNow = goal;
-    c.setExpression(pose === 'nap' || pose === 'deskSleep' ? 'sleepy' : st.alert ? 'worried' : S.state === 'stale' || goal.stale ? 'puzzled' : pose === 'stand' ? 'neutral' : 'happy');
-    c.warn.visible = st.alert;
-    c.quest.visible = (S.state === 'stale' || !!goal.stale) && !st.alert;
-    if (st.alert) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
-    animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk' });
+    // item 10: restock = the box goes into the fridge (stock back to full); a refresh at the fridge uses one can
+    if (goal.pose === 'restock' && c.arrived && !c.restocked && clock - c.arrivedAt > 1.8) { fridgeStock = L.FRIDGE_CAP; layoutCans(lastDeskCans); c.restocked = true; c.restockedAt = clock; S.restocker = null; }
+    if (goal.pose === 'fridge' && c.arrived && clock - c.arrivedAt > 1.4 && c.tookKey !== c.goalKey) { c.tookKey = c.goalKey; fridgeStock = Math.max(0, fridgeStock - 1); layoutCans(lastDeskCans); }
+    c.setExpression(pose === 'nap' || pose === 'deskSleep' ? 'sleepy' : needs ? 'worried' : pose === 'stand' || pose === 'stretch' ? 'neutral' : 'happy'); // eased + blinking in c.updateFace
+    c.warn.visible = needs;
+    c.quest.visible = false; // "?" is gone: only a real needs_tim item shows anything (the warning triangle + arm wave)
+    c.updateFace(dt, clock);
+    if (needs) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
+    animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null });
     c.rig.position.x = pose === 'nap' ? 0.5 : 0;
   }
   /* separation: no two upright bots closer than MIN_SEP (seated / lying bots are fixed points) */
@@ -988,21 +1071,21 @@ function buildWorld() {
   function updateLabels() {
     const w = innerWidth, h = innerHeight, max = TV ? 40 : 22, now = Date.now();
     for (const c of chars.values()) {
-      const b = botByName(c.name), st = L.statusStyle(b ? b.status : 'idle'), frozen = S.state === 'failed';
+      const b = botByName(c.name), st = L.statusStyle(b ? b.status : 'idle'), frozen = S.state === 'failed', needs = S.needsSet.has(c.name) && !frozen;
       const rp = c.goalNow && c.goalNow.recent;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
-      const fr = !frozen && !st.alert && S.fresh[c.name] && S.fresh[c.name].stale ? S.fresh[c.name].label : '';
-      const key = c.name + st.status + frozen + S.state + (hoverBot === c.name) + (rp ? rp.min : '') + why + fr;
+      const fr = !frozen && !needs && S.fresh[c.name] && S.fresh[c.name].stale ? S.fresh[c.name].label : '';
+      const key = c.name + st.status + needs + frozen + S.state + (hoverBot === c.name) + (rp ? rp.min : '') + why + fr;
       if (key !== c.tagKey) {
         c.tagKey = key;
         c.tag.className = 'tag' + (frozen ? ' frozen' : '') + (hoverBot === c.name ? ' hl' : '');
-        const chip = st.alert && !frozen ? `<span class="chip">⚠ ${st.word}</span>` : why ? '<span class="chip stale">?</span>' : '';
-        const recent = fr ? `<span class="chip stale">${esc(fr)}</span>` : rp && !st.alert ? `<span class="chip recent">recent · ${rp.min}m ago</span>` : '';
+        const chip = needs ? '<span class="chip">⚠ NEEDS TIM</span>' : ''; // no bare "?" chip: only a real needs_tim item is flagged
+        const recent = fr ? `<span class="chip stale">${esc(fr)}</span>` : rp && !needs ? `<span class="chip recent">recent · ${rp.min}m ago</span>` : '';
         c.tag.innerHTML = chip + esc(c.name) + recent; c.tag.title = why ? '? ' + why : '';
         const short = shortTag(c.name, c.botId);
         if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = chip + esc(short) + recent; c.tag.title = c.name + (why ? ' · ? ' + why : ''); }
       }
-      tmpV.set(c.root.position.x, c.top + (st.alert ? 0.75 : 0.18) + c.rig.position.y, c.root.position.z).project(camera);
+      tmpV.set(c.root.position.x, c.top + (needs ? 0.75 : 0.18) + c.rig.position.y, c.root.position.z).project(camera);
       const dist = camera.position.distanceTo(c.root.position);
       const vis = tmpV.z < 1 && dist < max && Math.abs(tmpV.x) < 1.2 && Math.abs(tmpV.y) < 1.2;
       c.tag.style.display = vis ? '' : 'none';
@@ -1027,6 +1110,7 @@ function buildWorld() {
     const tick = Math.floor(clock / 4);
     if (g.pose === 'meet') return tick % 3 === 1 && g.ambient === 'reply' ? L.ambientLine('reply', c.name, tick) : '';
     if (g.ambient === 'train') return L.ambientLine('train', c.name, tick);
+    if (g.ambient === 'group') return (tick + L.hash(c.name)) % 3 === 0 ? L.ambientLine('chat', c.name, tick) : ''; // item 11: standing group, one speaks at a time
     const other = g.faceBot && chars.get(g.faceBot);
     if (other && !other.arrived) return '';
     const pair = (g.pair || c.name).split('|'), speaker = pair[tick % 2];
@@ -1042,8 +1126,8 @@ function buildWorld() {
       const h = project.hits.find(x => x.id === it.id); if (!h) continue;
       seen.add(it.id);
       let ln = lines.get(it.id);
-      if (!ln) { ln = new THREE.Line(new THREE.BufferGeometry(), MAT.lineFaint); scene.add(ln); lines.set(it.id, ln); }
-      ln.geometry.setFromPoints([cardCenter(it.id), d.linkPoint]);
+      if (!ln) { ln = new THREE.Line(new THREE.BufferGeometry(), MAT.lineFaint); ln.frustumCulled = false; scene.add(ln); lines.set(it.id, ln); } // never culled by a stale bounding sphere
+      ln.geometry.setFromPoints([cardCenter(it.id), d.linkPoint]); ln.geometry.computeBoundingSphere();
       ln.userData.owner = it.owner;
     }
     for (const [id, ln] of lines) if (!seen.has(id)) { scene.remove(ln); ln.geometry.dispose(); lines.delete(id); }
@@ -1096,13 +1180,15 @@ function buildWorld() {
     d.scr.t.needsUpdate = true;
     const st = L.statusStyle(b.status), col = new THREE.Color(S.state === 'failed' ? '#8b9099' : st.color);
     d.ledMat.color.copy(col); d.ledMat.emissive.copy(col);
-    d.shadeMat.color.set(st.alert && S.state !== 'failed' ? 0xff3030 : 0xd8dde4);
-    d.bulbMat.emissive.set(st.alert && S.state !== 'failed' ? 0xff2020 : 0xffe6b8);
+    const ask = S.needsSet.has(d.name) && S.state !== 'failed';
+    d.shadeMat.color.set(ask ? 0xff3030 : 0xd8dde4);
+    d.bulbMat.emissive.set(ask ? 0xff2020 : 0xffe6b8);
   }
   function applyDaylight() {
-    const k = L.daylight(Date.now());
-    glassMat.emissive.setRGB(0.05 + 0.7 * k, 0.1 + 0.75 * k, 0.23 + 0.75 * k); glassMat.color.copy(glassMat.emissive);
-    sun.intensity = 1.3 * k;
+    const sky = L.skyState(Date.now());
+    drawTown(town.ctx, 640, 360, sky); town.t.needsUpdate = true;
+    sun.intensity = 1.3 * sky.daylight; windowGlow.intensity = 5 * sky.daylight + 0.6 * sky.stars; windowGlow.color.set(sky.warm > 0.4 ? 0xffc890 : 0xdbe9ff);
+    T.sky = { hour: +sky.hour.toFixed(2), daylight: +sky.daylight.toFixed(2), night: sky.isNight };
   }
   applyDaylight();
 
@@ -1111,7 +1197,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, autos.screen, writer.screen]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, autos.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) {
     ndc.set(nx, ny); ray.setFromCamera(ndc, camera);
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1137,8 +1223,16 @@ function buildWorld() {
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
     else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
+    else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
   }
+  /* item 8: browse mode. The canvas stops catching the mouse so the iframe underneath is a normal, clickable web page. */
+  function setBrowse(on) {
+    if (!pipe.css || pipe.browsing === on) return; pipe.browsing = on; keys.clear();
+    renderer.domElement.style.pointerEvents = on ? 'none' : ''; pipe.css.r.domElement.style.pointerEvents = on ? 'auto' : 'none'; pipe.css.bar.hidden = !on; $('labels').style.display = on ? 'none' : '';
+    if (on) { $('start').hidden = true; glideTo([[PX - 3.3, PY - 0.25, PZ], [PX, PY, PZ]], 700); }
+  }
+  if (pipe.css) { $('browse-exit').onclick = () => setBrowse(false); pipe.css.r.domElement.addEventListener('pointerdown', e => { if (e.target === pipe.css.r.domElement) setBrowse(false); }); }
   function setHover(p) {
     const nb = p && p.bot || null, ni = p && p.item || null;
     if (nb === hoverBot && ni === hoverItem) return;
@@ -1224,6 +1318,7 @@ function buildWorld() {
   }
   addEventListener('keydown', e => {
     lastInput = performance.now();
+    if (pipe.browsing) { if (e.key === 'Escape') { e.preventDefault(); setBrowse(false); } return; }
     if (tour) { tour = null; e.preventDefault(); return; }
     if (panelOpen) {
       const typing = !TV && document.activeElement && document.activeElement.tagName === 'TEXTAREA';
@@ -1299,7 +1394,7 @@ function buildWorld() {
       camera.position.lerpVectors(glide.p0, glide.p1, e); camera.quaternion.slerpQuaternions(glide.q0, glide.q1, e);
       if (k >= 1) glide = null;
     }
-    if (!panelOpen) move(dt);
+    if (!panelOpen && !pipe.browsing) move(dt);
     if (TV && !panelOpen && !tour && now - lastInput > L.TOUR_IDLE_MS) tour = { list: L.tourOrder(targets, bots()), i: -1, until: 0 };
     if (tour && now > tour.until && tour.list.length) {
       tour.i = (tour.i + 1) % tour.list.length; const s = tour.list[tour.i];
@@ -1312,19 +1407,28 @@ function buildWorld() {
     if (boardDirty) drawBoards();
     if (now - deskTick > 120) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
     if (now - dayTick > 60000) { dayTick = now; applyDaylight(); }
-    if (!reducedMQ.matches) { wf.t.offset.y = (wf.t.offset.y - dt * 0.35) % 1; } // waterfall: one scrolling texture
+    wf.t.offset.y = L.waterfallOffset(wf.t.offset.y, dt, reducedMQ.matches); // waterfall: one scrolling texture, flowing DOWN (item 2)
     let ai = 0; const p = L.pulse(clock, reducedMQ.matches);
-    for (const d of desks) { const b = botByName(d.name); if (b && L.statusStyle(b.status).alert && S.state !== 'failed') { d.bulbMat.emissiveIntensity = 0.6 + 1.6 * p; if (ai < alertLights.length) { const l = alertLights[ai++]; l.position.set(d.x + 0.63, 1.3, d.z - 0.1); l.intensity = 2.5 * p + 0.6; } } else d.bulbMat.emissiveIntensity = 1.5; }
+    for (const d of desks) { const b = botByName(d.name); if (b && S.needsSet.has(d.name) && S.state !== 'failed') { d.bulbMat.emissiveIntensity = 0.6 + 1.6 * p; if (ai < alertLights.length) { const l = alertLights[ai++]; l.position.set(d.x + 0.63, 1.3, d.z - 0.1); l.intensity = 2.5 * p + 0.6; } } else d.bulbMat.emissiveIntensity = 1.5; }
     for (; ai < alertLights.length; ai++) alertLights[ai].intensity = 0;
     updatePlan();
     walkingNow = [...chars.values()].filter(c => c.path.length).length;
+    // item 13: the cue ball is hit and rolls while someone is playing; item 10: simulated drinks get used up slowly
+    poolNow = L.poolShot(clock); const playing = [...chars.values()].some(c => c.pose === 'pool' && c.arrived), pb = playing ? poolNow.ball : L.POOL.start; cueBall.position.set(pb.x, 0.865, pb.z);
+    fridgeDrain += dt; if (fridgeDrain > 150) { fridgeDrain = 0; if (fridgeStock > 0) { fridgeStock--; layoutCans(lastDeskCans); } }
     for (const c of chars.values()) updateChar(c, dt);
     separateChars();
     updateLabels();
     renderer.render(scene, camera);
+    if (pipe.css) { // CSS3D layer: same camera, scaled by PK (CSS units are pixels); hidden when the wall is behind the camera
+      const c = pipe.css, fwd = tmpV.set(0, 0, -1).applyQuaternion(camera.quaternion), toB = new THREE.Vector3(PX - camera.position.x, PY - camera.position.y, PZ - camera.position.z), show = toB.dot(fwd) > 0.1 && toB.length() < 40;
+      c.r.domElement.style.visibility = show || pipe.browsing ? '' : 'hidden';
+      if (show || pipe.browsing) { if (c.cssCam.fov !== camera.fov || c.cssCam.aspect !== camera.aspect) { c.cssCam.fov = camera.fov; c.cssCam.aspect = camera.aspect; c.cssCam.updateProjectionMatrix(); }
+        c.cssCam.position.copy(camera.position).multiplyScalar(PK); c.cssCam.quaternion.copy(camera.quaternion); c.r.render(c.cssScene, c.cssCam); }
+    }
     T.frames++;
   }
-  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; fitFov(); renderer.setPixelRatio(fitRatio()); renderer.setSize(innerWidth, innerHeight); });
+  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; fitFov(); renderer.setPixelRatio(fitRatio()); renderer.setSize(innerWidth, innerHeight); if (pipe.css) pipe.css.r.setSize(innerWidth, innerHeight); });
   reducedMQ.addEventListener && reducedMQ.addEventListener('change', () => { boardDirty = true; });
   requestAnimationFrame(frame);
 
@@ -1340,7 +1444,8 @@ function buildWorld() {
     info: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
       poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
       lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
-      generic: [...chars.values()].filter(c => c.generic).map(c => c.name) })
+      generic: [...chars.values()].filter(c => c.generic).map(c => c.name), idle: [...chars.values()].map(c => c.name + ':' + (c.idleAct || '')), fridge: fridgeStock, restocker: S.restocker, needs: [...S.needsSet],
+      jobs: [...chars.values()].filter(c => c.job).map(c => c.name + ':' + c.job.phase), pipeline: { live: pipe.live, embed: !!pipe.css, browsing: pipe.browsing }, conf: CONF })
   };
 }
 

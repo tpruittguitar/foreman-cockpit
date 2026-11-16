@@ -95,7 +95,7 @@ function colours(buf) {
     if (await page.evaluate(() => window.__office.webgl)) {
       const info = await page.evaluate(() => window.__office.info());
       assert.match(info.poses.find(p => p.startsWith('Root:')), /wave|walk/, 'needs Tim bot waves at its desk');
-      assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(info.plan.Claude.act), 'working bots work (with short breaks)');
+      assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk'].includes(info.plan.Claude.act), 'working bots work (with short breaks)');
       assert.ok(!info.poses.some(p => /^(QA bot|Sniffer):wave/.test(p)), 'blocked / waiting bots never raise a hand');
       // item 11/14: a plain mouse click on a bot opens its popup with the chat box (no pointer lock, no Escape)
       let botPt = null, who = null;
@@ -137,7 +137,7 @@ function colours(buf) {
       // (slow software renderers may already be past the first demo steps: step on until the meeting is off)
       await demoMeeting(page, false);
       const acts = new Set(Object.values((await page.evaluate(() => window.__office.info())).plan).map(p => p.act));
-      assert.ok(['chat', 'sleep', 'game', 'wander', 'lead', 'train', 'visit', 'listen', 'coffee', 'fridge', 'lounge', 'bike', 'visitdesk', 'replay', 'replay_board'].filter(a => acts.has(a)).length >= 4, [...acts].join());
+      assert.ok(['stretch', 'chat', 'sleep', 'game', 'wander', 'lead', 'train', 'visit', 'listen', 'coffee', 'fridge', 'lounge', 'bike', 'visitdesk', 'replay', 'replay_board'].filter(a => acts.has(a)).length >= 4, [...acts].join());
       if (shots) {
         await page.evaluate(() => window.__office.view([8.6, 1.6, -6.0], [11.3, 1.0, -8.4])); await page.waitForTimeout(800); await shot(page, 'desktop-fridge.png');
         await page.evaluate(() => window.__office.view([-1.4, 1.9, 5.4], [-2.2, 0.9, 1.6])); await page.waitForTimeout(3000); await shot(page, 'desktop-desks.png');

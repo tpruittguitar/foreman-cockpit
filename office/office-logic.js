@@ -820,7 +820,7 @@
   /* ---------- Busy office schedule (Tim 12:19 / 12:20 AM) ---------- */
   const RECENT_REPLAY_MIN = 30;
   const IDLE_ACTS = ['wander', 'coffee', 'chat', 'fridge', 'lounge', 'chat', 'wander', 'bike', 'sleep', 'visitdesk', 'chat', 'game']; // sleep+game = 2/12
-  const BREAK_ACTS = ['coffee', 'fridge', 'visitdesk'];
+  const BREAK_ACTS = ['stretch', 'coffee', 'stretch', 'fridge']; // stretch at the desk (short) or refresh (coffee / drink)
   function idleSlot(name, nowMs) {
     const dur = 120 + hash('dur:' + name) % 61, t = nowMs / 1000 + hash('off:' + name) % dur; // 2-3 min, staggered per bot
     return { idx: Math.floor(t / dur), dur, start: Math.floor(t / dur) * dur - hash('off:' + name) % dur };
@@ -828,8 +828,9 @@
   function idleAct(name, nowMs) { const s = idleSlot(name, nowMs); return IDLE_ACTS[hash(name + ':' + s.idx) % IDLE_ACTS.length]; }
   function workBreak(name, nowMs) {
     const period = 240 + hash('brk:' + name) % 121, t = nowMs / 1000 + hash('bo:' + name) % period; // every 4-6 min, staggered
-    if (t % period >= 45) return null;
-    return BREAK_ACTS[hash(name + ':b' + Math.floor(t / period)) % BREAK_ACTS.length];
+    const kind = BREAK_ACTS[hash(name + ':b' + Math.floor(t / period)) % BREAK_ACTS.length];
+    if (t % period >= (kind === 'stretch' ? 14 : 45)) return null; // a stretch is ~14 s, a refresh walk ~45 s
+    return kind;
   }
   /* ---------- Item 16b: pose follows the freshest real signal ----------
      A bot's "last seen" is the newest of: the row's last_action_at, its screen text, running routine, audit and work
@@ -1082,6 +1083,132 @@
   }
   function etDayStart(ms) { const off = etOffsetMin(ms), et = new Date(ms - off * MIN); const local = Date.UTC(et.getUTCFullYear(), et.getUTCMonth(), et.getUTCDate()); return local + etOffsetMin(local + off * MIN) * MIN; }
 
+
+  /* ---------- Tim feedback 1-16 (Nov 16): pure helpers for the 3D office ---------- */
+  /* Items 3 / 9: only a bot with a REAL needs_tim item waves. `list` is needsList(): live bot asks (status needs_tim with a
+     question, not EXAMPLE, not PR-resolved) and live needs_tim entries naming a bot. Idle / stale / blocked bots never. */
+  function needsTimNames(list) {
+    const out = new Set();
+    for (const n of (list && list.needs) || []) { const b = canonicalBot(n.bot, n.bot_id); if (b) out.add(b); }
+    return out;
+  }
+  /* Item 2: waterfall texture offset; water moves DOWN (offset grows), nothing moves when reduced motion is on. */
+  function waterfallOffset(y, dt, reduced) { return reduced ? y : (y + Math.max(0, dt) * 0.35) % 1; }
+
+  /* Item 5: day / night from America/New_York wall-clock time (Tim is in Tennessee). Sunrise / sunset follow the season
+     (about 36 N: day length 12 h +/- 2.2 h) and DST; no browser-local time zone is used. */
+  function etDate(ms) {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }).formatToParts(new Date(ms));
+    const g = k => Number(p.find(x => x.type === k).value);
+    return { y: g('year'), mo: g('month'), d: g('day'), h: g('hour'), mi: g('minute') };
+  }
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const mixHex = (a, b, k) => { const c = i => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k); return '#' + [1, 3, 5].map(i => c(i).toString(16).padStart(2, '0')).join(''); };
+  function skyState(now) {
+    const e = etDate(now), hour = e.h + e.mi / 60;
+    const doy = Math.floor((Date.UTC(e.y, e.mo - 1, e.d) - Date.UTC(e.y, 0, 0)) / 86400000);
+    const dst = etOffsetMin(now) === 240, noon = 12.67 + (dst ? 1 : 0), len = 12 + 2.2 * Math.sin(2 * Math.PI * (doy - 80) / 365);
+    const sunrise = noon - len / 2, sunset = noon + len / 2, f = (hour - sunrise) / (sunset - sunrise);
+    const edge = Math.min(hour - sunrise, sunset - hour), alt = f >= 0 && f <= 1 ? Math.sin(Math.PI * f) : 0;
+    const daylight = clamp01((edge + 0.5) / 1.25) * (0.55 + 0.45 * alt), warm = clamp01(1 - Math.abs(edge) / 0.9);
+    const night = hour < sunrise || hour > sunset, nf = hour > sunset ? (hour - sunset) / (24 - len) : (hour + 24 - sunset) / (24 - len);
+    let top = mixHex('#060b1e', '#3f8fe0', daylight), bottom = mixHex('#101a38', '#bfe2ff', daylight);
+    top = mixHex(top, '#4b3a6e', warm * 0.5 * (1 - daylight * 0.4)); bottom = mixHex(bottom, '#ff9a5a', warm * 0.75);
+    return { hour, sunrise, sunset, daylight, warm, isNight: daylight < 0.12, night, top, bottom, stars: clamp01(1 - daylight * 2.2),
+      sun: !night ? { x: clamp01(f), y: alt } : null, moon: night ? { x: clamp01(nf), y: Math.sin(Math.PI * clamp01(nf)) } : null, lights: daylight < 0.55 };
+  }
+
+  /* Seedable RNG (mulberry32). Same seed -> same sequence. */
+  function makeRng(seed) {
+    let a = (seed >>> 0) || 0x9e3779b9;
+    return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  /* Items 10 / 11: idle activity rotation. A shuffled "bag" so every activity comes round before one repeats; never the
+     same activity twice in a row; 60-150 s each (randomized); restock only when the fridge is not full, forced when low. */
+  const IDLE_ACTIVITIES = ['couch_sleep', 'desk_nap', 'hr_training', 'video_game', 'exercise_bike', 'group_chat', 'restock_fridge', 'pool'];
+  const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 6;
+  function createIdleState() { return { act: null, until: 0, bag: [], last: null }; }
+  function fridgeLow(stock, cap) { return stock <= FRIDGE_LOW * ((cap || FRIDGE_CAP) / FRIDGE_CAP); }
+  function idleTick(state, rng, nowSec, ctx) {
+    const c = ctx || {}, restock = c.restock || 'ok'; // 'force' | 'ok' | 'no'
+    if (restock === 'force' && state.act !== 'restock_fridge') { state.act = 'restock_fridge'; state.last = state.act; state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S); return state.act; }
+    if (state.act && nowSec < state.until && !(state.act === 'restock_fridge' && restock === 'no')) return state.act;
+    const ok = a => !(a === 'restock_fridge' && restock === 'no') && !(c.blocked && c.blocked.includes(a));
+    state.bag = state.bag.filter(ok);
+    if (!state.bag.length) {
+      const b = IDLE_ACTIVITIES.filter(ok);
+      for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+      if (b.length > 1 && b[0] === state.last) b.push(b.shift());
+      state.bag = b;
+    }
+    let i = state.bag.findIndex(a => a !== state.last); if (i < 0) i = 0;
+    state.act = state.bag.splice(i, 1)[0] || 'video_game'; state.last = state.act;
+    state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S);
+    return state.act;
+  }
+  /* Standing group around (cx, cz): n slots on a ring, each facing the middle. */
+  function groupChatSlots(cx, cz, n, radius) {
+    const r = radius || 0.75, out = [];
+    for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + Math.PI / 4, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r; out.push({ x: +x.toFixed(3), z: +z.toFixed(3), face: Math.atan2(cx - x, cz - z) }); }
+    return out;
+  }
+  /* The restocker is the first idle (not working, not waving) bot by hash, only while the fridge is low; one at a time. */
+  function pickRestocker(idleNames, stock, current) {
+    if (current && idleNames.includes(current)) return stock < FRIDGE_CAP ? current : null; // done once it is full again
+    if (!fridgeLow(stock)) return null;
+    return idleNames.slice().sort((a, b) => hash('rs:' + a) - hash('rs:' + b))[0] || null;
+  }
+
+  /* Item 12: job flow. receive (walk to the board, take the card) -> work (walk to the desk, type) -> log (walk back to
+     the board, log it) -> done (null). Finished = the card is Done or gone from the board; capped so nothing waits forever. */
+  const JOB_PHASES = ['receive', 'work', 'log'], JOB_HOLD_S = 2.6, JOB_WORK_MAX_S = 600;
+  const jobStart = (itemId, nowSec) => ({ itemId, phase: 'receive', since: nowSec || 0 });
+  const jobGoal = job => (job && job.phase === 'work' ? 'desk' : 'board');
+  function jobStep(job, ctx) {
+    if (!job) return null;
+    const c = ctx || {}, held = c.heldFor == null ? -1 : c.heldFor;
+    if (job.phase === 'receive') return c.arrived && held >= JOB_HOLD_S ? Object.assign({}, job, { phase: 'work', since: c.now || 0 }) : job;
+    if (job.phase === 'work') return c.finished || (c.now != null && c.now - job.since > JOB_WORK_MAX_S) ? Object.assign({}, job, { phase: 'log', since: c.now || 0 }) : job;
+    return c.arrived && held >= JOB_HOLD_S ? null : job;
+  }
+  const JOB_ASSIGN_REASONS = ['new', 'reassigned', 'take']; // diffItems / diffWork events that hand a card to a bot
+
+  /* Item 13: pool shot. 7 s loop: aim (ball rests), stroke (cue strikes at 2.4 s), roll across the table with friction,
+     bounce off the rail, settle, reset. Table-local metres. Returns {ball:{x,z}, stroke:0..1, phase}. */
+  const POOL = { start: { x: -0.2, z: -0.6 }, halfW: 0.54, loop: 7 };
+  function poolShot(t) {
+    const u = ((t % POOL.loop) + POOL.loop) % POOL.loop, s = POOL.start;
+    if (u < 2.2) return { ball: { x: s.x, z: s.z }, stroke: 0, phase: 'aim' };
+    if (u < 2.7) return { ball: { x: s.x, z: s.z }, stroke: Math.sin((u - 2.2) / 0.5 * Math.PI) * (u < 2.45 ? -0.6 : 1), phase: 'stroke' };
+    const k = Math.min(1, (u - 2.7) / 3.3), dist = 1.5 * (1 - (1 - k) * (1 - k)); // decelerating roll, 1.5 m of travel
+    let x = s.x + dist * 0.86, z = s.z + dist * 0.5;
+    if (x > POOL.halfW) x = 2 * POOL.halfW - x; // bounce off the side rail
+    return { ball: { x, z }, stroke: 0, phase: u < 6 ? 'roll' : 'rest' };
+  }
+
+  /* Item 14: faces blend between expressions. Each expression is a set of weights; the face eases towards the target. */
+  const EXPR = {
+    happy: { smile: 1, frown: 0, flat: 0, oh: 0, drop: 0, worry: 0, puzzle: 0, lid: 0 },
+    neutral: { smile: 0.45, frown: 0, flat: 0, oh: 0, drop: 0, worry: 0, puzzle: 0, lid: 0 },
+    worried: { smile: 0, frown: 1, flat: 0, oh: 0, drop: 1, worry: 1, puzzle: 0, lid: 0 },
+    puzzled: { smile: 0, frown: 0, flat: 1, oh: 0, drop: 0, worry: 0, puzzle: 1, lid: 0 },
+    sleepy: { smile: 0, frown: 0, flat: 0, oh: 1, drop: 0, worry: 0, puzzle: 0, lid: 1 }
+  };
+  const exprParams = name => Object.assign({}, EXPR[name] || EXPR.neutral);
+  function blendExpression(cur, target, dt, rate) {
+    const goal = typeof target === 'string' ? exprParams(target) : target, k = 1 - Math.exp(-(rate || 9) * Math.max(0, dt)), out = {};
+    for (const key of Object.keys(EXPR.happy)) { const a = cur && cur[key] != null ? cur[key] : goal[key]; const v = a + (goal[key] - a) * k; out[key] = Math.abs(goal[key] - v) < 0.002 ? goal[key] : v; }
+    return out;
+  }
+  /* Item 15: natural random blinking. One blink = 0.16 s close-open; next one 2-6.5 s later; ~1 in 8 is a quick double. */
+  const BLINK_DUR = 0.16;
+  function createBlinker(rng, t0) { return { at: (t0 || 0) + 0.5 + rng() * 3, dur: BLINK_DUR, double: false }; }
+  function blinkAmount(state, t, rng) {
+    if (t < state.at) return 0;
+    const u = (t - state.at) / state.dur;
+    if (u >= 1) { state.double = !state.double && rng() < 0.125; state.at = t + (state.double ? 0.12 + rng() * 0.08 : 2 + rng() * 4.5); return 0; }
+    return Math.sin(u * Math.PI);
+  }
   return {
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, LOD, COLORS,
@@ -1097,6 +1224,8 @@
     latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
-    writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations
+    writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
+    needsTimNames, waterfallOffset, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, createIdleState, fridgeLow, idleTick,
+    groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
   };
 });
