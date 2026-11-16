@@ -3504,6 +3504,31 @@ function ncHasPhrase_(title, phrase) {
   }
   return false;
 }
+/** NC-020: title_exempt phrase words in order with up to NC_EXEMPT_GAP_ words between ("Senior Staff Systems Engineer",
+ * "Staff Dry Etch Process Development Engineer"), or the last (family) word first and the level words after it within
+ * 2 words ("Mechanical Engineer, Senior Staff", "Facilities Engineer Senior Principal"). A trailing (...) suffix is kept. */
+var NC_EXEMPT_GAP_ = 4;
+function ncWordAt_(word, part, isLast) { return word === part || (isLast && (word === part + 's' || word === part + 'es')); }
+function ncInOrder_(tw, seq, lastIdx, maxGap) {
+  for (var i = 0; i < tw.length; i++) {
+    if (!ncWordAt_(tw[i], seq[0], lastIdx === 0)) continue;
+    var at = i, ok = true;
+    for (var j = 1; j < seq.length && ok; j++) {
+      ok = false;
+      for (var k = at + 1; k <= at + 1 + maxGap && k < tw.length; k++) { if (ncWordAt_(tw[k], seq[j], lastIdx === j)) { at = k; ok = true; break; } }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+function ncTitleExemptHit_(title, phrase) {
+  var raw = String(title || '').replace(/[()]/g, ' ');
+  if (ncHasPhrase_(raw, phrase)) return true;
+  var tw = normTitle(raw).split(' ').filter(Boolean), pw = normTitle(phrase).split(' ').filter(Boolean);
+  if (!tw.length || !pw.length) return false;
+  if (ncInOrder_(tw, pw, pw.length - 1, NC_EXEMPT_GAP_)) return true;
+  return pw.length > 1 && ncInOrder_(tw, [pw[pw.length - 1]].concat(pw.slice(0, -1)), 0, 2);
+}
 function ncWorkMode_(rec) {
   var hybrid = String(rec && rec.REMOTE_HYBRID || ''), loc = String(rec && rec.LOCATION || '');
   var blob = hybrid + ' ' + loc;
@@ -3548,7 +3573,7 @@ function ncTitleAtLeastVp_(title) {
 function ncSpecMatches_(rec, spec) {
   var title = String(rec && rec.TITLE || '');
   if (spec.titleAny.length || spec.titleExempt.length || spec.levelPhrases.length) {
-    if (spec.titleExempt.some(function (p) { return ncHasPhrase_(title, p); })) return false;
+    if (spec.titleExempt.some(function (p) { return ncTitleExemptHit_(title, p); })) return false;
     if (spec.levelPhrases.some(function (p) { return ncHasPhrase_(title, p); })) return false;
     if (!spec.titleAny.length || !spec.titleAny.some(function (p) { return ncHasPhrase_(title, p); })) return false;
   }
