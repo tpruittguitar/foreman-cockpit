@@ -22,7 +22,7 @@ const reducedMQ = matchMedia('(prefers-reduced-motion: reduce)');
 const LOW = L.isPhoneLike({ coarse, width: innerWidth }) && !TV; // lower quality on phones
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const SEATS = ['Claude', 'Software', 'Comp', 'GUI', 'ChatGPT', 'Sniffer', 'QA bot', 'Archive', 'Root', 'President', 'Usage Ctrl', 'dr eggbot'];
+const SEATS = ['Claude', 'Software', 'Comp', 'GUI', 'ChatGPT', 'Sniffer', 'QA bot', 'Archive · Application State Tracker', 'Root', 'President', 'Usage Budget', 'HR - Bot Trainer'];
 const DESK_X = [-7, -3.8, -0.6, 2.6], DESK_Z = [-4, -0.6, 2.8];
 
 const T = window.__office = { mode: 'loading', frames: 0, webgl: null, ready: false, errors: [], state: '', lastPoll: 0 };

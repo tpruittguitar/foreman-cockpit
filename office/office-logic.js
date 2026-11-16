@@ -140,11 +140,15 @@
     });
   }
 
+  /* Older OFFICE_STATUS names mapped to the exact Grok Bot sidebar names. */
+  const BOT_ALIASES = { 'Usage Ctrl': 'Usage Budget', 'Usage Ctr': 'Usage Budget', 'dr eggbot': 'HR - Bot Trainer', 'Archive': 'Archive \u00b7 Application State Tracker' };
+  function canonicalBot(name) { const n = str(name).trim(); return BOT_ALIASES[n] || n; }
+
   function parseBots(list) {
     if (!Array.isArray(list)) return [];
     const seen = new Set(), out = [];
     for (const r of list) {
-      const bot = str(r && r.bot).trim();
+      const bot = canonicalBot(r && r.bot);
       if (!bot || seen.has(bot)) continue;
       seen.add(bot);
       out.push({
@@ -330,11 +334,11 @@
         B('QA bot', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc', 'blocked', 'EXAMPLE: quarantine flaky tests', 'Two runs disagree', 41, 'EXAMPLE: quarantine the flaky map test or keep it blocking?'),
         B('Sniffer', '321469c4-1299-43e7-bd32-1704f58777be', 'idle', '', 'Finished the search-filter sweep', 30),
         B('Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a', 'idle', '', 'Lead scoring rules done', 52),
-        B('Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d', 'idle', '', 'Archived stale asks', 75),
+        B('Archive · Application State Tracker', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d', 'idle', '', 'Archived stale asks', 75),
         B('Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841', 'working', 'Building the 3D office viewer (foreman-cockpit PR)', 'Wrote the scene and tests', 1),
         B('ChatGPT', '7bcb0d85-ec55-4e17-907f-3e71688e8799', 'idle', '', 'Cover letter templates v2', 18),
-        B('Usage Ctrl', 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'working', 'EXAMPLE: hourly AI usage report', 'Posted usage readings', 4),
-        B('dr eggbot', '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'idle', '', 'Checked in', 12)
+        B('Usage Budget', 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'working', 'EXAMPLE: hourly AI usage report', 'Posted usage readings', 4),
+        B('HR - Bot Trainer', '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'idle', '', 'Checked in', 12)
       ],
       items: [
         I('ex-412', 'EXAMPLE #412 Approve job-board API key', 'Needs Tim', 'waiting_tim', 'Root', 'Job pipeline'),
@@ -345,8 +349,8 @@
         I('ex-401', 'EXAMPLE #401 Indeed search filters', 'P3', 'done', 'Sniffer', 'Job pipeline'),
         I('ex-399', 'EXAMPLE #399 Resume PDF export', 'P3', 'done', 'ChatGPT', 'Job pipeline'),
         I('ex-396', 'EXAMPLE #396 Lead scoring rules', 'P2', 'done', 'Comp', 'Job pipeline'),
-        I('ex-392', 'EXAMPLE #392 Archive stale asks', 'P4', 'done', 'Archive', 'Job pipeline'),
-        I('ex-390', 'EXAMPLE #390 Usage report v3', 'P4', 'done', 'Usage Ctrl', 'Job pipeline'),
+        I('ex-392', 'EXAMPLE #392 Archive stale asks', 'P4', 'done', 'Archive · Application State Tracker', 'Job pipeline'),
+        I('ex-390', 'EXAMPLE #390 Usage report v3', 'P4', 'done', 'Usage Budget', 'Job pipeline'),
         I('ex-388', 'EXAMPLE #388 Sidebar icons', 'P4', 'done', 'GUI', 'Job pipeline'),
         I('ex-63', 'EXAMPLE #63 Quarantine flaky tests?', 'Needs Tim', 'blocked', 'QA bot', '3D office'),
         I('office-viewer', '3D office viewer (foreman-cockpit PR)', 'P2', 'working', 'Claude', '3D office'),
@@ -387,6 +391,6 @@
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
-    usageStale, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS
+    usageStale, canonicalBot, BOT_ALIASES, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS
   };
 });

@@ -36,7 +36,7 @@ const SHAPES = {
   egg: () => Array.from({ length: 72 }, (_, i) => { const t = i / 72 * TAU; return [0.32 * Math.cos(t) * (1 - 0.1 * Math.sin(t)), 0.42 * Math.sin(t)]; })
 };
 
-/* bot -> { shape, rot, color }. dr eggbot is not in the sidebar refs: an egg shape is our guess from the name. */
+/* bot -> { shape, rot, color }. HR - Bot Trainer (formerly dr eggbot) keeps the egg shape guessed from its old name. */
 export const AVATARS = {
   'Root': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' },
   'Software': { shape: 'star4', rot: 0.35, color: '#22b8a2' },
@@ -46,9 +46,9 @@ export const AVATARS = {
   'Comp': { shape: 'wedge', rot: 0.05, color: '#1cc26d' },
   'ChatGPT': { shape: 'wedge', rot: -0.18, color: '#f79a1d' },
   'Claude': { shape: 'cookie6', rot: 0.2, color: '#a8733f' },
-  'Usage Ctrl': { shape: 'wedge', rot: 0.25, color: '#7c7b79' },
-  'Archive': { shape: 'pentagon', rot: 0.25, color: '#f2389b' },
-  'dr eggbot': { shape: 'egg', rot: 0, color: '#f1e3c2' },
+  'Usage Budget': { shape: 'wedge', rot: 0.25, color: '#7c7b79' },
+  'Archive · Application State Tracker': { shape: 'pentagon', rot: 0.25, color: '#f2389b' },
+  'HR - Bot Trainer': { shape: 'egg', rot: 0, color: '#f1e3c2' },
   'President': { shape: 'minifig', rot: 0, color: '#f5d2b0' }
 };
 const FALLBACK = ['#c9a227', '#5b8def', '#e06666', '#6aa84f'];

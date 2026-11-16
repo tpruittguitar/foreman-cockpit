@@ -36,7 +36,7 @@ export function drawDesk(ctx, W, H, o) {
   ctx.fillStyle = '#1e2024'; ctx.fillRect(0, 0, W, 34 * s);
   ['#ff5f57', '#febc2e', '#28c840'].forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc((18 + i * 18) * s, 17 * s, 5 * s, 0, 7); ctx.fill(); });
   ctx.fillStyle = '#9aa0a8'; ctx.font = `500 ${15 * s}px ${MONO}`;
-  const app = b.bot === 'President' ? 'Forge checksheet' : b.bot === 'Usage Ctrl' ? 'Usage board' : 'terminal';
+  const app = b.bot === 'President' ? 'Forge checksheet' : b.bot === 'Usage Budget' ? 'Usage board' : 'terminal';
   ctx.fillText(fit(ctx, b.bot.toLowerCase().replace(/\s+/g, '-') + ' — ' + app, 420 * s), 74 * s, 22 * s);
   if (o.demo) { ctx.textAlign = 'left'; exampleTag(ctx, W - 150 * s, 23 * s, 13 * s); }
   // state strip
@@ -66,7 +66,7 @@ export function drawDesk(ctx, W, H, o) {
   ctx.fillText(fit(ctx, (b.last_action || '(no last action)') + ' · ' + L.relTime(b.last_action_at, o.now), maxW), x0, 164 * s);
   ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.moveTo(x0, 182 * s); ctx.lineTo(W - x0, 182 * s); ctx.stroke();
   if (b.bot === 'President') return checksheet(ctx, W, H, s, o.allItems, o.now);
-  if (b.bot === 'Usage Ctrl') return miniUsage(ctx, W, H, s, o.usage, o.now);
+  if (b.bot === 'Usage Budget') return miniUsage(ctx, W, H, s, o.usage, o.now);
   // terminal: this bot's own items and question, from the data only
   ctx.font = `500 ${20 * s}px ${MONO}`;
   const lines = [];

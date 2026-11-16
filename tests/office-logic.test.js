@@ -222,3 +222,15 @@ test('demo data shows every status and both pickup and conversation behaviours',
   const n = L.parseStatus(L.demoNextStatus(L.demoStatus(NOW), NOW + 5000));
   assert.ok(L.diffItems(d.items, n.items).length >= 2);
 });
+
+test('bot names match the Grok Bot sidebar; older names are mapped', () => {
+  assert.equal(L.canonicalBot('Usage Ctrl'), 'Usage Budget');
+  assert.equal(L.canonicalBot('dr eggbot'), 'HR - Bot Trainer');
+  assert.equal(L.canonicalBot(' Archive '), 'Archive \u00b7 Application State Tracker');
+  assert.equal(L.canonicalBot('QA bot'), 'QA bot');
+  const bots = L.parseStatus({ bots: [{ bot: 'Usage Ctrl', status: 'idle' }, { bot: 'Usage Budget', status: 'working' }] }).bots;
+  assert.deepEqual(bots.map(b => b.bot), ['Usage Budget']);
+  const demo = L.demoStatus(NOW).bots.map(b => b.bot);
+  for (const n of ['Usage Budget', 'HR - Bot Trainer', 'Archive \u00b7 Application State Tracker']) assert.ok(demo.includes(n), n);
+  for (const n of ['Usage Ctrl', 'dr eggbot', 'Archive']) assert.ok(!demo.includes(n), n);
+});
