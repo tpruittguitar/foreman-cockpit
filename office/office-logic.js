@@ -587,6 +587,27 @@
     { repo: 'foreman-cockpit', number: 0, title: 'EXAMPLE: ready PR with passing checks', url: '', draft: false, checks: 'passing', readyForTim: true }
   ];
 
+  /* ---------- OFFICE_STATUS.json schema notes, v3 (all fields optional; whoever writes OFFICE_STATUS can add them) ----------
+     bots[] rows ARE the roster: one desk + one character per row, in file order (bots added/removed need no code change).
+       bot_id | id           Grok Bot id (either name accepted)
+       screen_url           http(s) only; clicking the bot's monitor opens it in a new tab (other schemes are ignored)
+       avatar_shape / avatar_color   sidebar mark for bots without a custom model (shapes: square, tablet, sparkle, star,
+                            clover, teardrop, wedge, blob, flower, pentagon, dial; colours: magenta, blue, red, green, yellow,
+                            black, gray, cyan, brown, ...). Fallback: the baked map in office/avatars.js, then a hash colour.
+       status               needs_tim / waiting_tim raise a hand ONLY with a non-empty `question`; waiting / queued = idle;
+                            blocked is never Needs Tim.
+       audit                { last_at, checks:{ ask_tim, stuck_processes, suspicious_data, constraint: "ok"|"flag" }, findings_sent }
+                            -> mini audit view on the bot's monitor and popup; unknown values show "?"; stale after 8 h.
+       work[]               [{ id?, title, status, at, link (http/https), owner? (bot_id) }] newest first, latest 5 shown as
+                            board cards ("Audit finding" for Gauge, "Diagnosis" for Root, "<name> work" otherwise).
+                            id missing -> derived from bot+title+at. owner change -> the new owner takes the card off the board.
+       routine              { name, running:true, started_at } -> monitor shows "▶ <name> running" + start time (ET).
+     needs_tim[]            { text, link?, bot?, bot_id?, resolved?:true, resolved_at?:ISO, expires_at?:ISO }
+                            resolved / resolved_at / past expires_at -> hidden. A GitHub PR link follows the live PR:
+                            merged/closed -> gone; open -> "Review / merge queue" (never Needs Tim).
+     items[]                + question (needs_tim cards count only with one), note (shown on the card), source, project
+                            (any name; mapped to the closest known project by words, else "Other").
+  */
   /* =====================================================================================================================
      v3 additions. Everything below is pure (no DOM, no Three.js) and unit-tested in tests/office-logic.test.js.
      ===================================================================================================================== */
