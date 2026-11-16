@@ -34,7 +34,7 @@ test('legacy Grok salary remains usable when newer salary fields are absent',()=
 const deepFreeze=o=>{Object.values(o).forEach(v=>v&&typeof v==='object'&&deepFreeze(v));return Object.freeze(o)};
 
 test('full fit precedence: each recognized field outranks every field after it; legacy = anything but SCOPE_FIT_RAW',()=>{
-  const keys=['SCOPE_FIT_RAW','GROK_SCOPE_FIT_RAW','RAW_FIT','EXPERIENCE_FIT_SCORE','EXPERIENCE_FIT','FIT_SCORE','FIT_PCT','WORK_CONTENT_FIT','FIT'];
+  const keys=['SCOPE_FIT_RAW','GROK_SCOPE_FIT_RAW','RAW_FIT','EXPERIENCE_FIT_SCORE','FIT_SCORE','FIT_PCT','WORK_CONTENT_FIT','FIT'];
   keys.forEach((k,i)=>{const p={};keys.slice(i).forEach((kk,j)=>{p[kk]=String(90-j)});const ev=E.fit(deepFreeze(p));assert.equal(ev.source,k);assert.equal(ev.value,90);assert.equal(ev.legacy,k!=='SCOPE_FIT_RAW')});
   assert.deepEqual(E.fit({SCOPE_FIT_RAW:'UNKNOWN',GROK_SCOPE_FIT_RAW:'82'}),{value:82,source:'GROK_SCOPE_FIT_RAW',legacy:true});
   assert.deepEqual(E.fit({}),{value:null,source:'',legacy:false});
@@ -72,6 +72,18 @@ test('trust labels: legacy pay is known but never silently VERIFIED; estimates s
   assert.match(T.salary({SALARY_MIDPOINT:'$195,000',SALARY_CONF:'VERIFIED'}),/^ESTIMATED · CONFIDENCE UNCONFIRMED/);
   assert.equal(T.salary({SALARY_BASE_POSTED:'$200,000-$240,000',SALARY_CONF:'VERIFIED',SALARY_MIDPOINT:'$150,000'}),'VERIFIED');
   assert.equal(T.salary({}),'UNKNOWN');
+});
+
+test('FIT cell names a keyword proxy',()=>{
+  const html=require('node:fs').readFileSync(require('node:path').join(__dirname,'..','pipeline.html'),'utf8');
+  assert.match(html,/c==='EXPERIENCE_FIT'\)\{var ex=scoreFor_\(r\)\.parts\.experience;v=esc\(v\)\+\(ex&&ex\.evidenceSource==='KEYWORD_PROXY'\?' proxy':''\)\}/);
+});
+
+test('a stored EXPERIENCE_FIT number is a keyword proxy, not role-fit evidence',()=>{
+  assert.equal(E.fit({EXPERIENCE_FIT:'35'}).value,null);
+  assert.equal(E.FIT_KEYS.includes('EXPERIENCE_FIT'),false);
+  const e=S.scoreRow({TITLE:'Plant quality lead',COMPANY:'X',LOCATION:'Austin, TX',payload:{EXPERIENCE_FIT:'40'}},S.defaults()).parts.experience;
+  assert.equal(e.evidenceSource,'KEYWORD_PROXY');
 });
 
 test('a stored qualitative fit label is still stored evidence, not a keyword recompute',()=>{
