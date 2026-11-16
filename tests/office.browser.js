@@ -111,7 +111,7 @@ function colours(buf) {
       assert.equal(await page.evaluate(() => document.pointerLockElement), null, 'no pointer lock');
       const href = await page.getAttribute('#chat-open', 'href');
       assert.match(href, /^grokbot:\/\/app\/v1\/agent\?id=[0-9a-f-]{36}$/, 'Open chat link');
-      assert.equal(await page.textContent('#chat-send'), 'Send in Grok Bot');
+      assert.equal(await page.textContent('#chat-send'), 'Send');
       await page.click('#panel-close');
       // a plain click on a monitor (bot without screen_url) opens its screen popup
       let mon = null; const seen = [];

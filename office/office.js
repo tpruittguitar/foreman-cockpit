@@ -240,7 +240,7 @@ $('panel').addEventListener('click', e => {
   if (tab) { boardTab = tab.dataset.tab; openBoard(); world && world.dirty(); }
   else if (dn) { doneOpen = !doneOpen; openBoard(); world && world.dirty(); }
   else if (ch) { e.preventDefault(); openChatApp(ch.dataset.chat); }
-  else if (key) { e.preventDefault(); askRelayKey(); }
+  else if (key) { e.preventDefault(); if (askRelayKey()) { const t = $('chat-thread'); if (t && t.dataset.bot) refreshThread(t.dataset.bot); } }
   else if (sc) openScreen(sc.dataset.screen);
   else if (go) { e.preventDefault(); closePanel(); world && world.goToBot(go.dataset.go); }
   else if (b) openBot(b.dataset.bot); else if (it) openItem(it.dataset.item);
@@ -266,14 +266,20 @@ function openChatApp(id, name, after) {
 
 /* ---------- chat relay (functions/api/office-chat.js) ---------- */
 const KEY_STORE = 'office.chatKey';
-const relayKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
-function askRelayKey() { const k = prompt('Office chat key (asked once, kept in this browser only):', ''); if (k != null) { try { localStorage.setItem(KEY_STORE, k.trim()); } catch (e) { /* ignore */ } toast(k ? 'Chat key saved in this browser' : 'Chat key cleared'); } }
+let pendingKey = ''; // typed but not yet proven by a successful relay call
+const relayKey = () => { if (pendingKey) return pendingKey; try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
+const saveKey = k => { try { localStorage.setItem(KEY_STORE, k); } catch (e) { /* private mode: kept for this page only */ } };
+const dropKey = () => { pendingKey = ''; try { localStorage.removeItem(KEY_STORE); } catch (e) { /* ignore */ } };
+// asked once: the key is saved in this browser (localStorage, every bot, every reload) after the relay accepts it
+function askRelayKey(why) { const k = prompt((why ? why + '\n' : '') + 'Office chat key (asked once, then kept in this browser):', ''); if (k == null || !k.trim()) return false; pendingKey = k.trim(); relayDown = false; return true; }
 let relayDown = DEMO; // demo never posts anywhere
 async function relay(method, botId, text) {
   if (relayDown || !relayKey()) return { ok: false, status: 0 };
   const r = await fetch(RELAY_URL + (method === 'GET' ? '?bot=' + encodeURIComponent(botId) : ''), { method, headers: { 'X-Office-Key': relayKey(), 'Content-Type': 'application/json' }, body: method === 'POST' ? JSON.stringify({ bot_id: botId, text }) : undefined })
     .catch(() => ({ ok: false, status: 0 }));
   if (r.status === 503 || r.status === 404) relayDown = true;
+  if (r.ok && pendingKey) { saveKey(pendingKey); pendingKey = ''; toast('Chat key saved in this browser'); }
+  if (r.status === 401) dropKey();
   return { ok: r.ok, status: r.status, json: r.ok && r.json ? await r.json().catch(() => null) : null };
 }
 function threadHTML(list) {
@@ -284,22 +290,23 @@ async function refreshThread(botId) {
   const el = $('chat-thread'); if (!el) return;
   const r = await relay('GET', botId);
   if (r.ok && r.json) el.innerHTML = threadHTML(r.json.messages);
-  else if (relayDown || !relayKey()) el.innerHTML = '<p class="fallback">' + (relayKey() ? 'Chat relay not configured: use Send in Grok Bot / Open chat.' : 'Replies show here once the office chat key is set (<a href="#" data-chatkey="1">set key</a>).') + '</p>';
+  else if (relayDown || !relayKey()) el.innerHTML = '<p class="fallback">' + (relayKey() ? 'Chat relay not configured: Send copies the message for Open chat.' : 'Replies show here once the office chat key is set (<a href="#" data-chatkey="1">set key</a>).') + '</p>';
 }
 async function sendChat(b) {
   const ta = $('chat-text'), text = (ta.value || '').trim(); if (!text) return ta.focus();
   if (text.length > 2000) return toast('Messages are limited to 2000 characters');
   const id = idFor(b.bot, b.bot_id);
-  const r = await relay('POST', id, text);
+  let r = await relay('POST', id, text);
+  if (!relayDown && (r.status === 401 || !relayKey()) && askRelayKey(r.status === 401 ? 'That chat key was not accepted.' : '')) r = await relay('POST', id, text);
   if (r.ok) { ta.value = ''; toast('Sent to ' + b.bot + "'s mailbox; the reply shows here"); return refreshThread(id); }
   try { await navigator.clipboard.writeText(text); } catch (e) { /* clipboard blocked: the text stays in the box */ }
   openChatApp(id, b.bot, "Message copied, paste it in " + b.bot + "'s chat");
 }
 function chatBoxHTML(b) {
   const id = idFor(b.bot, b.bot_id), href = L.chatLink(id);
-  return `<section class="chatbox" aria-label="Chat with ${esc(b.bot)}"><h3>Chat with ${esc(b.bot)}</h3><div id="chat-thread" class="thread"></div>
+  return `<section class="chatbox" aria-label="Chat with ${esc(b.bot)}"><h3>Chat with ${esc(b.bot)}</h3><div id="chat-thread" class="thread" data-bot="${esc(id)}"></div>
     <textarea id="chat-text" maxlength="2000" rows="2" placeholder="Message ${esc(b.bot)}…"></textarea>
-    <div class="chatrow"><button type="button" class="linkbtn" id="chat-send">Send in Grok Bot</button>
+    <div class="chatrow"><button type="button" class="linkbtn" id="chat-send">Send</button>
     ${href ? `<a class="open" id="chat-open" href="${esc(href)}" data-chat="${esc(id)}">Open chat</a>` : '<span class="fallback">no bot id known</span>'}</div></section>`;
 }
 function openBot(name) {
