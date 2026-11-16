@@ -110,6 +110,24 @@ function colours(buf) {
     }
     await page.click('#start-btn'); // click-to-start pointer lock (may be refused headless; must not error)
     await page.waitForTimeout(300);
+    // a plain click on a bot opens its panel without pointer lock (no Esc needed), and the panel links the bot's chat
+    if (await page.evaluate(() => window.__office.webgl)) {
+      await page.evaluate(() => document.exitPointerLock && document.exitPointerLock());
+      const bpt = await page.evaluate(() => { // first on-screen point whose pick is a bot and isn't covered by HUD
+        for (let y = 300; y < 1000; y += 20) for (let x = 100; x < 1820; x += 20) {
+          const hit = window.__office.pickAt(x, y);
+          if (hit && hit.bot && (document.elementFromPoint(x, y) || {}).tagName === 'CANVAS') return [x, y, hit.bot];
+        }
+        return null;
+      });
+      assert.ok(bpt, 'a bot is clickable on screen');
+      await page.mouse.click(bpt[0], bpt[1]);
+      await page.waitForSelector('#panel:not([hidden])', { timeout: 90000 });
+      assert.equal(await page.evaluate(() => document.pointerLockElement), null, 'click does not lock the pointer');
+      assert.ok(await page.$('#panel a[href^="grokbot://app/v1/agent?id="]'), 'bot panel has the chat link');
+      assert.match(await page.textContent('#panel'), new RegExp('Chat with ' + bpt[2]));
+      await page.click('#panel-close');
+    }
   });
 
   for (const [w, h] of [[1920, 1080], [3840, 2160]]) {
