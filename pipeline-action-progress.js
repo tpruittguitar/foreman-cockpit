@@ -19,7 +19,7 @@
       pending:function(detail,recheck,count,max){update(detail,count,max);el.classList.add('ap-pending');if(recheck){var b=document.createElement('button');b.textContent='Check saved results';b.onclick=function(){b.disabled=true;Promise.resolve().then(recheck).finally(function(){b.disabled=false})};el.querySelector('.ap-actions').replaceChildren(b)}}};
   }
   var buckets={DECLINE:'DECLINED_BY_TIM',APPLIED:'APPLIED',APPLY_NOW:'READY_TO_PURSUE',MANUAL_RESEARCH:'MANUAL_RESEARCH',CLOSED_DEAD:'CLOSED_DEAD',INVALID_DISCOVERY:'INVALID_DISCOVERY'};
-  function proves(row,ruling){return !!(row&&row.PRIMARY_ID===ruling.primaryId&&row.BUCKET===buckets[ruling.kind]&&row.payload&&row.payload.STATE_SOURCE==='TIM:'+ruling.requestId)}
+  function proves(row,ruling){var p=row&&row.payload,source=p&&String(p.STATE_SOURCE||''),parts=String(ruling.requestId||'').split('-'),stamp=parts[0]==='PX'&&parts[1]==='BULK'?+parts[2]:NaN,updated=Date.parse(p&&p.STATE_UPDATED_AT||'');return !!(row&&row.PRIMARY_ID===ruling.primaryId&&row.BUCKET===buckets[ruling.kind]&&p&&(source==='TIM:'+ruling.requestId||source.indexOf('TIM:')===0&&updated>=stamp))}
   var api={start:start,proves:proves};
   if(typeof module==='object'&&module.exports)module.exports=api;else root.PipelineActionProgress=api;
 })(typeof window==='object'?window:globalThis);
