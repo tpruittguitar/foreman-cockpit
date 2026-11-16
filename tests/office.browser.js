@@ -113,11 +113,13 @@ function colours(buf) {
     // a plain click on a bot opens its panel without pointer lock (no Esc needed), and the panel links the bot's chat
     if (await page.evaluate(() => window.__office.webgl)) {
       await page.evaluate(() => document.exitPointerLock && document.exitPointerLock());
-      let bpt = null;
-      for (let y = 300; y < 1000 && !bpt; y += 20) for (let x = 100; x < 1820 && !bpt; x += 20) {
-        const hit = await page.evaluate(([a, b]) => window.__office.pickAt(a, b), [x, y]);
-        if (hit && hit.bot && await page.evaluate(([a, b]) => (document.elementFromPoint(a, b) || {}).tagName, [x, y]) === 'CANVAS') bpt = [x, y, hit.bot];
-      }
+      const bpt = await page.evaluate(() => { // first on-screen point whose pick is a bot and isn't covered by HUD
+        for (let y = 300; y < 1000; y += 20) for (let x = 100; x < 1820; x += 20) {
+          const hit = window.__office.pickAt(x, y);
+          if (hit && hit.bot && (document.elementFromPoint(x, y) || {}).tagName === 'CANVAS') return [x, y, hit.bot];
+        }
+        return null;
+      });
       assert.ok(bpt, 'a bot is clickable on screen');
       await page.mouse.click(bpt[0], bpt[1]);
       await page.waitForSelector('#panel:not([hidden])', { timeout: 90000 });
