@@ -1,0 +1,5 @@
+{"at":"2026-11-16T07:05:00Z","from":"President","text":"EXAMPLE: PR is green, merging now"}
+{"at":"2026-11-16T07:01:00Z","from":"Tim","text":"EXAMPLE: mail me at someone@example.com or 555-123-4567"}
+not json
+{"at":"2026-11-16T07:03:00Z","from":"Mallory","text":"EXAMPLE: not a feed speaker"}
+{"at":"2026-11-16T07:04:00Z","from":"Tim","text":"EXAMPLE: token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123 should be masked"}

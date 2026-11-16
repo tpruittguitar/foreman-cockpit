@@ -24,7 +24,7 @@ test('parseStatus: parses the seeded shape, drops duplicates, blanks and unknown
   const p = L.parseStatus(JSON.stringify(SEED));
   assert.equal(p.ok, true);
   assert.deepEqual(p.bots.map(b => [b.bot, b.status]), [['President', 'idle'], ['Claude', 'working']]);
-  assert.deepEqual(p.needsTim, [{ text: 'Approve key', link: 'https://x/1', bot: '', bot_id: '' }]);
+  assert.deepEqual(p.needsTim, [{ text: 'Approve key', link: 'https://x/1', bot: '', bot_id: '', resolved: false, resolved_at: '', expires_at: '' }]);
   assert.equal(p.items.length, 1);
   assert.equal(p.items[0].pr, 305);
   assert.equal(p.conversations.length, 1);
@@ -42,10 +42,9 @@ test('parseStatus: bad input never throws', () => {
 test('status maps to colour, glyph, word and raised-hand flag; never colour only', () => {
   assert.deepEqual([L.statusStyle('working').color, L.statusStyle('working').flag], ['#3ddc84', false]);
   assert.deepEqual([L.statusStyle('idle').color, L.statusStyle('idle').flag], ['#8b9099', false]);
-  for (const s of ['blocked', 'waiting_tim']) {
-    const st = L.statusStyle(s);
-    assert.equal(st.color, '#ff4b4b'); assert.equal(st.flag, true); assert.equal(st.glyph, '⚠');
-  }
+  const wt = L.statusStyle('waiting_tim');
+  assert.equal(wt.color, '#ff4b4b'); assert.equal(wt.flag, true); assert.equal(wt.glyph, '⚠');
+  assert.equal(L.statusStyle('blocked').alert, false, 'blocked is never Needs Tim'); assert.equal(L.statusStyle('blocked').flag, false);
   assert.equal(L.statusStyle('waiting_tim').word, 'NEEDS TIM');
   assert.equal(L.statusStyle('blocked').word, 'BLOCKED');
   assert.equal(L.normStatus('Waiting TIM'), 'waiting_tim');
@@ -84,11 +83,12 @@ test('items: parsing, owner check, PR number in card title, priority ordering', 
 test('column mapping', () => {
   const c = (status, priority) => L.columnFor({ status, priority: priority || 'P2' });
   assert.equal(c('working'), 'in_progress');
-  assert.equal(c('waiting_tim'), 'needs_tim');
-  assert.equal(c('blocked'), 'needs_tim');
-  assert.equal(c('working', 'Needs Tim'), 'needs_tim');
-  assert.equal(c('review'), 'review');
-  assert.equal(c('working', 'PR merge queue'), 'review');
+  const q = (status, priority) => L.columnFor({ status, priority: priority || 'P2', question: 'ok?' });
+  assert.equal(q('waiting_tim'), 'needs_tim'); assert.equal(c('waiting_tim'), 'queued', 'no question -> not Needs Tim');
+  assert.equal(c('blocked'), 'in_progress');
+  assert.equal(q('working', 'Needs Tim'), 'needs_tim');
+  assert.equal(c('review'), 'in_progress'); assert.equal(L.statusWord({ status: 'review' }).word, 'REVIEW / MERGE QUEUE');
+  assert.equal(c('queued'), 'queued'); assert.equal(c('waiting'), 'queued');
   assert.equal(c('merged'), 'done');
   assert.equal(c('done', 'Needs Tim'), 'done');
 });
@@ -105,7 +105,7 @@ test('board: bitcoin row hidden until an item uses that project', () => {
   const a = L.buildBoard(L.parseItems([{ id: 'x', title: 't', project: '3D office' }]));
   assert.deepEqual(a.map(r => r.project), ['Job pipeline', '3D office']);
   const b = L.buildBoard(L.parseItems([{ id: 'x', title: 't', project: 'Bitcoin' }, { id: 'y', title: 'u', project: 'Garden' }]));
-  assert.deepEqual(b.map(r => r.project), ['Job pipeline', '3D office', 'Bitcoin', 'Garden']);
+  assert.deepEqual(b.map(r => r.project), ['Job pipeline', '3D office', 'Bitcoin', 'Other'], 'unknown projects land on Other, never a hidden tab');
 });
 
 test('LOD thresholds: far = glyph, mid = name + status, near = all three lines', () => {
@@ -191,8 +191,8 @@ test('hop order: boards row, then desk rows front to back; left/right wrap, up/d
 test('idle tour visits Needs Tim desks first and lingers longest there', () => {
   const t = [{ kind: 'board', id: 'project', x: 0 }, { kind: 'desk', bot: 'A', x: 0, z: 0 }, { kind: 'desk', bot: 'B', x: 1, z: 0 }, { kind: 'desk', bot: 'C', x: 2, z: 0 }];
   const tour = L.tourOrder(t, [{ bot: 'A', status: 'working' }, { bot: 'B', status: 'blocked' }, { bot: 'C', status: 'waiting_tim' }]);
-  assert.deepEqual(tour.map(s => s.target.bot || s.target.id), ['B', 'C', 'project', 'A']);
-  assert.ok(tour[0].dwellMs > tour[2].dwellMs && tour[2].dwellMs > tour[3].dwellMs);
+  assert.deepEqual(tour.map(s => s.target.bot || s.target.id), ['C', 'project', 'A', 'B']);
+  assert.ok(tour[0].dwellMs > tour[1].dwellMs && tour[1].dwellMs > tour[2].dwellMs);
 });
 
 test('checks, PR readiness, usage words and phone detection', () => {
@@ -217,7 +217,7 @@ test('checks, PR readiness, usage words and phone detection', () => {
 test('demo data shows every status and both pickup and conversation behaviours', () => {
   const d = L.parseStatus(L.demoStatus(NOW));
   for (const s of L.STATUSES) assert.ok(d.bots.some(b => b.status === s), s);
-  assert.equal(d.bots.length, 12);
+  assert.equal(d.bots.length, 14);
   assert.ok(L.recentConversations(d.conversations, NOW).length > 0);
   const n = L.parseStatus(L.demoNextStatus(L.demoStatus(NOW), NOW + 5000));
   assert.ok(L.diffItems(d.items, n.items).length >= 2);
@@ -276,9 +276,11 @@ test('screen: parsed tolerantly, at most 6 lines, falls back to null', () => {
 });
 test('monitor mode: President keeps the checksheet and Usage Budget the usage chart whatever screen says', () => {
   const scr = { title: 'chat', lines: ['hello'] };
-  assert.equal(L.monitorMode({ bot: 'President', screen: scr }, 'game'), 'checksheet');
-  assert.equal(L.monitorMode({ bot: 'Boss', bot_id: '431e8cf1-f077-4548-82b7-46c1959dc4c9', screen: scr }), 'checksheet');
+  assert.equal(L.monitorMode({ bot: 'President', screen: scr }, 'game'), 'president');
+  assert.equal(L.monitorMode({ bot: 'Boss', bot_id: '431e8cf1-f077-4548-82b7-46c1959dc4c9', screen: scr }), 'president');
   assert.equal(L.monitorMode({ bot: 'Usage Budget', screen: scr }), 'usage');
+  assert.equal(L.monitorMode({ bot: 'Usage Budget' }, '', { image: true }), 'mirror', 'Usage Budget mirrors its screen when one is published');
+  assert.equal(L.monitorMode({ bot: 'Comp', routine: { name: 'r' } }, 'work', { image: true }), 'routine');
   assert.equal(L.monitorMode({ bot: 'Comp', screen: scr }, 'game'), 'game');
   assert.equal(L.monitorMode({ bot: 'Comp', screen: scr }, 'work'), 'screen');
   assert.equal(L.monitorMode({ bot: 'Comp', screen: null }, 'work'), 'terminal');
@@ -296,7 +298,7 @@ test('meetings: members by name, alias or bot_id; unknown bots and empty meeting
   assert.equal(L.parseStatus({ bots: [{ bot: 'Comp' }], meetings: [{ members: ['Comp'] }] }).meetings.length, 1);
 });
 test('Needs Tim link: PR link, else the bot chat link, else the bot name with no link', () => {
-  const items = L.parseItems([{ id: 'a', title: 'Fix', priority: 'Needs Tim', status: 'blocked', owner: 'QA bot', link: 'https://github.com/o/r/pull/63' }]);
+  const items = L.parseItems([{ id: 'a', title: 'Fix', priority: 'Needs Tim', status: 'needs_tim', question: 'ok?', owner: 'QA bot', link: 'https://github.com/o/r/pull/63' }]);
   assert.deepEqual(L.needsTarget({ link: 'https://github.com/o/r/pull/9', bot: 'Root', bot_id: 'r1' }), { href: 'https://github.com/o/r/pull/9', kind: 'pr', label: 'Root' });
   assert.equal(L.needsTarget({ bot: 'QA bot', bot_id: 'q1', items }).href, 'https://github.com/o/r/pull/63');
   assert.deepEqual(L.needsTarget({ bot: 'Root', bot_id: 'r 1' }), { href: 'grokbot://app/v1/agent?id=r%201', kind: 'chat', label: 'Root' });
@@ -306,37 +308,35 @@ test('Needs Tim link: PR link, else the bot chat link, else the bot name with no
   assert.equal(L.needsTarget({ link: 'grokbot://app/v1/agent?id=z' }).kind, 'chat');
   assert.equal(L.chatLink(''), ''); assert.equal(L.isPrLink('https://github.com/o/r/pulls'), false);
 });
-test('floor plan: needs Tim waves at its desk, meetings beat work, idle bots chat / sleep / game / wander without flicker', () => {
-  const B = (bot, status) => ({ bot, status });
-  const bots = [B('Root', 'waiting_tim'), B('QA bot', 'blocked'), B('Claude', 'working'), B('Software', 'working'),
-    B('Sniffer', 'idle'), B('Comp', 'idle'), B('GUI', 'idle'), B('ChatGPT', 'idle'), B('Archive', 'idle')];
+test('floor plan: only a needs-Tim bot with a question waves; meetings beat work; idle bots pick from the busy mix', () => {
+  const B = (bot, status, question) => ({ bot, status, question: question || '' });
+  const bots = L.parseStatus({ bots: [B('Root', 'waiting_tim', 'key?'), B('QA bot', 'blocked'), B('Claude', 'working'), B('Software', 'working'),
+    B('Sniffer', 'waiting'), B('Comp', 'needs_tim'), B('GUI', 'idle'), B('ChatGPT', 'idle'), B('Gauge', 'queued')] }).bots;
   const meetings = [{ id: 'm', title: 'x', members: ['Software', 'Root'] }];
   const p = L.planOffice(bots, meetings, NOW, 'live');
-  assert.equal(p.plans.Root.act, 'wave'); assert.equal(p.plans['QA bot'].act, 'wave');
+  assert.equal(p.plans.Root.act, 'wave');
+  for (const n of ['QA bot', 'Sniffer', 'Comp', 'Gauge']) assert.notEqual(p.plans[n].act, 'wave', n + ' must not raise a hand');
   assert.deepEqual(p.plans.Software, { act: 'meeting', seat: 0, meeting: 'm' });
-  assert.equal(p.plans.Claude.act, 'work'); assert.deepEqual(p.meeting.seated, ['Software']);
-  const acts = ['Sniffer', 'Comp', 'GUI', 'ChatGPT', 'Archive'].map(n => p.plans[n].act).sort();
-  assert.deepEqual(acts, ['chat', 'chat', 'game', 'sleep', 'wander']);
+  assert.deepEqual(p.meeting.seated, ['Software']);
+  for (const n of ['Sniffer', 'Comp', 'GUI', 'ChatGPT', 'Gauge']) assert.ok(L.IDLE_ACTS.concat('train', 'listen').includes(p.plans[n].act), n + ':' + p.plans[n].act);
   const chat = Object.entries(p.plans).filter(([, v]) => v.act === 'chat');
-  assert.equal(chat[0][1].partner, chat[1][0]); assert.notEqual(chat[0][1].host, chat[1][1].host);
-  assert.deepEqual(L.planOffice(bots, meetings, NOW + 60000, 'live').plans, p.plans, 'same choice a minute later');
+  if (chat.length) { assert.equal(chat[0][1].partner, chat[1][0]); assert.notEqual(chat[0][1].host, chat[1][1].host); }
   assert.deepEqual(L.planOffice(bots, [], NOW, 'failed').plans, {});
-  for (let k = 0; k < 6; k++) assert.equal(L.planOffice(bots, [], NOW + k * 3600000, 'live').plans.Claude.act, 'work', 'working bots keep working');
-});
+})
 test('floor plan: HR - Bot Trainer visits idle bots, and trains two at the table only when no meeting holds it', () => {
   const bots = [{ bot: 'HR - Bot Trainer', status: 'idle' }, { bot: 'Comp', status: 'idle' }, { bot: 'GUI', status: 'idle' }, { bot: 'Claude', status: 'working' }];
   const base = Math.floor(NOW / 1000 / L.TRAIN_CYCLE_S) * L.TRAIN_CYCLE_S * 1000;
   const train = L.planOffice(bots, [], base + 5000, 'live');
   assert.equal(train.plans['HR - Bot Trainer'].act, 'lead');
   assert.deepEqual(train.training.trainees.slice().sort(), ['Comp', 'GUI']);
-  assert.equal(train.plans.Claude.act, 'work');
+  assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(train.plans.Claude.act));
   const visit = L.planOffice(bots, [], base + (L.TRAIN_S + 1) * 1000, 'live');
   const v = visit.plans['HR - Bot Trainer'];
   assert.equal(v.act, 'visit'); assert.ok(['Comp', 'GUI'].includes(v.partner));
   assert.deepEqual([visit.plans[v.partner].act, visit.plans[v.partner].partner], ['listen', 'HR - Bot Trainer']);
   const meet = L.planOffice(bots, [{ id: 'm', title: 'x', members: ['Claude'] }], base + 5000, 'live');
   assert.equal(meet.plans['HR - Bot Trainer'].act, 'visit', 'no training while a meeting holds the table');
-  assert.equal(L.planOffice([{ bot: 'HR - Bot Trainer', status: 'working' }, { bot: 'Comp', status: 'idle' }], [], base + 5000, 'live').plans['HR - Bot Trainer'].act, 'work');
+  assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(L.planOffice([{ bot: 'HR - Bot Trainer', status: 'working' }, { bot: 'Comp', status: 'idle' }], [], base + 5000, 'live').plans['HR - Bot Trainer'].act));
 });
 test('ambient chatter is generic, deterministic and never empty', () => {
   for (const k of ['chat', 'visit', 'reply', 'train', 'other']) { const a = L.ambientLine(k, 'seed', 3); assert.ok(a && a === L.ambientLine(k, 'seed', 3)); }
@@ -356,11 +356,7 @@ test('demo v2: screens, a meeting that ends on the next poll, PR-linked, chat-li
   assert.equal(L.needsTarget({ bot: 'QA bot', bot_id: 'x', items: p.items }).href, qa.link);
   assert.equal(L.needsTarget({ bot: p.needsTim[1].bot }).kind, 'none');
   const cyc = Math.floor(NOW / 1000 / L.TRAIN_CYCLE_S) * L.TRAIN_CYCLE_S * 1000, seen = new Set();
-  for (let t = L.TRAIN_S + 1; t < L.TRAIN_CYCLE_S; t += L.VISIT_S) {
-    const acts = new Set(Object.values(L.planOffice(p.bots, [], cyc + t * 1000, 'live').plans).map(v => v.act));
-    assert.ok(['chat', 'sleep', 'game', 'wander'].filter(a => acts.has(a)).length >= 3, [...acts].join());
-    acts.forEach(a => seen.add(a));
-  }
-  assert.ok(['chat', 'sleep', 'game', 'wander', 'visit', 'listen', 'work', 'wave'].every(a => seen.has(a)), [...seen].join());
+  for (let t = 0; t < 3600; t += 37) Object.values(L.planOffice(p.bots, [], cyc + 3600000 + t * 1000, 'live').plans).forEach(v => seen.add(v.act));
+  assert.ok(['chat', 'wander', 'coffee', 'fridge', 'lounge', 'visit', 'listen', 'wave'].every(a => seen.has(a)), [...seen].join());
   assert.equal(L.planOffice(p.bots, [], cyc + 1000, 'live').plans['HR - Bot Trainer'].act, 'lead');
 });

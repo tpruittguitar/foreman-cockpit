@@ -1,0 +1,14 @@
+{"_comment":"EXAMPLE fixture only: an extra unknown bot, Gauge audit/work, Root work, a waiting bot and a needs_tim bot without a question.",
+ "updated_at":"2026-11-16T07:00:00Z",
+ "needs_tim":[{"text":"EXAMPLE open ask","bot":"Root"},{"text":"EXAMPLE resolved","resolved":true},{"text":"EXAMPLE resolved_at","resolved_at":"2026-11-16T06:00:00Z"},{"text":"EXAMPLE expired","expires_at":"2026-11-16T06:00:00Z"},{"text":"EXAMPLE merged PR","link":"https://github.com/tpruittguitar/foreman-cockpit/pull/306"},{"text":"EXAMPLE open PR","link":"https://github.com/tpruittguitar/foreman-cockpit/pull/311"}],
+ "bots":[
+  {"bot":"President","bot_id":"431e8cf1-f077-4548-82b7-46c1959dc4c9","status":"working","screen_url":"javascript:alert(1)"},
+  {"bot":"Root","bot_id":"70f0889b-ecd4-457b-a69c-304cd2aff540","status":"idle","work":[{"title":"EXAMPLE diagnosis","status":"open","at":"2026-11-16T06:50:00Z","link":"https://example.com/d"}]},
+  {"bot":"QA bot","bot_id":"338fc1b1-fecc-475d-ba9e-acd49bcadcfc","status":"waiting","question":"EXAMPLE should not raise a hand"},
+  {"bot":"Comp","bot_id":"424e5611-fb8f-4ae1-a360-051e61e63e8a","status":"needs_tim","question":""},
+  {"bot":"Software","bot_id":"b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f","status":"needs_tim","question":"EXAMPLE real question","screen_url":"https://example.com/live"},
+  {"bot":"Gauge","bot_id":"132c47df-ccfb-4f91-b4e2-ebcb1d775bc6","status":"idle","audit":{"last_at":"2026-11-16T06:30:00Z","checks":{"ask_tim":"flag","stuck_processes":"ok","suspicious_data":"weird"},"findings_sent":3},
+   "work":[{"id":"g1","title":"EXAMPLE f1","status":"open","at":"2026-11-16T06:01:00Z","link":"ftp://x"},{"title":"EXAMPLE f2","at":"2026-11-16T06:02:00Z","owner":"70f0889b-ecd4-457b-a69c-304cd2aff540"},{"title":"EXAMPLE f3","at":"2026-11-16T06:03:00Z"},{"title":"EXAMPLE f4","at":"2026-11-16T06:04:00Z"},{"title":"EXAMPLE f5","at":"2026-11-16T06:05:00Z"},{"title":"EXAMPLE f6","at":"2026-11-16T06:06:00Z"}]},
+  {"bot":"Newbie","id":"99999999-0000-4000-8000-000000000001","status":"idle","avatar_shape":"flower","avatar_color":"green"}
+ ],
+ "items":[]}
