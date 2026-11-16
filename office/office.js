@@ -2,9 +2,8 @@
    polled every 60 s straight from the browser (all three repos are public; no proxy, no token, no new secret).
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
-import { PointerLockControls } from './vendor/three/addons/PointerLockControls.js';
-import { makeBot, animate, canGeometry, canMaterials } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawWhiteboard } from './draw.js';
+import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
+import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawWhiteboard, drawAutomations, drawWriterHealth, WRITER_METRICS } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 const TAG_MAX_PX = 240; // full bot name unless the label would be wider than this (or 30% of the screen)
 
@@ -12,93 +11,151 @@ const L = window.OfficeLogic;
 const Q = new URLSearchParams(location.search);
 const DEMO = Q.get('demo') === '1', TV = Q.get('tv') === '1';
 const OWNER = 'tpruittguitar';
-const STATUS_URL = `https://raw.githubusercontent.com/${OWNER}/forge-coordination/main/control/OFFICE_STATUS.json`;
+const STATUS_PATH = 'control/OFFICE_STATUS.json', AUTO_PATH = 'control/AUTOMATIONS_STATUS.json';
+const API_FILE = p => `https://api.github.com/repos/${OWNER}/forge-coordination/contents/${p}?ref=main`;
+const RAW_FILE = p => `https://raw.githubusercontent.com/${OWNER}/forge-coordination/main/${p}`;
 const PR_REPOS = ['foreman-cockpit', 'forge-coordination', 'forge-policy'];
 const ASKS_URL = `https://api.github.com/repos/${OWNER}/forge-coordination/contents/asks/open`;
-const POLL_MS = 60000;
+const READINGS_URL = RAW_FILE('usage/AI_USAGE_READINGS.jsonl');
+const CHAT_FEED_URL = RAW_FILE('control/PRESIDENT_CHAT_FEED.jsonl');
+/* Desk screen mirrors: one downscaled JPEG per bot plus index.json. NOTE: the publisher is not live yet, so every
+   monitor shows its text fallback until tpruittguitar/office-screens exists. */
+const SCREENS_BASE = 'https://raw.githubusercontent.com/tpruittguitar/office-screens/main/';
+const RELAY_URL = '/api/office-chat'; // Cloudflare Pages Function (functions/api/office-chat.js)
+const POLL_MS = 60000, SLOW_MS = 5 * 60000;
 const coarse = matchMedia('(pointer: coarse)').matches;
 const touch = coarse; // touch UI (joystick, drag-look); mouse/keyboard stay on desktops
 const touchEvents = 'ontouchstart' in window;
 const reducedMQ = matchMedia('(prefers-reduced-motion: reduce)');
 const LOW = L.isPhoneLike({ coarse, width: innerWidth }) && !TV; // lower quality on phones
+const NO_APP = TV || /Android|iPhone|iPad|Mobile|SmartTV|Tizen|Web0S|AFT|CrKey|BRAVIA/i.test(navigator.userAgent); // phone / TV user agents
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const SEATS = ['Claude', 'Software', 'Comp', 'GUI', 'ChatGPT', 'Sniffer', 'QA bot', 'Archive · Application State Tracker', 'Root', 'President', 'Usage Budget', 'HR - Bot Trainer'];
-const DESK_X = [-7, -3.8, -0.6, 2.6], DESK_Z = [-4, -0.6, 2.8];
 
 const T = window.__office = { mode: 'loading', frames: 0, webgl: null, ready: false, errors: [], state: '', lastPoll: 0 };
 if (TV) document.documentElement.classList.add('tv');
 
 /* ============================== data ============================== */
 const S = {
-  raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '',
-  prevItems: null, pulls: [], pullsErr: '', asks: [], asksErr: '', checkCache: new Map(),
-  glow: new Set(), demoStep: 0
+  raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
+  pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
+  readings: [], readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', auto: null, autoErr: '',
+  glow: new Set(), demoStep: 0, work: null
 };
-async function getJSON(url) {
-  const r = await fetch(url, { cache: 'no-cache', headers: url.includes('api.github.com') ? { Accept: 'application/vnd.github+json' } : {} });
+const gate = L.createGate(); // one GitHub API budget shared by status, PR list and asks
+const fetchFn = (u, o) => fetch(u, o);
+const statusSrc = L.createJsonSource({ apiUrl: API_FILE(STATUS_PATH), rawUrl: RAW_FILE(STATUS_PATH), gate, fetch: fetchFn });
+const autoSrc = L.createJsonSource({ apiUrl: API_FILE(AUTO_PATH), rawUrl: RAW_FILE(AUTO_PATH), gate, fetch: fetchFn });
+async function api(url) {
+  if (!gate.open(Date.now())) { const e = new Error('GitHub rate limit: waiting for reset'); e.status = 403; throw e; }
+  const r = await fetch(url, { cache: 'no-cache', headers: { Accept: 'application/vnd.github+json' } });
+  gate.note(r, Date.now());
   if (!r.ok) { const e = new Error(r.status === 403 || r.status === 429 ? 'GitHub rate limit reached' : 'HTTP ' + r.status); e.status = r.status; throw e; }
   return r.json();
 }
+async function rawText(url) { const r = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Math.floor(Date.now() / POLL_MS), { cache: 'no-cache' }); if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; } return r.text(); }
+/* PR states: one list call per repo (state=all), cached PR_CACHE_MS; check-runs only for open, non-draft PRs (cached by sha). */
 async function loadPulls() {
-  const out = [];
+  const out = [], states = new Map();
   for (const repo of PR_REPOS) {
-    const list = await getJSON(`https://api.github.com/repos/${OWNER}/${repo}/pulls?state=open&per_page=30`);
-    for (const p of list) {
+    const list = await api(`https://api.github.com/repos/${OWNER}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=50`);
+    L.prStates(OWNER, repo, list).forEach((v, k) => states.set(k, v));
+    for (const p of list.filter(p => p.state === 'open')) {
       const sha = p.head && p.head.sha;
       let checks = S.checkCache.get(sha);
-      if (!checks) {
-        try { const cr = await getJSON(`https://api.github.com/repos/${OWNER}/${repo}/commits/${sha}/check-runs?per_page=50`); checks = L.checkState(cr.check_runs); }
+      if (!checks && !p.draft) {
+        try { const cr = await api(`https://api.github.com/repos/${OWNER}/${repo}/commits/${sha}/check-runs?per_page=50`); checks = L.checkState(cr.check_runs); }
         catch (e) { checks = 'unknown'; }
         if (checks === 'passing' || checks === 'failing') S.checkCache.set(sha, checks);
       }
-      out.push(L.summarizePull(repo, p, checks));
+      out.push(L.summarizePull(repo, p, checks || (p.draft ? 'draft' : 'unknown')));
     }
   }
-  return out;
+  return { out, states };
+}
+function slowLoads(now) {
+  if (now - S.pullsAt >= L.PR_CACHE_MS || S.pullsErr) {
+    S.pullsAt = now;
+    loadPulls().then(r => { S.pulls = r.out; S.prStates = r.states; S.pullsErr = ''; }, e => { S.pullsErr = e.message; }).then(refreshAll);
+  }
+  if (now - S.asksAt >= SLOW_MS) {
+    S.asksAt = now;
+    api(ASKS_URL).then(a => { S.asks = a.filter(f => f.type === 'file' && /\.json$/i.test(f.name)).map(f => f.name); S.asksErr = ''; },
+      e => { S.asksErr = e.status === 404 ? 'asks/open not found' : e.message; }).then(refreshAll);
+  }
+  if (now - S.readingsAt >= SLOW_MS) {
+    S.readingsAt = now;
+    rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsErr = ''; }, e => { S.readingsErr = e.message; }).then(refreshAll);
+  }
+  fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
+  rawText(CHAT_FEED_URL).then(t => { S.chat = L.parseChatFeed(t); S.chatErr = ''; }, e => { S.chat = null; S.chatErr = e.status === 404 ? 'Chat not published yet' : 'Chat feed unavailable'; }).then(refreshAll);
+  autoSrc.get(now).then(r => { if (r.ok) { S.auto = L.parseAutomations(r.data, Date.now()); S.autoErr = ''; } else S.autoErr = r.status === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : r.error; refreshAll(); });
 }
 async function poll() {
   const now = Date.now();
   if (DEMO) {
     S.raw = S.demoStep === 0 ? L.demoStatus(now) : L.demoNextStatus(S.raw, now);
-    S.demoStep++; S.fetchOk = true; S.pulls = L.DEMO_PULLS; S.asks = ['EXAMPLE-ASK-1.json', 'EXAMPLE-ASK-2.json']; S.pullsErr = S.asksErr = '';
+    S.demoStep++; S.fetchOk = true; S.pulls = L.DEMO_PULLS; S.asks = ['EXAMPLE-ASK-1.json', 'EXAMPLE-ASK-2.json']; S.pullsErr = S.asksErr = ''; S.source = 'demo';
+    S.prStates = new Map([['example/repo#1', 'merged']]); S.chat = L.parseChatFeed(DEMO_CHAT(now)); S.auto = L.parseAutomations(L.demoAutomations ? L.demoAutomations(now) : null, now);
   } else {
-    try { S.raw = await getJSON(STATUS_URL + '?t=' + Math.floor(now / POLL_MS)); S.fetchOk = true; S.error = ''; }
-    catch (e) { S.fetchOk = false; S.error = e.status === 404 ? 'control/OFFICE_STATUS.json not found on forge-coordination main' : 'OFFICE_STATUS.json could not be loaded (' + e.message + ')'; }
-    loadPulls().then(p => { S.pulls = p; S.pullsErr = ''; }, e => { S.pullsErr = e.message; }).then(refreshAll);
-    getJSON(ASKS_URL).then(a => { S.asks = a.filter(f => f.type === 'file' && /\.json$/i.test(f.name)).map(f => f.name); S.asksErr = ''; },
-      e => { S.asksErr = e.status === 404 ? 'asks/open not found' : e.message; }).then(refreshAll);
+    const r = await statusSrc.get(now);
+    if (r.ok) { S.raw = r.data; S.fetchOk = true; S.error = ''; S.source = r.source; }
+    else { S.fetchOk = false; S.error = r.status === 404 ? 'control/OFFICE_STATUS.json not found on forge-coordination main' : 'OFFICE_STATUS.json could not be loaded (' + r.error + ')'; }
+    slowLoads(now);
   }
   const parsed = S.raw ? L.parseStatus(S.raw) : null;
   if (S.fetchOk && parsed && parsed.ok) {
     if (S.parsed) for (const p of L.diffItems(S.parsed.items, parsed.items)) queuePickup(p);
+    workDiff(parsed);
     S.parsed = parsed; S.everOk = true;
   } else if (S.fetchOk && parsed && !parsed.ok) { S.fetchOk = false; S.error = parsed.error; }
   T.lastPoll = Date.now();
   refreshAll();
 }
-function queuePickup(p) { const c = chars.get(p.bot); if (c && !c.pickups.includes(p.itemId)) c.pickups.push(p.itemId); else if (!c) pendingPickups.push(p); }
+const DEMO_CHAT = now => [['Tim', 'EXAMPLE: is the office PR green?', 9], ['President', 'EXAMPLE: checks running, merging on green', 8], ['Tim', 'EXAMPLE: thanks, ping me at tim@example.com', 3], ['President', 'EXAMPLE: will do', 1]]
+  .map(([from, text, m]) => JSON.stringify({ at: new Date(now - m * 60000).toISOString(), from, text })).join('\n');
+/* Board card life: diff each poll's work cards against the last snapshot (memory + localStorage, so a reload never replays). */
+const WORK_KEY = 'office.work.v1';
+function workDiff(parsed) {
+  const next = L.allWork(parsed.bots).map(w => ({ id: w.id, poster: w.poster, ownerName: w.ownerName }));
+  let prev = S.work;
+  if (!prev && !DEMO) { try { prev = JSON.parse(localStorage.getItem(WORK_KEY) || 'null'); } catch (e) { prev = null; } }
+  const first = !S.work;
+  const evs = first && !prev ? [] : L.diffWork(prev, next);
+  S.work = next; if (!DEMO) try { localStorage.setItem(WORK_KEY, JSON.stringify(next)); } catch (e) { /* private mode */ }
+  if (first && !DEMO) return; // first load: no animations
+  for (const e of evs) queuePickup({ bot: e.bot, itemId: 'w:' + e.id, reason: e.kind });
+}
+function queuePickup(p) { const c = chars.get(p.bot); if (c && !c.pickups.some(x => x.itemId === p.itemId)) c.pickups.push(p); else if (!c) pendingPickups.push(p); }
 const pendingPickups = [];
 function bots() { return S.parsed ? S.parsed.bots : []; }
-function items() { return S.parsed ? S.parsed.items : []; }
+/* checksheet items + every bot's work cards, with live PR state applied */
+function items() {
+  if (!S.parsed) return [];
+  const work = L.allWork(S.parsed.bots).map(w => ({ id: 'w:' + w.id, title: L.workLabel(w.poster) + ': ' + w.title, priority: 'P2', status: /done|closed|resolved/i.test(w.status) ? 'done' : 'in_progress',
+    owner: w.ownerName, ownerKnown: true, link: w.link, updated_at: w.at, project: 'Job pipeline', pr: null, question: '', note: w.status, source: 'work', prState: '', work: w }));
+  return L.applyPrStates(S.parsed.items.concat(work), S.prStates);
+}
 function botByName(n) { return bots().find(b => b.bot === n); }
 function alertBots() { return bots().filter(b => L.statusStyle(b.status).alert); }
-/* Click target for a bot (Needs Tim rows and bot characters): PR link, else Grok Bot chat, else none. */
 function botTarget(b) { return L.needsTarget({ link: b.link, bot: b.bot, bot_id: idFor(b.bot, b.bot_id), items: items() }); }
+/* Needs Tim board rows: only current asks (L.needsList), then "?" rows that always explain themselves. */
+function needsData() {
+  return L.needsList({ bots: bots(), entries: S.parsed ? S.parsed.needsTim : [], prStates: S.prStates, pulls: DEMO ? [] : S.pulls, now: Date.now(), demo: DEMO });
+}
 function needsEntries() {
-  const e = [];
-  for (const b of alertBots()) e.push({ glyph: '⚠', tone: 'alert', text: b.bot + ': ' + (b.question || b.task || L.statusStyle(b.status).word), bot: b.bot, target: botTarget(b) });
-  for (const n of S.parsed ? S.parsed.needsTim : []) {
+  const d = needsData(), e = [];
+  for (const n of d.needs) {
     const known = n.bot && botByName(n.bot);
-    e.push({ glyph: '⚠', tone: 'alert', text: n.text, link: n.link, owner: n.bot, target: L.needsTarget({ link: n.link, bot: n.bot, bot_id: n.bot_id || (known ? idFor(known.bot, known.bot_id) : idFor(n.bot)), items: items() }) });
+    e.push({ glyph: '⚠', tone: 'alert', text: n.text, bot: n.kind === 'bot' ? n.bot : '', owner: n.bot, link: n.link,
+      target: L.needsTarget({ link: n.link, bot: n.bot, bot_id: n.bot_id || (known ? idFor(known.bot, known.bot_id) : idFor(n.bot)), items: items() }) });
   }
-  for (const p of S.pulls.filter(p => p.readyForTim)) e.push({ glyph: '◆', tone: 'info', text: p.repo + (p.number ? ' #' + p.number : '') + ' ready: ' + p.title, link: p.url, target: L.needsTarget({ link: p.url }) });
-  if (S.asks.length) e.push({ glyph: '?', tone: 'stale', text: S.asks.length + ' open asks in forge-coordination', link: `https://github.com/${OWNER}/forge-coordination/tree/main/asks/open` });
-  if (S.pullsErr) e.push({ glyph: '?', tone: 'stale', text: 'Open PRs: data source unavailable (' + S.pullsErr + ')' });
-  if (S.asksErr) e.push({ glyph: '?', tone: 'stale', text: 'Open asks: data source unavailable (' + S.asksErr + ')' });
+  if (S.asks.length) e.push({ glyph: '?', tone: 'stale', text: S.asks.length + ' open asks in forge-coordination (asks/open)', link: `https://github.com/${OWNER}/forge-coordination/tree/main/asks/open` });
+  if (S.pullsErr) e.push({ glyph: '?', tone: 'stale', text: 'PR fetch failed (' + S.pullsErr + '): PR-linked asks may not have cleared yet' });
+  if (S.asksErr) e.push({ glyph: '?', tone: 'stale', text: 'Open asks fetch failed (' + S.asksErr + ')' });
   return e;
 }
-function needsCount() { return alertBots().length + (S.parsed ? S.parsed.needsTim.length : 0); }
+function needsCount() { return needsData().needs.length; }
 
 function refreshAll() {
   const now = Date.now();
@@ -106,8 +163,10 @@ function refreshAll() {
   T.state = S.state;
   const asof = $('asof');
   asof.className = 'asof ' + S.state;
+  const age = S.parsed ? L.dataAge(S.parsed.updatedAt, now) : null;
   asof.textContent = S.state === 'failed' ? (S.everOk ? '⚠ Data feed down · last data ' + L.hhmm(S.parsed.updatedAt) : '⚠ No office data')
-    : (S.state === 'stale' ? '? ' : '') + 'Data as of ' + L.hhmm(S.parsed.updatedAt) + (S.state === 'stale' ? ' (stale)' : '');
+    : (S.state === 'stale' ? '? ' : '') + age.text + (S.state === 'stale' ? ' (stale: over ' + L.STALE_MIN + ' min old)' : '') + (S.source === 'raw' ? ' · via raw (API rate limit)' : '');
+  asof.title = S.state === 'stale' ? 'OFFICE_STATUS.json updated_at is more than ' + L.STALE_MIN + ' minutes old' : '';
   $('demo-badge').hidden = !DEMO;
   const banner = $('banner');
   if (S.state === 'failed') { banner.hidden = false; banner.textContent = '⚠ Office data unavailable: ' + (S.error || 'no data') + '. Bots are greyed out where they stand.'; }
@@ -132,7 +191,7 @@ function renderFlat() {
   const now = Date.now(), h = [];
   const ne = needsEntries();
   h.push(`<section class="needs"><h2>⚠ Needs Tim (${needsCount()})</h2>`);
-  if (!ne.length) h.push('<div class="row">✓ Nothing waiting on Tim</div>');
+  if (!ne.length) h.push('<div class="row">Nothing needs Tim right now ✓</div>');
   for (const e of ne) h.push(`<div class="row">${needsRowHTML(e)}</div>`);
   h.push('</section>');
   h.push('<section><h2>Project board</h2>');
@@ -151,10 +210,7 @@ function renderFlat() {
   for (const b of bots()) h.push(`<div class="row"><button class="rowbtn" data-bot="${esc(b.bot)}"><span>${esc(b.bot)} ${stWord(b)}<div class="meta">${esc(b.task || '—')}</div><div class="meta">${esc(b.last_action)} · ${L.relTime(b.last_action_at, now)}</div></span></button></div>`);
   if (!bots().length) h.push('<div class="row">No bot data</div>');
   h.push('</section><section><h2>AI usage</h2>');
-  const u = S.parsed ? S.parsed.usage : { services: [] };
-  for (const s of u.services) { const w = L.usageWord(s.pct_used);
-    h.push(`<div class="row"><span><b>${esc(s.name)}</b> <span class="st ${w.tone}">${w.glyph} ${w.word}</span><div class="usage-n st ${w.tone}">${s.pct_used == null ? '—' : Math.round(s.pct_used) + '% used'}</div><div class="meta">${s.pct_left == null ? '' : Math.round(s.pct_left) + '% left · '}${s.resets_at ? 'resets ' + esc(new Date(s.resets_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })) : esc(s.note)}</div></span></div>`); }
-  h.push(`<div class="meta">Usage data as of ${u.as_of ? L.hhmm(u.as_of) : '--:--'}${L.usageStale(u, now) ? ' (stale)' : ''}</div></section>`);
+  h.push(usageListHTML() + '</section>');
   $('flat-body').innerHTML = h.join('');
 }
 $('flat-body').addEventListener('click', e => {
@@ -163,111 +219,219 @@ $('flat-body').addEventListener('click', e => {
 });
 
 /* ============================== overlay panel ============================== */
-let panelOpen = false, panelReturn = null;
+let panelOpen = false, panelReturn = null, chatPoll = null;
 function showPanel(html) {
   $('panel-body').innerHTML = html; $('panel').hidden = false; $('panel').classList.remove('wide'); panelOpen = true;
-  if (world && world.controls && world.controls.isLocked) world.controls.unlock();
-  const f = $('panel').querySelector('a,button.linkbtn') || $('panel-close'); f.focus();
+  if (chatPoll) { clearInterval(chatPoll); chatPoll = null; }
+  const f = $('panel').querySelector('a,button.linkbtn,textarea') || $('panel-close'); f.focus({ preventScroll: true });
 }
-function closePanel() { $('panel').hidden = true; panelOpen = false; if (panelReturn) { panelReturn.focus(); panelReturn = null; } }
+function closePanel() { $('panel').hidden = true; panelOpen = false; if (chatPoll) { clearInterval(chatPoll); chatPoll = null; } if (panelReturn) { panelReturn.focus(); panelReturn = null; } }
 $('panel-close').onclick = closePanel;
 $('panel').addEventListener('click', e => {
   if (e.target === $('panel')) closePanel();
   const b = e.target.closest('[data-bot]'), it = e.target.closest('[data-item]'), go = e.target.closest('[data-go]'), sc = e.target.closest('[data-screen]');
-  if (sc) openScreen(sc.dataset.screen);
-  else if (go) { closePanel(); world && world.goToBot(go.dataset.go); }
+  const tab = e.target.closest('[data-tab]'), dn = e.target.closest('[data-done]'), ch = e.target.closest('[data-chat]'), key = e.target.closest('[data-chatkey]');
+  if (tab) { boardTab = tab.dataset.tab; openBoard(); world && world.dirty(); }
+  else if (dn) { doneOpen = !doneOpen; openBoard(); world && world.dirty(); }
+  else if (ch) { e.preventDefault(); openChatApp(ch.dataset.chat); }
+  else if (key) { e.preventDefault(); askRelayKey(); }
+  else if (sc) openScreen(sc.dataset.screen);
+  else if (go) { e.preventDefault(); closePanel(); world && world.goToBot(go.dataset.go); }
   else if (b) openBot(b.dataset.bot); else if (it) openItem(it.dataset.item);
 });
 function linkHTML(href, label) { return `<a class="open" href="${esc(href)}" ${/^https?:/.test(href) ? 'target="_blank" rel="noopener"' : ''}>${esc(label)}</a>`; }
+
+/* ---------- toast + Grok Bot app links ---------- */
+let toastT = 0;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 4500); }
+/* Open grokbot://; if the page never loses focus within ~1.5 s (no app), or on phone/TV, say so instead of failing silently. */
+function openChatApp(id, name, after) {
+  const b = bots().find(x => x.bot_id === id || x.bot === id) || { bot: name || id, bot_id: id };
+  const href = L.chatLink(b.bot_id || idFor(b.bot)); const who = b.bot;
+  const fail = 'Open in the Grok Bot app to chat with ' + who;
+  if (!href) return toast(fail);
+  if (NO_APP) { toast(after || fail); }
+  let left = false; const mark = () => { left = true; };
+  addEventListener('blur', mark, { once: true }); document.addEventListener('visibilitychange', mark, { once: true });
+  try { location.href = href; } catch (e) { /* unknown scheme */ }
+  setTimeout(() => { removeEventListener('blur', mark); document.removeEventListener('visibilitychange', mark); if (!left && !NO_APP) toast(after ? after + ' · ' + fail : fail); }, 1500);
+  if (after && !NO_APP) toast(after);
+}
+
+/* ---------- chat relay (functions/api/office-chat.js) ---------- */
+const KEY_STORE = 'office.chatKey';
+const relayKey = () => { try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; } };
+function askRelayKey() { const k = prompt('Office chat key (asked once, kept in this browser only):', ''); if (k != null) { try { localStorage.setItem(KEY_STORE, k.trim()); } catch (e) { /* ignore */ } toast(k ? 'Chat key saved in this browser' : 'Chat key cleared'); } }
+let relayDown = DEMO; // demo never posts anywhere
+async function relay(method, botId, text) {
+  if (relayDown || !relayKey()) return { ok: false, status: 0 };
+  const r = await fetch(RELAY_URL + (method === 'GET' ? '?bot=' + encodeURIComponent(botId) : ''), { method, headers: { 'X-Office-Key': relayKey(), 'Content-Type': 'application/json' }, body: method === 'POST' ? JSON.stringify({ bot_id: botId, text }) : undefined })
+    .catch(() => ({ ok: false, status: 0 }));
+  if (r.status === 503 || r.status === 404) relayDown = true;
+  return { ok: r.ok, status: r.status, json: r.ok && r.json ? await r.json().catch(() => null) : null };
+}
+function threadHTML(list) {
+  if (!list || !list.length) return '<p class="fallback">No messages yet.</p>';
+  return list.map(m => `<div class="msg ${m.from === 'tim' || m.from === 'Tim' ? 'me' : 'bot'}"><b>${esc(m.from === 'tim' ? 'Tim' : m.from)}</b> <span class="meta">${L.etClock(Date.parse(m.at))} ET</span><div>${esc(m.text)}</div></div>`).join('');
+}
+async function refreshThread(botId) {
+  const el = $('chat-thread'); if (!el) return;
+  const r = await relay('GET', botId);
+  if (r.ok && r.json) el.innerHTML = threadHTML(r.json.messages);
+  else if (relayDown || !relayKey()) el.innerHTML = '<p class="fallback">' + (relayKey() ? 'Chat relay not configured: use Send in Grok Bot / Open chat.' : 'Replies show here once the office chat key is set (<a href="#" data-chatkey="1">set key</a>).') + '</p>';
+}
+async function sendChat(b) {
+  const ta = $('chat-text'), text = (ta.value || '').trim(); if (!text) return ta.focus();
+  if (text.length > 2000) return toast('Messages are limited to 2000 characters');
+  const id = idFor(b.bot, b.bot_id);
+  const r = await relay('POST', id, text);
+  if (r.ok) { ta.value = ''; toast('Sent to ' + b.bot + "'s mailbox; the reply shows here"); return refreshThread(id); }
+  try { await navigator.clipboard.writeText(text); } catch (e) { /* clipboard blocked: the text stays in the box */ }
+  openChatApp(id, b.bot, "Message copied, paste it in " + b.bot + "'s chat");
+}
+function chatBoxHTML(b) {
+  const id = idFor(b.bot, b.bot_id), href = L.chatLink(id);
+  return `<section class="chatbox" aria-label="Chat with ${esc(b.bot)}"><h3>Chat with ${esc(b.bot)}</h3><div id="chat-thread" class="thread"></div>
+    <textarea id="chat-text" maxlength="2000" rows="2" placeholder="Message ${esc(b.bot)}…"></textarea>
+    <div class="chatrow"><button type="button" class="linkbtn" id="chat-send">Send in Grok Bot</button>
+    ${href ? `<a class="open" id="chat-open" href="${esc(href)}" data-chat="${esc(id)}">Open chat</a>` : '<span class="fallback">no bot id known</span>'}</div></section>`;
+}
 function openBot(name) {
   const b = botByName(name);
   if (!b) return showPanel(`<h2 id="panel-title">${esc(name)}</h2><p>No data for this bot${S.state === 'failed' ? ' (office data unavailable)' : ''}.</p>`);
-  const st = L.statusStyle(b.status), now = Date.now(), tg = botTarget(b), mine = L.sortItems(items().filter(i => i.owner === b.bot));
+  const st = L.statusStyle(b.status), now = Date.now(), tg = botTarget(b), mine = L.sortItems(items().filter(i => i.owner === b.bot && L.columnFor(i) !== 'done'));
   const meet = (S.parsed ? S.parsed.meetings : []).find(m => m.members.includes(b.bot));
   const wait = st.alert ? L.waitingMinutes(b.last_action_at, now) : null;
+  const why = [b.why, S.state === 'stale' ? 'office data is ' + L.dataAge(S.parsed.updatedAt, now).text + ' (stale)' : ''].filter(Boolean);
+  const rp = L.replayFor(b, now);
   showPanel(`<h2 id="panel-title">${esc(b.bot)} ${stWord(b)}</h2>
-    ${st.alert ? `<div class="q">${b.question ? esc(b.question) : '(no question recorded)'}${wait != null ? `<div class="fallback">waiting ${wait} min</div>` : ''}</div>` : ''}
+    ${st.alert ? `<div class="q">${esc(b.question)}${wait != null ? `<div class="fallback">waiting ${wait} min</div>` : ''}</div>` : ''}
+    ${why.length ? `<p class="why">? ${esc(why.join(' · '))}</p>` : ''}
+    ${chatBoxHTML(b)}
     <dl><dt>Status</dt><dd>${st.glyph} ${st.word}${b.rawStatus && b.rawStatus !== b.status ? ' (' + esc(b.rawStatus) + ')' : ''}</dd>
     <dt>Task</dt><dd>${esc(b.task || '—')}</dd>
-    <dt>Last action</dt><dd>${esc(b.last_action || '—')} · ${L.relTime(b.last_action_at, now)}</dd>
-    ${!st.alert ? `<dt>Question</dt><dd>${esc(b.question || '—')}</dd>` : ''}
+    <dt>Last action</dt><dd>${esc(b.last_action || '—')} · ${L.relTime(b.last_action_at, now)}${rp ? ' · <span class="chip">recent · ' + rp.min + 'm ago</span>' : ''}</dd>
     ${meet ? `<dt>Meeting</dt><dd>${esc(meet.title)}${meet.started_at ? ' · since ' + L.hhmm(meet.started_at) : ''}</dd>` : ''}</dl>
-    ${tg.href ? linkHTML(tg.href, (tg.kind === 'pr' ? 'Open PR for ' : st.alert ? 'Answer ' : 'Open ') + b.bot) : `<p><b>${esc(b.bot)}</b> · no PR or chat link known</p>`}
+    ${tg.kind === 'pr' ? linkHTML(tg.href, 'Open PR for ' + b.bot) : ''}
     ${linkHTML(L.fallbackLink(idFor(b.bot, b.bot_id)), '💬 Chat with ' + b.bot)}
     <button class="linkbtn" type="button" data-screen="${esc(b.bot)}">View screen</button>
-    <div class="fallback">${esc(L.fallbackText(b))}${tg.href ? '<br>' + esc(tg.href) : ''}</div>
-    ${mine.length ? '<h3>Cards</h3><ul>' + mine.map(i => `<li><button class="linkbtn" data-item="${esc(i.id)}">${esc(L.cardTitle(i))}</button> · ${esc(i.priority)} · ${L.statusWord(i).word}</li>`).join('') + '</ul>' : ''}
+    ${mine.length ? '<h3>Cards</h3><ul>' + mine.slice(0, 12).map(i => `<li><button class="linkbtn" data-item="${esc(i.id)}">${esc(L.cardTitle(i))}</button> · ${L.statusWord(i).word}</li>`).join('') + '</ul>' : ''}
     ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
+  $('chat-send').onclick = () => sendChat(b);
+  const id = idFor(b.bot, b.bot_id); refreshThread(id); chatPoll = setInterval(() => refreshThread(id), 30000);
 }
 function openItem(id) {
   const it = items().find(i => i.id === id); if (!it) return;
   const w = L.statusWord(it), pb = L.priorityBadge(it.priority), col = L.COLUMNS.find(c => c.id === L.columnFor(it)).label;
   showPanel(`<h2 id="panel-title">${esc(L.cardTitle(it))}</h2>
     <dl><dt>Priority</dt><dd><span class="pbadge ${pb.loud ? 'loud' : ''}">${esc(it.priority)}</span></dd>
-    <dt>Status</dt><dd><span class="st ${w.tone}">${w.glyph} ${w.word}</span> (${esc(it.status)}) · column ${esc(col)}</dd>
-    <dt>Owner</dt><dd>${it.owner ? `<button class="linkbtn" data-bot="${esc(it.owner)}">${esc(it.owner)}</button>${it.ownerKnown ? '' : ' (not a known bot)'}` : '—'}</dd>
-    <dt>Project</dt><dd>${esc(it.project)}</dd><dt>Updated</dt><dd>${L.relTime(it.updated_at, Date.now())}</dd><dt>ID</dt><dd>${esc(it.id)}</dd></dl>
-    ${it.link ? linkHTML(it.link, 'Open link') + `<div class="fallback">${esc(it.link)}</div>` : '<p class="fallback">No link on this card.</p>'}
+    <dt>Status</dt><dd><span class="st ${w.tone}">${w.glyph} ${w.word}</span> (${esc(it.status)}${it.prState ? ', PR ' + esc(it.prState) : ''}) · column ${esc(col)}</dd>
+    ${w.why ? `<dt>?</dt><dd class="why">${esc(w.why)}</dd>` : ''}
+    ${it.question ? `<dt>Question</dt><dd>${esc(it.question)}</dd>` : ''}${it.note ? `<dt>Note</dt><dd>${esc(it.note)}</dd>` : ''}
+    <dt>Owner</dt><dd>${it.owner ? `<button class="linkbtn" data-bot="${esc(it.owner)}">${esc(it.owner)}</button>${it.ownerKnown ? '' : ' (not a known bot)'}` : '—'}${it.owner && botByName(it.owner) ? ` · <a href="#" data-go="${esc(it.owner)}">desk</a>` : ''}</dd>
+    <dt>Project</dt><dd>${esc(it.project)}</dd><dt>Updated</dt><dd>${it.updated_at ? L.etClock(Date.parse(it.updated_at)) + ' ET · ' + L.relTime(it.updated_at, Date.now()) : '—'}</dd><dt>ID</dt><dd>${esc(it.id)}</dd></dl>
+    ${L.safeLink(it.link) ? linkHTML(it.link, 'Open link') + `<div class="fallback">${esc(it.link)}</div>` : '<p class="fallback">No link on this card.</p>'}
     ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
 }
 function openNeeds() {
-  const ne = needsEntries();
-  showPanel(`<h2 id="panel-title">⚠ Needs Tim</h2><ul>${ne.length ? ne.map(e => `<li>${needsRowHTML(e)}${e.bot ? ` · <button class="linkbtn" data-bot="${esc(e.bot)}">details</button> · <button class="linkbtn" data-go="${esc(e.bot)}">go to desk</button>` : ''}</li>`).join('') : '<li>✓ Nothing waiting on Tim</li>'}</ul>
-    <h3>Open PRs</h3><ul>${S.pullsErr ? `<li class="src-down">? Data source unavailable: ${esc(S.pullsErr)}</li>` : S.pulls.length ? S.pulls.map(p => `<li>${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.repo)} #${p.number}</a>` : esc(p.repo)} ${esc(p.title)} · ${p.draft ? 'draft' : 'ready'} · checks ${esc(p.checks)}</li>`).join('') : '<li>None open</li>'}</ul>
-    <h3>Open asks</h3><ul>${S.asksErr ? `<li class="src-down">? Data source unavailable: ${esc(S.asksErr)}</li>` : S.asks.length ? S.asks.map(a => `<li><a href="https://github.com/${OWNER}/forge-coordination/blob/main/asks/open/${encodeURIComponent(a)}" target="_blank" rel="noopener">${esc(a)}</a></li>`).join('') : '<li>None</li>'}</ul>
+  const ne = needsEntries(), d = needsData();
+  showPanel(`<h2 id="panel-title">⚠ Needs Tim</h2><ul>${ne.length ? ne.map(e => `<li>${needsRowHTML(e)}${e.bot ? ` · <button class="linkbtn" data-bot="${esc(e.bot)}">details</button> · <button class="linkbtn" data-go="${esc(e.bot)}">go to desk</button>` : ''}</li>`).join('') : '<li>Nothing needs Tim right now ✓</li>'}</ul>
+    <h3>Review / merge queue</h3><p class="fallback">Open PRs are never Needs Tim: President merges on green.</p><ul>${S.pullsErr ? `<li class="src-down">? PR fetch failed: ${esc(S.pullsErr)}</li>` : d.review.length ? d.review.map(p => `<li>${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">${esc(p.text)}</a>` : esc(p.text)}${p.draft ? ' · draft' : ''}${p.checks ? ' · checks ' + esc(p.checks) : ''}</li>`).join('') : '<li>None open</li>'}</ul>
+    <h3>Open asks</h3><ul>${S.asksErr ? `<li class="src-down">? Open asks fetch failed: ${esc(S.asksErr)}</li>` : S.asks.length ? S.asks.map(a => `<li><a href="https://github.com/${OWNER}/forge-coordination/blob/main/asks/open/${encodeURIComponent(a)}" target="_blank" rel="noopener">${esc(a)}</a></li>`).join('') : '<li>None</li>'}</ul>
     ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
 }
-function openBoard(filter) {
-  const [proj, colId] = (filter || '').split('|');
-  const list = L.sortItems(items().filter(i => (!proj || i.project === proj) && (!colId || L.columnFor(i) === colId)));
-  showPanel(`<h2 id="panel-title">Project board${proj ? ' · ' + esc(proj) : ''}</h2><ul>${list.map(i => { const w = L.statusWord(i);
-    return `<li><span class="pbadge ${L.priorityBadge(i.priority).loud ? 'loud' : ''}">${esc(L.priorityBadge(i.priority).text)}</span> <button class="linkbtn" data-item="${esc(i.id)}">${esc(L.cardTitle(i))}</button> · ${esc(i.owner)} · <span class="st ${w.tone}">${w.glyph} ${w.word}</span></li>`; }).join('') || '<li>No items</li>'}</ul>`);
+/* Whole Forge checksheet: project tabs (from the data), 4 columns, Done collapsed by default, full scrollable list. */
+let boardTab = 'All', doneOpen = false;
+function openBoard() {
+  const tabs = L.projectTabs(items()); if (!tabs.includes(boardTab)) boardTab = 'All';
+  const cols = L.boardView(items(), { tab: boardTab, doneOpen });
+  showPanel(`<h2 id="panel-title">Forge checksheet</h2>
+    <div class="tabs" role="tablist">${tabs.map(t => `<button class="tab${t === boardTab ? ' on' : ''}" role="tab" aria-selected="${t === boardTab}" data-tab="${esc(t)}">${esc(t)} (${t === 'All' ? items().length : items().filter(i => i.project === t).length})</button>`).join('')}</div>
+    <div class="cols">${cols.map(c => `<section class="bcol ${c.id}"><h3>${c.id === 'needs_tim' ? '⚠ ' : ''}${esc(c.label)} (${c.total})${c.id === 'done' ? ` <button class="linkbtn" data-done="1">${c.collapsed ? 'show' : 'hide'}</button>` : ''}</h3>
+      ${c.cards.map(i => { const w = L.statusWord(i), pb = L.priorityBadge(i.priority); return `<div class="bcard"><button class="linkbtn" data-item="${esc(i.id)}"><span class="pbadge ${pb.loud ? 'loud' : ''}">${esc(pb.text)}</span> ${esc(L.cardTitle(i))}</button>
+        <div class="meta">${esc(i.owner || '—')} · <span class="st ${w.tone}" ${w.why ? `title="${esc(w.why)}"` : ''}>${w.glyph} ${w.word}</span>${i.updated_at ? ' · ' + L.etClock(Date.parse(i.updated_at)) + ' ET' : ''}${i.owner && botByName(i.owner) ? ` · <a href="#" data-go="${esc(i.owner)}">desk</a>` : ''}</div>
+        ${i.note ? `<div class="meta note">${esc(i.note)}</div>` : ''}${w.why ? `<div class="meta why">? ${esc(w.why)}</div>` : ''}</div>`; }).join('') || (c.collapsed ? '<p class="fallback">collapsed</p>' : '<p class="fallback">none</p>')}</section>`).join('')}</div>
+    ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
+  $('panel').classList.add('wide');
 }
-function openUsage() {
-  const u = S.parsed ? S.parsed.usage : { services: [], as_of: '' };
-  showPanel(`<h2 id="panel-title">AI usage</h2><ul>${u.services.map(s => { const w = L.usageWord(s.pct_used); return `<li><b>${esc(s.name)}</b> <span class="st ${w.tone}">${w.glyph} ${w.word}</span> · ${s.pct_used == null ? 'no reading' : Math.round(s.pct_used) + '% used, ' + Math.round(s.pct_left) + '% left'}${s.resets_at ? ' · resets ' + esc(new Date(s.resets_at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) : ''}${s.note ? ' · ' + esc(s.note) : ''}</li>`; }).join('') || '<li>No readings</li>'}</ul>
-    <p class="fallback">Data as of ${u.as_of ? L.hhmm(u.as_of) : '--:--'} (America/New_York)${L.usageStale(u, Date.now()) ? ' · stale' : ''} · from Usage Ctrl's reports in OFFICE_STATUS.json</p>`);
+function usageListHTML() {
+  const rows = L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null);
+  if (!rows.length) return '<p class="fallback">Waiting for the first usage reading (usage/AI_USAGE_READINGS.jsonl)…</p>';
+  return '<ul class="usage">' + rows.map(r => { const w = L.usageWord(r.pct_used); return `<li><b>${esc(r.name)}</b> <span class="st ${w.tone}">${w.glyph} ${w.word}</span> · ${r.pct_used == null ? 'reading failed' : Math.round(r.pct_used) + '% used'}${r.stale ? ' · <span class="st stale">? stale</span>' : ''}
+    <div class="ubar"><i style="width:${Math.round(r.pct_used || 0)}%" class="${w.tone}"></i></div><div class="meta">${esc(r.label)} · ${esc(r.measured)} · <span class="countdown">${esc(r.next)}</span>${r.resets_at ? ' · resets ' + esc(new Date(r.resets_at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + ' ET' : ''}</div></li>`; }).join('') + '</ul>'
+    + `<p class="fallback">Source: ${esc(rows[0].source)}${rows[0].source === 'OFFICE_STATUS.json' ? ' (fallback: readings file unavailable)' : ' (forge-coordination usage/AI_USAGE_READINGS.jsonl)'} · checks at ${L.USAGE_CHECK_SCHEDULE_ET.join(', ')} ET</p>`;
 }
+function openUsage() { showPanel(`<h2 id="panel-title">AI usage</h2>${usageListHTML()}`); $('panel').classList.add('wide'); if (location.hash !== '#usage') history.replaceState(null, '', '#usage'); }
+addEventListener('hashchange', () => { if (location.hash === '#usage') openUsage(); });
 function openConvo(name) {
   const lines = L.recentConversations(S.parsed ? S.parsed.conversations : [], Date.now()).filter(c => c.from === name);
   if (!lines.length) return showPanel(`<h2 id="panel-title">${esc(name)} is chatting</h2><p>Ambient idle chatter: decoration while the bot is idle. It is not from OFFICE_STATUS.json and is not a real conversation.</p>`);
   showPanel(`<h2 id="panel-title">${esc(name)} is talking</h2><ul>${lines.map(c => `<li><b>${esc(c.from)} → ${esc(c.to)}</b> · ${L.relTime(c.at, Date.now())}<br>${esc(c.text || 'talking with ' + c.to)}</li>`).join('')}</ul>`);
 }
-/* Clicked a Needs Tim row on the 3D board: open its PR / chat link, or show the bot name when no link is known. */
-function openHref(href) {
-  if (/^https?:/i.test(href)) window.open(href, '_blank', 'noopener'); else location.href = href;
+function openHref(href, name) {
+  if (/^https?:/i.test(href)) window.open(href, '_blank', 'noopener');
+  else if (/^grokbot:/i.test(href)) openChatApp(decodeURIComponent((/id=([^&]+)/.exec(href) || [])[1] || ''), name);
 }
 function openNeedsEntry(i) {
   const e = needsEntries()[i]; if (!e) return openNeeds();
-  if (e.target && e.target.href) return openHref(e.target.href);
+  if (e.target && e.target.href) return openHref(e.target.href, e.owner);
+  if (e.link && /^https?:/i.test(e.link)) return openHref(e.link);
   const who = e.bot || e.owner;
   if (!who) return openNeeds();
   showPanel(`<h2 id="panel-title">${esc(who)}</h2><p>${esc(e.text)}</p><p class="fallback">No PR or Grok Bot chat link is known for ${esc(who)}.</p>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
 }
-/* Monitor popup: the same content as the desk monitor, larger and as text. */
+/* Screen click: go right to the live thing (screen_url, President's checksheet, Usage Budget's chart), else the mirror popup. */
+function clickScreen(name, half) {
+  const b = botByName(name) || { bot: name };
+  if (half === 'left' && (b.bot === 'President' || b.bot_id === L.PRESIDENT_ID)) return openChatApp(idFor(b.bot, b.bot_id), b.bot);
+  const t = L.screenTarget(b);
+  if (t.kind === 'url') return window.open(t.href, '_blank', 'noopener');
+  if (t.kind === 'usage') return openUsage();
+  openScreen(name);
+}
+/* Screen popup: the mirrored screen large (or its text fallback). */
 function openScreen(name) {
   const b = botByName(name) || { bot: name, bot_id: '', status: 'idle', task: '', last_action: '', last_action_at: '', screen: null };
-  const now = Date.now(), act = world ? world.activity(name) : '', mode = L.monitorMode(b, act);
+  const now = Date.now(), id = idFor(b.bot, b.bot_id), sc = L.screenState(S.screens, id, now);
+  const act = world ? world.activity(name) : '', mode = L.monitorMode(b, act, { image: sc.show === 'image' });
   let body = '';
-  if (mode === 'checksheet') {
-    const list = L.sortItems(items()).slice(0, 12);
-    body = `<h3>Forge checksheet</h3><ul>${list.map(i => `<li><span class="pbadge ${L.priorityBadge(i.priority).loud ? 'loud' : ''}">${esc(L.priorityBadge(i.priority).text)}</span> ${esc(L.cardTitle(i))} · ${esc(i.owner)} · ${L.statusWord(i).word}</li>`).join('') || '<li>No items yet</li>'}</ul>`;
-  } else if (mode === 'usage') {
-    const u = S.parsed ? S.parsed.usage : { services: [] };
-    body = `<h3>Usage board</h3><ul>${u.services.map(s => { const w = L.usageWord(s.pct_used); return `<li><b>${esc(s.name)}</b> <span class="st ${w.tone}">${w.glyph} ${w.word}</span> · ${s.pct_used == null ? 'no reading' : Math.round(s.pct_used) + '% used'}<div class="ubar"><i style="width:${Math.round(s.pct_used || 0)}%" class="${w.tone}"></i></div></li>`; }).join('') || '<li>No usage readings yet</li>'}</ul>`;
-  } else {
-    if (mode === 'game') body += '<p class="fallback">On a break: playing a game (ambient, not data). Its screen data:</p>';
-    if (b.screen) body += `<div class="screenpop"><div class="sp-title">${esc(b.screen.title || 'Screen')}${b.screen.updated_at ? `<span>${L.relTime(b.screen.updated_at, now)}</span>` : ''}</div><pre>${b.screen.lines.map(esc).join('\n')}</pre></div>`;
-    else {
-      const mine = L.sortItems(items().filter(i => i.owner === b.bot));
-      const lines = mine.map(i => '$ ' + L.cardTitle(i) + '\n  ' + i.priority + ' · ' + L.statusWord(i).word);
-      if (b.question) lines.push('? ' + b.question);
-      body += `<div class="screenpop"><div class="sp-title">terminal</div><pre>${esc(b.task || '(no task)')}\n${esc((b.last_action || '(no last action)') + ' · ' + L.relTime(b.last_action_at, now))}\n\n${esc(lines.join('\n') || '$ no open items for ' + b.bot)}</pre></div>`;
-    }
+  const mirror = sc.show === 'image' ? `<figure class="mirror"><img alt="${esc(b.bot)}'s screen" crossorigin="anonymous" src="${esc(SCREENS_BASE + encodeURIComponent(id) + '.jpg?t=' + Math.floor(now / 60000))}"><figcaption>${esc(sc.why)}</figcaption></figure>` : '';
+  if (mode === 'president') {
+    const chat = S.chat && S.chat.length ? '<div class="pchat">' + S.chat.map(m => `<div class="msg ${m.from === 'Tim' ? 'me' : 'bot'}"><b>${esc(m.from)}</b> <span class="meta">${L.etClock(Date.parse(m.at))} ET</span><div></div></div>`).join('') + '</div>' : `<p class="fallback">${esc(S.chatErr || 'Chat not published yet')}</p>`;
+    body = `<div class="split"><section><h3>Tim ↔ President</h3>${chat}</section><section><h3>Screen</h3>${mirror || `<p class="fallback">${esc(sc.why)}</p>` + checksheetHTML()}</section></div>`;
+  } else if (mode === 'mirror') body = mirror;
+  else if (mode === 'usage') body = `<p class="fallback">${esc(sc.why)} · showing the usage chart</p>` + usageListHTML();
+  else if (mode === 'audit') {
+    const a = b.audit, stale = L.auditStale(a, now);
+    body = `<h3>Mini audit</h3><p>Last audit ${a.last_at ? L.etClock(Date.parse(a.last_at)) + ' ET (' + L.waitingMinutes(a.last_at, now) + 'm ago)' : 'time unknown'}${stale ? ' · <span class="st stale">? stale (over ' + L.AUDIT_STALE_H + ' h)</span>' : ''}</p><ul>${a.checks.map(c => `<li class="audit ${c.value}">${c.value === 'ok' ? '<span class="st working">✓ ok</span>' : c.value === 'flag' ? '<span class="st alert">⚠ flag</span>' : '<span class="st idle">? unknown</span>'} ${esc(c.label)}</li>`).join('')}</ul><p>Findings sent to President: ${a.findings_sent == null ? '?' : a.findings_sent}</p>`;
+  } else if (mode === 'routine') body = `<p class="st working">▶ ${esc(b.routine.name)} running${b.routine.started_at ? ' · started ' + L.etClock(Date.parse(b.routine.started_at)) + ' ET' : ''}</p>`;
+  else {
+    body += `<p class="fallback">${esc(sc.why)} · showing ${esc(b.bot)}'s status text instead</p>`;
+    if (mode === 'replay') { const r = L.replayFor(b, now); body += `<p><span class="chip">recent · ${r.min}m ago</span> ${esc(r.text)}</p>`; }
+    if (b.screen) body += `<div class="screenpop"><div class="sp-title">${esc(b.screen.title || 'Screen')}${b.screen.updated_at ? `<span>${L.relTime(b.screen.updated_at, now)}</span>` : ''}</div><pre></pre></div>`;
+    else body += `<div class="screenpop"><div class="sp-title">terminal</div><pre></pre></div>`;
   }
   showPanel(`<h2 id="panel-title">${esc(b.bot)}'s screen</h2>${body}<button class="linkbtn" type="button" data-bot="${esc(b.bot)}">About ${esc(b.bot)}</button>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
+  // plain text only: chat lines and terminal text are set with textContent, never innerHTML
+  const pre = $('panel').querySelector('.screenpop pre');
+  if (pre) pre.textContent = b.screen ? b.screen.lines.join('\n') : (b.task || '(no task)') + '\n' + (b.last_action || '(no last action)') + ' · ' + L.relTime(b.last_action_at, now);
+  $('panel').querySelectorAll('.pchat .msg > div').forEach((d, k) => { d.textContent = S.chat[k].text; });
   $('panel').classList.add('wide');
 }
+/* Automations: full 3-day timeline (horizontal scroll) + row list + Writer health. */
+function openAutomations() {
+  const a = S.auto, now = Date.now();
+  if (!a) return showPanel(`<h2 id="panel-title">Automations</h2><p class="fallback">${esc(S.autoErr || 'Waiting for control/AUTOMATIONS_STATUS.json')}</p>`);
+  const day0 = L.etDayStart(now) - 86400000, PX = 24, X = t => Math.round((t - day0) / 3600000 * PX), bad = L.writerOverlaps(a.runs), ais = [...new Set(a.runs.map(r => r.ai).concat(a.rows.map(r => r.ai)))];
+  const lanes = ais.map(ai => `<div class="lane"><b>${esc(ai)}</b><div class="track">${a.runs.filter(r => r.ai === ai).map(r => `<i class="run ${r.result}${bad.has(r) ? ' clash' : ''}${r.writer ? ' writer' : ''}" style="left:${X(r.start)}px;width:${Math.max(3, X(r.end) - X(r.start))}px" title="${esc(r.name + ' · ' + r.result + ' · ' + L.etClock(r.start) + ' ET' + (r.writer ? ' · Writer' : ''))}"></i>`).join('')}</div></div>`).join('');
+  const conc = L.concurrencyByHour(a.runs, day0).map((n, h) => `<i style="left:${h * PX}px;height:${Math.min(30, n * 8)}px" class="c${Math.min(3, n)}" title="${n} runs"></i>`).join('');
+  showPanel(`<h2 id="panel-title">Automations</h2><p class="fallback">Yesterday · today · tomorrow (ET). Red outline = overlapping Writer runs. Data ${esc(L.dataAge(a.generated_at, now).text)}.</p>
+    <div class="timeline"><div class="tl" style="width:${72 * PX + 120}px"><div class="days">${['Yesterday', 'Today', 'Tomorrow'].map((d, k) => `<span style="left:${k * 24 * PX}px">${d}</span>`).join('')}<em class="now" style="left:${X(now)}px"></em></div>${lanes}<div class="lane"><b>runs/h</b><div class="track conc">${conc}</div></div></div></div>
+    <table class="autos"><tr><th>AI</th><th>Automation</th><th>Result</th><th>Last run</th><th>Next</th></tr>${a.rows.map(r => `<tr><td>${esc(r.ai)}</td><td>${esc(r.name)}${r.running ? ' <span class="st working">▶ running</span>' : ''}</td><td><span class="res ${r.result}">${r.result}</span></td><td>${r.last_run_at ? L.etClock(Date.parse(r.last_run_at)) + ' ET' : '—'}</td><td>${r.next_run_at ? esc(L.countdown(Date.parse(r.next_run_at), now).replace('Next check in ', 'in ')) : '—'}</td></tr>`).join('')}</table>
+    <h3>Writer health</h3><ul>${WRITER_METRICS.map(([k, label]) => { const m = a.writer && a.writer[k]; return `<li><span class="dot ${m && m.status || 'none'}"></span>${esc(label)}: ${m && m.source && m.value != null ? esc(typeof m.value === 'object' ? JSON.stringify(m.value) : m.value) : 'no data'}${m && m.source ? ' <span class="meta">(' + esc(m.source) + ')</span>' : ''}</li>`; }).join('')}</ul>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
+  $('panel').classList.add('wide');
+}
+function checksheetHTML() { return '<ul>' + L.sortItems(items().filter(i => L.columnFor(i) !== 'done')).slice(0, 12).map(i => `<li>${esc(L.cardTitle(i))} · ${esc(i.owner)} · ${L.statusWord(i).word}</li>`).join('') + '</ul>'; }
 
 /* HUD buttons */
 let needsCursor = -1;
@@ -303,38 +467,41 @@ function buildWorld() {
   const canvasTest = document.createElement('canvas');
   if (!(canvasTest.getContext('webgl2') || canvasTest.getContext('webgl'))) throw new Error('no WebGL');
   const renderer = new THREE.WebGLRenderer({ antialias: !LOW, powerPreference: 'high-performance' });
-  // cap the drawing buffer (~2880 px wide): 4K TVs stay smooth; DOM text stays full resolution
   const fitRatio = () => Math.min(devicePixelRatio || 1, LOW ? 1.5 : 2, 2880 / Math.max(innerWidth, innerHeight));
   renderer.setPixelRatio(fitRatio());
   renderer.setSize(innerWidth, innerHeight);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.45;
-  renderer.shadowMap.enabled = false; // baked/simple lighting, no real-time shadows
+  // Tim 1:54 AM: overall lighting about 10% down from the v2 build (exposure 1.45 -> 1.305; light rig unchanged)
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.45 * 0.9;
+  renderer.shadowMap.enabled = false;
   $('stage').appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x121214);
+  scene.background = new THREE.Color(0x0e1013);
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 60);
-  // keep a wide horizontal view in portrait (phones), 62deg vertical on landscape screens and TVs
   const fitFov = () => { const asp = innerWidth / innerHeight; camera.fov = asp >= 1 ? 62 : Math.min(100, 2 * Math.atan(Math.tan(0.62) / asp) * 180 / Math.PI); camera.updateProjectionMatrix(); };
   fitFov();
-  camera.layers.enable(1); // layer 1: focus/hover rings, never hit by the pick ray
+  camera.layers.enable(1);
   camera.position.set(0.3, 1.75, 9.0); camera.lookAt(-0.6, 1.05, -4);
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
+  const CL = L.CLEARANCE;
 
-  /* ---------- materials (graphite; colour only for state) ---------- */
+  /* ---------- materials: graphite / cool gray, brushed metal, glass, thin cyan/white LED strips (shared) ---------- */
   const std = (color, rough = 0.8, extra = {}) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: rough }, extra));
+  const glow = (c, k = 1.6) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: k });
   const MAT = {
-    floor: std(0x35343a, 0.85), carpet: std(0x313236, 0.95), wall: std(0x333438, 0.9), ceil: std(0x2e2f32, 0.95), trim: std(0x1d1c1b, 0.6),
-    desk: std(0x4b433c, 0.55), metal: std(0x55575c, 0.4, { metalness: 0.6 }), dark: std(0x1c1d20, 0.5), chair: std(0x2a2a2d, 0.7),
-    panel: new THREE.MeshStandardMaterial({ color: 0xfff4e2, emissive: 0xfff0d8, emissiveIntensity: 1.4 }),
-    sconce: new THREE.MeshStandardMaterial({ color: 0xffe2b8, emissive: 0xffd49a, emissiveIntensity: 1.2 }),
+    floor: std(0x2b2e33, 0.42, { metalness: 0.25 }), carpet: std(0x23262b, 0.95), wall: std(0x3b3f45, 0.85), ceil: std(0x202226, 0.95), trim: std(0x15171a, 0.5, { metalness: 0.4 }),
+    desk: std(0x4d535b, 0.32, { metalness: 0.35 }), metal: std(0x9aa1aa, 0.32, { metalness: 0.85 }), dark: std(0x17191c, 0.45), chair: std(0x2a2d32, 0.6),
+    panel: new THREE.MeshStandardMaterial({ color: 0xf2f6ff, emissive: 0xe8f0ff, emissiveIntensity: 1.4 }),
+    sconce: new THREE.MeshStandardMaterial({ color: 0xdfeaff, emissive: 0xcfe0ff, emissiveIntensity: 1.1 }),
     bulb: new THREE.MeshStandardMaterial({ color: 0xfff1d6, emissive: 0xffe6b8, emissiveIntensity: 1.5 }),
-    felt: std(0x1f5a3a, 0.9), wood: std(0x3d2a1e, 0.6), fabric: std(0x3a4150, 0.95), cushion: std(0x46506a, 0.95), white: std(0xe8e8e6, 0.35), glass: null,
-    lineFaint: new THREE.LineBasicMaterial({ color: 0xc58cff, transparent: true, opacity: 0.16 }),
+    felt: std(0x2a4a5a, 0.9), wood: std(0x3a3c40, 0.5, { metalness: 0.2 }), fabric: std(0x3a3e45, 0.95), cushion: std(0x4a515c, 0.95), white: std(0xe6e9ed, 0.35),
+    glass: new THREE.MeshStandardMaterial({ color: 0x9ec9e6, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.16, depthWrite: false }),
+    cyan: glow(0x37e0ff, 1.8), ledW: glow(0xeaf4ff, 1.4), stone: std(0x4a4d52, 0.95), leaf: std(0x3f7a52, 0.8), leafDk: std(0x2c5c3e, 0.85), pot: std(0x2d3036, 0.4, { metalness: 0.5 }), bark: std(0x4a3a2c, 0.9),
+    lineFaint: new THREE.LineBasicMaterial({ color: 0x37e0ff, transparent: true, opacity: 0.14 }),
     lineHi: new THREE.LineBasicMaterial({ color: 0xc58cff, transparent: true, opacity: 0.95 }),
     focus: new THREE.MeshStandardMaterial({ color: 0xc58cff, emissive: 0xc58cff, emissiveIntensity: 1.2 }),
     hover: new THREE.MeshStandardMaterial({ color: 0xc58cff, emissive: 0xc58cff, emissiveIntensity: 0.6, transparent: true, opacity: 0.6 })
   };
-  const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+  const BOXES = new Map(); const box = (w, h, d) => { const k = w + ',' + h + ',' + d; if (!BOXES.has(k)) BOXES.set(k, new THREE.BoxGeometry(w, h, d)); return BOXES.get(k); };
   const add = (geo, mat, x, y, z, parent = scene) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
   function canvasTex(w, h) {
     const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -343,149 +510,186 @@ function buildWorld() {
   }
   const screenMat = tex => new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
 
-  /* ---------- room: 24 x 20 m, board wall at z = -10 faces the entrance at z = +10 ---------- */
+  /* ---------- room ---------- */
   const RW = 24, RD = 20, RH = 4.4;
   add(box(RW, 0.1, RD), MAT.floor, 0, -0.05, 0);
-  add(box(13, 0.02, 9.6), MAT.carpet, -2.2, 0.01, -0.6);
+  add(box(17, 0.02, 10.6), MAT.carpet, -2.2, 0.01, -0.8);
   add(box(RW, 0.1, RD), MAT.ceil, 0, RH + 0.05, 0);
   add(box(RW, RH, 0.2), MAT.wall, 0, RH / 2, -RD / 2 - 0.1);
   add(box(RW, RH, 0.2), MAT.wall, 0, RH / 2, RD / 2 + 0.1);
   add(box(0.2, RH, RD), MAT.wall, -RW / 2 - 0.1, RH / 2, 0);
   add(box(0.2, RH, RD), MAT.wall, RW / 2 + 0.1, RH / 2, 0);
-  for (const [w, d, x, z] of [[RW, 0.04, 0, -RD / 2 + 0.02], [RW, 0.04, 0, RD / 2 - 0.02], [0.04, RD, -RW / 2 + 0.02, 0], [0.04, RD, RW / 2 - 0.02, 0]]) add(box(w, 0.12, d), MAT.trim, x, 0.06, z);
-  // entrance door (behind the start view)
-  add(box(1.3, 2.3, 0.06), MAT.wood, 0.3, 1.15, RD / 2 - 0.03); add(box(1.5, 0.1, 0.1), MAT.trim, 0.3, 2.35, RD / 2 - 0.05);
-  // window on the left wall: light follows America/New_York time of day
+  for (const [w, d, x, z] of [[RW, 0.04, 0, -RD / 2 + 0.02], [RW, 0.04, 0, RD / 2 - 0.02], [0.04, RD, -RW / 2 + 0.02, 0], [0.04, RD, RW / 2 - 0.02, 0]]) {
+    add(box(w, 0.1, d), MAT.trim, x, 0.05, z);
+    add(box(w, 0.025, d), MAT.cyan, x, 0.11, z);           // thin cyan floor LED
+    add(box(w, 0.03, d), MAT.ledW, x, RH - 0.12, z);       // white cove LED under the ceiling
+  }
+  add(box(1.3, 2.3, 0.06), MAT.metal, 0.3, 1.15, RD / 2 - 0.03); add(box(1.5, 0.05, 0.1), MAT.cyan, 0.3, 2.35, RD / 2 - 0.05);
   const glassMat = new THREE.MeshStandardMaterial({ color: 0x0d1630, emissive: 0x0d1a3a, emissiveIntensity: 1 });
-  add(box(0.12, 2.0, 3.2), MAT.trim, -RW / 2 + 0.05, 2.2, -5.5);
-  for (const dz of [-0.78, 0.78]) add(box(0.05, 1.8, 1.45), glassMat, -RW / 2 + 0.13, 2.2, -5.5 + dz);
-  // ceiling light panels and wall sconces (emissive) + lights spread around the room so there are no dark corners
-  const panelPos = [];
-  for (const x of [-8, -2.5, 3, 8.5]) for (const z of [-6, 0, 6]) { add(box(1.8, 0.05, 0.9), MAT.panel, x, RH - 0.03, z); panelPos.push([x, z]); }
-  for (const z of [-7, -1, 5]) { add(box(0.1, 0.35, 0.5), MAT.sconce, -RW / 2 + 0.06, 2.6, z); add(box(0.1, 0.35, 0.5), MAT.sconce, RW / 2 - 0.06, 2.6, z); }
-  for (const x of [-9, 9]) add(box(0.5, 0.35, 0.1), MAT.sconce, x, 2.6, RD / 2 - 0.06);
-  scene.add(new THREE.HemisphereLight(0xfff0de, 0x5a5048, 2.4));
-  scene.add(new THREE.AmbientLight(0xffe6cc, 1.0));
-  const key = new THREE.DirectionalLight(0xffe4c4, 1.2); key.position.set(3, 10, 8); scene.add(key);
+  add(box(0.12, 2.0, 3.2), MAT.trim, -RW / 2 + 0.05, 2.2, -2.2);
+  for (const dz of [-0.78, 0.78]) add(box(0.05, 1.8, 1.45), glassMat, -RW / 2 + 0.13, 2.2, -2.2 + dz);
+  for (const x of [-8, -2.5, 3, 8.5]) for (const z of [-6, 0, 6]) { add(box(1.8, 0.05, 0.9), MAT.panel, x, RH - 0.03, z); add(box(1.84, 0.012, 0.94), MAT.cyan, x, RH - 0.06, z); }
+  scene.add(new THREE.HemisphereLight(0xeef3ff, 0x4a4d55, 2.4));
+  scene.add(new THREE.AmbientLight(0xe6ecf5, 1.0));
+  const key = new THREE.DirectionalLight(0xfff0e0, 1.2); key.position.set(3, 10, 8); scene.add(key);
   const fill = new THREE.DirectionalLight(0xdfe8ff, 0.45); fill.position.set(-6, 6, -8); scene.add(fill);
   const sun = new THREE.DirectionalLight(0xfff2d8, 0); sun.position.set(-14, 6, -5); scene.add(sun);
   const pts = LOW ? [[-3, 0], [5, 2]] : [[-7, -5], [2, -5], [-7, 5], [2, 5], [9, 0]];
-  for (const [x, z] of pts) { const p = new THREE.PointLight(0xffe9cf, LOW ? 16 : 11, 16, 1.1); p.position.set(x, RH - 0.4, z); scene.add(p); }
+  for (const [x, z] of pts) { const p = new THREE.PointLight(0xf0f4ff, LOW ? 16 : 11, 16, 1.1); p.position.set(x, RH - 0.4, z); scene.add(p); }
   const boardGlow = new THREE.PointLight(0xdfe6ff, 5, 10, 1.2); boardGlow.position.set(-0.5, 2.6, -8.2); scene.add(boardGlow);
-  if (!LOW) for (const [x, z] of [[-11, -1], [11, 5], [-9, 9], [9, 9], [11, -7]]) { const p = new THREE.PointLight(0xffd49a, 4, 8, 1.2); p.position.set(x, 2.5, z); scene.add(p); }
+  if (!LOW) for (const [x, z] of [[9.5, 6.5], [-9, 6], [10, -7]]) { const p = new THREE.PointLight(0xcfeaff, 4, 8, 1.2); p.position.set(x, 2.5, z); scene.add(p); }
   const alertLights = [0, 1].map(() => { const p = new THREE.PointLight(0xff2a2a, 0, 4, 1.5); scene.add(p); return p; });
 
-  /* ---------- obstacles + nav grid ---------- */
-  const obstacles = []; // {x0,x1,z0,z1, viewerOnly}
-  const block = (cx, cz, hx, hz, viewerOnly) => obstacles.push({ x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz, viewerOnly });
+  /* ---------- obstacles ---------- */
+  const obstacles = [];
+  const block = (cx, cz, hx, hz, viewerOnly, tag) => obstacles.push({ x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz, viewerOnly, tag });
 
-  /* ---------- desks ---------- */
-  const deskGeo = { top: box(1.6, 0.05, 0.8), leg: box(0.05, 0.72, 0.05), kb: box(0.46, 0.025, 0.15), mouse: new THREE.CapsuleGeometry(0.022, 0.03, 3, 8),
-    mon: box(0.95, 0.6, 0.04), stand: new THREE.CylinderGeometry(0.025, 0.025, 0.28, 8), base: box(0.26, 0.02, 0.18), led: box(0.9, 0.018, 0.012),
-    lampBase: new THREE.CylinderGeometry(0.07, 0.08, 0.025, 14), lampArm: new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6), shade: new THREE.ConeGeometry(0.09, 0.12, 14, 1, true), bulb: new THREE.SphereGeometry(0.035, 10, 8),
-    plate: box(0.42, 0.09, 0.05), mug: new THREE.CylinderGeometry(0.04, 0.035, 0.1, 12),
-    seat: box(0.5, 0.07, 0.48), back: box(0.48, 0.5, 0.06), pole: new THREE.CylinderGeometry(0.03, 0.03, 0.38, 8), spoke: box(0.04, 0.03, 0.32), ring: new THREE.TorusGeometry(1.15, 0.035, 8, 48) };
-  const desks = [], deskCans = [];
-  const monW = LOW ? 448 : 640, monH = LOW ? 280 : 400;
-  SEATS.forEach((name, i) => {
-    const x = DESK_X[i % 4], z = DESK_Z[Math.floor(i / 4)], g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
-    add(deskGeo.top, MAT.desk, 0, 0.745, 0, g);
-    for (const [lx, lz] of [[-0.75, -0.35], [0.75, -0.35], [-0.75, 0.35], [0.75, 0.35]]) add(deskGeo.leg, MAT.metal, lx, 0.36, lz, g);
-    add(deskGeo.kb, MAT.dark, 0, 0.785, 0.12, g); add(deskGeo.mouse, MAT.dark, 0.36, 0.79, 0.14, g).rotation.x = Math.PI / 2;
-    const scr = canvasTex(monW, monH);
-    const monMats = [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(scr.t), MAT.dark];
-    const mon = add(deskGeo.mon, monMats, 0, 1.2, -0.22, g); // screen face (+z) faces the bot and the entrance
-    add(deskGeo.stand, MAT.metal, 0, 0.9, -0.25, g); add(deskGeo.base, MAT.metal, 0, 0.78, -0.24, g);
-    const ledMat = new THREE.MeshStandardMaterial({ color: 0x888888, emissive: 0x888888, emissiveIntensity: 1 });
-    add(deskGeo.led, ledMat, 0, 0.893, -0.195, g);
-    // desk lamp (turns red for blocked / waiting_tim)
-    const shadeMat = std(0xd8d2c8, 0.5, { side: THREE.DoubleSide }), bulbMat = MAT.bulb.clone();
-    add(deskGeo.lampBase, MAT.dark, 0.66, 0.78, -0.22, g); const arm = add(deskGeo.lampArm, MAT.metal, 0.66, 0.99, -0.22, g); arm.rotation.z = 0.12;
-    add(deskGeo.shade, shadeMat, 0.63, 1.21, -0.2, g); add(deskGeo.bulb, bulbMat, 0.63, 1.17, -0.2, g);
-    // nameplate: 3D block, name on its front face
-    const np = canvasTex(256, 56); drawSign(np.ctx, 256, 56, name, '#141416', '#eceef1'); np.t.needsUpdate = true;
-    add(deskGeo.plate, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(np.t), MAT.dark], 0.5, 0.815, 0.36, g);
-    // a coffee mug on some desks, energy cans (instanced below) on the rest
-    if (i % 3 === 0) add(deskGeo.mug, MAT.white, -0.6, 0.82, 0.05, g);
-    else { deskCans.push([x - 0.6, z + 0.05, i]); if (i % 4 === 1) deskCans.push([x - 0.48, z - 0.1, i + 0.5]); }
-    // chair
-    const ch = new THREE.Group(); ch.position.set(0, 0, 0.85); g.add(ch);
-    add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
-    for (let k = 0; k < 5; k++) { const s = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); s.rotation.y = k * 1.2566; s.translateZ(0.14); }
-    const hover = new THREE.Mesh(deskGeo.ring, MAT.hover); hover.layers.set(1); hover.rotation.x = Math.PI / 2; hover.position.set(0, 0.04, 0.3); hover.visible = false; g.add(hover);
-    const focus = new THREE.Mesh(deskGeo.ring, MAT.focus); focus.layers.set(1); focus.rotation.x = Math.PI / 2; focus.position.set(0, 0.05, 0.3); focus.scale.setScalar(1.08); focus.visible = false; g.add(focus);
-    g.traverse(o => { if (o.isMesh && o !== hover && o !== focus) o.userData.deskBot = name; });
-    mon.userData.monitor = name;
-    block(x, z, 0.8, 0.4); block(x, z + 0.85, 0.32, 0.3, true);
-    desks.push({ name, i, x, z, g, mon, scr, ledMat, shadeMat, bulbMat, hover, focus, lod: '', drawnKey: '',
-      seat: { x, z: z + 0.72, face: Math.PI }, stand: { x: x + 1.12, z: z + 0.15, face: 0 }, visit: { x: x - 1.12, z: z + 0.15, face: Math.PI / 2 },
-      linkPoint: new THREE.Vector3(x, 0.78, z - 0.4) });
-  });
-  const deskOf = n => desks.find(d => d.name === n);
+  /* ---------- decoration: Forge holo sign (original mark), wall art, planters, shelves, bonsai ---------- */
+  {
+    const sg = canvasTex(512, 160), x = sg.ctx;
+    x.clearRect(0, 0, 512, 160); x.strokeStyle = '#5ff0ff'; x.fillStyle = '#5ff0ff'; x.lineWidth = 7; x.shadowColor = '#37e0ff'; x.shadowBlur = 18;
+    x.beginPath(); for (let k = 0; k < 6; k++) { const a = Math.PI / 6 + k * Math.PI / 3; x.lineTo(80 + Math.cos(a) * 56, 80 + Math.sin(a) * 56); } x.closePath(); x.stroke(); // hexagon
+    x.beginPath(); x.moveTo(62, 104); x.lineTo(80, 50); x.lineTo(98, 104); x.moveTo(68, 88); x.lineTo(92, 88); x.stroke();       // original "spark" mark
+    x.font = "800 86px 'Inter PE', system-ui, sans-serif"; x.textBaseline = 'middle'; x.fillText('FORGE', 160, 84); sg.t.needsUpdate = true;
+    const holo = new THREE.MeshBasicMaterial({ map: sg.t, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    add(new THREE.PlaneGeometry(2.6, 0.82), holo, 10.1, 3.5, -RD / 2 + 0.25);
+    add(box(2.8, 0.02, 0.2), MAT.cyan, 10.1, 3.02, -RD / 2 + 0.2);
+    const art = (cx, cz, rot, seed) => {
+      const a = canvasTex(256, 320), g = a.ctx, gr = g.createLinearGradient(0, 0, 256, 320);
+      gr.addColorStop(0, '#1b2128'); gr.addColorStop(1, '#2c3440'); g.fillStyle = gr; g.fillRect(0, 0, 256, 320);
+      for (let k = 0; k < 7; k++) { g.strokeStyle = k % 3 ? 'rgba(120,200,230,0.55)' : 'rgba(235,240,250,0.7)'; g.lineWidth = 2 + (k * seed) % 5; g.beginPath(); g.arc(128 + ((k * 37 * seed) % 90) - 45, 160 + ((k * 53) % 120) - 60, 30 + k * 14, k, k + 2.2); g.stroke(); }
+      a.t.needsUpdate = true;
+      const fr = new THREE.Group(); fr.position.set(cx, 2.2, cz); fr.rotation.y = rot; scene.add(fr);
+      add(box(1.3, 1.6, 0.05), MAT.metal, 0, 0, 0, fr); add(new THREE.PlaneGeometry(1.2, 1.5), screenMat(a.t), 0, 0, 0.03, fr);
+    };
+    art(RW / 2 - 0.05, -4.2, -Math.PI / 2, 3); art(-RW / 2 + 0.05, -5.6, Math.PI / 2, 5); art(-5, RD / 2 - 0.05, Math.PI, 7);
+    // wall shelf with props (right wall)
+    const sh = new THREE.Group(); sh.position.set(RW / 2 - 0.18, 0, -2.6); scene.add(sh);
+    for (const y of [1.4, 1.9]) { add(box(0.3, 0.03, 1.6), MAT.metal, 0, y, 0, sh); add(box(0.02, 0.012, 1.6), MAT.cyan, -0.15, y - 0.02, 0, sh); }
+    [[1.47, -0.5, 0.12, 0.14, MAT.white], [1.47, -0.3, 0.1, 0.12, MAT.dark], [1.98, 0.1, 0.18, 0.12, MAT.pot], [1.98, 0.5, 0.12, 0.18, MAT.white]].forEach(([y, z, w, h, m]) => add(box(0.2, h, w), m, 0, y + h / 2 - 0.05, z, sh));
+  }
+  const planterG = new THREE.CylinderGeometry(0.28, 0.22, 0.55, 20), leafG = new THREE.IcosahedronGeometry(0.32, 1);
+  function planter(x, z, s = 1) { const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s); scene.add(g); add(planterG, MAT.pot, 0, 0.275, 0, g); add(box(0.6, 0.02, 0.06), MAT.cyan, 0, 0.56, 0.2, g).visible = false;
+    for (const [dx, dy, dz, m] of [[0, 0.85, 0, MAT.leaf], [0.15, 1.05, 0.05, MAT.leafDk], [-0.13, 1.15, -0.04, MAT.leaf]]) add(leafG, m, dx, dy, dz, g).scale.set(1, 1.2, 1);
+    block(x, z, 0.3 * s, 0.3 * s); }
+  const trunkG = new THREE.CylinderGeometry(0.025, 0.045, 0.28, 8), padG = new THREE.SphereGeometry(0.11, 12, 8), bpotG = new THREE.BoxGeometry(0.34, 0.08, 0.22);
+  function bonsai(x, y, z, s = 1) { const g = new THREE.Group(); g.position.set(x, y, z); g.scale.setScalar(s); scene.add(g); add(bpotG, MAT.pot, 0, 0.04, 0, g);
+    const t = add(trunkG, MAT.bark, 0.02, 0.2, 0, g); t.rotation.z = 0.35;
+    for (const [dx, dy, dz] of [[-0.06, 0.34, 0.02], [0.09, 0.3, -0.03], [0.02, 0.42, 0]]) add(padG, MAT.leafDk, dx, dy, dz, g).scale.set(1.2, 0.45, 0.9); }
+  for (const [x, z] of [[-11.3, 9.3], [6.6, 9.4], [-11.3, -3.3], [7.2, -9.3]]) planter(x, z);
 
-  /* ---------- boards: 3D frames with the screen on the front face ---------- */
+  /* ---------- boards ---------- */
   function makeBoard(id, w, h, cx, cy, cz, rotY, cw, chh) {
     const tex = canvasTex(cw, chh), g = new THREE.Group(); g.position.set(cx, cy, cz); g.rotation.y = rotY; scene.add(g);
     add(box(w + 0.18, h + 0.18, 0.08), MAT.trim, 0, 0, 0, g);
+    add(box(w + 0.2, 0.02, 0.06), MAT.cyan, 0, -h / 2 - 0.12, 0.03, g);
     const screen = add(box(w, h, 0.04), [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(tex.t), MAT.dark], 0, 0, 0.05, g);
     screen.userData.board = id;
     return { id, w, h, g, screen, tex, hits: [] };
   }
-  const BW = 9.6, BH = 4.6;
-  const project = makeBoard('project', BW, BH, -2, 2.5, -RD / 2 + 0.05, 0, LOW ? 1280 : 2048, LOW ? 613 : 981);
-  const usage = makeBoard('usage', 4.8, 2.9, 5.6, 2.35, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 387 : 619);
-  const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
-  const boards = { project, usage, needs };
+  const BW = 9.6, BH = 3.9;
+  const project = makeBoard('project', BW, BH, -2, 2.3, -RD / 2 + 0.05, 0, LOW ? 1280 : 2048, LOW ? 520 : 832);
+  const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.2, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
+  const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 1.4, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
+  const autos = makeBoard('autos', 3.6, 2.2, -RW / 2 + 0.05, 2.1, 6.2, Math.PI / 2, LOW ? 640 : 1024, LOW ? 391 : 626);
+  const writer = makeBoard('writer', 2.6, 1.7, 0 + 4.2, 2.3, RD / 2 - 0.05, Math.PI, LOW ? 512 : 768, LOW ? 335 : 502);
+  const boards = { project, usage, needs, autos, writer };
 
-  /* ---------- lounge: pool table, couch, coffee station, fridge (all primitives) ---------- */
-  const pool = new THREE.Group(); pool.position.set(8.9, 0, -0.9); scene.add(pool);
-  add(box(1.3, 0.18, 2.4), MAT.wood, 0, 0.72, 0, pool); add(box(1.12, 0.03, 2.22), MAT.felt, 0, 0.82, 0, pool);
-  for (const [lx, lz] of [[-0.55, -1.05], [0.55, -1.05], [-0.55, 1.05], [0.55, 1.05]]) add(box(0.12, 0.66, 0.12), MAT.wood, lx, 0.33, lz, pool);
+  /* ---------- lounge: corner sectional, couch, futon, coffee table, exercise bike, plants, waterfall, bonsai ---------- */
+  const SIT = []; // lounge sit / nap spots {id, kind:'sit'|'nap'|'bike', x, z, face, lie}
+  const seatBlock = (g, len, depth) => { add(box(depth, 0.38, len), MAT.fabric, 0, 0.19, 0, g); add(box(0.22, 0.72, len), MAT.fabric, depth / 2 - 0.11, 0.5, 0, g);
+    for (const s of [-1, 1]) add(box(depth, 0.5, 0.18), MAT.fabric, 0, 0.3, s * (len / 2 - 0.09), g);
+    add(box(depth - 0.24, 0.12, len - 0.4), MAT.cushion, -0.1, 0.44, 0, g); add(box(0.02, 0.02, len), MAT.cyan, -depth / 2, 0.06, 0, g); };
+  function sofa(cx, cz, rotY, len, kind, napOK) {
+    const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = rotY; scene.add(g); seatBlock(g, len, 0.9);
+    // seats along the sofa; face = the sofa's front (local -x)
+    const face = rotY - Math.PI / 2, n = Math.max(1, Math.floor(len / 1.0));
+    for (let k = 0; k < n; k++) { const off = (k - (n - 1) / 2) * (len / n), lx = -0.1;
+      SIT.push({ id: kind + cx + ':' + k, kind: 'sit', x: cx + Math.cos(rotY) * lx + Math.sin(rotY) * off, z: cz - Math.sin(rotY) * lx + Math.cos(rotY) * off, face }); }
+    if (napOK) SIT.push({ id: 'nap' + cx, kind: 'nap', x: cx - Math.cos(rotY) * (0.5 + CL), z: cz + Math.sin(rotY) * (0.5 + CL), face, lie: { x: cx, z: cz } });
+    const hx = Math.abs(Math.cos(rotY)) * 0.45 + Math.abs(Math.sin(rotY)) * len / 2, hz = Math.abs(Math.sin(rotY)) * 0.45 + Math.abs(Math.cos(rotY)) * len / 2;
+    block(cx, cz, hx, hz, true);
+    return g;
+  }
+  sofa(11.3, 7.7, 0, 3.0, 'secA', true);                 // sectional, along the right wall (faces -x)
+  sofa(9.5, 9.35, -Math.PI / 2, 2.4, 'secB', false);      // sectional return, along the front wall (faces -z)
+  sofa(7.2, 7.2, Math.PI, 2.2, 'couch', true);            // couch facing the coffee table (+x)
+  { // futon: low frame, slatted base, single cushion (faces +z)
+    const g = sofa(9.6, 4.6, Math.PI / 2, 2.0, 'futon', true); g.scale.y = 0.85; }
+  const ct = new THREE.Group(); ct.position.set(9.4, 0, 7.3); scene.add(ct);
+  add(box(1.3, 0.04, 0.75), MAT.glass, 0, 0.42, 0, ct); add(box(1.2, 0.03, 0.65), MAT.dark, 0, 0.12, 0, ct);
+  for (const [lx, lz] of [[-0.6, -0.32], [0.6, -0.32], [-0.6, 0.32], [0.6, 0.32]]) add(box(0.03, 0.42, 0.03), MAT.metal, lx, 0.21, lz, ct);
+  block(9.4, 7.3, 0.65, 0.38);
+  bonsai(9.3, 0.44, 7.3, 1.1);
+  // exercise bike
+  const bike = new THREE.Group(); bike.position.set(7.4, 0, 3.3); bike.rotation.y = -Math.PI / 2; scene.add(bike);
+  add(box(0.25, 0.05, 1.0), MAT.dark, 0, 0.03, 0, bike); const fw = add(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 24), MAT.metal, 0, 0.3, 0.35, bike); fw.rotation.z = Math.PI / 2;
+  add(box(0.05, 0.62, 0.05), MAT.metal, 0, 0.36, -0.15, bike).rotation.x = -0.25; add(box(0.2, 0.05, 0.28), MAT.dark, 0, 0.68, -0.22, bike);
+  add(box(0.05, 0.7, 0.05), MAT.metal, 0, 0.6, 0.38, bike).rotation.x = 0.2; add(box(0.42, 0.04, 0.04), MAT.metal, 0, 0.95, 0.45, bike); add(box(0.43, 0.012, 0.012), MAT.cyan, 0, 0.98, 0.45, bike);
+  block(7.4, 3.3, 0.55, 0.2);
+  SIT.push({ id: 'bike', kind: 'bike', x: 7.4 + 0.22, z: 3.3, face: -Math.PI / 2 });
+  // indoor waterfall: stone wall, a sheet of moving water (scrolling texture, no extra lights) and a basin
+  const wf = canvasTex(64, 256); { const g = wf.ctx; g.fillStyle = '#5c8fb0'; g.fillRect(0, 0, 64, 256); for (let k = 0; k < 90; k++) { g.fillStyle = `rgba(230,245,255,${0.15 + (k % 5) * 0.08})`; g.fillRect((k * 23) % 64, (k * 71) % 256, 1 + k % 2, 18 + (k * 13) % 40); } }
+  wf.t.wrapS = wf.t.wrapT = THREE.RepeatWrapping; wf.t.repeat.set(2, 1.5); wf.t.needsUpdate = true;
+  const waterMat = new THREE.MeshStandardMaterial({ map: wf.t, transparent: true, opacity: 0.8, roughness: 0.1, emissive: 0x16323f, emissiveIntensity: 0.6 });
+  const wfall = new THREE.Group(); wfall.position.set(RW / 2 - 0.12, 0, 1.9); wfall.rotation.y = -Math.PI / 2; scene.add(wfall);
+  add(box(2.0, 2.6, 0.18), MAT.stone, 0, 1.3, 0, wfall);
+  for (let k = 0; k < 9; k++) add(box(0.3 + (k % 3) * 0.12, 0.16, 0.08), k % 2 ? MAT.stone : MAT.trim, -0.8 + (k * 0.37) % 1.6, 0.3 + (k * 0.29) % 2.1, 0.11, wfall);
+  add(new THREE.PlaneGeometry(1.1, 2.2), waterMat, 0, 1.35, 0.13, wfall);
+  add(box(2.2, 0.35, 0.7), MAT.stone, 0, 0.175, 0.4, wfall);
+  const pool2 = add(new THREE.PlaneGeometry(2.0, 0.55), waterMat, 0, 0.36, 0.42, wfall); pool2.rotation.x = -Math.PI / 2;
+  add(box(2.2, 0.02, 0.02), MAT.cyan, 0, 0.36, 0.76, wfall);
+  block(RW / 2 - 0.5, 1.9, 0.5, 1.1);
+  bonsai(RW / 2 - 0.6, 0.36, 0.6, 1.0); bonsai(RW / 2 - 0.6, 0.36, 3.2, 0.9);
+  // pool table (kept), coffee station and drinks fridge
+  const pool = new THREE.Group(); pool.position.set(8.9, 0, -1.6); scene.add(pool);
+  add(box(1.3, 0.18, 2.4), MAT.wood, 0, 0.72, 0, pool); add(box(1.12, 0.03, 2.22), MAT.felt, 0, 0.82, 0, pool); add(box(1.32, 0.015, 2.42), MAT.cyan, 0, 0.62, 0, pool);
+  for (const [lx, lz] of [[-0.55, -1.05], [0.55, -1.05], [-0.55, 1.05], [0.55, 1.05]]) add(box(0.1, 0.66, 0.1), MAT.metal, lx, 0.33, lz, pool);
   const ballG = new THREE.SphereGeometry(0.03, 10, 8);
   [0xffffff, 0xf2c200, 0x1b4fd8, 0xd8261b, 0x6b2fb3, 0xf07a10, 0x157a3a, 0x111111].forEach((c, k) => add(ballG, std(c, 0.2), -0.2 + (k % 4) * 0.13, 0.865, -0.4 + Math.floor(k / 4) * 0.12 + (k ? 0.5 : -0.2), pool));
-  block(8.9, -0.9, 0.65, 1.2);
-  const couch = new THREE.Group(); couch.position.set(11.25, 0, 4.5); scene.add(couch);
-  add(box(0.9, 0.4, 2.6), MAT.fabric, 0, 0.2, 0, couch); add(box(0.25, 0.75, 2.6), MAT.fabric, 0.33, 0.55, 0, couch);
-  add(box(0.9, 0.55, 0.22), MAT.fabric, 0, 0.32, -1.3, couch); add(box(0.9, 0.55, 0.22), MAT.fabric, 0, 0.32, 1.3, couch);
-  for (const dz of [-0.62, 0.62]) add(box(0.62, 0.14, 1.18), MAT.cushion, -0.08, 0.46, dz, couch);
-  block(11.25, 4.5, 0.45, 1.4);
-  const coffee = new THREE.Group(); coffee.position.set(11.3, 0, -6.2); scene.add(coffee);
-  add(box(0.7, 0.9, 1.6), MAT.wood, 0, 0.45, 0, coffee); add(box(0.74, 0.04, 1.64), MAT.dark, 0, 0.92, 0, coffee);
+  block(8.9, -1.6, 0.65, 1.2);
+  const coffee = new THREE.Group(); coffee.position.set(11.3, 0, -6.0); scene.add(coffee);
+  add(box(0.7, 0.9, 1.6), MAT.desk, 0, 0.45, 0, coffee); add(box(0.74, 0.04, 1.64), MAT.dark, 0, 0.92, 0, coffee); add(box(0.02, 0.02, 1.6), MAT.cyan, -0.36, 0.9, 0, coffee);
   add(box(0.42, 0.5, 0.36), MAT.dark, 0.05, 1.19, -0.3, coffee); add(box(0.1, 0.06, 0.1), MAT.metal, -0.2, 1.08, -0.3, coffee);
   for (const dz of [0.2, 0.32, 0.44]) add(new THREE.CylinderGeometry(0.04, 0.035, 0.1, 12), MAT.white, -0.1, 0.99, dz, coffee);
-  const cs = canvasTex(256, 64); drawSign(cs.ctx, 256, 64, 'COFFEE', '#111', '#f4e7d0'); cs.t.needsUpdate = true;
-  const csg = add(box(0.06, 0.22, 0.9), [screenMat(cs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark, MAT.dark], 0.35, 1.95, 0, coffee); csg.rotation.y = Math.PI; csg.position.x = 0.32;
-  block(11.3, -6.2, 0.4, 0.82);
-  // glass-door drinks fridge: lit interior, shelves of energy cans (one InstancedMesh for every can in the room)
+  const cs = canvasTex(256, 64); drawSign(cs.ctx, 256, 64, 'COFFEE', '#111', '#bfefff'); cs.t.needsUpdate = true;
+  const csg = add(box(0.06, 0.22, 0.9), [screenMat(cs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark, MAT.dark], 0.32, 1.95, 0, coffee); csg.rotation.y = Math.PI;
+  block(11.3, -6.0, 0.4, 0.82);
   const fridge = new THREE.Group(); fridge.position.set(11.3, 0, -8.4); scene.add(fridge);
-  const fbody = std(0x2b2d31, 0.5, { metalness: 0.4 });
+  const fbody = std(0x2b2d31, 0.4, { metalness: 0.6 });
   add(box(0.75, 0.12, 0.85), fbody, 0, 0.06, 0, fridge); add(box(0.75, 0.1, 0.85), fbody, 0, 1.95, 0, fridge);
   add(box(0.75, 1.8, 0.04), fbody, 0, 1.0, -0.405, fridge); add(box(0.75, 1.8, 0.04), fbody, 0, 1.0, 0.405, fridge);
   add(box(0.04, 1.8, 0.85), new THREE.MeshStandardMaterial({ color: 0xe8f4ff, emissive: 0xcfe6ff, emissiveIntensity: 0.9 }), 0.355, 1.0, 0, fridge);
   const shelfY = [0.42, 0.82, 1.22, 1.62];
   for (const y of shelfY) add(box(0.66, 0.015, 0.76), MAT.metal, 0, y - 0.01, 0, fridge);
-  add(box(0.02, 1.84, 0.82), new THREE.MeshStandardMaterial({ color: 0xa8d0e6, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.18, depthWrite: false }), -0.375, 1.0, 0, fridge);
-  for (const [w, h, y, dz] of [[0.03, 1.84, 1.0, -0.41], [0.03, 1.84, 1.0, 0.41], [0.03, 0.04, 0.1, 0], [0.03, 0.04, 1.9, 0]]) add(box(w, h, dz ? 0.03 : 0.84), MAT.dark, -0.39, y, dz, fridge);
+  add(box(0.02, 1.84, 0.82), MAT.glass, -0.375, 1.0, 0, fridge);
   add(box(0.04, 0.6, 0.04), MAT.metal, -0.42, 1.2, 0.33, fridge);
   const fs = canvasTex(512, 64); drawSign(fs.ctx, 512, 64, 'ENERGY', '#0b0b0c', '#5cff3a'); fs.t.needsUpdate = true;
   add(box(0.06, 0.16, 0.8), [MAT.dark, screenMat(fs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark], -0.37, 2.1, 0, fridge);
+  block(11.3, -8.4, 0.42, 0.45);
+  // energy cans: two InstancedMeshes (one per lookalike style), stock / desk cans alternate deterministically per slot
   const fridgeCans = [];
   for (const y of shelfY) for (let k = 0; k < 5; k++) fridgeCans.push([11.3 - 0.1 + (k % 2) * 0.12, y + 0.0625, -8.4 - 0.3 + k * 0.15]);
-  {
-    const cans = new THREE.InstancedMesh(canGeometry(), canMaterials(), fridgeCans.length + deskCans.length), m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
-    // label faces the room (-x) in the fridge and the bot on desks
-    fridgeCans.forEach(([x, y, z], k) => { q.setFromEuler(new THREE.Euler(0, Math.PI + (k % 3) * 0.2, 0)); cans.setMatrixAt(k, m.compose(new THREE.Vector3(x, y, z), q, one)); });
-    deskCans.forEach(([x, z, seed], k) => { q.setFromEuler(new THREE.Euler(0, seed * 1.7, 0)); cans.setMatrixAt(fridgeCans.length + k, m.compose(new THREE.Vector3(x, 0.8325, z), q, one)); });
-    cans.instanceMatrix.needsUpdate = true; scene.add(cans);
+  const canSets = [0, 1].map(st => { const m = new THREE.InstancedMesh(canGeometry(), canMaterials(st), 64); m.count = 0; scene.add(m); return m; });
+  function layoutCans(deskCans) {
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1); canSets.forEach(s => (s.count = 0));
+    const put = (st, pos, rot) => { const set = canSets[st]; if (set.count >= 64) return; q.setFromEuler(new THREE.Euler(0, rot, 0)); set.setMatrixAt(set.count++, m.compose(pos, q, one)); };
+    fridgeCans.forEach(([x, y, z], k) => put(k % 2, new THREE.Vector3(x, y, z), Math.PI + (k % 3) * 0.2));
+    deskCans.forEach(([x, z, seed]) => put(canStyle(seed), new THREE.Vector3(x, 0.8325, z), seed.length * 1.7));
+    canSets.forEach(s => (s.instanceMatrix.needsUpdate = true));
   }
-  block(11.3, -8.4, 0.42, 0.45);
 
-  /* ---------- conference table (back-left corner), chairs and a whiteboard ---------- */
-  const CONF = { x: -9.6, z: -7.8 };
+  /* ---------- meeting room: back-left corner, conference table, chairs and the "New skills" whiteboard ---------- */
+  const deskGeo = { top: box(1.6, 0.05, 0.8), leg: box(0.05, 0.72, 0.05), kb: box(0.46, 0.025, 0.15), mouse: new THREE.CapsuleGeometry(0.022, 0.03, 3, 8),
+    mon: box(0.95, 0.6, 0.04), stand: new THREE.CylinderGeometry(0.025, 0.025, 0.28, 8), base: box(0.26, 0.02, 0.18), led: box(0.9, 0.018, 0.012),
+    lampBase: new THREE.CylinderGeometry(0.07, 0.08, 0.025, 14), lampArm: new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6), shade: new THREE.ConeGeometry(0.09, 0.12, 14, 1, true), bulb: new THREE.SphereGeometry(0.035, 10, 8),
+    plate: box(0.42, 0.09, 0.05), mug: new THREE.CylinderGeometry(0.04, 0.035, 0.1, 12), card: box(0.12, 0.004, 0.09),
+    seat: box(0.5, 0.07, 0.48), back: box(0.48, 0.5, 0.06), pole: new THREE.CylinderGeometry(0.03, 0.03, 0.38, 8), spoke: box(0.04, 0.03, 0.32), ring: new THREE.TorusGeometry(1.15, 0.035, 8, 48) };
+  const CONF = { x: -9.7, z: -8.3 };
   const conf = new THREE.Group(); conf.position.set(CONF.x, 0, CONF.z); scene.add(conf);
-  add(box(3.0, 0.06, 1.2), MAT.wood, 0, 0.74, 0, conf);
+  add(box(3.0, 0.06, 1.2), MAT.desk, 0, 0.74, 0, conf); add(box(3.0, 0.015, 1.2), MAT.cyan, 0, 0.7, 0, conf).scale.set(0.98, 1, 0.96);
   for (const [lx, lz] of [[-1.35, -0.48], [1.35, -0.48], [-1.35, 0.48], [1.35, 0.48]]) add(deskGeo.leg, MAT.metal, lx, 0.36, lz, conf);
-  // seats: 0/1 nearest the whiteboard end (training), then along both sides, then the far end
+  add(box(0.04, 2.4, 3.6), MAT.glass, CONF.x + 2.35, 1.2, CONF.z + 0.2).visible = !LOW; // glass partition
   const CONF_SEATS = [[-1.0, -1.05, 0], [-1.0, 1.05, Math.PI], [0, -1.05, 0], [0, 1.05, Math.PI], [1.0, -1.05, 0], [1.0, 1.05, Math.PI], [1.95, 0, -Math.PI / 2]]
     .map(([dx, dz, face]) => ({ x: CONF.x + dx, z: CONF.z + dz, face }));
   for (const st of CONF_SEATS) {
@@ -494,29 +698,82 @@ function buildWorld() {
     for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); }
     block(ch.position.x, ch.position.z, 0.28, 0.28, true);
   }
-  const TRAINER_SPOT = { x: -11.4, z: CONF.z, face: Math.PI / 2 };
-  const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(-RW / 2 + 0.05, 1.6, -8.8); wbG.rotation.y = Math.PI / 2; scene.add(wbG);
+  const TRAINER_SPOT = { x: -11.3, z: CONF.z, face: Math.PI / 2 };
+  const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(-RW / 2 + 0.05, 1.6, CONF.z); wbG.rotation.y = Math.PI / 2; scene.add(wbG);
   add(box(1.75, 0.95, 0.05), MAT.metal, 0, 0, 0, wbG);
   add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
-  add(box(1.2, 0.03, 0.08), MAT.metal, 0, -0.5, 0.05, wbG);
   let wbKey = '';
   function drawWB(meeting) { const k = meeting ? meeting.id + meeting.title + meeting.seated.join() : 'skills'; if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, 512, 256, { meeting, demo: DEMO }); wb.t.needsUpdate = true; }
   drawWB(null);
   block(CONF.x, CONF.z, 1.5, 0.6);
-  // walls for the viewer
   const WALL = 0.35;
 
-  /* ---------- nav grid (A*) for the bots ---------- */
+  /* ---------- desks: built from OFFICE_STATUS bots[] (any N), laid out by L.deskLayout ---------- */
+  const desks = [];
+  const monW = LOW ? 320 : 640, monH = LOW ? 200 : 400; // small monitor textures; the popup loads full size
+  function makeDesk(name, x, z) {
+    const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+    add(deskGeo.top, MAT.desk, 0, 0.745, 0, g); add(box(1.6, 0.012, 0.012), MAT.cyan, 0, 0.72, 0.4, g);
+    for (const [lx, lz] of [[-0.75, -0.35], [0.75, -0.35], [-0.75, 0.35], [0.75, 0.35]]) add(deskGeo.leg, MAT.metal, lx, 0.36, lz, g);
+    add(deskGeo.kb, MAT.dark, 0, 0.785, 0.12, g); add(deskGeo.mouse, MAT.dark, 0.36, 0.79, 0.14, g).rotation.x = Math.PI / 2;
+    const scr = canvasTex(monW, monH);
+    const mon = add(deskGeo.mon, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(scr.t), MAT.dark], 0, 1.2, -0.22, g);
+    add(deskGeo.stand, MAT.metal, 0, 0.9, -0.25, g); add(deskGeo.base, MAT.metal, 0, 0.78, -0.24, g);
+    const ledMat = new THREE.MeshStandardMaterial({ color: 0x888888, emissive: 0x888888, emissiveIntensity: 1 });
+    add(deskGeo.led, ledMat, 0, 0.893, -0.195, g);
+    const shadeMat = std(0xd8dde4, 0.4, { side: THREE.DoubleSide, metalness: 0.3 }), bulbMat = MAT.bulb.clone();
+    add(deskGeo.lampBase, MAT.dark, 0.66, 0.78, -0.22, g); const arm = add(deskGeo.lampArm, MAT.metal, 0.66, 0.99, -0.22, g); arm.rotation.z = 0.12;
+    add(deskGeo.shade, shadeMat, 0.63, 1.21, -0.2, g); add(deskGeo.bulb, bulbMat, 0.63, 1.17, -0.2, g);
+    const np = canvasTex(256, 56); drawSign(np.ctx, 256, 56, name, '#141416', '#eceef1'); np.t.needsUpdate = true;
+    add(deskGeo.plate, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(np.t), MAT.dark], 0.5, 0.815, 0.36, g);
+    const hasMug = L.hash('mug:' + name) % 3 === 0;
+    if (hasMug) add(deskGeo.mug, MAT.white, -0.6, 0.82, 0.05, g);
+    const card = add(deskGeo.card, new THREE.MeshStandardMaterial({ color: 0xeef3ff, emissive: 0x334466, emissiveIntensity: 0.4 }), -0.35, 0.775, 0.12, g); card.visible = false;
+    const ch = new THREE.Group(); ch.position.set(0, 0, 0.85); g.add(ch);
+    add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
+    for (let k = 0; k < 5; k++) { const s = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); s.rotation.y = k * 1.2566; s.translateZ(0.14); }
+    const hover = new THREE.Mesh(deskGeo.ring, MAT.hover); hover.layers.set(1); hover.rotation.x = Math.PI / 2; hover.position.set(0, 0.04, 0.3); hover.visible = false; g.add(hover);
+    const focus = new THREE.Mesh(deskGeo.ring, MAT.focus); focus.layers.set(1); focus.rotation.x = Math.PI / 2; focus.position.set(0, 0.05, 0.3); focus.scale.setScalar(1.08); focus.visible = false; g.add(focus);
+    g.traverse(o => { if (o.isMesh && o !== hover && o !== focus) o.userData.deskBot = name; });
+    mon.userData.monitor = name;
+    block(x, z, 0.8, 0.4, false, 'desk:' + name); block(x, z + 0.85, 0.32, 0.3, true, 'desk:' + name);
+    return { name, x, z, g, mon, scr, ledMat, shadeMat, bulbMat, hover, focus, card, lod: '', drawnKey: '', img: null, imgAt: 0,
+      seat: { x, z: z + 0.72, face: Math.PI }, stand: { x: x + 1.12, z: z + 0.15 + CL, face: 0 }, visit: { x: x - 1.12, z: z + 0.15 + CL, face: Math.PI / 2 },
+      cans: hasMug ? [] : [[x - 0.6, z + 0.05, name]].concat(L.hash('can2:' + name) % 4 === 1 ? [[x - 0.48, z - 0.1, name + '2']] : []), linkPoint: new THREE.Vector3(x, 0.78, z - 0.4) };
+  }
+  function disposeDesk(d) {
+    scene.remove(d.g); d.g.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => { if (m && m.map && m.map.isCanvasTexture) m.map.dispose(); }); });
+    for (let k = obstacles.length - 1; k >= 0; k--) if (obstacles[k].tag === 'desk:' + d.name) obstacles.splice(k, 1);
+  }
+  let rosterKey = '';
+  function syncDesks() {
+    const names = bots().map(b => b.bot), k = names.join('|');
+    if (k === rosterKey) return false; rosterKey = k;
+    for (const d of desks.splice(0)) disposeDesk(d);
+    const lay = L.deskLayout(names.length);
+    names.forEach((n, i) => desks.push(makeDesk(n, lay[i].x, lay[i].z)));
+    for (const [n, c] of chars) if (!names.includes(n)) { scene.remove(c.root); c.tag.remove(); c.bub.remove(); book.release(n); chars.delete(n); }
+    for (const c of chars.values()) { c.goalKey = ''; const d = deskOf(c.name); if (d) { c.pos.set(d.seat.x, d.seat.z); c.root.position.set(d.seat.x, 0, d.seat.z); c.path = []; } }
+    layoutCans(desks.flatMap(d => d.cans));
+    buildGrid(); buildTargets();
+    return true;
+  }
+  const deskOf = n => desks.find(d => d.name === n);
+
+  /* ---------- nav grid (A*) ---------- */
   const CELL = 0.2, GX = Math.round(RW / CELL), GZ = Math.round(RD / CELL), INF = 0.22;
   const grid = new Uint8Array(GX * GZ);
   const toCell = (x, z) => [Math.max(0, Math.min(GX - 1, Math.floor((x + RW / 2) / CELL))), Math.max(0, Math.min(GZ - 1, Math.floor((z + RD / 2) / CELL)))];
   const cellC = (i, j) => [-RW / 2 + (i + 0.5) * CELL, -RD / 2 + (j + 0.5) * CELL];
-  for (let j = 0; j < GZ; j++) for (let i = 0; i < GX; i++) {
-    const [x, z] = cellC(i, j);
-    let b = x < -RW / 2 + 0.4 || x > RW / 2 - 0.4 || z < -RD / 2 + 0.4 || z > RD / 2 - 0.4;
-    if (!b) for (const o of obstacles) if (!o.viewerOnly && x > o.x0 - INF && x < o.x1 + INF && z > o.z0 - INF && z < o.z1 + INF) { b = true; break; }
-    grid[j * GX + i] = b ? 1 : 0;
+  function buildGrid() {
+    for (let j = 0; j < GZ; j++) for (let i = 0; i < GX; i++) {
+      const [x, z] = cellC(i, j);
+      let b = x < -RW / 2 + 0.4 || x > RW / 2 - 0.4 || z < -RD / 2 + 0.4 || z > RD / 2 - 0.4;
+      if (!b) for (const o of obstacles) if (!o.viewerOnly && x > o.x0 - INF && x < o.x1 + INF && z > o.z0 - INF && z < o.z1 + INF) { b = true; break; }
+      grid[j * GX + i] = b ? 1 : 0;
+    }
   }
+  buildGrid();
   const free = (i, j) => i >= 0 && j >= 0 && i < GX && j < GZ && !grid[j * GX + i];
   function nearestFree(i, j) {
     if (free(i, j)) return [i, j];
@@ -557,23 +814,33 @@ function buildWorld() {
     return out;
   }
 
-  /* ---------- lounge activity slots ---------- */
+  /* ---------- reserved standing / sitting slots (one bot per slot; item 22) ---------- */
+  const book = L.createSlotBook();
+  const BOARD_SLOTS = L.boardSlots(16, -2, -RD / 2 + 1.1 + CL, 8).map((p, i) => Object.assign({ id: 'board' + i, kind: 'board' }, p));
   const SLOTS = [
-    { id: 'pool1', kind: 'pool', x: 7.95, z: -1.3, face: Math.PI / 2 }, { id: 'pool2', kind: 'pool', x: 9.85, z: -0.4, face: -Math.PI / 2 },
-    { id: 'nap1', kind: 'nap', x: 10.3, z: 3.95, face: Math.PI / 2, lie: { x: 11.05, z: 3.95 } }, { id: 'nap2', kind: 'nap', x: 10.3, z: 5.15, face: Math.PI / 2, lie: { x: 11.05, z: 5.15 } },
-    { id: 'coffee', kind: 'coffee', x: 10.5, z: -6.0, face: Math.PI / 2 }, { id: 'fridge', kind: 'fridge', x: 10.45, z: -7.7, face: Math.PI / 2 },
-    { id: 'lo1', kind: 'loiter', x: 7.6, z: 3.6, face: Math.PI / 2 }, { id: 'lo2', kind: 'loiter', x: 7.4, z: -4.6, face: Math.PI / 2 }, { id: 'lo3', kind: 'loiter', x: 8.6, z: 7.6, face: Math.PI }
-  ];
-  const slotBy = new Map();
+    { id: 'pool1', kind: 'pool', x: 7.95 - CL, z: -2.0, face: Math.PI / 2 }, { id: 'pool2', kind: 'pool', x: 9.85 + CL, z: -1.1, face: -Math.PI / 2 },
+    { id: 'coffee1', kind: 'coffee', x: 10.5 - CL, z: -6.4, face: Math.PI / 2 }, { id: 'coffee2', kind: 'coffee', x: 10.5 - CL, z: -5.4, face: Math.PI / 2 },
+    { id: 'fridge1', kind: 'fridge', x: 10.45 - CL, z: -8.2, face: Math.PI / 2 }, { id: 'fridge2', kind: 'fridge', x: 9.6 - CL, z: -8.9, face: Math.PI / 2 },
+    { id: 'lo1', kind: 'loiter', x: 6.4, z: 1.0, face: Math.PI / 2 }, { id: 'lo2', kind: 'loiter', x: 6.6, z: -4.6, face: Math.PI / 2 }, { id: 'lo3', kind: 'loiter', x: 6.2, z: 5.2, face: Math.PI },
+    { id: 'lo4', kind: 'loiter', x: -6.6, z: 6.2, face: 0 }, { id: 'lo5', kind: 'loiter', x: 1.5, z: 6.0, face: 0 }, { id: 'lo6', kind: 'loiter', x: -3, z: 6.4, face: 0 }
+  ].concat(SIT);
+  function takeSlot(c, kinds) {
+    const mine = book.slotOf(c.name), cur = mine && SLOTS.concat(BOARD_SLOTS).find(s => s.id === mine);
+    if (cur && kinds.includes(cur.kind)) return cur;
+    const list = SLOTS.concat(BOARD_SLOTS).filter(s => kinds.includes(s.kind) && !book.holder(s.id));
+    if (!list.length) return null;
+    const s = list[L.hash(c.name + kinds.join()) % list.length]; book.take(s.id, c.name); return s;
+  }
+  const slotById = id => SLOTS.concat(BOARD_SLOTS).find(s => s.id === id);
 
   /* ---------- characters ---------- */
   const tmpV = new THREE.Vector3();
   function ensureChars() {
     for (const b of bots()) {
       if (chars.has(b.bot) || !deskOf(b.bot)) continue;
-      const c = makeBot(b.bot, !LOW, b.bot_id), d = deskOf(b.bot);
-      c.phase = Math.random() * 6; c.pickups = []; c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
-      c.root.position.set(d.seat.x, 0, d.seat.z); c.root.rotation.y = Math.PI; c.pose = 'sit';
+      const c = makeBot(b.bot, !LOW, b.bot_id, b), d = deskOf(b.bot);
+      c.phase = (L.hash(b.bot) % 600) / 100; c.pickups = []; c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
+      c.root.position.set(d.seat.x, 0, d.seat.z); c.root.rotation.y = Math.PI; c.pose = 'sit'; c.wantSince = 0; c.carry = false;
       scene.add(c.root); chars.set(b.bot, c); c.botId = b.bot_id;
       c.tag = document.createElement('div'); c.tag.className = 'tag'; $('labels').appendChild(c.tag);
       c.bub = document.createElement('div'); c.bub.className = 'bubbles'; c.bub.hidden = true; c.bub.onclick = () => openConvo(b.bot); $('labels').appendChild(c.bub);
@@ -581,58 +848,58 @@ function buildWorld() {
     }
     for (const p of pendingPickups.splice(0)) queuePickup(p);
   }
-  function releaseSlot(c) { if (c.slot) { slotBy.delete(c.slot.id); c.slot = null; } }
-  function pickSlot(c) {
-    releaseSlot(c);
-    const order = SLOTS.filter(s => !slotBy.has(s.id) && s.kind !== 'loiter').sort(() => Math.random() - 0.5);
-    const s = order[0] || SLOTS.find(s => !slotBy.has(s.id)) || SLOTS[6];
-    slotBy.set(s.id, c.name); c.slot = s; c.slotUntil = clock + 20 + Math.random() * 40; c.slotKey = s.id + ':' + Math.round(clock);
-  }
   function cardCenter(itemId) {
     const h = project.hits.find(x => x.id === itemId);
-    if (!h) return new THREE.Vector3(-2, 2.5, -RD / 2 + 0.1);
-    return new THREE.Vector3(-2 + (h.x + h.w / 2 - 0.5) * BW, 2.5 + (0.5 - (h.y + h.h / 2)) * BH, -RD / 2 + 0.1);
+    if (!h) return new THREE.Vector3(-2, 2.3, -RD / 2 + 0.1);
+    return new THREE.Vector3(-2 + (h.x + h.w / 2 - 0.5) * BW, 2.3 + (0.5 - (h.y + h.h / 2)) * BH, -RD / 2 + 0.1);
   }
-  /* who does what (L.planOffice), refreshed twice a second */
   let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
   function updatePlan() {
-    const t = performance.now(); if (t - planAt < 500) return; planAt = t; // wall time: slow renderers still re-plan twice a second
+    const t = performance.now(); if (t - planAt < 500) return; planAt = t;
     plan = L.planOffice(bots().filter(b => deskOf(b.bot)), S.parsed ? S.parsed.meetings : [], Date.now(), S.state);
     drawWB(plan.meeting);
   }
   const charPos = n => { const o = chars.get(n); return o ? { x: o.pos.x, z: o.pos.y } : null; };
+  const seated = p => ['sit', 'type', 'game', 'meet', 'deskSleep', 'nap', 'lounge', 'bike'].includes(p);
   function decide(c, b, convo) {
-    const st0 = L.statusStyle(b ? b.status : 'idle'), d0 = deskOf(c.name);
-    if (st0.behavior === 'wave') { releaseSlot(c); return { key: 'stand', spot: d0.stand, pose: 'wave' }; } // needs Tim: stays at its own desk
-    if (c.pickups.length) {
-      const id = c.pickups[0], key = 'pick:' + id + ':' + c.pickups.length;
+    const st0 = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name);
+    if (st0.alert) { book.release(c.name); return { key: 'stand', spot: d.stand, pose: 'wave' }; } // needs Tim: stays at its own desk, waving
+    if (c.pickups.length) { // board card life: pin a new card, or take one off the board and carry it to the desk
+      const pk = c.pickups[0], id = pk.itemId, key = 'pick:' + id;
       if (c.goalKey === key && c.arrived) {
         if (!S.glow.has(id)) { S.glow.add(id); boardDirty = true; }
-        if (clock - c.arrivedAt > 2.6) { c.pickups.shift(); S.glow.delete(id); boardDirty = true; return decide(c, b, convo); }
+        if (clock - c.arrivedAt > 2.6) { c.pickups.shift(); S.glow.delete(id); boardDirty = true; if (pk.reason === 'take' || pk.reason === 'reassigned') c.carry = true; book.release(c.name); return decide(c, b, convo); }
       }
-      const p = cardCenter(id);
-      return { key, spot: { x: Math.max(-6.4, Math.min(2.4, p.x)), z: -8.9, face: Math.PI }, pose: 'board' };
+      const s = takeSlot(c, ['board']) || BOARD_SLOTS[0];
+      return { key, spot: s, pose: 'board' };
     }
-    if (convo && deskOf(convo.to)) { releaseSlot(c); const d = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: d.visit, pose: 'talk', faceBot: convo.to }; }
-    const p = plan.plans[c.name] || { act: st0.behavior === 'work' ? 'work' : 'wander' }, d = d0;
-    if (p.act !== 'wander') releaseSlot(c);
+    if (c.carry) { if (c.goalKey === 'carry' && c.arrived) { c.carry = false; d.card.visible = true; } else return { key: 'carry', spot: d.seat, pose: 'sit' }; }
+    if (convo && deskOf(convo.to)) { book.release(c.name); const dd = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: dd.visit, pose: 'talk', faceBot: convo.to }; }
+    const p = plan.plans[c.name] || { act: st0.behavior === 'work' ? 'work' : 'wander' };
+    const slotted = kinds => { const s = takeSlot(c, kinds); return s ? { key: 'slot:' + s.id, spot: s, pose: s.kind === 'loiter' ? 'stand' : s.kind === 'sit' ? 'lounge' : s.kind, lie: s.lie, can: p.can } : null; };
+    if (!['coffee', 'fridge', 'lounge', 'bike', 'wander', 'sleep', 'replay_board'].includes(p.act)) book.release(c.name);
     switch (p.act) {
-      case 'work': return { key: 'seat', spot: d.seat, pose: 'type' };
+      case 'work': case 'replay': return { key: 'seat:' + p.act, spot: d.seat, pose: 'type', recent: p.replay };
+      case 'replay_board': return Object.assign(slotted(['board']) || { key: 'seat', spot: d.seat, pose: 'type' }, { pose: 'board', recent: p.replay });
       case 'meeting': case 'train': return { key: p.act + ':' + p.seat, spot: CONF_SEATS[p.seat], pose: 'meet', ambient: p.act === 'train' ? 'reply' : '' };
       case 'lead': return { key: 'lead', spot: TRAINER_SPOT, pose: 'talk', ambient: 'train' };
-      case 'sleep': return { key: 'sleep', spot: d.seat, pose: 'deskSleep' };
+      case 'sleep': return (L.hash(c.name) % 2 && slotted(['nap'])) || (book.release(c.name), { key: 'sleep', spot: d.seat, pose: 'deskSleep' });
       case 'game': return { key: 'game', spot: d.seat, pose: 'game' };
-      case 'chat': { // the guest walks to the host's desk; the host stands up at its own seat
+      case 'coffee': case 'fridge': return slotted([p.act]) || slotted(['loiter']) || { key: 'seat', spot: d.seat, pose: 'type' };
+      case 'lounge': return slotted(['sit']) || slotted(['loiter']);
+      case 'bike': return slotted(['bike']) || slotted(['sit']) || slotted(['loiter']);
+      case 'visitdesk': { const td = deskOf(p.partner); if (td) return { key: 'vd:' + p.partner, spot: td.visit, pose: 'talk', faceBot: p.partner, ambient: 'chat', pair: c.name + '|' + p.partner, can: p.can }; break; }
+      case 'chat': {
         if (p.host) return { key: 'host:' + p.partner, spot: d.seat, pose: 'talk', faceBot: p.partner, ambient: 'chat', pair: [p.partner, c.name].sort().join('|'), can: p.can };
         const hd = deskOf(p.partner); return { key: 'guest:' + p.partner, spot: hd.visit, pose: 'talk', faceBot: p.partner, ambient: 'chat', pair: [p.partner, c.name].sort().join('|'), can: p.can };
       }
       case 'listen': return { key: 'listen', spot: d.seat, pose: 'talk', faceBot: p.partner, ambient: 'reply', pair: p.partner + '|' + c.name, can: p.can };
       case 'visit': { const td = deskOf(p.partner); return { key: 'visit:' + p.partner, spot: td.visit, pose: 'talk', faceBot: p.partner, ambient: 'visit', pair: c.name + '|' + p.partner, can: p.can }; }
     }
-    if (!c.slot || clock > c.slotUntil) pickSlot(c);
-    return { key: 'act:' + c.slotKey, spot: c.slot, pose: c.slot.kind === 'loiter' ? 'stand' : c.slot.kind, lie: c.slot.lie, can: p.can };
+    return slotted(['loiter', 'pool']) || { key: 'seat', spot: d.seat, pose: 'sit' };
   }
   const angLerp = (a, b, k) => { let d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; };
+  let walkingNow = 0;
   function updateChar(c, dt) {
     const b = botByName(c.name), reduced = reducedMQ.matches;
     const frozen = S.state === 'failed';
@@ -646,10 +913,13 @@ function buildWorld() {
     const convo = activeConvos.get(c.name);
     const g = decide(c, b, convo);
     if (g.key !== c.goalKey) {
-      c.goalKey = g.key; c.goal = g; c.arrived = false;
-      c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot);
+      // walking cap: at most a third of the bots on the move; others wait where they are (alerts never wait)
+      const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
+      if (far && !st.alert && walkingNow >= L.walkCap(chars.size)) { if (!c.wantSince) c.wantSince = clock; }
+      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); if (far) walkingNow++; }
     }
-    let pose = g.pose;
+    const goal = c.goalKey === g.key ? g : (c.goal || g);
+    let pose = goal.pose;
     if (c.path.length) {
       const tgt = c.path[0], dx = tgt.x - c.pos.x, dz = tgt.y - c.pos.y, dist = Math.hypot(dx, dz), step = 1.35 * dt;
       if (dist <= step) { c.pos.copy(tgt); c.path.shift(); } else { c.pos.x += dx / dist * step; c.pos.y += dz / dist * step; }
@@ -658,24 +928,32 @@ function buildWorld() {
       c.root.position.set(c.pos.x, 0, c.pos.y);
     } else {
       if (!c.arrived) { c.arrived = true; c.arrivedAt = clock; }
-      let face = g.spot.face;
-      if (g.faceBot) { const o = charPos(g.faceBot) || deskOf(g.faceBot); if (o) face = Math.atan2(o.x - c.pos.x, o.z - c.pos.y); }
-      c.root.rotation.y = angLerp(c.root.rotation.y, face, Math.min(1, dt * 6));
-      const lie = g.lie && pose === 'nap' ? g.lie : null;
+      if (c.goalKey !== g.key) pose = seated(c.pose) ? c.pose : 'stand';
+      let face = goal.spot.face;
+      if (goal.faceBot) { const o = charPos(goal.faceBot) || deskOf(goal.faceBot); if (o) face = Math.atan2(o.x - c.pos.x, o.z - c.pos.y); }
+      if (face != null) c.root.rotation.y = angLerp(c.root.rotation.y, face, Math.min(1, dt * 6));
+      const lie = goal.lie && pose === 'nap' ? goal.lie : null;
       c.root.position.x += ((lie ? lie.x : c.pos.x) - c.root.position.x) * Math.min(1, dt * 4);
       c.root.position.z += ((lie ? lie.z : c.pos.y) - c.root.position.z) * Math.min(1, dt * 4);
     }
     c.pose = pose;
-    c.goalNow = g;
+    c.goalNow = goal;
     c.setExpression(pose === 'nap' || pose === 'deskSleep' ? 'sleepy' : st.alert ? 'worried' : S.state === 'stale' ? 'puzzled' : pose === 'stand' ? 'neutral' : 'happy');
     c.warn.visible = st.alert;
     c.quest.visible = S.state === 'stale' && !st.alert;
     if (st.alert) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
-    animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!g.can });
+    animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk' });
     c.rig.position.x = pose === 'nap' ? 0.5 : 0;
   }
+  /* separation: no two upright bots closer than MIN_SEP (seated / lying bots are fixed points) */
+  function separateChars() {
+    const list = [...chars.values()], pts = list.map(c => ({ x: c.pos.x, z: c.pos.y, fixed: seated(c.pose) || c.pose === 'wave' }));
+    if (pts.length < 2) return;
+    L.separate(pts, L.MIN_SEP * 0.9, 3);
+    list.forEach((c, i) => { if (!pts[i].fixed && (pts[i].x !== c.pos.x || pts[i].z !== c.pos.y)) { const [ci, cj] = toCell(pts[i].x, pts[i].z); if (free(ci, cj)) { c.pos.set(pts[i].x, pts[i].z); c.root.position.x = c.pos.x; c.root.position.z = c.pos.y; } } });
+  }
 
-  /* ---------- labels & speech bubbles (DOM, projected from 3D) ---------- */
+  /* ---------- labels & speech bubbles ---------- */
   const activeConvos = new Map(); let convoLines = [];
   function updateConvos() {
     activeConvos.clear();
@@ -683,17 +961,20 @@ function buildWorld() {
     for (const c of convoLines) activeConvos.set(c.from, c);
   }
   function updateLabels() {
-    const w = innerWidth, h = innerHeight, max = TV ? 40 : 22;
+    const w = innerWidth, h = innerHeight, max = TV ? 40 : 22, now = Date.now();
     for (const c of chars.values()) {
       const b = botByName(c.name), st = L.statusStyle(b ? b.status : 'idle'), frozen = S.state === 'failed';
-      const key = c.name + st.status + frozen + S.state + (hoverBot === c.name);
+      const rp = c.goalNow && c.goalNow.recent;
+      const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
+      const key = c.name + st.status + frozen + S.state + (hoverBot === c.name) + (rp ? rp.min : '') + why;
       if (key !== c.tagKey) {
         c.tagKey = key;
         c.tag.className = 'tag' + (frozen ? ' frozen' : '') + (hoverBot === c.name ? ' hl' : '');
-        const chip = st.alert && !frozen ? `<span class="chip">⚠ ${st.word}</span>` : S.state === 'stale' || frozen ? '<span class="chip stale">?</span>' : '';
-        c.tag.innerHTML = chip + esc(c.name); c.tag.title = '';
+        const chip = st.alert && !frozen ? `<span class="chip">⚠ ${st.word}</span>` : why ? '<span class="chip stale">?</span>' : '';
+        const recent = rp && !st.alert ? `<span class="chip recent">recent · ${rp.min}m ago</span>` : '';
+        c.tag.innerHTML = chip + esc(c.name) + recent; c.tag.title = why ? '? ' + why : '';
         const short = shortTag(c.name, c.botId);
-        if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = chip + esc(short); c.tag.title = c.name; }
+        if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = chip + esc(short) + recent; c.tag.title = c.name + (why ? ' · ? ' + why : ''); }
       }
       tmpV.set(c.root.position.x, c.top + (st.alert ? 0.75 : 0.18) + c.rig.position.y, c.root.position.z).project(camera);
       const dist = camera.position.distanceTo(c.root.position);
@@ -701,20 +982,20 @@ function buildWorld() {
       c.tag.style.display = vis ? '' : 'none';
       const sx = (tmpV.x * 0.5 + 0.5) * w, sy = (-tmpV.y * 0.5 + 0.5) * h;
       if (vis) c.tag.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy}px)`;
-      const lines = convoLines.filter(l => l.from === c.name), amb = lines.length ? '' : ambientText(c);
-      const bk = lines.length ? lines.map(l => l.at + l.text).join('|') : amb;
+      const lines = convoLines.filter(l => l.from === c.name), amb = lines.length ? '' : rp ? '' : ambientText(c);
+      const bk = lines.length ? lines.map(l => l.at + l.text).join('|') : rp ? 'rp' + rp.text : amb;
       if (bk !== c.bubKey) {
         c.bubKey = bk;
         c.bub.innerHTML = lines.length ? lines.map((l, k) => `<div class="bubble${l.text ? '' : ' who'}" style="opacity:${[0.45, 0.72, 1][3 - lines.length + k] || 1}">${esc(L.bubbleText(l))}</div>`).join('')
+          : rp ? `<div class="bubble recent"><span class="amb">recent · ${rp.min}m ago</span> ${esc(L.truncate(rp.text, 80))}</div>`
           : amb ? `<div class="bubble ambient"><span class="amb">ambient</span> ${esc(amb)}</div>` : '';
       }
-      c.bub.hidden = !(lines.length || amb) || !vis;
-      c.bub.style.pointerEvents = lines.length ? '' : 'none'; // ambient bubbles never block clicks on monitors
-      if (lines.length && vis) c.bub.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy - (TV ? 46 : 26)}px)`;
+      const show = lines.length || amb || rp;
+      c.bub.hidden = !show || !vis;
+      c.bub.style.pointerEvents = lines.length ? '' : 'none';
+      if (show && vis) c.bub.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy - (TV ? 46 : 26)}px)`;
     }
   }
-
-  /* Ambient chatter: once both are in place, the pair takes turns every 4 s (decoration, marked "ambient"). */
   function ambientText(c) {
     const g = c.goalNow; if (!g || !g.ambient || !c.arrived || S.state === 'failed') return '';
     const tick = Math.floor(clock / 4);
@@ -745,33 +1026,51 @@ function buildWorld() {
   /* ---------- screens ---------- */
   let boardDirty = true, page = 0, pageAt = 0, focusItem = null;
   function drawBoards() {
-    const rows = L.buildBoard(items()), per = 2, pages = Math.max(1, Math.ceil(rows.length / per));
-    if (page >= pages) page = 0;
     const hl = new Set();
     if (hoverBot) items().filter(i => i.owner === hoverBot).forEach(i => hl.add(i.id));
     if (hoverItem) hl.add(hoverItem);
-    const t = project.tex;
-    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { rows: rows.slice(page * per, page * per + per), perPage: per, page, pages, state: S.state, asOf: S.parsed && S.parsed.updatedAt, demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem });
+    const t = project.tex, tabs = L.projectTabs(items()); if (!tabs.includes(boardTab)) boardTab = 'All';
+    const cols = L.boardView(items(), { tab: boardTab, doneOpen });
+    const age = S.parsed ? L.dataAge(S.parsed.updatedAt, Date.now()) : null;
+    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem });
+    pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
-    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { usage: S.parsed ? S.parsed.usage : null, now: Date.now(), demo: DEMO, failed: S.state === 'failed' }); u.t.needsUpdate = true;
+    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); u.t.needsUpdate = true;
     const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); n.t.needsUpdate = true;
+    const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO }); a.t.needsUpdate = true;
+    const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, err: S.autoErr, demo: DEMO }); wr.t.needsUpdate = true;
     updateLines();
     for (const [id, ln] of lines) ln.material = hl.has(id) || (hoverBot && ln.userData.owner === hoverBot) ? MAT.lineHi : MAT.lineFaint;
+    for (const d of desks) d.card.visible = d.card.visible || items().some(i => i.work && i.owner === d.name && L.columnFor(i) !== 'done' && i.work.poster !== d.name);
     boardDirty = false;
+  }
+  let pagesN = 1;
+  /* monitor mirror images: small, refreshed every 60 s with ?t= (popup loads its own full-size copy) */
+  function mirrorFor(d, b, now) {
+    const id = idFor(b.bot, b.bot_id), sc = L.screenState(S.screens, id, now);
+    if (sc.show !== 'image') { d.img = null; return sc; }
+    if (!d.img || now - d.imgAt > 60000) {
+      const im = new Image(); im.crossOrigin = 'anonymous'; d.imgAt = now;
+      im.onload = () => { d.img = im; d.drawnKey = ''; }; im.onerror = () => { d.img = null; };
+      im.src = SCREENS_BASE + encodeURIComponent(id) + '.jpg?t=' + Math.floor(now / 60000);
+    }
+    return sc;
   }
   function drawDeskIf(d, force) {
     const b = botByName(d.name) || { bot: d.name, bot_id: '', status: 'idle', task: '', last_action: '', last_action_at: '', question: '' };
-    const lod = L.lodFor(camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2)));
-    const mine = L.sortItems(items().filter(i => i.owner === d.name));
-    const act = (plan.plans[d.name] || {}).act || '', mode = S.state === 'failed' ? L.monitorMode(b, '') : L.monitorMode(b, act);
-    const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (d.name === 'President' ? items().length : '') + Math.floor(Date.now() / (mode === 'game' && lod !== 'far' ? 120 : 30000));
+    const now = Date.now(), lod = L.lodFor(camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2)));
+    const sc = mirrorFor(d, b, now), image = sc.show === 'image' && d.img;
+    const mine = L.sortItems(items().filter(i => i.owner === d.name && L.columnFor(i) !== 'done'));
+    const act = (plan.plans[d.name] || {}).act || '', mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
+    const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + Math.floor(now / (mode === 'game' && lod !== 'far' ? 120 : 30000));
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;
-    drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, lod, now: Date.now(), items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', usage: S.parsed && S.parsed.usage, mode });
+    drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, lod, now, items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', mode, image: image || null, screenWhy: sc.why,
+      chat: S.chat, chatErr: S.chatErr, usageRows: L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null), replay: L.replayFor(b, now) });
     d.scr.t.needsUpdate = true;
     const st = L.statusStyle(b.status), col = new THREE.Color(S.state === 'failed' ? '#8b9099' : st.color);
     d.ledMat.color.copy(col); d.ledMat.emissive.copy(col);
-    d.shadeMat.color.set(st.alert && S.state !== 'failed' ? 0xff3030 : 0xd8d2c8);
+    d.shadeMat.color.set(st.alert && S.state !== 'failed' ? 0xff3030 : 0xd8dde4);
     d.bulbMat.emissive.set(st.alert && S.state !== 'failed' ? 0xff2020 : 0xffe6b8);
   }
   function applyDaylight() {
@@ -781,35 +1080,37 @@ function buildWorld() {
   }
   applyDaylight();
 
-  /* ---------- controls ---------- */
-  const controls = new PointerLockControls(camera, document.body);
+  /* ---------- controls: a plain click always picks (no pointer lock, ever); hold + drag looks; WASD walks ---------- */
   const keys = new Set(), vel = new THREE.Vector3();
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, needs.screen]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, autos.screen, writer.screen]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) {
     ndc.set(nx, ny); ray.setFromCamera(ndc, camera);
-    const hit = ray.intersectObjects(pickables(), true)[0];
-    if (!hit || hit.distance > 30) return null;
+    const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
+    const hit = hits[0];
+    if (!hit || hit.distance > 45) return null;
     const o = hit.object;
     if (o.userData.board) {
       if (o.userData.board === 'needs' && hit.uv) { const y = 1 - hit.uv.y, r = needs.hits.find(r => y >= r.y && y <= r.y + r.h); return r ? { needsIdx: r.i } : { board: 'needs' }; }
       if (o.userData.board !== 'project') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
       const h = project.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
-      return h ? (h.id ? { item: h.id } : { more: h.more }) : { board: 'project' };
+      return h ? (h.id ? { item: h.id } : h.tab ? { tab: h.tab } : h.done ? { done: true } : { more: h.more }) : { board: 'project' };
     }
-    if (o.userData.monitor) return { monitor: o.userData.monitor };
+    if (o.userData.monitor) return { monitor: o.userData.monitor, half: hit.uv && hit.uv.x < 0.5 ? 'left' : 'right' };
     if (o.userData.charName) return { bot: o.userData.charName };
     if (o.userData.deskBot) return { bot: o.userData.deskBot };
     return null;
   }
   function activate(p) {
     if (!p) return false;
-    if (p.item) openItem(p.item); else if (p.more) openBoard(p.more); else if (p.bot) openBot(p.bot);
-    else if (p.monitor) openScreen(p.monitor); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
-    else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard('');
+    if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
+    else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
+    else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
+    else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
+    else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     return true;
   }
   function setHover(p) {
@@ -819,29 +1120,31 @@ function buildWorld() {
     const owner = ni ? (items().find(i => i.id === ni) || {}).owner : null;
     desks.forEach(d => (d.hover.visible = d.name === nb || d.name === owner));
     boardDirty = true;
+    renderer.domElement.style.cursor = p ? 'pointer' : 'grab';
   }
   const canvas = renderer.domElement;
-  let down = null;
-  // a plain click only picks (never pointer-locks); hold the right button to mouse-look
-  canvas.addEventListener('contextmenu', e => e.preventDefault());
-  canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; if (e.button === 2) { down = null; if (!touch && !TV) controls.lock(); return; } down = { x: e.clientX, y: e.clientY }; });
-  document.addEventListener('mouseup', e => { if (e.button === 2 && controls.isLocked) controls.unlock(); });
-  canvas.addEventListener('pointerup', e => {
-    if (e.pointerType === 'touch' || !down || e.button === 2) return;
-    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6; down = null; if (moved || panelOpen) return;
-    lastInput = performance.now();
-    const p = controls.isLocked ? pick(0, 0) : pick(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-    activate(p);
-  });
-  canvas.addEventListener('pointermove', e => { if (e.pointerType === 'touch' || controls.isLocked) return; hoverAt = [e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1]; });
-  let hoverAt = null;
-  controls.addEventListener('lock', () => { $('start').hidden = true; $('crosshair').hidden = false; $('hint').hidden = true; });
-  controls.addEventListener('unlock', () => { $('crosshair').hidden = true; showHint(); });
-  $('start-btn').onclick = () => { $('start').hidden = true; if (!touch) controls.lock(); };
-
-  // touch: left joystick moves, drag anywhere else looks, tap picks
   const look = new THREE.Euler(0, 0, 0, 'YXZ');
   function turn(dx, dy) { look.setFromQuaternion(camera.quaternion); look.y -= dx; look.x = Math.max(-1.4, Math.min(1.4, look.x - dy)); camera.quaternion.setFromEuler(look); }
+  let down = null;
+  canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, drag: false }; $('start').hidden = true; });
+  addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch') return;
+    if (down && e.buttons) { // hold-to-look: only while a button is held and dragged
+      if (!down.drag && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.drag = true;
+      if (down.drag) { turn((e.clientX - down.lx) * 0.004, (e.clientY - down.ly) * 0.004); glide = null; tour = null; canvas.style.cursor = 'grabbing'; }
+      down.lx = e.clientX; down.ly = e.clientY;
+    } else if (e.target === canvas) hoverAt = [e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1];
+  });
+  addEventListener('pointerup', e => {
+    if (e.pointerType === 'touch' || !down) return;
+    const wasDrag = down.drag; down = null; canvas.style.cursor = '';
+    if (wasDrag || panelOpen || e.target !== canvas) return;
+    lastInput = performance.now(); camera.updateMatrixWorld();
+    activate(pick(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1)); // a plain click opens the panel or link right away
+  });
+  let hoverAt = null;
+  $('start-btn').onclick = () => { $('start').hidden = true; };
+
   if (touch || touchEvents) {
     const js = $('joystick'), knob = js.querySelector('.knob'); js.hidden = !touch;
     let jid = null; const R = 52;
@@ -859,12 +1162,16 @@ function buildWorld() {
   }
 
   // keyboard: desktop WASD/arrows; TV hop / free walk
-  const targets = [
-    { kind: 'board', id: 'needs', x: -12, view: [[-8.4, 1.9, 1], [-12, 1.9, 1]] },
-    { kind: 'board', id: 'project', x: -2, view: [[-2, 2.3, -5.0], [-2, 2.45, -10]] },
-    { kind: 'board', id: 'usage', x: 5.6, view: [[5.6, 2.2, -6.3], [5.6, 2.3, -10]] }
-  ].concat(desks.map(d => ({ kind: 'desk', id: d.name, bot: d.name, x: d.x, z: d.z, view: [[d.x + 0.3, 1.85, d.z + 2.0], [d.x, 1.05, d.z - 0.25]] })));
-  const rows = L.hopRows(targets);
+  let targets = [], rows = [];
+  function buildTargets() {
+    targets = [
+      { kind: 'board', id: 'needs', x: -12, view: [[-8.4, 1.9, 1.4], [-12, 1.9, 1.4]] },
+      { kind: 'board', id: 'project', x: -2, view: [[-2, 2.2, -4.6], [-2, 2.3, -10]] },
+      { kind: 'board', id: 'usage', x: 5.7, view: [[5.7, 2.1, -6.4], [5.7, 2.2, -10]] }
+    ].concat(desks.map(d => ({ kind: 'desk', id: d.name, bot: d.name, x: d.x, z: d.z, view: [[d.x + 0.3, 1.85, d.z + 2.0], [d.x, 1.05, d.z - 0.25]] })));
+    rows = L.hopRows(targets); if (hopPos && (!rows[hopPos.row] || !rows[hopPos.row][hopPos.col])) hopPos = null;
+  }
+  buildTargets();
   function glideTo(view, ms) {
     const [p, l] = view, m = new THREE.Matrix4().lookAt(new THREE.Vector3(...p), new THREE.Vector3(...l), new THREE.Vector3(0, 1, 0));
     const q = new THREE.Quaternion().setFromRotationMatrix(m);
@@ -874,11 +1181,11 @@ function buildWorld() {
   function focusTarget(t) {
     desks.forEach(d => (d.focus.visible = t && t.kind === 'desk' && d.name === t.bot));
     const nm = $('focusname');
-    if (t) { nm.hidden = false; nm.textContent = t.kind === 'desk' ? t.bot + ' · ' + L.statusStyle((botByName(t.bot) || {}).status).word : { needs: 'Needs Tim board', project: 'Project board', usage: 'AI usage wall' }[t.id]; }
+    if (t) { nm.hidden = false; nm.textContent = t.kind === 'desk' ? t.bot + ' · ' + L.statusStyle((botByName(t.bot) || {}).status).word : { needs: 'Needs Tim board', project: 'Forge checksheet', usage: 'AI usage wall' }[t.id]; }
     else nm.hidden = true;
     setHover(t ? (t.kind === 'desk' ? { bot: t.bot } : null) : null);
   }
-  function hopTo(pos) { hopPos = pos; const t = rows[pos.row][pos.col]; focusTarget(t); glideTo(t.view, L.GLIDE_MS); }
+  function hopTo(pos) { if (!pos || !rows[pos.row]) return; hopPos = pos; const t = rows[pos.row][pos.col]; focusTarget(t); glideTo(t.view, L.GLIDE_MS); }
   function currentTarget() { return hopPos ? rows[hopPos.row][hopPos.col] : null; }
   function openTarget(t) { if (!t) return; if (t.kind === 'desk') openBot(t.bot); else activate({ board: t.id }); }
   function goToBot(name, open) {
@@ -886,16 +1193,17 @@ function buildWorld() {
     hopTo({ row: r, col: rows[r].findIndex(t => t.bot === name) }); if (open) setTimeout(() => openBot(name), L.GLIDE_MS + 50);
   }
   function overlayNav(dir) {
-    const f = [...$('panel').querySelectorAll('a,button')]; if (!f.length) return;
+    const f = [...$('panel').querySelectorAll('a,button,textarea')]; if (!f.length) return;
     const i = f.indexOf(document.activeElement); const n = f[(i + dir + f.length) % f.length]; n.focus();
   }
   addEventListener('keydown', e => {
     lastInput = performance.now();
-    if (tour) { tour = null; e.preventDefault(); return; } // any key stops the tour
+    if (tour) { tour = null; e.preventDefault(); return; }
     if (panelOpen) {
-      if (e.key === 'Escape' || e.key === 'Backspace') { e.preventDefault(); closePanel(); }
-      else if (TV && (e.key === 'ArrowDown' || e.key === 'ArrowRight')) { e.preventDefault(); overlayNav(1); }
-      else if (TV && (e.key === 'ArrowUp' || e.key === 'ArrowLeft')) { e.preventDefault(); overlayNav(-1); }
+      const typing = !TV && document.activeElement && document.activeElement.tagName === 'TEXTAREA';
+      if (e.key === 'Escape' || (e.key === 'Backspace' && !typing)) { e.preventDefault(); closePanel(); }
+      else if (TV && !typing && (e.key === 'ArrowDown' || e.key === 'ArrowRight')) { e.preventDefault(); overlayNav(1); }
+      else if (TV && !typing && (e.key === 'ArrowUp' || e.key === 'ArrowLeft')) { e.preventDefault(); overlayNav(-1); }
       return;
     }
     if (TV) {
@@ -906,7 +1214,7 @@ function buildWorld() {
       if (['next', 'prev', 'up', 'down'].includes(a)) return hopTo(L.hopMove(rows, hopPos || { row: 0, col: 1 }, a));
       keys.add(a); return;
     }
-    if (e.key === 'Enter' && !controls.isLocked && document.activeElement === document.body) { $('needs-btn').click(); return; }
+    if (e.key === 'Enter' && document.activeElement === document.body) { $('needs-btn').click(); return; }
     keys.add(e.code);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   });
@@ -931,7 +1239,8 @@ function buildWorld() {
     if (TV) { if (keys.has('forward')) f += 1; if (keys.has('backward')) f -= 1; if (keys.has('turn_left')) turn(-1.8 * dt, 0); if (keys.has('turn_right')) turn(1.8 * dt, 0); }
     else {
       if (keys.has('KeyW') || keys.has('ArrowUp')) f += 1; if (keys.has('KeyS') || keys.has('ArrowDown')) f -= 1;
-      if (keys.has('KeyD') || keys.has('ArrowRight')) s += 1; if (keys.has('KeyA') || keys.has('ArrowLeft')) s -= 1;
+      if (keys.has('KeyD')) s += 1; if (keys.has('KeyA')) s -= 1;
+      if (keys.has('ArrowLeft')) turn(-1.6 * dt, 0); if (keys.has('ArrowRight')) turn(1.6 * dt, 0);
       f -= joy.y; s += joy.x;
     }
     const target = fwd.multiplyScalar(f).add(right.multiplyScalar(s));
@@ -945,65 +1254,65 @@ function buildWorld() {
   function showHint() {
     const h = $('hint'); h.hidden = false;
     h.textContent = TV ? (hop ? '◀ ▶ desks and boards · ▲ ▼ rows · OK opens · Back closes · H free walk' : '▲ ▼ walk · ◀ ▶ turn · OK opens · H hop mode')
-      : touch ? 'Joystick to walk · drag to look · tap a desk, card or bot' : 'Click to walk · WASD · mouse to look · click a desk or card';
+      : touch ? 'Joystick to walk · drag to look · tap a bot, screen or card' : 'Click a bot, screen or card · hold and drag to look · WASD to walk';
   }
-  if (TV) { showHint(); setTimeout(() => hopTo({ row: 0, col: 1 }), 300); }
-  else if (touch) showHint();
-  else { $('start').hidden = false; }
+  showHint();
+  if (TV) setTimeout(() => hopTo({ row: 0, col: 1 }), 300);
 
   /* ---------- loop ---------- */
-  let last = performance.now(), clock = 0, acc = 0, hoverTick = 0, deskTick = 0, dayTick = 0, lastFrame = 0;
+  let last = performance.now(), clock = 0, hoverTick = 0, deskTick = 0, dayTick = 0, lastFrame = 0;
   const minFrame = LOW ? 1000 / 31 : 0;
   function frame(now) {
     requestAnimationFrame(frame);
     if (minFrame && now - lastFrame < minFrame) return;
     lastFrame = now;
-    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now; // rAF time can precede the setup time: never negative clock += dt; acc += dt;
+    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now; // rAF time can precede the setup time: never negative
+    clock += dt; // (v2 bug: this sat inside the comment above, so every animation clock stood still)
     if (glide) {
       const k = Math.min(1, (now - glide.t0) / glide.dur), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
       camera.position.lerpVectors(glide.p0, glide.p1, e); camera.quaternion.slerpQuaternions(glide.q0, glide.q1, e);
       if (k >= 1) glide = null;
     }
     if (!panelOpen) move(dt);
-    // idle auto-tour (TV mode): Needs Tim desks first, then boards, then the rest
     if (TV && !panelOpen && !tour && now - lastInput > L.TOUR_IDLE_MS) tour = { list: L.tourOrder(targets, bots()), i: -1, until: 0 };
-    if (tour && now > tour.until) {
+    if (tour && now > tour.until && tour.list.length) {
       tour.i = (tour.i + 1) % tour.list.length; const s = tour.list[tour.i];
       const r = rows.findIndex(r => r.includes(s.target)); hopPos = { row: r, col: rows[r].indexOf(s.target) };
       focusTarget(s.target); glideTo(s.target.view, 1600); tour.until = now + s.dwellMs;
     }
-    if (now - hoverTick > 90) {
-      hoverTick = now;
-      if (!TV || !hop) { const p = controls.isLocked ? pick(0, 0) : hoverAt ? pick(...hoverAt) : null; if (!TV || p) setHover(p); }
-    }
-    if (pages() > 1 && clock - pageAt > 12) { page++; pageAt = clock; boardDirty = true; }
+    if (now - hoverTick > 90) { hoverTick = now; if (!TV || !hop) { const p = hoverAt && !down ? pick(...hoverAt) : null; if (!TV || p) setHover(p); } }
+    if (pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % pagesN; pageAt = clock; boardDirty = true; }
     if (boardDirty) drawBoards();
     if (now - deskTick > 120) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
     if (now - dayTick > 60000) { dayTick = now; applyDaylight(); }
+    if (!reducedMQ.matches) { wf.t.offset.y = (wf.t.offset.y - dt * 0.35) % 1; } // waterfall: one scrolling texture
     let ai = 0; const p = L.pulse(clock, reducedMQ.matches);
     for (const d of desks) { const b = botByName(d.name); if (b && L.statusStyle(b.status).alert && S.state !== 'failed') { d.bulbMat.emissiveIntensity = 0.6 + 1.6 * p; if (ai < alertLights.length) { const l = alertLights[ai++]; l.position.set(d.x + 0.63, 1.3, d.z - 0.1); l.intensity = 2.5 * p + 0.6; } } else d.bulbMat.emissiveIntensity = 1.5; }
     for (; ai < alertLights.length; ai++) alertLights[ai].intensity = 0;
     updatePlan();
+    walkingNow = [...chars.values()].filter(c => c.path.length).length;
     for (const c of chars.values()) updateChar(c, dt);
+    separateChars();
     updateLabels();
     renderer.render(scene, camera);
     T.frames++;
   }
-  const pages = () => Math.max(1, Math.ceil(L.buildBoard(items()).length / 2));
   addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; fitFov(); renderer.setPixelRatio(fitRatio()); renderer.setSize(innerWidth, innerHeight); });
   reducedMQ.addEventListener && reducedMQ.addEventListener('change', () => { boardDirty = true; });
   requestAnimationFrame(frame);
 
   return {
-    controls, goToBot,
+    goToBot, dirty: () => { boardDirty = true; },
     activity: name => (plan.plans[name] || {}).act || '',
-    // test hooks: where a desk monitor is on screen; glide the camera to a view (screenshots)
-    screenPoint(name, dx = 0, dy = 0) { const d = deskOf(name); if (!d) return null; const v = d.mon.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(dx, dy, 0)).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
+    screenPoint(name, dx = 0, dy = 0) { const d = deskOf(name); if (!d) return null; camera.updateMatrixWorld(); const v = d.mon.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(dx, dy, 0)).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
+    botPoint(name) { const c = chars.get(name); if (!c) return null; camera.updateMatrixWorld(); const v = c.root.position.clone().setY(c.top * 0.55 + c.rig.position.y).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     view(p, l) { tour = null; glideTo([p, l], 1); },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
-    refresh() { ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
-    info: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length,
-      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, meeting: plan.meeting && plan.meeting.id, training: !!plan.training, lights: scene.children.filter(o => o.isLight).length })
+    refresh() { syncDesks(); ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
+    info: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
+      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
+      lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
+      generic: [...chars.values()].filter(c => c.generic).map(c => c.name) })
   };
 }
 
@@ -1022,7 +1331,8 @@ document.fonts && document.fonts.load("700 20px 'Inter PE'").catch(() => {});
 });
 addEventListener('error', e => T.errors.push(String(e.message)));
 T.info = () => (world ? world.info() : null);
-T.poll = () => (DEMO ? poll() : null); // test hook: next demo step now (the example meeting toggles each poll)
+T.poll = () => poll(); // test hook: poll now (demo: next example step; the example meeting toggles each poll)
 T.screenPoint = (n, dx, dy) => (world ? world.screenPoint(n, dx, dy) : null);
 T.view = (p, l) => world && world.view(p, l);
 T.pickAt = (x, y) => (world ? world.pickAt(x, y) : null);
+T.botPoint = n => (world ? world.botPoint(n) : null);

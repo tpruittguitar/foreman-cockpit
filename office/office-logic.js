@@ -12,7 +12,7 @@
   const COLUMNS = [
     { id: 'needs_tim', label: 'Needs Tim' },
     { id: 'in_progress', label: 'In progress' },
-    { id: 'review', label: 'Review' },
+    { id: 'queued', label: 'Queued' },
     { id: 'done', label: 'Done' }
   ];
   // Rows always shown on the project board; any other project in the data is added after them.
@@ -22,7 +22,7 @@
     { name: '3D office', always: true },
     { name: 'Bitcoin', always: false }
   ];
-  const STALE_MIN = 15;          // board "Data as of" turns yellow after this
+  const STALE_MIN = 10;          // "updated N min ago" turns stale after this (item 23)
   const USAGE_STALE_MIN = 6 * 60; // usage readings are hourly at best
   const CONVO_WINDOW_MIN = 15;
   const CONVO_MAX = 3;
@@ -36,9 +36,12 @@
   const str = v => (typeof v === 'string' ? v : v == null ? '' : String(v));
   const time = v => { const t = Date.parse(str(v)); return Number.isFinite(t) ? t : null; };
 
+  /* Status rules (Tim, 2:22 AM): only needs_tim / waiting_tim can raise a hand, and only with a question (see parseBots).
+     "waiting" and "queued" are idle/queued, never Needs Tim; "blocked" is never Needs Tim. */
   function normStatus(s) {
     const v = str(s).trim().toLowerCase().replace(/[\s-]+/g, '_');
-    if (v === 'waiting' || v === 'needs_tim') return 'waiting_tim';
+    if (v === 'needs_tim' || v === 'waiting_tim') return 'waiting_tim';
+    if (v === 'in_progress') return 'working';
     return STATUSES.includes(v) ? v : 'idle';
   }
 
@@ -46,7 +49,7 @@
   function statusStyle(status) {
     switch (normStatus(status)) {
       case 'working': return { status: 'working', color: COLORS.working, glyph: '▶', word: 'WORKING', flag: false, alert: false, behavior: 'work' };
-      case 'blocked': return { status: 'blocked', color: COLORS.alert, glyph: '⚠', word: 'BLOCKED', flag: true, alert: true, behavior: 'wave' };
+      case 'blocked': return { status: 'blocked', color: COLORS.stale, glyph: '■', word: 'BLOCKED', flag: false, alert: false, behavior: 'work' };
       case 'waiting_tim': return { status: 'waiting_tim', color: COLORS.alert, glyph: '⚠', word: 'NEEDS TIM', flag: true, alert: true, behavior: 'wave' };
       default: return { status: 'idle', color: COLORS.idle, glyph: '•', word: 'IDLE', flag: false, alert: false, behavior: 'roam' };
     }
@@ -85,8 +88,8 @@
         id: str(r.id).trim(), title: str(r.title).trim(), priority: normPriority(r.priority),
         status: str(r.status).trim().toLowerCase() || 'working', owner,
         ownerKnown: names ? names.has(owner) : true,
-        link: str(r.link).trim(), updated_at: str(r.updated_at), project: str(r.project).trim() || 'Other',
-        pr: prNumber(r.title, r.link)
+        link: str(r.link).trim(), updated_at: str(r.updated_at), project: mapProject(r.project),
+        pr: prNumber(r.title, r.link), question: str(r.question).trim(), note: str(r.note).trim(), source: str(r.source).trim(), prState: ''
       });
     }
     return out;
@@ -107,19 +110,30 @@
   }
 
   /* item -> board column */
+  /* Columns: Needs Tim | In progress | Queued | Done.
+     - A GitHub PR link uses the PR's live state (item.prState, set by applyPrStates): merged/closed -> Done; open -> In
+       progress as "Review / merge queue" (President merges on green). An open PR is never Needs Tim.
+     - Needs Tim only for status needs_tim / waiting_tim (or priority "Needs Tim") WITH a non-empty question; without one
+       the card is Queued and says why ("?" explains itself). "waiting" / "queued" / "todo" -> Queued. "blocked" -> In progress. */
+  function itemStatus(item) { return str(item && item.status).toLowerCase().replace(/[\s-]+/g, '_'); }
+  function asksTim(item) { const s = itemStatus(item); return item.priority === 'Needs Tim' || s === 'needs_tim' || s === 'waiting_tim'; }
   function columnFor(item) {
-    const s = str(item.status).toLowerCase().replace(/[\s-]+/g, '_');
+    const s = itemStatus(item), pr = item.prState;
+    if (pr === 'merged' || pr === 'closed') return 'done';
     if (['done', 'merged', 'closed', 'shipped', 'complete', 'completed'].includes(s)) return 'done';
-    if (item.priority === 'Needs Tim' || ['waiting_tim', 'needs_tim', 'blocked'].includes(s)) return 'needs_tim';
-    if (item.priority === 'PR merge queue' || ['review', 'in_review', 'ready', 'ready_for_review', 'merge_queue', 'pr_open'].includes(s)) return 'review';
+    if (pr === 'open') return 'in_progress';
+    if (asksTim(item)) return str(item.question).trim() ? 'needs_tim' : 'queued';
+    if (['queued', 'waiting', 'todo', 'not_started', 'later', 'backlog', 'idle'].includes(s)) return 'queued';
     return 'in_progress';
   }
   function statusWord(item) {
-    const c = columnFor(item);
+    const c = columnFor(item), s = itemStatus(item);
     if (c === 'needs_tim') return { glyph: '⚠', word: 'NEEDS TIM', tone: 'alert' };
-    if (c === 'review') return { glyph: '◆', word: 'REVIEW', tone: 'info' };
-    if (c === 'done') return { glyph: '✓', word: 'DONE', tone: 'idle' };
-    return { glyph: '▶', word: 'WORKING', tone: 'working' };
+    if (c === 'done') return { glyph: '✓', word: item.prState === 'merged' ? 'MERGED' : item.prState === 'closed' ? 'CLOSED' : 'DONE', tone: 'idle' };
+    if (item.prState === 'open' || item.priority === 'PR merge queue' || ['review', 'in_review', 'ready_for_review', 'merge_queue', 'pr_open'].includes(s)) return { glyph: '◆', word: 'REVIEW / MERGE QUEUE', tone: 'info' };
+    if (c === 'queued') return asksTim(item) ? { glyph: '?', word: 'QUEUED', tone: 'stale', why: 'marked needs_tim but has no question, so it is not counted as Needs Tim' } : { glyph: '…', word: 'QUEUED', tone: 'idle' };
+    if (s === 'blocked') return { glyph: '■', word: 'BLOCKED', tone: 'stale' };
+    return { glyph: '▶', word: 'IN PROGRESS', tone: 'working' };
   }
 
   /* Rows by project, columns Needs Tim | In progress | Review | Done, at most `max` cards per cell plus "+N more". */
@@ -143,7 +157,8 @@
   /* Older OFFICE_STATUS names mapped to the exact Grok Bot sidebar names. */
   const BOT_ALIASES = { 'Usage Ctrl': 'Usage Budget', 'Usage Ctr': 'Usage Budget', 'dr eggbot': 'HR - Bot Trainer', 'Archive': 'Archive \u00b7 Application State Tracker' };
   /* Renamed bots matched by bot_id first, so the label follows the sidebar whatever name the file carries. */
-  const BOT_ID_NAMES = { 'f1a70b7a-6051-45d7-8031-e46a4cba066f': 'Usage Budget', '372936ae-81e1-4013-b0d0-9ee47d97a3c4': 'HR - Bot Trainer', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive \u00b7 Application State Tracker' };
+  const BOT_ID_NAMES = { 'f1a70b7a-6051-45d7-8031-e46a4cba066f': 'Usage Budget', '372936ae-81e1-4013-b0d0-9ee47d97a3c4': 'HR - Bot Trainer', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive \u00b7 Application State Tracker',
+    '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': 'Gauge', '811cc842-4bef-47c2-98d2-0f4bb78f7169': 'Edgar' };
   function canonicalBot(name, botId) { const id = str(botId).trim(), n = str(name).trim(); return BOT_ID_NAMES[id] || BOT_ALIASES[n] || n; }
 
   /* ---------- Optional OFFICE_STATUS.json fields (v2) ----------
@@ -172,11 +187,21 @@
       const bot = canonicalBot(r && r.bot, r && r.bot_id);
       if (!bot || seen.has(bot)) continue;
       seen.add(bot);
+      const id = str(r.bot_id || r.id).trim(), question = str(r.question).trim();
+      let status = normStatus(r.status), why = '';
+      if (status === 'waiting_tim' && !question) { status = 'idle'; why = 'status ' + str(r.status) + ' has no question, so no raised hand'; }
       out.push({
-        bot, bot_id: str(r.bot_id).trim(), task: str(r.task), status: normStatus(r.status), rawStatus: str(r.status),
-        last_action: str(r.last_action), last_action_at: str(r.last_action_at), question: str(r.question), link: str(r.link),
-        screen: parseScreen(r.screen)
+        bot, bot_id: id, task: str(r.task), status, rawStatus: str(r.status), why,
+        last_action: str(r.last_action), last_action_at: str(r.last_action_at), question, link: str(r.link),
+        screen: parseScreen(r.screen), screen_url: httpUrl(r.screen_url), avatar_shape: str(r.avatar_shape).trim().toLowerCase(),
+        avatar_color: str(r.avatar_color).trim().toLowerCase(), audit: parseAudit(r.audit), work: parseWork(r.work, bot, id),
+        routine: parseRoutine(r.routine)
       });
+    }
+    // work owners: bot_id (or name) -> sidebar name; unknown owners stay with the posting bot
+    const byId = new Map(out.filter(b => b.bot_id).map(b => [b.bot_id, b.bot])), names = new Set(out.map(b => b.bot));
+    for (const b of out) for (const w of b.work) {
+      const o = w.owner; w.ownerName = byId.get(o) || BOT_ID_NAMES[o] || (names.has(canonicalBot(o)) ? canonicalBot(o) : b.bot);
     }
     return out;
   }
@@ -242,17 +267,22 @@
       }
       if (seated.length && !meeting) meeting = Object.assign({}, m, { seated });
     }
-    for (const b of list) if (!plans[b.bot] && normStatus(b.status) === 'working') plans[b.bot] = { act: 'work' };
+    const others = n => list.map(b => b.bot).filter(x => x !== n);
+    const partnerFor = (n, salt) => { const o = others(n); return o.length ? o[hash(n + ':' + salt) % o.length] : null; };
+    // working (and blocked) bots type at their desk, with a short staggered break every 4-6 minutes
+    for (const b of list) if (!plans[b.bot] && ['working', 'blocked'].includes(normStatus(b.status))) {
+      const br = workBreak(b.bot, now);
+      plans[b.bot] = br ? { act: br, brk: true } : { act: 'work' };
+      if (br === 'visitdesk') plans[b.bot].partner = partnerFor(b.bot, Math.floor(now / 60000));
+    }
     const trainer = list.find(b => b.bot === TRAINER && !plans[b.bot]);
-    const bucket = Math.floor(now / (IDLE_BUCKET_MIN * MIN));
-    const idle = list.filter(b => !plans[b.bot] && b.bot !== TRAINER).map(b => b.bot)
-      .sort((a, b) => hash(a + ':' + bucket) - hash(b + ':' + bucket) || a.localeCompare(b));
-    idle.forEach((n, i) => { plans[n] = { act: IDLE_PATTERN[i % IDLE_PATTERN.length] }; });
+    for (const b of list) if (!plans[b.bot] && b.bot !== TRAINER) { const r = replayFor(b, now); if (r) plans[b.bot] = { act: r.act, replay: r }; }
+    const idle = list.filter(b => !plans[b.bot] && b.bot !== TRAINER).map(b => b.bot).sort();
+    idle.forEach(n => { const a = idleAct(n, now); plans[n] = { act: a }; if (a === 'visitdesk') plans[n].partner = partnerFor(n, idleSlot(n, now).idx); });
     if (trainer) {
       const sec = Math.floor(now / 1000), cycle = Math.floor(sec / TRAIN_CYCLE_S);
       if (!meeting && sec % TRAIN_CYCLE_S < TRAIN_S && idle.length) {
-        // trainees: bots killing time first, then sleepers, gamers and chatters; a different pair each cycle
-        const pref = ['wander', 'sleep', 'game', 'chat'], pool = idle.slice().sort((a, b) => pref.indexOf(plans[a].act) - pref.indexOf(plans[b].act));
+        const pref = ['wander', 'lounge', 'sleep', 'game', 'coffee', 'fridge', 'bike', 'visitdesk', 'chat'], pool = idle.slice().sort((a, b) => pref.indexOf(plans[a].act) - pref.indexOf(plans[b].act));
         const span = Math.min(pool.length, 3), trainees = [];
         for (let i = 0; i < Math.min(2, pool.length); i++) trainees.push(pool[(cycle + i) % span]);
         trainees.forEach((n, i) => { plans[n] = { act: 'train', seat: i }; });
@@ -268,7 +298,10 @@
       plans[chat[i + 1]] = { act: 'chat', partner: chat[i], host: true };
     }
     if (chat.length % 2) plans[chat[chat.length - 1]] = { act: 'wander' };
-    for (const n of Object.keys(plans)) if (['chat', 'listen', 'wander', 'visit'].includes(plans[n].act)) plans[n].can = holdsCan(n);
+    for (const n of Object.keys(plans)) {
+      if (plans[n].act === 'visitdesk' && !plans[n].partner) plans[n].act = 'wander';
+      if (['chat', 'listen', 'wander', 'visit', 'visitdesk', 'lounge'].includes(plans[n].act)) plans[n].can = holdsCan(n);
+    }
     return { plans, meeting, training };
   }
   /* Generic idle chatter for speech bubbles. Always shown marked "ambient": it is decoration, not OFFICE_STATUS data. */
@@ -280,10 +313,16 @@
   };
   function ambientLine(kind, seed, tick) { const a = AMBIENT[kind] || AMBIENT.chat; return a[(hash(seed) + Math.max(0, tick | 0)) % a.length]; }
   /* What the desk monitor draws. President keeps the Forge checksheet (never chat text); Usage Budget the usage chart. */
-  function monitorMode(bot, act) {
-    const n = str(bot && bot.bot), id = str(bot && bot.bot_id);
-    if (n === 'President' || id === '431e8cf1-f077-4548-82b7-46c1959dc4c9') return 'checksheet';
-    if (n === 'Usage Budget') return 'usage';
+  /* What the desk monitor draws. A running routine wins; President is a split view (chat feed | mirrored screen);
+     a live mirror image wins over text; Usage Budget falls back to the usage chart; Gauge with an audit shows it. */
+  function monitorMode(bot, act, ctx) {
+    const n = str(bot && bot.bot), id = str(bot && bot.bot_id), c = ctx || {};
+    if (bot && bot.routine) return 'routine';
+    if (n === 'President' || id === PRESIDENT_ID) return 'president';
+    if (c.image) return 'mirror';
+    if (n === 'Usage Budget' || id === USAGE_ID) return 'usage';
+    if (bot && bot.audit) return 'audit';
+    if (act === 'replay' || act === 'replay_board') return 'replay';
     if (act === 'game') return 'game';
     return bot && bot.screen ? 'screen' : 'terminal';
   }
@@ -318,7 +357,8 @@
     return {
       ok: true, error: '', updatedAt: str(o.updated_at),
       needsTim: (Array.isArray(o.needs_tim) ? o.needs_tim : []).filter(n => n && str(n.text).trim())
-        .map(n => ({ text: str(n.text).trim(), link: str(n.link).trim(), bot: canonicalBot(n.bot, n.bot_id), bot_id: str(n.bot_id).trim() })),
+        .map(n => ({ text: str(n.text).trim(), link: str(n.link).trim(), bot: canonicalBot(n.bot, n.bot_id), bot_id: str(n.bot_id).trim(),
+          resolved: n.resolved === true, resolved_at: time(n.resolved_at) != null ? str(n.resolved_at) : '', expires_at: str(n.expires_at) })),
       bots, items: parseItems(o.items, names), conversations: parseConversations(o.conversations, names), usage: parseUsage(o.usage),
       meetings: parseMeetings(o.meetings, bots)
     };
@@ -458,21 +498,27 @@
     const I = (id, title, priority, status, owner, project, link) => ({ id, title, priority, status, owner, link: link || '', updated_at: ago(5), project });
     return {
       updated_at: ago(2),
-      needs_tim: [{ text: 'EXAMPLE: approve the job-board API key for Root', link: '', bot: 'Root' }, { text: 'EXAMPLE: sign off the lounge budget', link: '', bot: 'EXAMPLE contractor' }],
+      needs_tim: [{ text: 'EXAMPLE: approve the job-board API key for Root', link: '', bot: 'Root' }, { text: 'EXAMPLE: sign off the lounge budget', link: '', bot: 'EXAMPLE contractor' },
+        { text: 'EXAMPLE: already answered', bot: 'Root', resolved: true }, { text: 'EXAMPLE: merged PR ask', link: 'https://github.com/EXAMPLE/repo/pull/1', bot: 'QA bot' }],
       bots: [
         B('President', '431e8cf1-f077-4548-82b7-46c1959dc4c9', 'working', 'EXAMPLE: keeping the Forge checksheet current', 'Sorted items by priority', 3),
         B('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540', 'waiting_tim', 'EXAMPLE: job-board API access', 'Asked Tim for the API key', 24, 'EXAMPLE: may I use the paid job-board API key?'),
         B('Software', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f', 'working', 'EXAMPLE: price scrape for job leads', 'Pushed scraper fix', 6, '', SCR('scraper.log', ['$ npm run scrape -- --leads', 'fetched 412 listings', 'parsed 398 · 14 skipped', 'dedupe: 37 merged', 'writing prices.json …', '$ _'])),
         B('GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a', 'idle', '', 'Adjusted card contrast', 9, '', SCR('card-preview', ['Card contrast: 7.1:1 ✓', 'Badge sizes: 19 / 24 px', 'Waiting for review'])),
         B('QA bot', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc', 'blocked', 'EXAMPLE: quarantine flaky tests', 'Two runs disagree', 41, 'EXAMPLE: quarantine the flaky map test or keep it blocking?', SCR('test runner', ['map.browser.js  run 1  ✓ pass', 'map.browser.js  run 2  ✗ fail', 'diff: tile timing 40 ms', 'waiting for Tim'])),
-        B('Sniffer', '321469c4-1299-43e7-bd32-1704f58777be', 'idle', '', 'Finished the search-filter sweep', 30),
+        B('Sniffer', '321469c4-1299-43e7-bd32-1704f58777be', 'waiting', '', 'Finished the search-filter sweep', 30),
         B('Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a', 'idle', '', 'Lead scoring rules done', 52, '', 'not a screen object'),
         B('Archive · Application State Tracker', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d', 'idle', '', 'Archived stale asks', 75),
         B('Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841', 'working', 'Building the 3D office viewer (foreman-cockpit PR)', 'Wrote the scene and tests', 1, '', { title: 'office v2 (foreman-cockpit PR)', lines: ['npm test  ✓', 'office.browser.js  ✓ 5 scenarios', 'next: monitor popup'], updated_at: ago(1) }),
         B('ChatGPT', '7bcb0d85-ec55-4e17-907f-3e71688e8799', 'idle', '', 'Cover letter templates v2', 18),
         B('Usage Budget', 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'idle', '', 'EXAMPLE: posted the hourly usage readings', 4),
-        B('HR - Bot Trainer', '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'idle', '', 'Checked in', 12)
+        B('HR - Bot Trainer', '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'idle', '', 'Checked in', 12),
+        Object.assign(B('Gauge', '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6', 'idle', 'EXAMPLE: read-only Pipeline Explorer audits', 'Pinned an audit finding on the board', 8), {
+          audit: { last_at: ago(40), checks: { ask_tim: 'flag', stuck_processes: 'ok', suspicious_data: 'ok', constraint: 'maybe' }, findings_sent: 2 },
+          work: [{ id: 'ex-g1', title: 'EXAMPLE: 8 old asks waiting on Tim', status: 'open', at: ago(8), link: 'https://example.com/EXAMPLE/checksheet/1' }] }),
+        Object.assign(B('Edgar', '811cc842-4bef-47c2-98d2-0f4bb78f7169', 'working', 'EXAMPLE: cover letter draft', 'Wrote paragraph two', 2), { avatar_shape: 'flower', avatar_color: 'blue' })
       ],
+      _demoWork: [{ id: 'ex-r1', title: 'EXAMPLE: coordinator publish stalled', status: 'open', at: ago(0), link: 'https://example.com/EXAMPLE/issue/9' }],
       items: [
         I('ex-412', 'EXAMPLE #412 Approve job-board API key', 'Needs Tim', 'waiting_tim', 'Root', 'Job pipeline'),
         I('ex-418', 'EXAMPLE #418 Price scrape for job leads', 'P1', 'working', 'Software', 'Job pipeline'),
@@ -485,7 +531,8 @@
         I('ex-392', 'EXAMPLE #392 Archive stale asks', 'P4', 'done', 'Archive · Application State Tracker', 'Job pipeline'),
         I('ex-390', 'EXAMPLE #390 Usage report v3', 'P4', 'done', 'Usage Budget', 'Job pipeline'),
         I('ex-388', 'EXAMPLE #388 Sidebar icons', 'P4', 'done', 'GUI', 'Job pipeline'),
-        I('ex-63', 'EXAMPLE #63 Quarantine flaky tests?', 'Needs Tim', 'blocked', 'QA bot', '3D office', 'https://example.com/EXAMPLE/pull/63'),
+        Object.assign(I('ex-63', 'EXAMPLE #63 Quarantine flaky tests?', 'Needs Tim', 'needs_tim', 'QA bot', '3D office', 'https://example.com/EXAMPLE/pull/63'), { question: 'EXAMPLE: quarantine or keep blocking?', note: 'EXAMPLE note: two runs disagree' }),
+        I('ex-70', 'EXAMPLE Bitcoin trader backtest', 'P4', 'queued', 'President', 'Bitcoin trader'),
         I('office-viewer', '3D office viewer (foreman-cockpit PR)', 'P2', 'working', 'Claude', '3D office'),
         I('ex-62', 'EXAMPLE #62 Board card styling', 'P2', 'review', 'GUI', '3D office'),
         I('ex-60', 'EXAMPLE #60 OFFICE_STATUS seed', 'P2', 'review', 'President', '3D office'),
@@ -516,11 +563,378 @@
     o.meetings = o.meetings && o.meetings.length ? [] : demoStatus(now)._demoMeeting;
     if (!o.items.some(i => i.id === 'ex-64')) o.items.push({ id: 'ex-64', title: 'EXAMPLE #64 Lounge props', priority: 'P3', status: 'working', owner: 'Comp', link: '', updated_at: o.updated_at, project: '3D office' });
     const it = o.items.find(i => i.id === 'ex-420'); if (it) it.owner = 'Sniffer';
+    const root = o.bots.find(b => b.bot === 'Root'), g = o.bots.find(b => b.bot === 'Gauge');
+    if (root && !root.work) root.work = demoStatus(now)._demoWork.map(w => Object.assign({}, w, { at: o.updated_at }));
+    else if (g && g.work && g.work[0] && !g.work[0].owner) g.work[0].owner = 'Root'; // Root takes Gauge's finding off the board
     return o;
   }
   const DEMO_PULLS = [
     { repo: 'foreman-cockpit', number: 0, title: 'EXAMPLE: ready PR with passing checks', url: '', draft: false, checks: 'passing', readyForTim: true }
   ];
+
+  /* =====================================================================================================================
+     v3 additions. Everything below is pure (no DOM, no Three.js) and unit-tested in tests/office-logic.test.js.
+     ===================================================================================================================== */
+  function httpUrl(u) { const v = str(u).trim(); return /^https?:\/\/[^\s]+$/i.test(v) ? v : ''; }
+
+  /* ---------- Projects (item 18/23): any project name maps to the closest known project, else "Other" ---------- */
+  const PROJECT_STOP = new Set(['app', 'the', 'main', 'a', 'and', 'of', 'interactive', 'project', 'v2', 'v3']);
+  const tokens = s => str(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(w => w && !PROJECT_STOP.has(w));
+  function mapProject(name) {
+    const n = str(name).trim(); if (!n) return 'Other';
+    const exact = KNOWN_PROJECTS.find(p => p.name.toLowerCase() === n.toLowerCase()); if (exact) return exact.name;
+    const t = new Set(tokens(n)); let best = null, score = 0;
+    for (const p of KNOWN_PROJECTS) { const k = tokens(p.name).filter(w => t.has(w)).length; if (k > score) { score = k; best = p.name; } }
+    return best || 'Other';
+  }
+  /* Tabs: "All" plus one per project present in the data (known order first, Other last). */
+  function projectTabs(items) {
+    const present = new Set((items || []).map(i => i.project));
+    const tabs = KNOWN_PROJECTS.map(p => p.name).filter(n => present.has(n));
+    for (const p of present) if (!tabs.includes(p) && p !== 'Other') tabs.push(p);
+    if (present.has('Other')) tabs.push('Other');
+    return ['All'].concat(tabs);
+  }
+  /* One tab of the board: four columns, Done collapsed unless opened; `max` cards per column (null = all). */
+  function boardView(items, opts) {
+    const o = opts || {}, tab = o.tab || 'All', max = o.max == null ? null : o.max;
+    const mine = sortItems((items || []).filter(i => tab === 'All' || i.project === tab));
+    return COLUMNS.map(c => {
+      const all = mine.filter(i => columnFor(i) === c.id), collapsed = c.id === 'done' && !o.doneOpen;
+      const cards = collapsed ? [] : max == null ? all : all.slice(0, max);
+      return { id: c.id, label: c.label, total: all.length, cards, more: collapsed ? 0 : all.length - cards.length, collapsed };
+    });
+  }
+
+  /* ---------- Live PR state (item 12/16/23) ---------- */
+  function prKey(link) { const m = /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/i.exec(str(link)); return m ? (m[1] + '/' + m[2]).toLowerCase() + '#' + m[3] : ''; }
+  /* GitHub pulls list (state=all) -> Map key -> 'open' | 'merged' | 'closed' */
+  function prStates(owner, repo, list) {
+    const m = new Map();
+    for (const p of Array.isArray(list) ? list : []) if (p && p.number) m.set((owner + '/' + repo).toLowerCase() + '#' + p.number, p.state === 'open' ? 'open' : p.merged_at ? 'merged' : 'closed');
+    return m;
+  }
+  function applyPrStates(items, states) { return (items || []).map(i => { const s = states && states.get(prKey(i.link)); return s ? Object.assign({}, i, { prState: s }) : i; }); }
+
+  /* ---------- Needs Tim (items 12 + 16): only current asks clear on their own ----------
+     needs_tim entries: hidden when resolved:true, resolved_at set, or expires_at passed; a PR-linked entry follows the PR:
+     merged/closed -> gone, open -> "Review / merge queue" (never Needs Tim). Bots: only status needs_tim/waiting_tim with a
+     question (blocked never counts). Open PRs are listed under Review / merge queue only. EXAMPLE rows only in demo mode. */
+  function needsList(o) {
+    const now = o.now || Date.now(), states = o.prStates || new Map(), demo = !!o.demo, needs = [], review = [], seen = new Set();
+    const live = t => demo || !/^EXAMPLE\b/i.test(str(t).trim());
+    for (const b of o.bots || []) if (b.status === 'waiting_tim' && b.question && live(b.question)) {
+      const pr = prKey(b.link), st = pr && states.get(pr);
+      if (st === 'merged' || st === 'closed') continue;
+      if (st === 'open') { if (!seen.has(pr)) { seen.add(pr); review.push({ text: b.bot + ': ' + b.question, link: b.link, bot: b.bot, pr }); } continue; }
+      needs.push({ kind: 'bot', text: b.bot + ': ' + b.question, bot: b.bot, bot_id: b.bot_id, link: b.link });
+    }
+    for (const n of o.entries || []) {
+      if (!n || !live(n.text) || n.resolved || n.resolved_at) continue;
+      const exp = time(n.expires_at); if (exp != null && exp <= now) continue;
+      const pr = prKey(n.link), st = pr && states.get(pr);
+      if (st === 'merged' || st === 'closed') continue;
+      if (st === 'open') { if (!seen.has(pr)) { seen.add(pr); review.push({ text: n.text, link: n.link, bot: n.bot, pr }); } continue; }
+      if (pr) { if (seen.has(pr)) continue; seen.add(pr); }
+      needs.push({ kind: 'entry', text: n.text, link: n.link, bot: n.bot, bot_id: n.bot_id });
+    }
+    for (const p of o.pulls || []) {
+      const k = prKey(p.url); if (!live(p.title) || (k && seen.has(k))) continue; if (k) seen.add(k);
+      review.push({ text: p.repo + ' #' + p.number + ' ' + p.title, link: p.url, pr: k, draft: p.draft, checks: p.checks });
+    }
+    return { needs, review, empty: !needs.length };
+  }
+
+  /* ---------- Fetching OFFICE_STATUS.json / AUTOMATIONS_STATUS.json (item 23) ----------
+     raw.githubusercontent.com caches for minutes and ignores ?t=, so read through the contents API (Accept: raw) with
+     If-None-Match; a 304 keeps the current data. Unauthenticated API calls are 60/hour per IP and shared with the PR
+     list, so one RateGate is shared: when X-RateLimit-Remaining <= RATE_LOW or on 403/429 we fall back to raw until
+     X-RateLimit-Reset. */
+  const RATE_LOW = 6, PR_CACHE_MS = 5 * MIN;
+  function createGate() {
+    return {
+      until: 0, remaining: null,
+      open(now) { return now >= this.until; },
+      note(res, now) {
+        const h = k => (res.headers && res.headers.get ? res.headers.get(k) : null);
+        const rem = Number(h('X-RateLimit-Remaining')), reset = Number(h('X-RateLimit-Reset')) * 1000;
+        if (Number.isFinite(rem) && h('X-RateLimit-Remaining') != null) this.remaining = rem;
+        const resetAt = Number.isFinite(reset) && reset > now ? reset : now + 15 * MIN;
+        if (res.status === 403 || res.status === 429 || (this.remaining != null && this.remaining <= RATE_LOW)) this.until = resetAt;
+      }
+    };
+  }
+  function createJsonSource(opt) {
+    const st = { etag: '', data: null, source: '', at: 0 };
+    async function get(now) {
+      const f = opt.fetch, gate = opt.gate;
+      if (gate.open(now)) {
+        try {
+          const headers = { Accept: 'application/vnd.github.raw' }; if (st.etag) headers['If-None-Match'] = st.etag;
+          const r = await f(opt.apiUrl, { cache: 'no-store', headers });
+          gate.note(r, now);
+          if (r.status === 304 && st.data != null) { st.source = 'api'; st.at = now; return { ok: true, data: st.data, source: 'api', notModified: true }; }
+          if (r.ok) { const d = JSON.parse(await r.text()); st.etag = (r.headers && r.headers.get && r.headers.get('ETag')) || ''; st.data = d; st.source = 'api'; st.at = now; return { ok: true, data: d, source: 'api' }; }
+          if (r.status === 404) return { ok: false, status: 404, error: 'not found' };
+        } catch (e) { if (e instanceof SyntaxError) return { ok: false, error: 'not valid JSON' }; }
+      }
+      try {
+        const r = await f(opt.rawUrl + '?t=' + Math.floor(now / 60000), { cache: 'no-cache' });
+        if (!r.ok) return { ok: false, status: r.status, error: 'HTTP ' + r.status };
+        const d = JSON.parse(await r.text()); st.data = d; st.source = 'raw'; st.at = now; return { ok: true, data: d, source: 'raw' };
+      } catch (e) { return { ok: false, error: e instanceof SyntaxError ? 'not valid JSON' : String(e && e.message || e) }; }
+    }
+    return { get, state: st };
+  }
+  /* "updated 2 min ago", stale over STALE_MIN */
+  function dataAge(iso, now) {
+    const t = time(iso); if (t == null) return { text: 'update time unknown', stale: true, min: null };
+    const m = Math.max(0, Math.floor((now - t) / MIN));
+    return { text: 'updated ' + (m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago'), stale: m > STALE_MIN, min: m };
+  }
+
+  /* ---------- Floor: desk layout for N bots (item 13), standing slots and separation (item 22) ---------- */
+  const DESK_SPACING = { x: 3.2, z: 3.4 }, DESK_FIRST_Z = -4.2, DESK_CENTER_X = -2.2;
+  function deskLayout(n) {
+    const cols = n <= 12 ? 4 : n <= 15 ? 5 : 6, out = [];
+    for (let i = 0; i < n; i++) { const c = i % cols, r = Math.floor(i / cols); out.push({ x: +(DESK_CENTER_X + (c - (cols - 1) / 2) * DESK_SPACING.x).toFixed(2), z: +(DESK_FIRST_Z + r * DESK_SPACING.z).toFixed(2), row: r, col: c }); }
+    return out;
+  }
+  const MIN_SEP = 0.8;          // metres between any two standing / walking bots
+  const CLEARANCE = 0.35;       // extra stand-off from desks, props, board and lounge furniture so faces stay visible
+  /* Standing slots in front of the board: two staggered rows, >= MIN_SEP apart, sized to n. */
+  function boardSlots(n, cx, z, width) {
+    const w = width || 8, per = Math.max(1, Math.floor(w / MIN_SEP) + 1), out = [];
+    for (let i = 0; i < n; i++) {
+      const row = Math.floor(i / per), k = i % per, inRow = Math.min(per, n - row * per);
+      const x = cx + (k - (inRow - 1) / 2) * MIN_SEP * (row % 2 ? 1 : 1.25);
+      out.push({ x: +x.toFixed(3), z: +(z + row * MIN_SEP).toFixed(3), face: Math.PI });
+    }
+    return out;
+  }
+  /* Slot reservation: one bot per slot id. */
+  function createSlotBook() {
+    const by = new Map(), of = new Map();
+    return {
+      take(id, who) { if (by.has(id) && by.get(id) !== who) return false; this.release(who); by.set(id, who); of.set(who, id); return true; },
+      release(who) { const id = of.get(who); if (id != null) { by.delete(id); of.delete(who); } },
+      holder: id => by.get(id), slotOf: who => of.get(who), size: () => by.size
+    };
+  }
+  /* Push apart any two movable points closer than min (fixed points never move). Mutates and returns pts. */
+  function separate(pts, min, iters) {
+    const m = min || MIN_SEP;
+    for (let it = 0; it < (iters || 6); it++) {
+      let moved = false;
+      for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+        const a = pts[i], b = pts[j]; if (a.fixed && b.fixed) continue;
+        let dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
+        if (d >= m) continue;
+        if (d < 1e-6) { dx = Math.cos(i * 2.4 + j); dz = Math.sin(i * 2.4 + j); d = 1; }
+        const push = (m - d) + 1e-4, ux = dx / d, uz = dz / d;
+        if (a.fixed) { b.x += ux * push; b.z += uz * push; } else if (b.fixed) { a.x -= ux * push; a.z -= uz * push; }
+        else { a.x -= ux * push / 2; a.z -= uz * push / 2; b.x += ux * push / 2; b.z += uz * push / 2; }
+        moved = true;
+      }
+      if (!moved) break;
+    }
+    return pts;
+  }
+  /* Walking cap: never more than a third of the bots walking at once. */
+  function walkCap(total) { return Math.max(1, Math.floor(total / 3)); }
+  function admitWalkers(requests, walkingNow, total) {
+    const room = Math.max(0, walkCap(total) - walkingNow);
+    return new Set(requests.slice().sort((a, b) => a.since - b.since || a.name.localeCompare(b.name)).slice(0, room).map(r => r.name));
+  }
+
+  /* ---------- Busy office schedule (Tim 12:19 / 12:20 AM) ---------- */
+  const RECENT_REPLAY_MIN = 30;
+  const IDLE_ACTS = ['wander', 'coffee', 'chat', 'fridge', 'lounge', 'chat', 'wander', 'bike', 'sleep', 'visitdesk', 'chat', 'game']; // sleep+game = 2/12
+  const BREAK_ACTS = ['coffee', 'fridge', 'visitdesk'];
+  function idleSlot(name, nowMs) {
+    const dur = 120 + hash('dur:' + name) % 61, t = nowMs / 1000 + hash('off:' + name) % dur; // 2-3 min, staggered per bot
+    return { idx: Math.floor(t / dur), dur, start: Math.floor(t / dur) * dur - hash('off:' + name) % dur };
+  }
+  function idleAct(name, nowMs) { const s = idleSlot(name, nowMs); return IDLE_ACTS[hash(name + ':' + s.idx) % IDLE_ACTS.length]; }
+  function workBreak(name, nowMs) {
+    const period = 240 + hash('brk:' + name) % 121, t = nowMs / 1000 + hash('bo:' + name) % period; // every 4-6 min, staggered
+    if (t % period >= 45) return null;
+    return BREAK_ACTS[hash(name + ':b' + Math.floor(t / period)) % BREAK_ACTS.length];
+  }
+  /* Idle with a recent last action: replay it for up to RECENT_REPLAY_MIN minutes. */
+  function replayFor(bot, now) {
+    if (!bot || bot.status !== 'idle' || !str(bot.last_action).trim()) return null;
+    const t = time(bot.last_action_at); if (t == null || t > now + MIN) return null;
+    const m = Math.floor((now - t) / MIN); if (m >= RECENT_REPLAY_MIN) return null;
+    return { act: /\b(board|pinned|pin)\b/i.test(bot.last_action) ? 'replay_board' : 'replay', min: m, text: bot.last_action };
+  }
+
+  /* ---------- AI usage readings (usage/AI_USAGE_READINGS.jsonl) ----------
+     USAGE_CHECK_SCHEDULE_ET: forge-coordination lanes/CLAUDE_AI_USAGE_READER.txt line 3, "CURRENT CODEX SCHEDULE=02:05,
+     08:05,14:05,20:05 America/New_York" (readings in the file land at about 2:0x, 8:0x, 14:0x, 20:0x ET). */
+  const USAGE_CHECK_SCHEDULE_ET = ['02:05', '08:05', '14:05', '20:05'];
+  const USAGE_GRACE_MIN = 30;
+  const USAGE_PROVIDERS = [{ id: 'CLAUDE', name: 'Claude' }, { id: 'CHATGPT', name: 'ChatGPT' }, { id: 'GROK', name: 'Grok' }];
+  function parseReadings(text) {
+    const out = [];
+    for (const line of str(text).split(/\r?\n/)) {
+      if (!line.trim()) continue; let r; try { r = JSON.parse(line); } catch (e) { continue; }
+      if (!r || time(r.at) == null || !str(r.provider)) continue;
+      out.push({ at: str(r.at), provider: str(r.provider).toUpperCase(), usedPct: typeof r.usedPct === 'number' && Number.isFinite(r.usedPct) ? r.usedPct : null, meter: str(r.meter), label: str(r.label), resetsAt: str(r.resetsAt), status: str(r.status) });
+    }
+    return out;
+  }
+  /* Latest reading per provider; a weekly meter wins over older session meters at the same time. */
+  function latestPerProvider(readings) {
+    const best = {};
+    for (const r of readings) { const b = best[r.provider]; if (!b || time(r.at) > time(b.at) || (time(r.at) === time(b.at) && r.meter === 'weekly')) best[r.provider] = r; }
+    return best;
+  }
+  function etOffsetMin(ms) { // minutes ET is behind UTC at ms (DST aware)
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }).formatToParts(new Date(ms));
+    const g = k => Number(p.find(x => x.type === k).value);
+    return Math.round((ms - Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'))) / MIN);
+  }
+  /* Next scheduled check strictly after `ms`. */
+  function nextCheck(ms, schedule) {
+    const sch = schedule || USAGE_CHECK_SCHEDULE_ET;
+    const off = etOffsetMin(ms), et = new Date(ms - off * MIN), base = Date.UTC(et.getUTCFullYear(), et.getUTCMonth(), et.getUTCDate());
+    for (let d = 0; d < 3; d++) for (const hm of sch) {
+      const [h, m] = hm.split(':').map(Number), local = base + d * 1440 * MIN + (h * 60 + m) * MIN;
+      const utc = local + etOffsetMin(local + off * MIN) * MIN;
+      if (utc > ms) return utc;
+    }
+    return ms + 6 * 60 * MIN;
+  }
+  function countdown(target, now) { const m = Math.max(0, Math.ceil((target - now) / MIN)); return 'Next check in ' + Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; }
+  /* stale = the reading is older than one missed cycle: the check after it is past by more than the grace period */
+  function readingStale(r, now) { const t = time(r && r.at); return t == null || now > nextCheck(t) + USAGE_GRACE_MIN * MIN; }
+  function etClock(ms) { return new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }); }
+  function usageRows(readings, now, fallback) {
+    const latest = latestPerProvider(readings || []);
+    if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', next: countdown(nextCheck(now), now), stale: usageStale(fallback, now), source: 'OFFICE_STATUS.json' }));
+    return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => { const r = latest[p.id]; return { name: p.name, pct_used: r.usedPct, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: 'Measured ' + etClock(time(r.at)) + ' ET', next: countdown(nextCheck(now), now), stale: readingStale(r, now), source: 'AI_USAGE_READINGS.jsonl' }; });
+  }
+
+  /* ---------- Desk screens: mirrors of each bot's real screen (office-screens repo; publisher not live yet) ---------- */
+  const SCREEN_FRESH_MIN = 15;
+  function parseScreensIndex(o) {
+    const out = { updated_at: '', screens: {} };
+    if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
+    out.updated_at = time(o.updated_at) != null ? str(o.updated_at) : '';
+    const s = o.screens && typeof o.screens === 'object' && !Array.isArray(o.screens) ? o.screens : {};
+    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true }; }
+    return out;
+  }
+  /* -> { show: 'image' | 'fallback', why } */
+  function screenState(index, botId, now) {
+    const e = index && index.screens && index.screens[botId];
+    if (!e) return { show: 'fallback', why: 'Screen offline' };
+    if (e.paused) return { show: 'fallback', why: 'Screen paused' };
+    if (now - time(e.at) > SCREEN_FRESH_MIN * MIN) return { show: 'fallback', why: 'Screen offline (last ' + etClock(time(e.at)) + ' ET)' };
+    return { show: 'image', at: e.at, why: 'Screen as of ' + etClock(time(e.at)) + ' ET' };
+  }
+  /* Clicking a bot's screen goes right to the live thing. */
+  const PRESIDENT_ID = '431e8cf1-f077-4548-82b7-46c1959dc4c9', USAGE_ID = 'f1a70b7a-6051-45d7-8031-e46a4cba066f';
+  const PRESIDENT_SCREEN_URL = 'https://cursor.com/canvas/store-1b4f4a75-6249-4418-bccc-1cb653f649a5/24a10135-b56d-42de-b4af-34cbbbeb82dc';
+  function screenTarget(bot) {
+    const u = httpUrl(bot && bot.screen_url);
+    if (u) return { kind: 'url', href: u };
+    if (bot && (bot.bot === 'President' || bot.bot_id === PRESIDENT_ID)) return { kind: 'url', href: PRESIDENT_SCREEN_URL };
+    if (bot && (bot.bot === 'Usage Budget' || bot.bot_id === USAGE_ID)) return { kind: 'usage', href: '#usage' };
+    return { kind: 'popup', href: '' };
+  }
+  /* President's left half: the Tim-President chat feed, plain text, private data masked as a backup. */
+  const CHAT_MAX = 12;
+  function maskText(t) {
+    return str(t).replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
+      .replace(/(?:\+?\d[\s().-]?){7,}\d/g, '[phone]').replace(/[A-Za-z0-9_-]{24,}/g, '[token]');
+  }
+  function parseChatFeed(text) {
+    const out = [];
+    for (const line of str(text).split(/\r?\n/)) {
+      if (!line.trim()) continue; let r; try { r = JSON.parse(line); } catch (e) { continue; }
+      if (!r || time(r.at) == null || !['Tim', 'President'].includes(r.from) || !str(r.text).trim()) continue;
+      out.push({ at: str(r.at), from: r.from, text: maskText(str(r.text).replace(/\s+/g, ' ').trim()).slice(0, 400) });
+    }
+    return out.sort((a, b) => time(a.at) - time(b.at)).slice(-CHAT_MAX);
+  }
+
+  /* ---------- Gauge's audit (optional bots[].audit) ---------- */
+  const AUDIT_CHECKS = [['ask_tim', 'Ask Tim'], ['stuck_processes', 'Stuck processes'], ['suspicious_data', 'Suspicious data'], ['constraint', 'Constraint']];
+  const AUDIT_STALE_H = 8;
+  function parseAudit(a) {
+    if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
+    const checks = a.checks && typeof a.checks === 'object' ? a.checks : {};
+    return { last_at: time(a.last_at) != null ? str(a.last_at) : '', checks: AUDIT_CHECKS.map(([k, label]) => ({ key: k, label, value: checks[k] === 'ok' || checks[k] === 'flag' ? checks[k] : '?' })),
+      findings_sent: Number.isInteger(a.findings_sent) && a.findings_sent >= 0 ? a.findings_sent : null };
+  }
+  function auditStale(audit, now) { const t = time(audit && audit.last_at); return t == null || now - t > AUDIT_STALE_H * 60 * MIN; }
+
+  /* ---------- Routine running (item 19a, optional bots[].routine {name, running, started_at}) ---------- */
+  function parseRoutine(r) {
+    if (!r || typeof r !== 'object' || r.running !== true || !str(r.name).trim()) return null;
+    return { name: truncate(str(r.name), 60), started_at: time(r.started_at) != null ? str(r.started_at) : '' };
+  }
+
+  /* ---------- Bots' own work cards (optional bots[].work) ---------- */
+  const WORK_MAX = 5;
+  function parseWork(list, bot, botId) {
+    if (!Array.isArray(list)) return [];
+    return list.filter(w => w && typeof w === 'object' && str(w.title).trim()).map(w => ({
+      id: str(w.id).trim() || 'w-' + hash(str(botId || bot) + '|' + str(w.title).trim() + '|' + str(w.at)).toString(36),
+      title: truncate(str(w.title), 120), status: str(w.status).trim() || 'open', at: time(w.at) != null ? str(w.at) : '',
+      link: httpUrl(w.link), owner: str(w.owner).trim() || str(botId) || str(bot), poster: str(bot)
+    })).sort((a, b) => (time(b.at) || 0) - (time(a.at) || 0)).slice(0, WORK_MAX);
+  }
+  function workLabel(bot) { return bot === 'Gauge' ? 'Audit finding' : bot === 'Root' ? 'Diagnosis' : bot + ' work'; }
+  /* Diff work cards between polls: first load -> nothing; new -> poster pins it; owner changed -> new owner takes it. */
+  function diffWork(prev, next) {
+    if (!prev) return [];
+    const before = new Map(prev.map(w => [w.id, w])), out = [];
+    for (const w of next) {
+      const o = before.get(w.id);
+      if (!o) out.push({ kind: 'pin', id: w.id, bot: w.poster, owner: w.ownerName || w.poster });
+      else if ((o.ownerName || o.owner) !== (w.ownerName || w.owner)) out.push({ kind: 'take', id: w.id, bot: w.ownerName || w.owner, from: o.ownerName || o.owner });
+    }
+    return out;
+  }
+  function allWork(bots) { const out = []; for (const b of bots || []) for (const w of b.work || []) out.push(Object.assign({}, w, { poster: b.bot, ownerName: w.ownerName || b.bot })); return out; }
+
+  /* ---------- Automations (item 19/20, control/AUTOMATIONS_STATUS.json) ---------- */
+  const AUTOMATION_RESULTS = ['OK', 'FAIL', 'SKIP', 'EMPTY', 'STALE'];
+  function simpleResult(r) {
+    const v = str(r).trim().toUpperCase();
+    if (['OK', 'SUCCESS', 'PASS', 'DONE', 'GREEN'].includes(v)) return 'OK';
+    if (['FAIL', 'FAILED', 'FAILURE', 'ERROR', 'RED', 'TIMEOUT'].includes(v)) return 'FAIL';
+    if (['SKIP', 'SKIPPED', 'NOOP', 'NO-OP'].includes(v)) return 'SKIP';
+    if (['EMPTY', 'NONE', 'NOTHING'].includes(v)) return 'EMPTY';
+    return v ? 'FAIL' : 'EMPTY';
+  }
+  function parseAutomations(o, now) {
+    const list = o && Array.isArray(o.automations) ? o.automations : [];
+    const rows = list.filter(a => a && str(a.name).trim()).map(a => {
+      const last = time(a.last_run_at), next = time(a.next_run_at), iv = last != null && next != null && next > last ? next - last : null;
+      let result = simpleResult(a.result);
+      const stale = a.stale === true || (last != null && iv != null && now - last > 2 * iv);
+      if (stale) result = 'STALE';
+      return { ai: str(a.ai).trim() || 'Other', name: truncate(str(a.name), 80), result, last_run_at: last != null ? str(a.last_run_at) : '', next_run_at: next != null ? str(a.next_run_at) : '', running: a.running === true, started_at: str(a.started_at), schedule: str(a.schedule) };
+    });
+    const runs = (o && Array.isArray(o.runs) ? o.runs : []).filter(r => r && time(r.start) != null).map(r => ({ ai: str(r.ai) || 'Other', name: str(r.name), start: time(r.start), end: time(r.end) != null && time(r.end) > time(r.start) ? time(r.end) : time(r.start) + 10 * MIN, result: r.expected ? 'UPCOMING' : simpleResult(r.result), writer: r.writer === true, expected: r.expected === true }));
+    return { generated_at: str(o && o.generated_at), rows, runs, writer: o && o.writer_health && typeof o.writer_health === 'object' ? o.writer_health : null };
+  }
+  /* overlapping writer runs (outlined red) and per-hour concurrency */
+  function writerOverlaps(runs) {
+    const w = runs.filter(r => r.writer), bad = new Set();
+    for (let i = 0; i < w.length; i++) for (let j = i + 1; j < w.length; j++) if (w[i].start < w[j].end && w[j].start < w[i].end) { bad.add(w[i]); bad.add(w[j]); }
+    return bad;
+  }
+  function concurrencyByHour(runs, dayStart) {
+    const out = new Array(72).fill(0);
+    for (let h = 0; h < 72; h++) { const a = dayStart + h * 60 * MIN, b = a + 60 * MIN; out[h] = runs.filter(r => r.start < b && r.end > a).length; }
+    return out;
+  }
+  function etDayStart(ms) { const off = etOffsetMin(ms), et = new Date(ms - off * MIN); const local = Date.UTC(et.getUTCFullYear(), et.getUTCMonth(), et.getUTCDate()); return local + etOffsetMin(local + off * MIN) * MIN; }
 
   return {
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
@@ -530,6 +944,13 @@
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode,
+    httpUrl, mapProject, projectTabs, boardView, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
+    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
+    RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
+    latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
+    screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
+    auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
+    writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES
   };
 });

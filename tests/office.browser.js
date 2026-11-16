@@ -32,6 +32,12 @@ function colours(buf) {
   async function scenario(name, url, ctxOpts, fn, opts = {}) {
     const ctx = await browser.newContext(ctxOpts);
     await ctx.route(/https:\/\/(raw\.githubusercontent\.com|api\.github\.com)\/.*/, r => r.fulfill({ status: 500, body: 'offline in test' }));
+    if (opts.status) await ctx.route(/OFFICE_STATUS\.json/, async r => { // EXAMPLE fixture served as the live status file
+      const j = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/office-status-v3.example.json'), 'utf8'));
+      j.updated_at = new Date().toISOString();
+      const drop = await r.request().frame().evaluate(() => !!window.__dropNewbie).catch(() => false);
+      if (drop) j.bots = j.bots.filter(b => b.bot !== 'Newbie');
+      r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(j) }); });
     const page = await ctx.newPage(), errors = [];
     page.on('console', m => { if (m.type() === 'error' && !(opts.allowNetwork && /Failed to load resource/.test(m.text()))) errors.push(m.text()); });
     page.on('pageerror', e => errors.push(String(e)));
@@ -70,18 +76,18 @@ function colours(buf) {
     const n = colours(await shot(page, file));
     assert.ok(n > 60, 'canvas renders (distinct colours: ' + n + ')');
     const info = await page.evaluate(() => window.__office.info());
-    assert.equal(info.desks, 12); assert.equal(info.chars, 12);
+    assert.equal(info.desks, 14); assert.equal(info.chars, 14);
   }
 
   await scenario('desktop demo 1920x1080', '?demo=1', { viewport: { width: 1920, height: 1080 } }, async page => {
     assert.equal(await page.textContent('#demo-badge'), 'EXAMPLE DATA');
-    assert.match(await page.textContent('#asof'), /Data as of \d\d:\d\d/);
-    assert.equal(await page.textContent('#needs-n'), '4');
+    assert.match(await page.textContent('#asof'), /updated (\d+ min ago|just now)/);
+    assert.equal(await page.textContent('#needs-n'), '3', 'Root (question) + 2 open entries; resolved, merged-PR and blocked/waiting bots never count');
     await assert3D(page, 'desktop-1920x1080.png');
     await page.click('#list-btn');
     assert.match(await page.textContent('#panel'), /Needs Tim/);
     assert.ok(await page.$('#panel a[href]'), 'needs list has clickable links');
-    assert.ok(await page.$('#panel a[href*="/pull/63"]'), 'QA bot row opens its PR link');
+    assert.doesNotMatch(await page.textContent('#panel'), /already answered|merged PR ask/, 'resolved and merged asks cleared');
     assert.ok(await page.$('#panel a[href="grokbot://app/v1/agent?id=70f0889b-ecd4-457b-a69c-304cd2aff540"]'), 'Root row opens its Grok Bot chat');
     assert.match(await page.textContent('#panel .nolink'), /EXAMPLE contractor · no PR or chat link known/);
     await page.keyboard.press('Escape');
@@ -89,12 +95,46 @@ function colours(buf) {
     if (await page.evaluate(() => window.__office.webgl)) {
       const info = await page.evaluate(() => window.__office.info());
       assert.match(info.poses.find(p => p.startsWith('Root:')), /wave|walk/, 'needs Tim bot waves at its desk');
-      assert.equal(info.plan.Claude.act, 'work', 'working bots keep working');
+      assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(info.plan.Claude.act), 'working bots work (with short breaks)');
+      assert.ok(!info.poses.some(p => /^(QA bot|Sniffer):wave/.test(p)), 'blocked / waiting bots never raise a hand');
+      // item 11/14: a plain mouse click on a bot opens its popup with the chat box (no pointer lock, no Escape)
+      let botPt = null, who = null;
+      for (const n of ['Root', 'President', 'Claude', 'GUI', 'Edgar', 'Gauge', 'Sniffer']) {
+        const p = await page.evaluate(n => window.__office.botPoint(n), n); if (!p) continue;
+        const hit = await page.evaluate(([x, y]) => window.__office.pickAt(x, y), p);
+        const top = await page.evaluate(([x, y]) => (document.elementFromPoint(x, y) || {}).tagName, p);
+        if (hit && hit.bot === n && top === 'CANVAS') { botPt = p; who = n; break; }
+      }
+      assert.ok(botPt, 'a bot is clickable on screen');
+      await page.mouse.click(botPt[0], botPt[1]);
+      await page.waitForSelector('#panel:not([hidden]) #chat-text', { timeout: 60000 });
+      assert.equal(await page.evaluate(() => document.pointerLockElement), null, 'no pointer lock');
+      const href = await page.getAttribute('#chat-open', 'href');
+      assert.match(href, /^grokbot:\/\/app\/v1\/agent\?id=[0-9a-f-]{36}$/, 'Open chat link');
+      assert.equal(await page.textContent('#chat-send'), 'Send in Grok Bot');
+      await page.click('#panel-close');
+      // a plain click on a monitor (bot without screen_url) opens its screen popup
+      let mon = null; const seen = [];
+      for (const n of ['GUI', 'Claude', 'Comp', 'Sniffer', 'Root']) {
+        for (const [dx, dy] of [[0.3, 0.22], [-0.3, 0.22], [0, 0.24], [0.4, 0], [-0.4, 0]]) {
+          const p = await page.evaluate(([n, x, y]) => window.__office.screenPoint(n, x, y), [n, dx, dy]);
+          const hit = await page.evaluate(([x, y]) => window.__office.pickAt(x, y), p);
+          const top = await page.evaluate(([x, y]) => (document.elementFromPoint(x, y) || {}).tagName, p);
+          seen.push(n + ':' + JSON.stringify(hit)); if (hit && hit.monitor === n && top === 'CANVAS') { mon = [n, p]; break; }
+        }
+        if (mon) break;
+      }
+      assert.ok(mon, 'a monitor is clickable: ' + seen.join(' '));
+      await page.mouse.click(mon[1][0], mon[1][1]);
+      await page.waitForSelector('#panel:not([hidden])', { timeout: 60000 });
+      assert.equal(await page.textContent('#panel-title'), mon[0] + "'s screen");
+      await page.click('#panel-close');
+      assert.ok(info.deskNames.includes('Gauge') && info.deskNames.includes('Edgar'), 'roster comes from bots[]');
       // with no meeting, idle bots chat / sleep / game / wander and the trainer visits or trains
       // (slow software renderers may already be past the first demo steps: step on until the meeting is off)
       await demoMeeting(page, false);
       const acts = new Set(Object.values((await page.evaluate(() => window.__office.info())).plan).map(p => p.act));
-      assert.ok(['chat', 'sleep', 'game', 'wander', 'lead', 'train', 'visit', 'listen'].filter(a => acts.has(a)).length >= 4, [...acts].join());
+      assert.ok(['chat', 'sleep', 'game', 'wander', 'lead', 'train', 'visit', 'listen', 'coffee', 'fridge', 'lounge', 'bike', 'visitdesk', 'replay', 'replay_board'].filter(a => acts.has(a)).length >= 4, [...acts].join());
       if (shots) {
         await page.evaluate(() => window.__office.view([8.6, 1.6, -6.0], [11.3, 1.0, -8.4])); await page.waitForTimeout(800); await shot(page, 'desktop-fridge.png');
         await page.evaluate(() => window.__office.view([-1.4, 1.9, 5.4], [-2.2, 0.9, 1.6])); await page.waitForTimeout(3000); await shot(page, 'desktop-desks.png');
@@ -103,14 +143,12 @@ function colours(buf) {
       await demoMeeting(page, true);
       const mi = await page.evaluate(() => window.__office.info());
       assert.deepEqual(['Software', 'Comp'].map(n => mi.plan[n].act), ['meeting', 'meeting'], 'meeting members head for the conference table');
-      assert.ok(mi.goals.some(g => /^Software:meeting:0:/.test(g)), 'Software walks to seat 0');
+      await page.waitForFunction(() => window.__office.info().goals.some(g => /^Software:meeting:0:/.test(g)), null, { timeout: 60000 }); // may queue behind the walking cap first
       if (shots) {
         // software rendering here runs at a few frames a second, so give the walk time (not asserted)
         await page.waitForFunction(() => window.__office.info().poses.filter(p => /^(Software|Comp):meet$/.test(p)).length === 2, null, { timeout: 50000 }).catch(() => {}); await page.evaluate(() => window.__office.view([-5.4, 2.6, -4.6], [-9.9, 0.7, -8.0])); await page.waitForTimeout(4000); await shot(page, 'desktop-meeting.png'); }
     }
-    await page.click('#start-btn'); // click-to-start pointer lock (may be refused headless; must not error)
-    await page.waitForTimeout(300);
-    // a plain click on a bot opens its panel without pointer lock (no Esc needed), and the panel links the bot's chat
+        // a plain click on a bot opens its panel without pointer lock (no Esc needed), and the panel links the bot's chat
     if (await page.evaluate(() => window.__office.webgl)) {
       await page.evaluate(() => document.exitPointerLock && document.exitPointerLock());
       const bpt = await page.evaluate(() => { // first on-screen point whose pick is a bot and isn't covered by HUD
@@ -128,6 +166,8 @@ function colours(buf) {
       assert.match(await page.textContent('#panel'), new RegExp('Chat with ' + bpt[2]));
       await page.click('#panel-close');
     }
+    await page.evaluate(() => document.getElementById('start-btn').click()); await page.waitForTimeout(100);
+    assert.equal(await page.evaluate(() => document.pointerLockElement), null, 'start never locks the pointer');
   });
 
   for (const [w, h] of [[1920, 1080], [3840, 2160]]) {
@@ -179,13 +219,12 @@ function colours(buf) {
     await page.waitForSelector('#flat-body .needs .row');
     await shot(page, 'phone-390x844-flat.png');
     assert.ok(await page.$('#flat-body .needs a[href^="grokbot://app/v1/agent?id="]'), 'Needs Tim row opens the bot chat');
-    assert.ok(await page.$('#flat-body .needs a[href*="/pull/63"]'), 'Needs Tim row opens the PR');
     await page.tap('#flat-body button[data-bot="Root"]');
     await page.waitForSelector('#panel:not([hidden])');
-    assert.match(await page.textContent('#panel'), /grokbot:\/\/app\/v1\/agent\?id=/);
+    assert.match(await page.getAttribute('#chat-open', 'href'), /^grokbot:\/\/app\/v1\/agent\?id=70f0889b-ecd4-457b-a69c-304cd2aff540$/);
     await page.tap('#panel [data-screen]');
     await page.waitForSelector('#panel .screenpop');
-    assert.match(await page.textContent('#panel .screenpop'), /EXAMPLE test runner|job-board/);
+    assert.match(await page.textContent('#panel .screenpop'), /job-board|Asked Tim/);
     await shot(page, 'phone-390x844-screen-popup.png');
     await page.tap('#panel-close');
     assert.equal(await page.isHidden('#panel'), true, 'close button works on touch');
@@ -193,6 +232,18 @@ function colours(buf) {
     await assert3D(page, 'phone-390x844-3d.png');
     if (await page.evaluate(() => window.__office.webgl)) assert.equal(await page.isVisible('#joystick'), true, 'virtual joystick');
   });
+
+  await scenario('live roster from bots[] (EXAMPLE fixture): unknown bot gets a generic blob + desk; removal removes the desk', '?view=3d', { viewport: { width: 1280, height: 720 } }, async page => {
+    if (!(await page.evaluate(() => window.__office.webgl))) return;
+    await page.waitForFunction(() => window.__office.info() && window.__office.info().desks === 7, null, { timeout: 60000 });
+    let info = await page.evaluate(() => window.__office.info());
+    assert.ok(info.deskNames.includes('Newbie')); assert.ok(info.generic.includes('Newbie'), 'generic blob');
+    await page.evaluate(() => { window.__dropNewbie = true; });
+    await page.evaluate(() => window.__office.poll());
+    await page.waitForFunction(() => window.__office.info().desks === 6, null, { timeout: 60000 });
+    info = await page.evaluate(() => window.__office.info());
+    assert.ok(!info.deskNames.includes('Newbie') && info.chars === 6);
+  }, { allowNetwork: true, status: true });
 
   await scenario('live data feed down', '', { viewport: { width: 1280, height: 720 } }, async page => {
     await page.waitForSelector('#banner:not([hidden])');

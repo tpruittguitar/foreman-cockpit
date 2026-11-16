@@ -32,7 +32,31 @@ const SHAPES = {
   pill: rot => polar(t => Math.pow(Math.pow(Math.abs(Math.cos(t) / 0.47), 2.6) + Math.pow(Math.abs(Math.sin(t) / 0.32), 2.6), -1 / 2.6), rot),
   wedge: rot => roundedPoly([[-0.4, -0.34], [0.42, -0.3], [-0.04, 0.46]], 0.19, rot),
   cookie6: rot => polar(t => 0.35 + 0.075 * Math.cos(6 * t), rot),
-  pentagon: rot => roundedPoly(regular(5, 0.45), 0.15, rot)
+  pentagon: rot => roundedPoly(regular(5, 0.45), 0.15, rot),
+  flower: rot => polar(t => 0.31 + 0.12 * Math.pow(Math.abs(Math.cos(2.5 * t)), 0.8), rot),   // rounded petal lobes
+  blob: rot => polar(t => 0.38 + 0.03 * Math.cos(3 * t) + 0.02 * Math.sin(2 * t), rot),
+  dial: rot => polar(() => 0.4, rot)                                                         // round gauge face
+};
+/* Sidebar shape names (profile.json avatarShape) -> our shapes. */
+const SHAPE_ALIAS = { square: 'roundsquare', tablet: 'pill', sparkle: 'star4', star: 'cookie6', clover: 'clover4', teardrop: 'teardrop', wedge: 'wedge', blob: 'blob', flower: 'flower', pentagon: 'pentagon', dial: 'dial', circle: 'blob' };
+/* Sidebar colour names -> hex. */
+export const MARK_COLORS = { magenta: '#e0369b', blue: '#2f7cf0', red: '#e8423f', green: '#1cc26d', yellow: '#f2c12e', black: '#2a2a2e', gray: '#8c8c8c', grey: '#8c8c8c', cyan: '#22c3d6', brown: '#a8733f', orange: '#f79a1d', purple: '#8f6ee8', pink: '#f2399a', teal: '#22b8a2' };
+/* Baked sidebar marks (avatarShape, avatarColor from each bot's profile.json, supplied by President 2:16 AM; '' = none). */
+export const SIDEBAR_MARKS = {
+  '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': ['', 'magenta'],    // Gauge
+  '321469c4-1299-43e7-bd32-1704f58777be': ['tablet', 'blue'], // Sniffer
+  '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': ['teardrop', 'magenta'], // QA bot
+  '372936ae-81e1-4013-b0d0-9ee47d97a3c4': ['teardrop', 'red'], // HR - Bot Trainer
+  '424e5611-fb8f-4ae1-a360-051e61e63e8a': ['wedge', 'green'], // Comp
+  '431e8cf1-f077-4548-82b7-46c1959dc4c9': ['blob', 'black'],  // President
+  '70f0889b-ecd4-457b-a69c-304cd2aff540': ['square', 'gray'], // Root
+  '7bcb0d85-ec55-4e17-907f-3e71688e8799': ['wedge', 'yellow'], // ChatGPT
+  '811cc842-4bef-47c2-98d2-0f4bb78f7169': ['flower', 'blue'], // Edgar
+  'a8b4a0b2-acfd-4485-8444-7ab27007df4a': ['clover', 'red'],  // GUI
+  'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': ['sparkle', 'cyan'], // Software
+  'c95408dd-c07f-460e-aaa0-9d515fe5be7d': ['', ''],           // Archive · Application State Tracker
+  'd4118f0c-1b06-4e9a-982f-f5314451c841': ['star', 'brown'],  // Claude
+  'f1a70b7a-6051-45d7-8031-e46a4cba066f': ['', 'gray']        // Usage Budget
 };
 
 /* Sidebar name -> Grok Bot bot_id. Used only when a caller has a name but no id (e.g. item owners). */
@@ -48,7 +72,9 @@ export const BOT_IDS = {
   'Claude': 'd4118f0c-1b06-4e9a-982f-f5314451c841',
   'Usage Budget': 'f1a70b7a-6051-45d7-8031-e46a4cba066f',
   'Archive \u00b7 Application State Tracker': 'c95408dd-c07f-460e-aaa0-9d515fe5be7d',
-  'HR - Bot Trainer': '372936ae-81e1-4013-b0d0-9ee47d97a3c4'
+  'HR - Bot Trainer': '372936ae-81e1-4013-b0d0-9ee47d97a3c4',
+  'Gauge': '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6',
+  'Edgar': '811cc842-4bef-47c2-98d2-0f4bb78f7169'
 };
 /* bot_id -> { shape, rot, color }. Keyed by id so renames never break an avatar. */
 export const AVATARS = {
@@ -63,18 +89,24 @@ export const AVATARS = {
   'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'wedge', rot: 0.25, color: '#7c7b79' }, // Usage Budget
   'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'pentagon', rot: 0.25, color: '#f2389b' }, // Archive · Application State Tracker
   '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'roundsquare', rot: -0.12, color: '#8f6ee8' }, // HR - Bot Trainer
-  '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' } // President
+  '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' }, // President
+  '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'dial', rot: 0, color: '#e0369b', prop: 'gauge' }, // Gauge: round dial with a needle (sidebar magenta)
+  '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'flower', rot: 0.3, color: '#2f7cf0', prop: 'quill' } // Edgar: blue flower + quill (stand-in until a picture exists)
 };
 /* bot_id -> short tag, used only when the full name does not fit the label. */
 export const SHORT_TAGS = { 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive' };
 export const idFor = (bot, botId) => (botId && String(botId).trim()) || BOT_IDS[bot] || '';
 export const shortTag = (bot, botId) => SHORT_TAGS[idFor(bot, botId)] || bot;
 const FALLBACK = ['#c9a227', '#5b8def', '#e06666', '#6aa84f'];
-export function avatarFor(bot, botId) {
+/* Custom model first; else OFFICE_STATUS bots[].avatar_shape/avatar_color, then the baked sidebar mark, then a hash colour. */
+export function avatarFor(bot, botId, override) {
   const id = idFor(bot, botId);
   if (AVATARS[id]) return AVATARS[id];
+  const o = override || {}, baked = SIDEBAR_MARKS[id] || ['', ''];
   let h = 0; for (const ch of String(id || bot)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return { shape: 'roundsquare', rot: 0, color: FALLBACK[h % FALLBACK.length] };
+  const shape = SHAPE_ALIAS[String(o.avatar_shape || '').toLowerCase()] || SHAPE_ALIAS[baked[0]] || 'blob';
+  const color = MARK_COLORS[String(o.avatar_color || '').toLowerCase()] || (/^#[0-9a-f]{6}$/i.test(o.avatar_color || '') ? o.avatar_color : '') || MARK_COLORS[baked[1]] || 'hsl(' + (h % 360) + ',62%,55%)';
+  return { shape, rot: 0, color, generic: true };
 }
 export function shapePoints(a) {
   const f = SHAPES[a.shape] || SHAPES.roundsquare;
