@@ -38,7 +38,7 @@ if (TV) document.documentElement.classList.add('tv');
 /* ============================== data ============================== */
 const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
-  pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
+  pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
   readings: [], readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', auto: null, autoErr: '',
   glow: new Set(), demoStep: 0, work: null
 };
@@ -56,10 +56,11 @@ async function api(url) {
 async function rawText(url) { const r = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Math.floor(Date.now() / POLL_MS), { cache: 'no-cache' }); if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; } return r.text(); }
 /* PR states: one list call per repo (state=all), cached PR_CACHE_MS; check-runs only for open, non-draft PRs (cached by sha). */
 async function loadPulls() {
-  const out = [], states = new Map();
+  const out = [], states = new Map(), times = new Map();
   for (const repo of PR_REPOS) {
     const list = await api(`https://api.github.com/repos/${OWNER}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=50`);
     L.prStates(OWNER, repo, list).forEach((v, k) => states.set(k, v));
+    L.prTimes(OWNER, repo, list).forEach((v, k) => times.set(k, v));
     for (const p of list.filter(p => p.state === 'open')) {
       const sha = p.head && p.head.sha;
       let checks = S.checkCache.get(sha);
@@ -71,12 +72,12 @@ async function loadPulls() {
       out.push(L.summarizePull(repo, p, checks || (p.draft ? 'draft' : 'unknown')));
     }
   }
-  return { out, states };
+  return { out, states, times };
 }
 function slowLoads(now) {
   if (now - S.pullsAt >= L.PR_CACHE_MS || S.pullsErr) {
     S.pullsAt = now;
-    loadPulls().then(r => { S.pulls = r.out; S.prStates = r.states; S.pullsErr = ''; }, e => { S.pullsErr = e.message; }).then(refreshAll);
+    loadPulls().then(r => { S.pulls = r.out; S.prStates = r.states; S.prTimes = r.times; S.pullsErr = ''; }, e => { S.pullsErr = e.message; }).then(refreshAll);
   }
   if (now - S.asksAt >= SLOW_MS) {
     S.asksAt = now;
@@ -142,6 +143,10 @@ function withRoutine(b) {
   const r = S.auto.rows.find(x => x.running && x.ai === b.bot);
   return r ? Object.assign({}, b, { routine: { name: r.name, started_at: r.started_at } }) : b;
 }
+/* item 16b: freshest real signal for a bot (row times + PR / Actions / terminal-screen times the page already read) */
+const signalCtx = () => ({ items: items(), prTimes: S.prTimes, screens: S.screens, auto: S.auto });
+function freshOf(b, now, ctx) { return L.freshness(b, now || Date.now(), L.botSignals(b, ctx || signalCtx())); }
+function staleChip(b, now) { const f = b && !L.statusStyle(b.status).alert ? freshOf(b, now) : null; return f && f.stale ? ` <span class="st stale">? ${esc(f.label)}</span>` : ''; }
 function botByName(n) { return withRoutine(bots().find(b => b.bot === n)); }
 function alertBots() { return bots().filter(b => L.statusStyle(b.status).alert); }
 function botTarget(b) { return L.needsTarget({ link: b.link, bot: b.bot, bot_id: idFor(b.bot, b.bot_id), items: items() }); }
@@ -213,7 +218,7 @@ function renderFlat() {
     h.push('</div>');
   }
   h.push('</section><section><h2>Bots</h2>');
-  for (const b of bots()) h.push(`<div class="row"><button class="rowbtn" data-bot="${esc(b.bot)}"><span>${esc(b.bot)} ${stWord(b)}<div class="meta">${esc(b.task || '—')}</div><div class="meta">${esc(b.last_action)} · ${L.relTime(b.last_action_at, now)}</div></span></button></div>`);
+  for (const b of bots()) h.push(`<div class="row"><button class="rowbtn" data-bot="${esc(b.bot)}"><span>${esc(b.bot)} ${stWord(b)}${staleChip(b, now)}<div class="meta">${esc(b.task || '—')}</div><div class="meta">${esc(b.last_action)} · ${L.relTime(b.last_action_at, now)}</div></span></button></div>`);
   if (!bots().length) h.push('<div class="row">No bot data</div>');
   h.push('</section><section><h2>AI usage</h2>');
   h.push(usageListHTML() + '</section>');
@@ -317,7 +322,7 @@ function openBot(name) {
   const wait = st.alert ? L.waitingMinutes(b.last_action_at, now) : null;
   const why = [b.why, S.state === 'stale' ? 'office data is ' + L.dataAge(S.parsed.updatedAt, now).text + ' (stale)' : ''].filter(Boolean);
   const rp = L.replayFor(b, now);
-  showPanel(`<h2 id="panel-title">${esc(b.bot)} ${stWord(b)}</h2>
+  showPanel(`<h2 id="panel-title">${esc(b.bot)} ${stWord(b)}${staleChip(b, now)}</h2>
     ${st.alert ? `<div class="q">${esc(b.question)}${wait != null ? `<div class="fallback">waiting ${wait} min</div>` : ''}</div>` : ''}
     ${why.length ? `<p class="why">? ${esc(why.join(' · '))}</p>` : ''}
     ${chatBoxHTML(b)}
@@ -871,7 +876,9 @@ function buildWorld() {
   let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
   function updatePlan() {
     const t = performance.now(); if (t - planAt < 500) return; planAt = t;
-    plan = L.planOffice(bots().filter(b => deskOf(b.bot)), S.parsed ? S.parsed.meetings : [], Date.now(), S.state);
+    const now = Date.now(), list = bots().filter(b => deskOf(b.bot)), ctx = signalCtx();
+    S.fresh = Object.fromEntries(list.map(b => [b.bot, freshOf(withRoutine(b), now, ctx)]));
+    plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh);
     drawWB(plan.meeting);
   }
   const charPos = n => { const o = chars.get(n); return o ? { x: o.pos.x, z: o.pos.y } : null; };
@@ -891,10 +898,11 @@ function buildWorld() {
     }
     if (c.carry) { if (c.goalKey === 'carry' && c.arrived) { c.carry = false; d.card.visible = true; } else return { key: 'carry', spot: d.seat, pose: 'sit' }; }
     if (convo && deskOf(convo.to)) { book.release(c.name); const dd = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: dd.visit, pose: 'talk', faceBot: convo.to }; }
-    const p = plan.plans[c.name] || { act: st0.behavior === 'work' ? 'work' : 'wander' };
+    const p = plan.plans[c.name] || { act: S.fresh[c.name] && S.fresh[c.name].stale ? 'stale' : st0.behavior === 'work' ? 'work' : 'wander' };
     const slotted = kinds => { const s = takeSlot(c, kinds); return s ? { key: 'slot:' + s.id, spot: s, pose: s.kind === 'loiter' ? 'stand' : s.kind === 'sit' ? 'lounge' : s.kind, lie: s.lie, can: p.can } : null; };
     if (!['coffee', 'fridge', 'lounge', 'bike', 'wander', 'sleep', 'replay_board'].includes(p.act)) book.release(c.name);
     switch (p.act) {
+      case 'stale': return { key: 'stale', spot: d.stand, pose: 'stand', stale: true }; // no fresh signal for 2 h: never typing
       case 'work': case 'replay': return { key: 'seat:' + p.act, spot: d.seat, pose: 'type', recent: p.replay };
       case 'replay_board': return Object.assign(slotted(['board']) || { key: 'seat', spot: d.seat, pose: 'type' }, { pose: 'board', recent: p.replay });
       case 'meeting': case 'train': return { key: p.act + ':' + p.seat, spot: CONF_SEATS[p.seat], pose: 'meet', ambient: p.act === 'train' ? 'reply' : '' };
@@ -954,9 +962,9 @@ function buildWorld() {
     }
     c.pose = pose;
     c.goalNow = goal;
-    c.setExpression(pose === 'nap' || pose === 'deskSleep' ? 'sleepy' : st.alert ? 'worried' : S.state === 'stale' ? 'puzzled' : pose === 'stand' ? 'neutral' : 'happy');
+    c.setExpression(pose === 'nap' || pose === 'deskSleep' ? 'sleepy' : st.alert ? 'worried' : S.state === 'stale' || goal.stale ? 'puzzled' : pose === 'stand' ? 'neutral' : 'happy');
     c.warn.visible = st.alert;
-    c.quest.visible = S.state === 'stale' && !st.alert;
+    c.quest.visible = (S.state === 'stale' || !!goal.stale) && !st.alert;
     if (st.alert) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
     animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk' });
     c.rig.position.x = pose === 'nap' ? 0.5 : 0;
@@ -982,12 +990,13 @@ function buildWorld() {
       const b = botByName(c.name), st = L.statusStyle(b ? b.status : 'idle'), frozen = S.state === 'failed';
       const rp = c.goalNow && c.goalNow.recent;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
-      const key = c.name + st.status + frozen + S.state + (hoverBot === c.name) + (rp ? rp.min : '') + why;
+      const fr = !frozen && !st.alert && S.fresh[c.name] && S.fresh[c.name].stale ? S.fresh[c.name].label : '';
+      const key = c.name + st.status + frozen + S.state + (hoverBot === c.name) + (rp ? rp.min : '') + why + fr;
       if (key !== c.tagKey) {
         c.tagKey = key;
         c.tag.className = 'tag' + (frozen ? ' frozen' : '') + (hoverBot === c.name ? ' hl' : '');
         const chip = st.alert && !frozen ? `<span class="chip">⚠ ${st.word}</span>` : why ? '<span class="chip stale">?</span>' : '';
-        const recent = rp && !st.alert ? `<span class="chip recent">recent · ${rp.min}m ago</span>` : '';
+        const recent = fr ? `<span class="chip stale">${esc(fr)}</span>` : rp && !st.alert ? `<span class="chip recent">recent · ${rp.min}m ago</span>` : '';
         c.tag.innerHTML = chip + esc(c.name) + recent; c.tag.title = why ? '? ' + why : '';
         const short = shortTag(c.name, c.botId);
         if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = chip + esc(short) + recent; c.tag.title = c.name + (why ? ' · ? ' + why : ''); }
