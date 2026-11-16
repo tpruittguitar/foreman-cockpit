@@ -645,6 +645,15 @@
     });
   }
 
+  /* Per-column paging (item 18): each column cycles through its own pages; page = floor(tick) mod its own page count.
+     A column that fits on one page never cycles (always page 0), and an empty column is { items: [], page: 0, pages: 1 }. */
+  function columnPage(items, perPage, tick) {
+    const list = Array.isArray(items) ? items : [], per = Math.max(1, Math.floor(Number(perPage)) || 1);
+    const pages = Math.max(1, Math.ceil(list.length / per));
+    const t = Math.floor(Number(tick)) || 0, page = pages > 1 ? ((t % pages) + pages) % pages : 0;
+    return { items: list.slice(page * per, page * per + per), page, pages };
+  }
+
   /* ---------- Live PR state (item 12/16/23) ---------- */
   function prKey(link) { const m = /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/i.exec(str(link)); return m ? (m[1] + '/' + m[2]).toLowerCase() + '#' + m[3] : ''; }
   /* GitHub pulls list (state=all) -> Map key -> 'open' | 'merged' | 'closed' */
@@ -1044,7 +1053,7 @@
     usageStale, canonicalBot, BOT_ALIASES, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
-    httpUrl, mapProject, projectTabs, boardView, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
+    httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,

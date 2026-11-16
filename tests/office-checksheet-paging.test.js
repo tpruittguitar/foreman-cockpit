@@ -1,0 +1,55 @@
+// Checksheet board per-column paging (item 18): L.columnPage in office/office-logic.js.
+// Run: node --test tests/office-checksheet-paging.test.js. Items are EXAMPLE data only.
+const test = require('node:test'), assert = require('node:assert/strict');
+const L = require('../office/office-logic.js');
+const ex = (n, tag) => Array.from({ length: n }, (_, i) => ({ id: (tag || 'ex') + '-' + i, title: 'EXAMPLE ' + i }));
+const ids = r => r.items.map(i => i.id);
+
+test('single-page column keeps the same items after one and several ticks', () => {
+  const needsTim = ex(2, 'nt');
+  const first = L.columnPage(needsTim, 5, 0);
+  assert.deepEqual([first.page, first.pages], [0, 1]);
+  assert.deepEqual(ids(first), ['nt-0', 'nt-1']);
+  for (const tick of [1, 2, 3, 7, 12, 999]) {
+    const r = L.columnPage(needsTim, 5, tick);
+    assert.deepEqual(ids(r), ['nt-0', 'nt-1'], 'tick ' + tick);
+    assert.deepEqual([r.page, r.pages], [0, 1]);
+  }
+  // exactly full still one page
+  assert.deepEqual(ids(L.columnPage(ex(5), 5, 3)), ids(L.columnPage(ex(5), 5, 0)));
+});
+
+test('3-page column cycles through all pages and wraps', () => {
+  const col = ex(7, 'q'); // 3 + 3 + 1
+  const seen = [0, 1, 2, 3, 4].map(t => L.columnPage(col, 3, t));
+  assert.deepEqual(seen.map(r => r.pages), [3, 3, 3, 3, 3]);
+  assert.deepEqual(seen.map(r => r.page), [0, 1, 2, 0, 1]);
+  assert.deepEqual(ids(seen[0]), ['q-0', 'q-1', 'q-2']);
+  assert.deepEqual(ids(seen[1]), ['q-3', 'q-4', 'q-5']);
+  assert.deepEqual(ids(seen[2]), ['q-6']);
+  assert.deepEqual(ids(seen[3]), ids(seen[0]), 'wraps back to page 1');
+  const all = seen.slice(0, 3).flatMap(ids);
+  assert.deepEqual(all, ids({ items: col }), 'every item shown exactly once per cycle');
+  assert.equal(L.columnPage(col, 3, 4.9).page, 1, 'fractional tick is floored');
+});
+
+test('columns with different lengths page independently on the same tick', () => {
+  const cols = { needs_tim: ex(2, 'nt'), review: ex(4, 'rv'), p1: ex(9, 'p1') }, per = 3;
+  for (let tick = 0; tick < 7; tick++) {
+    const nt = L.columnPage(cols.needs_tim, per, tick), rv = L.columnPage(cols.review, per, tick), p1 = L.columnPage(cols.p1, per, tick);
+    assert.deepEqual(ids(nt), ['nt-0', 'nt-1'], 'short column never blanks (tick ' + tick + ')');
+    assert.equal(rv.page, tick % 2); assert.equal(rv.pages, 2);
+    assert.equal(p1.page, tick % 3); assert.equal(p1.pages, 3);
+    assert.ok(rv.items.length > 0 && p1.items.length > 0);
+  }
+  assert.deepEqual(ids(L.columnPage(cols.review, per, 1)), ['rv-3']);
+  assert.deepEqual(ids(L.columnPage(cols.p1, per, 1)), ['p1-3', 'p1-4', 'p1-5']);
+});
+
+test('empty column stays empty without errors', () => {
+  for (const items of [[], null, undefined]) {
+    for (const tick of [0, 1, 5]) assert.deepEqual(L.columnPage(items, 4, tick), { items: [], page: 0, pages: 1 });
+  }
+  assert.deepEqual(L.columnPage(ex(2), 0, 1).pages, 2, 'perPage < 1 is treated as 1');
+  assert.deepEqual(L.columnPage(ex(2), 3, undefined).page, 0);
+});
