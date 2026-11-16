@@ -146,6 +146,25 @@
   const BOT_ID_NAMES = { 'f1a70b7a-6051-45d7-8031-e46a4cba066f': 'Usage Budget', '372936ae-81e1-4013-b0d0-9ee47d97a3c4': 'HR - Bot Trainer', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive \u00b7 Application State Tracker' };
   function canonicalBot(name, botId) { const id = str(botId).trim(), n = str(name).trim(); return BOT_ID_NAMES[id] || BOT_ALIASES[n] || n; }
 
+  /* ---------- Optional OFFICE_STATUS.json fields (v2) ----------
+     bots[].screen  { "title": string, "lines": [string, ... up to 6], "updated_at": ISO }
+       What the bot's monitor shows, drawn as a mini app window (near view) and in the monitor popup. Parsed tolerantly:
+       not an object, or no title and no lines -> null and the monitor falls back to task / last_action / own items.
+       Non-string lines are dropped, lines are cut to 160 characters, only the first 6 are kept, a bad updated_at -> ''.
+       President's monitor ignores it (Forge checksheet); Usage Budget's monitor always shows the usage chart.
+     meetings[]     [{ "id", "title", "members": [bot names or bot_ids], "started_at": ISO, "chat_id": "" }]
+       Members (known bots only, by sidebar name, older alias or bot_id) sit at the conference table, at most 7 seats.
+       A bot that needs Tim stays at its desk. chat_id is reserved and only carried through. Entries with no known
+       member are dropped; missing or invalid -> [] and the table is used only for ambient training. */
+  const SCREEN_MAX_LINES = 6, SCREEN_LINE_MAX = 160;
+  function parseScreen(s) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+    const title = typeof s.title === 'string' ? truncate(s.title, 80) : '';
+    const lines = (Array.isArray(s.lines) ? s.lines : []).filter(l => typeof l === 'string' || (typeof l === 'number' && Number.isFinite(l)))
+      .slice(0, SCREEN_MAX_LINES).map(l => str(l).replace(/[\r\n\t]+/g, ' ').trimEnd().slice(0, SCREEN_LINE_MAX));
+    if (!title && !lines.some(l => l.trim())) return null;
+    return { title, lines, updated_at: time(s.updated_at) != null ? str(s.updated_at) : '' };
+  }
   function parseBots(list) {
     if (!Array.isArray(list)) return [];
     const seen = new Set(), out = [];
@@ -155,10 +174,118 @@
       seen.add(bot);
       out.push({
         bot, bot_id: str(r.bot_id).trim(), task: str(r.task), status: normStatus(r.status), rawStatus: str(r.status),
-        last_action: str(r.last_action), last_action_at: str(r.last_action_at), question: str(r.question), link: str(r.link)
+        last_action: str(r.last_action), last_action_at: str(r.last_action_at), question: str(r.question), link: str(r.link),
+        screen: parseScreen(r.screen)
       });
     }
     return out;
+  }
+  const CONF_SEATS = 7;
+  function parseMeetings(list, bots) {
+    if (!Array.isArray(list)) return [];
+    const byId = new Map((bots || []).filter(b => b.bot_id).map(b => [b.bot_id, b.bot])), names = new Set((bots || []).map(b => b.bot));
+    const out = [];
+    for (const m of list) {
+      if (!m || typeof m !== 'object' || Array.isArray(m)) continue;
+      const members = [];
+      for (const x of Array.isArray(m.members) ? m.members : []) {
+        if (typeof x !== 'string') continue;
+        const s = x.trim(), n = byId.get(s) || BOT_ID_NAMES[s] || canonicalBot(s);
+        if (n && names.has(n) && !members.includes(n)) members.push(n);
+      }
+      if (!members.length) continue;
+      out.push({ id: str(m.id).trim() || 'meeting-' + (out.length + 1), title: truncate(str(m.title), 60) || 'Meeting', members,
+        started_at: time(m.started_at) != null ? str(m.started_at) : '', chat_id: str(m.chat_id).trim() });
+    }
+    return out;
+  }
+
+  /* ---------- Needs Tim click target ----------
+     PR link when the entry (or the bot's own Needs Tim card) has one, else the entry's own http(s)/grokbot link, else the
+     owning bot's Grok Bot chat (grokbot://app/v1/agent?id=<bot_id>), else nothing: show the bot name with no link.
+     Bot characters use the same target. Other URL schemes (javascript:, data:) are never returned. */
+  const SAFE_LINK = /^(https?:\/\/|grokbot:\/\/)/i;
+  function safeLink(l) { const v = str(l).trim(); return SAFE_LINK.test(v) ? v : ''; }
+  function isPrLink(l) { return /^https?:\/\/[^\s]+\/pull\/\d+/i.test(str(l)); }
+  function chatLink(botId) { const id = str(botId).trim(); return id ? FALLBACK_LINK + encodeURIComponent(id) : ''; }
+  function needsTarget(o) {
+    const own = safeLink(o && o.link), bot = str(o && o.bot).trim();
+    if (isPrLink(own)) return { href: own, kind: 'pr', label: bot };
+    const card = bot && (o.items || []).find(i => i.owner === bot && columnFor(i) === 'needs_tim' && isPrLink(i.link));
+    if (card) return { href: card.link, kind: 'pr', label: bot };
+    if (own) return { href: own, kind: /^grokbot:/i.test(own) ? 'chat' : 'link', label: bot };
+    const chat = chatLink(o && o.bot_id);
+    if (chat) return { href: chat, kind: 'chat', label: bot };
+    return { href: '', kind: 'none', label: bot };
+  }
+
+  /* ---------- What each bot is doing on the floor (ambient behaviour, never data) ----------
+     Order: needs Tim / blocked -> waves at its own desk; meeting member -> conference seat; working -> types at its desk;
+     idle -> chat / sleep at desk / game / wander, chosen per bot from a hash that changes every 10 minutes (no flicker).
+     An idle HR - Bot Trainer walks round to idle bots and, when no meeting holds the table, trains two of them there. */
+  const TRAINER = 'HR - Bot Trainer';
+  const IDLE_BUCKET_MIN = 10, TRAIN_CYCLE_S = 100, TRAIN_S = 45, VISIT_S = 18;
+  const IDLE_PATTERN = ['chat', 'chat', 'sleep', 'game', 'wander', 'chat', 'chat', 'wander', 'sleep', 'game'];
+  function hash(s) { let h = 2166136261; for (const ch of str(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
+  function holdsCan(name) { return hash('can:' + name) % 3 !== 0; }
+  function planOffice(bots, meetings, now, state) {
+    const plans = {}, list = bots || [];
+    let meeting = null, training = null;
+    if (state === 'failed') return { plans, meeting, training };
+    for (const b of list) if (statusStyle(b.status).alert) plans[b.bot] = { act: 'wave' };
+    let seat = 0;
+    for (const m of meetings || []) {
+      const seated = [];
+      for (const n of m.members) {
+        if (plans[n] || seat >= CONF_SEATS || !list.some(b => b.bot === n)) continue;
+        plans[n] = { act: 'meeting', seat: seat++, meeting: m.id }; seated.push(n);
+      }
+      if (seated.length && !meeting) meeting = Object.assign({}, m, { seated });
+    }
+    for (const b of list) if (!plans[b.bot] && normStatus(b.status) === 'working') plans[b.bot] = { act: 'work' };
+    const trainer = list.find(b => b.bot === TRAINER && !plans[b.bot]);
+    const bucket = Math.floor(now / (IDLE_BUCKET_MIN * MIN));
+    const idle = list.filter(b => !plans[b.bot] && b.bot !== TRAINER).map(b => b.bot)
+      .sort((a, b) => hash(a + ':' + bucket) - hash(b + ':' + bucket) || a.localeCompare(b));
+    idle.forEach((n, i) => { plans[n] = { act: IDLE_PATTERN[i % IDLE_PATTERN.length] }; });
+    if (trainer) {
+      const sec = Math.floor(now / 1000), cycle = Math.floor(sec / TRAIN_CYCLE_S);
+      if (!meeting && sec % TRAIN_CYCLE_S < TRAIN_S && idle.length) {
+        // trainees: bots killing time first, then sleepers, gamers and chatters; a different pair each cycle
+        const pref = ['wander', 'sleep', 'game', 'chat'], pool = idle.slice().sort((a, b) => pref.indexOf(plans[a].act) - pref.indexOf(plans[b].act));
+        const span = Math.min(pool.length, 3), trainees = [];
+        for (let i = 0; i < Math.min(2, pool.length); i++) trainees.push(pool[(cycle + i) % span]);
+        trainees.forEach((n, i) => { plans[n] = { act: 'train', seat: i }; });
+        plans[TRAINER] = { act: 'lead' }; training = { trainer: TRAINER, trainees };
+      } else if (idle.length) {
+        const target = idle[Math.floor(sec / VISIT_S) % idle.length];
+        plans[TRAINER] = { act: 'visit', partner: target }; plans[target] = { act: 'listen', partner: TRAINER };
+      } else plans[TRAINER] = { act: 'wander' };
+    }
+    const chat = idle.filter(n => plans[n].act === 'chat');
+    for (let i = 0; i + 1 < chat.length; i += 2) {
+      plans[chat[i]] = { act: 'chat', partner: chat[i + 1], host: false };
+      plans[chat[i + 1]] = { act: 'chat', partner: chat[i], host: true };
+    }
+    if (chat.length % 2) plans[chat[chat.length - 1]] = { act: 'wander' };
+    for (const n of Object.keys(plans)) if (['chat', 'listen', 'wander', 'visit'].includes(plans[n].act)) plans[n].can = holdsCan(n);
+    return { plans, meeting, training };
+  }
+  /* Generic idle chatter for speech bubbles. Always shown marked "ambient": it is decoration, not OFFICE_STATUS data. */
+  const AMBIENT = {
+    chat: ['Ready for the next task!', 'Anyone need a hand?', 'All caught up here.', 'Ping me if something comes in.', 'Nice work on the last one.', 'The coffee is fresh.', 'Queue looks quiet today.', 'I could take another card.'],
+    visit: ['How is it going?', 'Want to try a new skill?', 'Any blockers I can help with?', 'Great work this week!', 'Got a minute for a quick tip?'],
+    reply: ['Doing great, thanks!', 'Sure, show me.', 'All good here.', 'Happy to learn more.', 'Ready when you are.'],
+    train: ['Today: new skills!', 'Step one: read the task twice.', 'Small PRs, green checks.', 'Questions so far?', 'Let us try it together.']
+  };
+  function ambientLine(kind, seed, tick) { const a = AMBIENT[kind] || AMBIENT.chat; return a[(hash(seed) + Math.max(0, tick | 0)) % a.length]; }
+  /* What the desk monitor draws. President keeps the Forge checksheet (never chat text); Usage Budget the usage chart. */
+  function monitorMode(bot, act) {
+    const n = str(bot && bot.bot), id = str(bot && bot.bot_id);
+    if (n === 'President' || id === '431e8cf1-f077-4548-82b7-46c1959dc4c9') return 'checksheet';
+    if (n === 'Usage Budget') return 'usage';
+    if (act === 'game') return 'game';
+    return bot && bot.screen ? 'screen' : 'terminal';
   }
   function parseConversations(list, botNames) {
     if (!Array.isArray(list)) return [];
@@ -190,8 +317,10 @@
     const names = bots.map(b => b.bot);
     return {
       ok: true, error: '', updatedAt: str(o.updated_at),
-      needsTim: (Array.isArray(o.needs_tim) ? o.needs_tim : []).filter(n => n && str(n.text).trim()).map(n => ({ text: str(n.text).trim(), link: str(n.link).trim() })),
-      bots, items: parseItems(o.items, names), conversations: parseConversations(o.conversations, names), usage: parseUsage(o.usage)
+      needsTim: (Array.isArray(o.needs_tim) ? o.needs_tim : []).filter(n => n && str(n.text).trim())
+        .map(n => ({ text: str(n.text).trim(), link: str(n.link).trim(), bot: canonicalBot(n.bot, n.bot_id), bot_id: str(n.bot_id).trim() })),
+      bots, items: parseItems(o.items, names), conversations: parseConversations(o.conversations, names), usage: parseUsage(o.usage),
+      meetings: parseMeetings(o.meetings, bots)
     };
   }
 
@@ -324,23 +453,24 @@
   /* ---------- Demo data (?demo=1): clearly example data, every state and behaviour visible ---------- */
   function demoStatus(now) {
     const ago = m => new Date(now - m * MIN).toISOString();
-    const B = (bot, bot_id, status, task, last_action, mins, question) => ({ bot, bot_id, status, task, last_action, last_action_at: ago(mins), question: question || '', link: '' });
+    const B = (bot, bot_id, status, task, last_action, mins, question, screen) => ({ bot, bot_id, status, task, last_action, last_action_at: ago(mins), question: question || '', link: '', screen });
+    const SCR = (title, lines) => ({ title: 'EXAMPLE ' + title, lines, updated_at: ago(1) });
     const I = (id, title, priority, status, owner, project, link) => ({ id, title, priority, status, owner, link: link || '', updated_at: ago(5), project });
     return {
       updated_at: ago(2),
-      needs_tim: [{ text: 'EXAMPLE: approve the job-board API key for Root', link: '' }],
+      needs_tim: [{ text: 'EXAMPLE: approve the job-board API key for Root', link: '', bot: 'Root' }, { text: 'EXAMPLE: sign off the lounge budget', link: '', bot: 'EXAMPLE contractor' }],
       bots: [
         B('President', '431e8cf1-f077-4548-82b7-46c1959dc4c9', 'working', 'EXAMPLE: keeping the Forge checksheet current', 'Sorted items by priority', 3),
         B('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540', 'waiting_tim', 'EXAMPLE: job-board API access', 'Asked Tim for the API key', 24, 'EXAMPLE: may I use the paid job-board API key?'),
-        B('Software', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f', 'working', 'EXAMPLE: price scrape for job leads', 'Pushed scraper fix', 6),
-        B('GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a', 'working', 'EXAMPLE: board card styling', 'Adjusted card contrast', 9),
-        B('QA bot', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc', 'blocked', 'EXAMPLE: quarantine flaky tests', 'Two runs disagree', 41, 'EXAMPLE: quarantine the flaky map test or keep it blocking?'),
+        B('Software', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f', 'working', 'EXAMPLE: price scrape for job leads', 'Pushed scraper fix', 6, '', SCR('scraper.log', ['$ npm run scrape -- --leads', 'fetched 412 listings', 'parsed 398 · 14 skipped', 'dedupe: 37 merged', 'writing prices.json …', '$ _'])),
+        B('GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a', 'idle', '', 'Adjusted card contrast', 9, '', SCR('card-preview', ['Card contrast: 7.1:1 ✓', 'Badge sizes: 19 / 24 px', 'Waiting for review'])),
+        B('QA bot', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc', 'blocked', 'EXAMPLE: quarantine flaky tests', 'Two runs disagree', 41, 'EXAMPLE: quarantine the flaky map test or keep it blocking?', SCR('test runner', ['map.browser.js  run 1  ✓ pass', 'map.browser.js  run 2  ✗ fail', 'diff: tile timing 40 ms', 'waiting for Tim'])),
         B('Sniffer', '321469c4-1299-43e7-bd32-1704f58777be', 'idle', '', 'Finished the search-filter sweep', 30),
-        B('Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a', 'idle', '', 'Lead scoring rules done', 52),
+        B('Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a', 'idle', '', 'Lead scoring rules done', 52, '', 'not a screen object'),
         B('Archive · Application State Tracker', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d', 'idle', '', 'Archived stale asks', 75),
-        B('Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841', 'working', 'Building the 3D office viewer (foreman-cockpit PR)', 'Wrote the scene and tests', 1),
+        B('Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841', 'working', 'Building the 3D office viewer (foreman-cockpit PR)', 'Wrote the scene and tests', 1, '', { title: 'office v2 (foreman-cockpit PR)', lines: ['npm test  ✓', 'office.browser.js  ✓ 5 scenarios', 'next: monitor popup'], updated_at: ago(1) }),
         B('ChatGPT', '7bcb0d85-ec55-4e17-907f-3e71688e8799', 'idle', '', 'Cover letter templates v2', 18),
-        B('Usage Budget', 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'working', 'EXAMPLE: hourly AI usage report', 'Posted usage readings', 4),
+        B('Usage Budget', 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'idle', '', 'EXAMPLE: posted the hourly usage readings', 4),
         B('HR - Bot Trainer', '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'idle', '', 'Checked in', 12)
       ],
       items: [
@@ -355,9 +485,9 @@
         I('ex-392', 'EXAMPLE #392 Archive stale asks', 'P4', 'done', 'Archive · Application State Tracker', 'Job pipeline'),
         I('ex-390', 'EXAMPLE #390 Usage report v3', 'P4', 'done', 'Usage Budget', 'Job pipeline'),
         I('ex-388', 'EXAMPLE #388 Sidebar icons', 'P4', 'done', 'GUI', 'Job pipeline'),
-        I('ex-63', 'EXAMPLE #63 Quarantine flaky tests?', 'Needs Tim', 'blocked', 'QA bot', '3D office'),
+        I('ex-63', 'EXAMPLE #63 Quarantine flaky tests?', 'Needs Tim', 'blocked', 'QA bot', '3D office', 'https://example.com/EXAMPLE/pull/63'),
         I('office-viewer', '3D office viewer (foreman-cockpit PR)', 'P2', 'working', 'Claude', '3D office'),
-        I('ex-62', 'EXAMPLE #62 Board card styling', 'P2', 'working', 'GUI', '3D office'),
+        I('ex-62', 'EXAMPLE #62 Board card styling', 'P2', 'review', 'GUI', '3D office'),
         I('ex-60', 'EXAMPLE #60 OFFICE_STATUS seed', 'P2', 'review', 'President', '3D office'),
         I('ex-59', 'EXAMPLE #59 TV mode key map', 'P3', 'done', 'Claude', '3D office')
       ],
@@ -366,6 +496,8 @@
         { from: 'ChatGPT', to: 'Claude', text: 'EXAMPLE: I will match them in the cover letter preview so both stay consistent.', at: ago(2) },
         { from: 'ChatGPT', to: 'Claude', text: '', at: ago(1) }
       ],
+      meetings: [],
+      _demoMeeting: [{ id: 'ex-standup', title: 'EXAMPLE stand-up', members: ['Software', 'ChatGPT', '424e5611-fb8f-4ae1-a360-051e61e63e8a'], started_at: ago(4), chat_id: '' }],
       usage: {
         as_of: ago(6),
         services: [
@@ -376,11 +508,13 @@
       }
     };
   }
-  /* Second demo poll: a new card for Comp and one reassigned to Sniffer, so the board pickup walk is visible. */
+  /* Next demo polls: a new card for Comp and one reassigned to Sniffer, so the board pickup walk is visible; the example
+     meeting starts on the second poll (6 s) and ends on the third, so both ambient training and the meeting get shown. */
   function demoNextStatus(prev, now) {
     const o = JSON.parse(JSON.stringify(prev));
     o.updated_at = new Date(now).toISOString();
-    o.items.push({ id: 'ex-64', title: 'EXAMPLE #64 Lounge props', priority: 'P3', status: 'working', owner: 'Comp', link: '', updated_at: o.updated_at, project: '3D office' });
+    o.meetings = o.meetings && o.meetings.length ? [] : demoStatus(now)._demoMeeting;
+    if (!o.items.some(i => i.id === 'ex-64')) o.items.push({ id: 'ex-64', title: 'EXAMPLE #64 Lounge props', priority: 'P3', status: 'working', owner: 'Comp', link: '', updated_at: o.updated_at, project: '3D office' });
     const it = o.items.find(i => i.id === 'ex-420'); if (it) it.owner = 'Sniffer';
     return o;
   }
@@ -394,6 +528,8 @@
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
-    usageStale, canonicalBot, BOT_ALIASES, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS
+    usageStale, canonicalBot, BOT_ALIASES, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
+    SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode
   };
 });
