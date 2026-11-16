@@ -49,10 +49,10 @@ test('unknown project names map to the closest known project, else Other', () =>
 const S = L.parseStatus(JSON.parse(fx('office-status-v3.example.json')));
 const bot = n => S.bots.find(b => b.bot === n);
 test('status rules: "waiting" never raises a hand; needs_tim needs a question; blocked is never Needs Tim', () => {
-  assert.equal(bot('QA bot').status, 'idle'); assert.equal(L.statusStyle(bot('QA bot').status).alert, false);
+  assert.equal(bot('QA').status, 'idle'); assert.equal(L.statusStyle(bot('QA').status).alert, false);
   assert.equal(L.normStatus('waiting'), 'idle'); assert.equal(L.normStatus('queued'), 'idle');
   assert.equal(bot('Comp').status, 'idle'); assert.match(bot('Comp').why, /no question/);
-  assert.equal(bot('Software').status, 'waiting_tim'); assert.equal(L.statusStyle('waiting_tim').alert, true);
+  assert.equal(bot('Cursor').status, 'waiting_tim'); assert.equal(L.statusStyle('waiting_tim').alert, true);
   assert.equal(L.statusStyle('blocked').alert, false);
 });
 test('Needs Tim list: resolved, expired, merged drop off; open PR -> review queue; dedupe; empty state', () => {
@@ -60,7 +60,7 @@ test('Needs Tim list: resolved, expired, merged drop off; open PR -> review queu
   const pulls = [{ repo: 'foreman-cockpit', number: 311, title: 'dup', url: 'https://github.com/tpruittguitar/foreman-cockpit/pull/311', draft: false, checks: 'passing' },
     { repo: 'foreman-cockpit', number: 312, title: 'draft one', url: 'https://github.com/tpruittguitar/foreman-cockpit/pull/312', draft: true, checks: 'failing' }];
   const n = L.needsList({ bots: S.bots, entries: S.needsTim.map((e, i) => Object.assign({}, e, JSON.parse(fx('office-status-v3.example.json')).needs_tim[i])), prStates: states, pulls, now: NOW, demo: true });
-  assert.deepEqual(n.needs.map(x => x.text), ['Software: EXAMPLE real question', 'EXAMPLE open ask']);
+  assert.deepEqual(n.needs.map(x => x.text), ['Cursor: EXAMPLE real question', 'EXAMPLE open ask']);
   assert.deepEqual(n.review.map(x => x.pr), ['tpruittguitar/foreman-cockpit#311', 'tpruittguitar/foreman-cockpit#312'], 'open PR once (deduped); never on Needs Tim');
   const live = L.needsList({ bots: S.bots, entries: [{ text: 'EXAMPLE x' }], now: NOW, demo: false });
   assert.equal(live.needs.length, 0, 'EXAMPLE rows never in the live view'); assert.equal(live.empty, true);
@@ -143,10 +143,10 @@ test('desk layout scales to N bots without overlaps; extra unknown bot gets a de
 });
 
 test("Tim's desk rule: President and the whole back row sit where the v2 layout had them", () => {
-  const roster = ['President', 'Root', 'Software', 'GUI', 'QA bot', 'Sniffer', 'Comp', 'Archive · Application State Tracker', 'Claude', 'ChatGPT', 'Usage Budget', 'HR - Bot Trainer', 'Gauge', 'Edgar'];
+  const roster = ['President', 'Root', 'Cursor', 'GUI', 'QA', 'Sniffer', 'Comp', 'Archive', 'Claude', 'ChatGPT', 'Usage', 'HR', 'Gauge', 'Edgar'];
   for (const names of [roster, roster.slice().reverse(), roster.slice(0, 9)]) {
     const d = L.deskLayout(names.length, names), at = n => { const p = d[names.indexOf(n)]; return [p.x, p.z]; };
-    assert.deepEqual(at('Claude'), [-7, -4]); assert.deepEqual(at('Software'), [-3.8, -4]);
+    assert.deepEqual(at('Claude'), [-7, -4]); assert.deepEqual(at('Cursor'), [-3.8, -4]);
     assert.deepEqual(at('Comp'), [-0.6, -4]); assert.deepEqual(at('GUI'), [2.6, -4]);
     assert.deepEqual(at('President'), [-3.8, -0.6]);
     assert.equal(d.filter(p => p.z === -4).length, 4, 'back row holds only the four v2 back-row bots');
@@ -208,10 +208,10 @@ test('screens index parse and the fallback / stale / paused rules', () => {
   assert.equal(L.screenState(ix, 'nobody', NOW).why, 'Screen offline');
   for (const bad of [null, [], 'x', { screens: [] }]) assert.deepEqual(L.parseScreensIndex(bad).screens, {});
 });
-test('screen click target: screen_url (http/https only), President and Usage Budget defaults, else popup', () => {
-  assert.deepEqual(L.screenTarget(bot('Software')), { kind: 'url', href: 'https://example.com/live' });
+test('screen click target: screen_url (http/https only), President and Usage defaults, else popup', () => {
+  assert.deepEqual(L.screenTarget(bot('Cursor')), { kind: 'url', href: 'https://example.com/live' });
   assert.deepEqual(L.screenTarget(bot('President')), { kind: 'url', href: L.PRESIDENT_SCREEN_URL }, 'javascript: rejected');
-  assert.equal(L.screenTarget({ bot: 'Usage Budget' }).kind, 'usage');
+  assert.equal(L.screenTarget({ bot: 'Usage' }).kind, 'usage');
   assert.equal(L.screenTarget(bot('Root')).kind, 'popup');
   assert.equal(L.httpUrl('data:text/html,x'), ''); assert.equal(L.httpUrl('HTTPS://a.b/c'), 'HTTPS://a.b/c');
 });

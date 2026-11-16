@@ -155,10 +155,17 @@
   }
 
   /* Older OFFICE_STATUS names mapped to the exact Grok Bot sidebar names. */
-  const BOT_ALIASES = { 'Usage Ctrl': 'Usage Budget', 'Usage Ctr': 'Usage Budget', 'dr eggbot': 'HR - Bot Trainer', 'Archive': 'Archive \u00b7 Application State Tracker' };
+  const BOT_ALIASES = { 'Usage Ctrl': 'Usage', 'Usage Ctr': 'Usage', 'Usage Budget': 'Usage', 'dr eggbot': 'HR', 'HR - Bot Trainer': 'HR', 'QA bot': 'QA', 'Software': 'Cursor',
+    'Archive \u00b7 Application State Tracker': 'Archive' };
+  /* Item 17 (Tim, Nov 16 5:38 PM): the 3D office roster is exactly the 14-bot sidebar, in sidebar order, with the short names. */
+  const ROSTER = [
+    ['President', '431e8cf1-f077-4548-82b7-46c1959dc4c9'], ['QA', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc'], ['HR', '372936ae-81e1-4013-b0d0-9ee47d97a3c4'],
+    ['Cursor', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f'], ['Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841'], ['ChatGPT', '7bcb0d85-ec55-4e17-907f-3e71688e8799'],
+    ['Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'], ['Usage', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'], ['Edgar', '811cc842-4bef-47c2-98d2-0f4bb78f7169'],
+    ['Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a'], ['Gauge', '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6'], ['Sniffer', '321469c4-1299-43e7-bd32-1704f58777be'],
+    ['GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a'], ['Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d']].map(([name, id]) => ({ name, id }));
   /* Renamed bots matched by bot_id first, so the label follows the sidebar whatever name the file carries. */
-  const BOT_ID_NAMES = { 'f1a70b7a-6051-45d7-8031-e46a4cba066f': 'Usage Budget', '372936ae-81e1-4013-b0d0-9ee47d97a3c4': 'HR - Bot Trainer', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive \u00b7 Application State Tracker',
-    '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': 'Gauge', '811cc842-4bef-47c2-98d2-0f4bb78f7169': 'Edgar' };
+  const BOT_ID_NAMES = Object.fromEntries(ROSTER.map(r => [r.id, r.name]));
   function canonicalBot(name, botId) { const id = str(botId).trim(), n = str(name).trim(); return BOT_ID_NAMES[id] || BOT_ALIASES[n] || n; }
 
   /* ---------- Optional OFFICE_STATUS.json fields (v2) ----------
@@ -166,7 +173,7 @@
        What the bot's monitor shows, drawn as a mini app window (near view) and in the monitor popup. Parsed tolerantly:
        not an object, or no title and no lines -> null and the monitor falls back to task / last_action / own items.
        Non-string lines are dropped, lines are cut to 160 characters, only the first 6 are kept, a bad updated_at -> ''.
-       President's monitor ignores it (Forge checksheet); Usage Budget's monitor always shows the usage chart.
+       President's monitor ignores it (Forge checksheet); Usage's monitor always shows the usage chart.
      meetings[]     [{ "id", "title", "members": [bot names or bot_ids], "started_at": ISO, "chat_id": "" }]
        Members (known bots only, by sidebar name, older alias or bot_id) sit at the conference table, at most 7 seats.
        A bot that needs Tim stays at its desk. chat_id is reserved and only carried through. Entries with no known
@@ -203,7 +210,9 @@
     for (const b of out) for (const w of b.work) {
       const o = w.owner; w.ownerName = byId.get(o) || BOT_ID_NAMES[o] || (names.has(canonicalBot(o)) ? canonicalBot(o) : b.bot);
     }
-    return out;
+    // roster bots come first in sidebar order (item 17); anything else keeps file order after them
+    const rank = b => { const i = ROSTER.findIndex(r => r.name === b.bot); return i < 0 ? ROSTER.length : i; };
+    return out.map((b, i) => [b, i]).sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]).map(x => x[0]);
   }
   const CONF_SEATS = 7;
   function parseMeetings(list, bots) {
@@ -247,8 +256,8 @@
   /* ---------- What each bot is doing on the floor (ambient behaviour, never data) ----------
      Order: needs Tim / blocked -> waves at its own desk; meeting member -> conference seat; working -> types at its desk;
      idle -> chat / sleep at desk / game / wander, chosen per bot from a hash that changes every 10 minutes (no flicker).
-     An idle HR - Bot Trainer walks round to idle bots and, when no meeting holds the table, trains two of them there. */
-  const TRAINER = 'HR - Bot Trainer';
+     An idle HR walks round to idle bots and, when no meeting holds the table, trains two of them there. */
+  const TRAINER = 'HR';
   const IDLE_BUCKET_MIN = 10, TRAIN_CYCLE_S = 100, TRAIN_S = 45, VISIT_S = 18;
   const IDLE_PATTERN = ['chat', 'chat', 'sleep', 'game', 'wander', 'chat', 'chat', 'wander', 'sleep', 'game'];
   function hash(s) { let h = 2166136261; for (const ch of str(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
@@ -314,7 +323,7 @@
     train: ['Today: new skills!', 'Step one: read the task twice.', 'Small PRs, green checks.', 'Questions so far?', 'Let us try it together.']
   };
   function ambientLine(kind, seed, tick) { const a = AMBIENT[kind] || AMBIENT.chat; return a[(hash(seed) + Math.max(0, tick | 0)) % a.length]; }
-  /* What the desk monitor draws. President keeps the Forge checksheet (never chat text); Usage Budget the usage chart. */
+  /* What the desk monitor draws. President keeps the Forge checksheet (never chat text); Usage the usage chart. */
   /* What the desk monitor draws. A running routine wins; President is a split view (chat feed | mirrored screen);
      a live mirror image wins over text; Usage Budget falls back to the usage chart; Gauge with an audit shows it. */
   function monitorMode(bot, act, ctx) {
@@ -322,7 +331,7 @@
     if (bot && bot.routine) return 'routine';
     if (n === 'President' || id === PRESIDENT_ID) return 'president';
     if (c.image) return 'mirror';
-    if (n === 'Usage Budget' || id === USAGE_ID) return 'usage';
+    if (n === 'Usage' || id === USAGE_ID) return 'usage';
     if (bot && bot.audit) return 'audit';
     if (act === 'replay' || act === 'replay_board') return 'replay';
     if (act === 'game') return 'game';
@@ -502,39 +511,39 @@
     return {
       updated_at: ago(2),
       needs_tim: [{ text: 'EXAMPLE: approve the job-board API key for Root', link: '', bot: 'Root' }, { text: 'EXAMPLE: sign off the lounge budget', link: '', bot: 'EXAMPLE contractor' },
-        { text: 'EXAMPLE: already answered', bot: 'Root', resolved: true }, { text: 'EXAMPLE: merged PR ask', link: 'https://github.com/EXAMPLE/repo/pull/1', bot: 'QA bot' }],
+        { text: 'EXAMPLE: already answered', bot: 'Root', resolved: true }, { text: 'EXAMPLE: merged PR ask', link: 'https://github.com/EXAMPLE/repo/pull/1', bot: 'QA' }],
       bots: [
         B('President', '431e8cf1-f077-4548-82b7-46c1959dc4c9', 'working', 'EXAMPLE: keeping the Forge checksheet current', 'Sorted items by priority', 3),
-        B('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540', 'waiting_tim', 'EXAMPLE: job-board API access', 'Asked Tim for the API key', 24, 'EXAMPLE: may I use the paid job-board API key?'),
-        B('Software', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f', 'working', 'EXAMPLE: price scrape for job leads', 'Pushed scraper fix', 6, '', SCR('scraper.log', ['$ npm run scrape -- --leads', 'fetched 412 listings', 'parsed 398 · 14 skipped', 'dedupe: 37 merged', 'writing prices.json …', '$ _'])),
-        B('GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a', 'idle', '', 'Adjusted card contrast', 9, '', SCR('card-preview', ['Card contrast: 7.1:1 ✓', 'Badge sizes: 19 / 24 px', 'Waiting for review'])),
-        B('QA bot', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc', 'blocked', 'EXAMPLE: quarantine flaky tests', 'Two runs disagree', 41, 'EXAMPLE: quarantine the flaky map test or keep it blocking?', SCR('test runner', ['map.browser.js  run 1  ✓ pass', 'map.browser.js  run 2  ✗ fail', 'diff: tile timing 40 ms', 'waiting for Tim'])),
-        B('Sniffer', '321469c4-1299-43e7-bd32-1704f58777be', 'waiting', '', 'Finished the search-filter sweep', 30),
-        B('Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a', 'idle', '', 'Lead scoring rules done', 52, '', 'not a screen object'),
-        B('Archive · Application State Tracker', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d', 'idle', '', 'Archived stale asks', 75),
+        B('QA', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc', 'blocked', 'EXAMPLE: quarantine flaky tests', 'Two runs disagree', 41, 'EXAMPLE: quarantine the flaky map test or keep it blocking?', SCR('test runner', ['map.browser.js  run 1  ✓ pass', 'map.browser.js  run 2  ✗ fail', 'diff: tile timing 40 ms', 'waiting for Tim'])),
+        B('HR', '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'idle', '', 'Checked in', 12),
+        B('Cursor', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f', 'working', 'EXAMPLE: price scrape for job leads', 'Pushed scraper fix', 6, '', SCR('scraper.log', ['$ npm run scrape -- --leads', 'fetched 412 listings', 'parsed 398 · 14 skipped', 'dedupe: 37 merged', 'writing prices.json …', '$ _'])),
         B('Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841', 'working', 'Building the 3D office viewer (foreman-cockpit PR)', 'Wrote the scene and tests', 1, '', { title: 'office v2 (foreman-cockpit PR)', lines: ['npm test  ✓', 'office.browser.js  ✓ 5 scenarios', 'next: monitor popup'], updated_at: ago(1) }),
         B('ChatGPT', '7bcb0d85-ec55-4e17-907f-3e71688e8799', 'idle', '', 'Cover letter templates v2', 18),
-        B('Usage Budget', 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'idle', '', 'EXAMPLE: posted the hourly usage readings', 4),
-        B('HR - Bot Trainer', '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'idle', '', 'Checked in', 12),
+        B('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540', 'waiting_tim', 'EXAMPLE: job-board API access', 'Asked Tim for the API key', 24, 'EXAMPLE: may I use the paid job-board API key?'),
+        B('Usage', 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'idle', '', 'EXAMPLE: posted the hourly usage readings', 4),
+        Object.assign(B('Edgar', '811cc842-4bef-47c2-98d2-0f4bb78f7169', 'working', 'EXAMPLE: cover letter draft', 'Wrote paragraph two', 2), { avatar_shape: 'flower', avatar_color: 'blue' }),
+        B('Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a', 'idle', '', 'Lead scoring rules done', 52, '', 'not a screen object'),
         Object.assign(B('Gauge', '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6', 'idle', 'EXAMPLE: read-only Pipeline Explorer audits', 'Pinned an audit finding on the board', 8), {
           audit: { last_at: ago(40), checks: { ask_tim: 'flag', stuck_processes: 'ok', suspicious_data: 'ok', constraint: 'maybe' }, findings_sent: 2 },
           work: [{ id: 'ex-g1', title: 'EXAMPLE: 8 old asks waiting on Tim', status: 'open', at: ago(8), link: 'https://example.com/EXAMPLE/checksheet/1' }] }),
-        Object.assign(B('Edgar', '811cc842-4bef-47c2-98d2-0f4bb78f7169', 'working', 'EXAMPLE: cover letter draft', 'Wrote paragraph two', 2), { avatar_shape: 'flower', avatar_color: 'blue' })
+        B('Sniffer', '321469c4-1299-43e7-bd32-1704f58777be', 'waiting', '', 'Finished the search-filter sweep', 30),
+        B('GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a', 'idle', '', 'Adjusted card contrast', 9, '', SCR('card-preview', ['Card contrast: 7.1:1 ✓', 'Badge sizes: 19 / 24 px', 'Waiting for review'])),
+        B('Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d', 'idle', '', 'Archived stale asks', 75)
       ],
       _demoWork: [{ id: 'ex-r1', title: 'EXAMPLE: coordinator publish stalled', status: 'open', at: ago(0), link: 'https://example.com/EXAMPLE/issue/9' }],
       items: [
         I('ex-412', 'EXAMPLE #412 Approve job-board API key', 'Needs Tim', 'waiting_tim', 'Root', 'Job pipeline'),
-        I('ex-418', 'EXAMPLE #418 Price scrape for job leads', 'P1', 'working', 'Software', 'Job pipeline'),
+        I('ex-418', 'EXAMPLE #418 Price scrape for job leads', 'P1', 'working', 'Cursor', 'Job pipeline'),
         I('ex-420', 'EXAMPLE #420 Cover letter templates v2', 'P3', 'working', 'ChatGPT', 'Job pipeline'),
-        I('ex-57', 'EXAMPLE #57 Merge scraped prices', 'PR merge queue', 'review', 'Software', 'Job pipeline'),
+        I('ex-57', 'EXAMPLE #57 Merge scraped prices', 'PR merge queue', 'review', 'Cursor', 'Job pipeline'),
         I('ex-405', 'EXAMPLE #405 Dedupe job leads', 'P2', 'done', 'Sniffer', 'Job pipeline'),
         I('ex-401', 'EXAMPLE #401 Indeed search filters', 'P3', 'done', 'Sniffer', 'Job pipeline'),
         I('ex-399', 'EXAMPLE #399 Resume PDF export', 'P3', 'done', 'ChatGPT', 'Job pipeline'),
         I('ex-396', 'EXAMPLE #396 Lead scoring rules', 'P2', 'done', 'Comp', 'Job pipeline'),
-        I('ex-392', 'EXAMPLE #392 Archive stale asks', 'P4', 'done', 'Archive · Application State Tracker', 'Job pipeline'),
-        I('ex-390', 'EXAMPLE #390 Usage report v3', 'P4', 'done', 'Usage Budget', 'Job pipeline'),
+        I('ex-392', 'EXAMPLE #392 Archive stale asks', 'P4', 'done', 'Archive', 'Job pipeline'),
+        I('ex-390', 'EXAMPLE #390 Usage report v3', 'P4', 'done', 'Usage', 'Job pipeline'),
         I('ex-388', 'EXAMPLE #388 Sidebar icons', 'P4', 'done', 'GUI', 'Job pipeline'),
-        Object.assign(I('ex-63', 'EXAMPLE #63 Quarantine flaky tests?', 'Needs Tim', 'needs_tim', 'QA bot', '3D office', 'https://example.com/EXAMPLE/pull/63'), { question: 'EXAMPLE: quarantine or keep blocking?', note: 'EXAMPLE note: two runs disagree' }),
+        Object.assign(I('ex-63', 'EXAMPLE #63 Quarantine flaky tests?', 'Needs Tim', 'needs_tim', 'QA', '3D office', 'https://example.com/EXAMPLE/pull/63'), { question: 'EXAMPLE: quarantine or keep blocking?', note: 'EXAMPLE note: two runs disagree' }),
         I('ex-70', 'EXAMPLE Bitcoin trader backtest', 'P4', 'queued', 'President', 'Bitcoin trader'),
         I('office-viewer', '3D office viewer (foreman-cockpit PR)', 'P2', 'working', 'Claude', '3D office'),
         I('ex-62', 'EXAMPLE #62 Board card styling', 'P2', 'review', 'GUI', '3D office'),
@@ -547,7 +556,7 @@
         { from: 'ChatGPT', to: 'Claude', text: '', at: ago(1) }
       ],
       meetings: [],
-      _demoMeeting: [{ id: 'ex-standup', title: 'EXAMPLE stand-up', members: ['Software', 'ChatGPT', '424e5611-fb8f-4ae1-a360-051e61e63e8a'], started_at: ago(4), chat_id: '' }],
+      _demoMeeting: [{ id: 'ex-standup', title: 'EXAMPLE stand-up', members: ['Cursor', 'ChatGPT', '424e5611-fb8f-4ae1-a360-051e61e63e8a'], started_at: ago(4), chat_id: '' }],
       usage: {
         as_of: ago(6),
         services: [
@@ -746,7 +755,7 @@
      The v2 grid is 4 columns at DESK_X by 3 rows at DESK_Z (back row first). Pinned names keep their v2 spot; everyone
      else fills the free v2 spots in roster order, then overflow spots (right side first, then a front row). */
   const DESK_X = [-7, -3.8, -0.6, 2.6], DESK_Z = [-4, -0.6, 2.8];
-  const DESK_PINS = { Claude: [0, 0], Software: [1, 0], Comp: [2, 0], GUI: [3, 0], President: [1, 1] }; // [col, row] in the v2 grid
+  const DESK_PINS = { Claude: [0, 0], Cursor: [1, 0], Comp: [2, 0], GUI: [3, 0], President: [1, 1] }; // [col, row] in the v2 grid
   const DESK_OVERFLOW = [[5.8, -0.6], [5.8, 2.8], [5.8, 6.2], [2.6, 6.2], [-0.6, 6.2], [-3.8, 6.2]];
   function deskLayout(n, names) {
     const grid = [];
@@ -820,7 +829,7 @@
   /* ---------- Busy office schedule (Tim 12:19 / 12:20 AM) ---------- */
   const RECENT_REPLAY_MIN = 30;
   const IDLE_ACTS = ['wander', 'coffee', 'chat', 'fridge', 'lounge', 'chat', 'wander', 'bike', 'sleep', 'visitdesk', 'chat', 'game']; // sleep+game = 2/12
-  const BREAK_ACTS = ['coffee', 'fridge', 'visitdesk'];
+  const BREAK_ACTS = ['stretch', 'coffee', 'stretch', 'fridge']; // stretch at the desk (short) or refresh (coffee / drink)
   function idleSlot(name, nowMs) {
     const dur = 120 + hash('dur:' + name) % 61, t = nowMs / 1000 + hash('off:' + name) % dur; // 2-3 min, staggered per bot
     return { idx: Math.floor(t / dur), dur, start: Math.floor(t / dur) * dur - hash('off:' + name) % dur };
@@ -828,8 +837,9 @@
   function idleAct(name, nowMs) { const s = idleSlot(name, nowMs); return IDLE_ACTS[hash(name + ':' + s.idx) % IDLE_ACTS.length]; }
   function workBreak(name, nowMs) {
     const period = 240 + hash('brk:' + name) % 121, t = nowMs / 1000 + hash('bo:' + name) % period; // every 4-6 min, staggered
-    if (t % period >= 45) return null;
-    return BREAK_ACTS[hash(name + ':b' + Math.floor(t / period)) % BREAK_ACTS.length];
+    const kind = BREAK_ACTS[hash(name + ':b' + Math.floor(t / period)) % BREAK_ACTS.length];
+    if (t % period >= (kind === 'stretch' ? 14 : 45)) return null; // a stretch is ~14 s, a refresh walk ~45 s
+    return kind;
   }
   /* ---------- Item 16b: pose follows the freshest real signal ----------
      A bot's "last seen" is the newest of: the row's last_action_at, its screen text, running routine, audit and work
@@ -948,7 +958,7 @@
     const u = httpUrl(bot && bot.screen_url);
     if (u) return { kind: 'url', href: u };
     if (bot && (bot.bot === 'President' || bot.bot_id === PRESIDENT_ID)) return { kind: 'url', href: PRESIDENT_SCREEN_URL };
-    if (bot && (bot.bot === 'Usage Budget' || bot.bot_id === USAGE_ID)) return { kind: 'usage', href: '#usage' };
+    if (bot && (bot.bot === 'Usage' || bot.bot_id === USAGE_ID)) return { kind: 'usage', href: '#usage' };
     return { kind: 'popup', href: '' };
   }
   /* President's left half: the Tim-President chat feed, plain text, private data masked as a backup. */
@@ -1082,13 +1092,139 @@
   }
   function etDayStart(ms) { const off = etOffsetMin(ms), et = new Date(ms - off * MIN); const local = Date.UTC(et.getUTCFullYear(), et.getUTCMonth(), et.getUTCDate()); return local + etOffsetMin(local + off * MIN) * MIN; }
 
+
+  /* ---------- Tim feedback 1-16 (Nov 16): pure helpers for the 3D office ---------- */
+  /* Items 3 / 9: only a bot with a REAL needs_tim item waves. `list` is needsList(): live bot asks (status needs_tim with a
+     question, not EXAMPLE, not PR-resolved) and live needs_tim entries naming a bot. Idle / stale / blocked bots never. */
+  function needsTimNames(list) {
+    const out = new Set();
+    for (const n of (list && list.needs) || []) { const b = canonicalBot(n.bot, n.bot_id); if (b) out.add(b); }
+    return out;
+  }
+  /* Item 2: waterfall texture offset; water moves DOWN (offset grows), nothing moves when reduced motion is on. */
+  function waterfallOffset(y, dt, reduced) { return reduced ? y : (y + Math.max(0, dt) * 0.35) % 1; }
+
+  /* Item 5: day / night from America/New_York wall-clock time (Tim is in Tennessee). Sunrise / sunset follow the season
+     (about 36 N: day length 12 h +/- 2.2 h) and DST; no browser-local time zone is used. */
+  function etDate(ms) {
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }).formatToParts(new Date(ms));
+    const g = k => Number(p.find(x => x.type === k).value);
+    return { y: g('year'), mo: g('month'), d: g('day'), h: g('hour'), mi: g('minute') };
+  }
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const mixHex = (a, b, k) => { const c = i => Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - k) + parseInt(b.slice(i, i + 2), 16) * k); return '#' + [1, 3, 5].map(i => c(i).toString(16).padStart(2, '0')).join(''); };
+  function skyState(now) {
+    const e = etDate(now), hour = e.h + e.mi / 60;
+    const doy = Math.floor((Date.UTC(e.y, e.mo - 1, e.d) - Date.UTC(e.y, 0, 0)) / 86400000);
+    const dst = etOffsetMin(now) === 240, noon = 12.67 + (dst ? 1 : 0), len = 12 + 2.2 * Math.sin(2 * Math.PI * (doy - 80) / 365);
+    const sunrise = noon - len / 2, sunset = noon + len / 2, f = (hour - sunrise) / (sunset - sunrise);
+    const edge = Math.min(hour - sunrise, sunset - hour), alt = f >= 0 && f <= 1 ? Math.sin(Math.PI * f) : 0;
+    const daylight = clamp01((edge + 0.5) / 1.25) * (0.55 + 0.45 * alt), warm = clamp01(1 - Math.abs(edge) / 0.9);
+    const night = hour < sunrise || hour > sunset, nf = hour > sunset ? (hour - sunset) / (24 - len) : (hour + 24 - sunset) / (24 - len);
+    let top = mixHex('#060b1e', '#3f8fe0', daylight), bottom = mixHex('#101a38', '#bfe2ff', daylight);
+    top = mixHex(top, '#4b3a6e', warm * 0.5 * (1 - daylight * 0.4)); bottom = mixHex(bottom, '#ff9a5a', warm * 0.75);
+    return { hour, sunrise, sunset, daylight, warm, isNight: daylight < 0.12, night, top, bottom, stars: clamp01(1 - daylight * 2.2),
+      sun: !night ? { x: clamp01(f), y: alt } : null, moon: night ? { x: clamp01(nf), y: Math.sin(Math.PI * clamp01(nf)) } : null, lights: daylight < 0.55 };
+  }
+
+  /* Seedable RNG (mulberry32). Same seed -> same sequence. */
+  function makeRng(seed) {
+    let a = (seed >>> 0) || 0x9e3779b9;
+    return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  /* Items 10 / 11: idle activity rotation. A shuffled "bag" so every activity comes round before one repeats; never the
+     same activity twice in a row; 60-150 s each (randomized); restock only when the fridge is not full, forced when low. */
+  const IDLE_ACTIVITIES = ['couch_sleep', 'desk_nap', 'hr_training', 'video_game', 'exercise_bike', 'group_chat', 'restock_fridge', 'pool'];
+  const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 6;
+  function createIdleState() { return { act: null, until: 0, bag: [], last: null }; }
+  function fridgeLow(stock, cap) { return stock <= FRIDGE_LOW * ((cap || FRIDGE_CAP) / FRIDGE_CAP); }
+  function idleTick(state, rng, nowSec, ctx) {
+    const c = ctx || {}, restock = c.restock || 'ok'; // 'force' | 'ok' | 'no'
+    if (restock === 'force' && state.act !== 'restock_fridge') { state.act = 'restock_fridge'; state.last = state.act; state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S); return state.act; }
+    if (state.act && nowSec < state.until && !(state.act === 'restock_fridge' && restock === 'no')) return state.act;
+    const ok = a => !(a === 'restock_fridge' && restock === 'no') && !(c.blocked && c.blocked.includes(a));
+    state.bag = state.bag.filter(ok);
+    if (!state.bag.length) {
+      const b = IDLE_ACTIVITIES.filter(ok);
+      for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+      if (b.length > 1 && b[0] === state.last) b.push(b.shift());
+      state.bag = b;
+    }
+    let i = state.bag.findIndex(a => a !== state.last); if (i < 0) i = 0;
+    state.act = state.bag.splice(i, 1)[0] || 'video_game'; state.last = state.act;
+    state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S);
+    return state.act;
+  }
+  /* Standing group around (cx, cz): n slots on a ring, each facing the middle. */
+  function groupChatSlots(cx, cz, n, radius) {
+    const r = radius || 0.75, out = [];
+    for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2 + Math.PI / 4, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r; out.push({ x: +x.toFixed(3), z: +z.toFixed(3), face: Math.atan2(cx - x, cz - z) }); }
+    return out;
+  }
+  /* The restocker is the first idle (not working, not waving) bot by hash, only while the fridge is low; one at a time. */
+  function pickRestocker(idleNames, stock, current) {
+    if (current && idleNames.includes(current)) return stock < FRIDGE_CAP ? current : null; // done once it is full again
+    if (!fridgeLow(stock)) return null;
+    return idleNames.slice().sort((a, b) => hash('rs:' + a) - hash('rs:' + b))[0] || null;
+  }
+
+  /* Item 12: job flow. receive (walk to the board, take the card) -> work (walk to the desk, type) -> log (walk back to
+     the board, log it) -> done (null). Finished = the card is Done or gone from the board; capped so nothing waits forever. */
+  const JOB_PHASES = ['receive', 'work', 'log'], JOB_HOLD_S = 2.6, JOB_WORK_MAX_S = 600;
+  const jobStart = (itemId, nowSec) => ({ itemId, phase: 'receive', since: nowSec || 0 });
+  const jobGoal = job => (job && job.phase === 'work' ? 'desk' : 'board');
+  function jobStep(job, ctx) {
+    if (!job) return null;
+    const c = ctx || {}, held = c.heldFor == null ? -1 : c.heldFor;
+    if (job.phase === 'receive') return c.arrived && held >= JOB_HOLD_S ? Object.assign({}, job, { phase: 'work', since: c.now || 0 }) : job;
+    if (job.phase === 'work') return c.finished || (c.now != null && c.now - job.since > JOB_WORK_MAX_S) ? Object.assign({}, job, { phase: 'log', since: c.now || 0 }) : job;
+    return c.arrived && held >= JOB_HOLD_S ? null : job;
+  }
+  const JOB_ASSIGN_REASONS = ['new', 'reassigned', 'take']; // diffItems / diffWork events that hand a card to a bot
+
+  /* Item 13: pool shot. 7 s loop: aim (ball rests), stroke (cue strikes at 2.4 s), roll across the table with friction,
+     bounce off the rail, settle, reset. Table-local metres. Returns {ball:{x,z}, stroke:0..1, phase}. */
+  const POOL = { start: { x: -0.2, z: -0.6 }, halfW: 0.54, loop: 7 };
+  function poolShot(t) {
+    const u = ((t % POOL.loop) + POOL.loop) % POOL.loop, s = POOL.start;
+    if (u < 2.2) return { ball: { x: s.x, z: s.z }, stroke: 0, phase: 'aim' };
+    if (u < 2.7) return { ball: { x: s.x, z: s.z }, stroke: Math.sin((u - 2.2) / 0.5 * Math.PI) * (u < 2.45 ? -0.6 : 1), phase: 'stroke' };
+    const k = Math.min(1, (u - 2.7) / 3.3), dist = 1.5 * (1 - (1 - k) * (1 - k)); // decelerating roll, 1.5 m of travel
+    let x = s.x + dist * 0.86, z = s.z + dist * 0.5;
+    if (x > POOL.halfW) x = 2 * POOL.halfW - x; // bounce off the side rail
+    return { ball: { x, z }, stroke: 0, phase: u < 6 ? 'roll' : 'rest' };
+  }
+
+  /* Item 14: faces blend between expressions. Each expression is a set of weights; the face eases towards the target. */
+  const EXPR = {
+    happy: { smile: 1, frown: 0, flat: 0, oh: 0, drop: 0, worry: 0, puzzle: 0, lid: 0 },
+    neutral: { smile: 0.45, frown: 0, flat: 0, oh: 0, drop: 0, worry: 0, puzzle: 0, lid: 0 },
+    worried: { smile: 0, frown: 1, flat: 0, oh: 0, drop: 1, worry: 1, puzzle: 0, lid: 0 },
+    puzzled: { smile: 0, frown: 0, flat: 1, oh: 0, drop: 0, worry: 0, puzzle: 1, lid: 0 },
+    sleepy: { smile: 0, frown: 0, flat: 0, oh: 1, drop: 0, worry: 0, puzzle: 0, lid: 1 }
+  };
+  const exprParams = name => Object.assign({}, EXPR[name] || EXPR.neutral);
+  function blendExpression(cur, target, dt, rate) {
+    const goal = typeof target === 'string' ? exprParams(target) : target, k = 1 - Math.exp(-(rate || 9) * Math.max(0, dt)), out = {};
+    for (const key of Object.keys(EXPR.happy)) { const a = cur && cur[key] != null ? cur[key] : goal[key]; const v = a + (goal[key] - a) * k; out[key] = Math.abs(goal[key] - v) < 0.002 ? goal[key] : v; }
+    return out;
+  }
+  /* Item 15: natural random blinking. One blink = 0.16 s close-open; next one 2-6.5 s later; ~1 in 8 is a quick double. */
+  const BLINK_DUR = 0.16;
+  function createBlinker(rng, t0) { return { at: (t0 || 0) + 0.5 + rng() * 3, dur: BLINK_DUR, double: false }; }
+  function blinkAmount(state, t, rng) {
+    if (t < state.at) return 0;
+    const u = (t - state.at) / state.dur;
+    if (u >= 1) { state.double = !state.double && rng() < 0.125; state.at = t + (state.double ? 0.12 + rng() * 0.08 : 2 + rng() * 4.5); return 0; }
+    return Math.sin(u * Math.PI);
+  }
   return {
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, LOD, COLORS,
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
-    usageStale, canonicalBot, BOT_ALIASES, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
+    usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
@@ -1097,6 +1233,8 @@
     latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
-    writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations
+    writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
+    needsTimNames, waterfallOffset, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, createIdleState, fridgeLow, idleTick,
+    groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
   };
 });

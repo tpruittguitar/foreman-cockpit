@@ -18,7 +18,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline
 a { color: var(--info); }
 
 #stage { position: fixed; inset: 0; width: 100vw; height: 100dvh; }
-#stage canvas { display: block; width: 100% !important; height: 100% !important; }
+#stage canvas { display: block; width: 100% !important; height: 100% !important; position: absolute; inset: 0; z-index: 1; }
+#stage .css3d { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: #0e1013; }
+#browse-bar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; gap: 14px; align-items: center; padding: 8px 14px; background: rgba(13,16,20,0.94); border: 1px solid #37e0ff; border-radius: 10px; color: #eef3ff; font: 600 14px system-ui, sans-serif; }
+#browse-bar[hidden] { display: none; }
+#browse-bar a { color: #37e0ff; }
+#browse-bar button { font: inherit; color: #0d1014; background: #37e0ff; border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
 
 .hud { position: fixed; z-index: 5; display: flex; gap: .5em; align-items: center; }
 #hud-tl { top: var(--safe); left: var(--safe); flex-direction: column; align-items: flex-start; }

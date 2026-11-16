@@ -95,8 +95,8 @@ function colours(buf) {
     if (await page.evaluate(() => window.__office.webgl)) {
       const info = await page.evaluate(() => window.__office.info());
       assert.match(info.poses.find(p => p.startsWith('Root:')), /wave|walk/, 'needs Tim bot waves at its desk');
-      assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(info.plan.Claude.act), 'working bots work (with short breaks)');
-      assert.ok(!info.poses.some(p => /^(QA bot|Sniffer):wave/.test(p)), 'blocked / waiting bots never raise a hand');
+      assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk'].includes(info.plan.Claude.act), 'working bots work (with short breaks)');
+      assert.ok(!info.poses.some(p => /^(QA|Sniffer):wave/.test(p)), 'blocked / waiting bots never raise a hand');
       // item 11/14: a plain mouse click on a bot opens its popup with the chat box (no pointer lock, no Escape)
       let botPt = null, who = null;
       for (const n of ['Root', 'President', 'Claude', 'GUI', 'Edgar', 'Gauge', 'Sniffer']) {
@@ -137,7 +137,7 @@ function colours(buf) {
       // (slow software renderers may already be past the first demo steps: step on until the meeting is off)
       await demoMeeting(page, false);
       const acts = new Set(Object.values((await page.evaluate(() => window.__office.info())).plan).map(p => p.act));
-      assert.ok(['chat', 'sleep', 'game', 'wander', 'lead', 'train', 'visit', 'listen', 'coffee', 'fridge', 'lounge', 'bike', 'visitdesk', 'replay', 'replay_board'].filter(a => acts.has(a)).length >= 4, [...acts].join());
+      assert.ok(['stretch', 'chat', 'sleep', 'game', 'wander', 'lead', 'train', 'visit', 'listen', 'coffee', 'fridge', 'lounge', 'bike', 'visitdesk', 'replay', 'replay_board'].filter(a => acts.has(a)).length >= 4, [...acts].join());
       if (shots) {
         await page.evaluate(() => window.__office.view([8.6, 1.6, -6.0], [11.3, 1.0, -8.4])); await page.waitForTimeout(800); await shot(page, 'desktop-fridge.png');
         await page.evaluate(() => window.__office.view([-1.4, 1.9, 5.4], [-2.2, 0.9, 1.6])); await page.waitForTimeout(3000); await shot(page, 'desktop-desks.png');
@@ -145,11 +145,11 @@ function colours(buf) {
       // second demo poll (6 s) starts the example meeting: members walk to the conference table and sit
       await demoMeeting(page, true);
       const mi = await page.evaluate(() => window.__office.info());
-      assert.deepEqual(['Software', 'Comp'].map(n => mi.plan[n].act), ['meeting', 'meeting'], 'meeting members head for the conference table');
-      await page.waitForFunction(() => window.__office.info().goals.some(g => /^Software:meeting:0:/.test(g)), null, { timeout: 60000 }); // may queue behind the walking cap first
+      assert.deepEqual(['Cursor', 'Comp'].map(n => mi.plan[n].act), ['meeting', 'meeting'], 'meeting members head for the conference table');
+      await page.waitForFunction(() => window.__office.info().goals.some(g => /^Cursor:meeting:0:/.test(g)), null, { timeout: 60000 }); // may queue behind the walking cap first
       if (shots) {
         // software rendering here runs at a few frames a second, so give the walk time (not asserted)
-        await page.waitForFunction(() => window.__office.info().poses.filter(p => /^(Software|Comp):meet$/.test(p)).length === 2, null, { timeout: 50000 }).catch(() => {}); await page.evaluate(() => window.__office.view([-5.4, 2.6, -4.6], [-9.9, 0.7, -8.0])); await page.waitForTimeout(4000); await shot(page, 'desktop-meeting.png'); }
+        await page.waitForFunction(() => window.__office.info().poses.filter(p => /^(Cursor|Comp):meet$/.test(p)).length === 2, null, { timeout: 50000 }).catch(() => {}); await page.evaluate(() => window.__office.view([-5.4, 2.6, -4.6], [-9.9, 0.7, -8.0])); await page.waitForTimeout(4000); await shot(page, 'desktop-meeting.png'); }
     }
         // a plain click on a bot opens its panel without pointer lock (no Esc needed), and the panel links the bot's chat
     if (await page.evaluate(() => window.__office.webgl)) {

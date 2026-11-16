@@ -56,7 +56,7 @@ test('fallback link: entry link wins, otherwise grokbot://app/v1/agent?id=<bot_i
   assert.equal(L.fallbackLink('d4118f0c-1b06-4e9a-982f-f5314451c841'), 'grokbot://app/v1/agent?id=d4118f0c-1b06-4e9a-982f-f5314451c841');
   assert.equal(L.linkFor({ bot_id: 'abc', link: '' }), 'grokbot://app/v1/agent?id=abc');
   assert.equal(L.linkFor({ bot_id: 'abc', link: ' https://github.com/x ' }), 'https://github.com/x');
-  assert.equal(L.fallbackText({ bot: 'QA bot', question: 'Quarantine it?' }), 'Ask QA bot: “Quarantine it?”');
+  assert.equal(L.fallbackText({ bot: 'QA', question: 'Quarantine it?' }), 'Ask QA: “Quarantine it?”');
   assert.match(L.fallbackText({ bot: 'Root', question: '' }), /Ask Root/);
 });
 
@@ -224,42 +224,42 @@ test('demo data shows every status and both pickup and conversation behaviours',
 });
 
 test('bot names match the Grok Bot sidebar; older names are mapped', () => {
-  assert.equal(L.canonicalBot('Usage Ctrl'), 'Usage Budget');
-  assert.equal(L.canonicalBot('dr eggbot'), 'HR - Bot Trainer');
-  assert.equal(L.canonicalBot(' Archive '), 'Archive \u00b7 Application State Tracker');
-  assert.equal(L.canonicalBot('QA bot'), 'QA bot');
-  const bots = L.parseStatus({ bots: [{ bot: 'Usage Ctrl', status: 'idle' }, { bot: 'Usage Budget', status: 'working' }] }).bots;
-  assert.deepEqual(bots.map(b => b.bot), ['Usage Budget']);
+  assert.equal(L.canonicalBot('Usage Ctrl'), 'Usage');
+  assert.equal(L.canonicalBot('dr eggbot'), 'HR');
+  assert.equal(L.canonicalBot(' Archive '), 'Archive');
+  assert.equal(L.canonicalBot('QA'), 'QA');
+  const bots = L.parseStatus({ bots: [{ bot: 'Usage Ctrl', status: 'idle' }, { bot: 'Usage', status: 'working' }] }).bots;
+  assert.deepEqual(bots.map(b => b.bot), ['Usage']);
   const demo = L.demoStatus(NOW).bots.map(b => b.bot);
-  for (const n of ['Usage Budget', 'HR - Bot Trainer', 'Archive \u00b7 Application State Tracker']) assert.ok(demo.includes(n), n);
-  for (const n of ['Usage Ctrl', 'dr eggbot', 'Archive']) assert.ok(!demo.includes(n), n);
+  for (const n of ['Usage', 'HR', 'Archive']) assert.ok(demo.includes(n), n);
+  for (const n of ['Usage Ctrl', 'dr eggbot', 'Usage Budget', 'HR - Bot Trainer', 'QA bot', 'Software']) assert.ok(!demo.includes(n), n);
 });
 
 test('renamed bots are matched by bot_id first', () => {
-  assert.equal(L.canonicalBot('Old Name', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'), 'Usage Budget');
-  assert.equal(L.canonicalBot('x', '372936ae-81e1-4013-b0d0-9ee47d97a3c4'), 'HR - Bot Trainer');
-  assert.equal(L.canonicalBot('Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d'), 'Archive \u00b7 Application State Tracker');
+  assert.equal(L.canonicalBot('Old Name', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'), 'Usage');
+  assert.equal(L.canonicalBot('x', '372936ae-81e1-4013-b0d0-9ee47d97a3c4'), 'HR');
+  assert.equal(L.canonicalBot('Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d'), 'Archive');
   assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
 });
 
-test('avatars are keyed by bot_id; HR - Bot Trainer has a normal shape; Archive has a short tag', async () => {
+test('avatars are keyed by bot_id; HR has a normal shape; Archive has a short tag', async () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   for (const id of Object.values(A.BOT_IDS)) assert.ok(A.AVATARS[id], id);
   for (const k of Object.keys(A.AVATARS)) assert.match(k, /^[0-9a-f-]{36}$/);
   const hr = A.avatarFor('Anything', '372936ae-81e1-4013-b0d0-9ee47d97a3c4');
-  assert.notEqual(hr.shape, 'egg'); assert.equal(hr.color, '#8f6ee8');
-  assert.deepEqual(A.avatarFor('Usage Ctrl', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'), A.avatarFor('Usage Budget'));
-  assert.equal(A.shortTag('Archive \u00b7 Application State Tracker'), 'Archive');
-  assert.equal(A.shortTag('Usage Budget'), 'Usage Budget');
+  assert.notEqual(hr.shape, 'egg'); assert.equal(hr.color, '#e8423f');
+  assert.deepEqual(A.avatarFor('Usage Ctrl', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'), A.avatarFor('Usage'));
+  assert.equal(A.shortTag('Archive'), 'Archive');
+  assert.equal(A.shortTag('Usage'), 'Usage');
 });
 
 test('older bot names in items and conversations map to the sidebar names', () => {
   const p = L.parseStatus({ updated_at: ago(1), bots: [{ bot: 'Usage Ctrl', bot_id: 'f1a70b7a-6051-45d7-8031-e46a4cba066f' }, { bot: 'Claude', bot_id: 'd4118f0c-1b06-4e9a-982f-f5314451c841' }],
     items: [{ id: 'u', title: 'Usage', owner: 'Usage Ctrl' }], conversations: [{ from: 'Usage Ctrl', to: 'Claude', text: 'hi', at: ago(1) }] });
-  assert.equal(p.bots[0].bot, 'Usage Budget');
-  assert.equal(p.items[0].owner, 'Usage Budget'); assert.equal(p.items[0].ownerKnown, true);
-  assert.deepEqual(p.conversations.map(c => c.from), ['Usage Budget']);
+  assert.equal(p.bots.find(b => b.bot_id === 'f1a70b7a-6051-45d7-8031-e46a4cba066f').bot, 'Usage'); assert.deepEqual(p.bots.map(b => b.bot), ['Claude', 'Usage'], 'roster order: Claude before Usage');
+  assert.equal(p.items[0].owner, 'Usage'); assert.equal(p.items[0].ownerKnown, true);
+  assert.deepEqual(p.conversations.map(c => c.from), ['Usage']);
 });
 
 /* ---------- v2: screen, meetings, Needs Tim links, floor plan ---------- */
@@ -274,12 +274,12 @@ test('screen: parsed tolerantly, at most 6 lines, falls back to null', () => {
   const p = L.parseStatus({ bots: [{ bot: 'Claude', bot_id: ID.claude, status: 'working', screen: { title: 't', lines: ['l1'] } }, { bot: 'Comp', status: 'idle', screen: 'bad' }] });
   assert.deepEqual(p.bots[0].screen.lines, ['l1']); assert.equal(p.bots[1].screen, null);
 });
-test('monitor mode: President keeps the checksheet and Usage Budget the usage chart whatever screen says', () => {
+test('monitor mode: President keeps the checksheet and Usage the usage chart whatever screen says', () => {
   const scr = { title: 'chat', lines: ['hello'] };
   assert.equal(L.monitorMode({ bot: 'President', screen: scr }, 'game'), 'president');
   assert.equal(L.monitorMode({ bot: 'Boss', bot_id: '431e8cf1-f077-4548-82b7-46c1959dc4c9', screen: scr }), 'president');
-  assert.equal(L.monitorMode({ bot: 'Usage Budget', screen: scr }), 'usage');
-  assert.equal(L.monitorMode({ bot: 'Usage Budget' }, '', { image: true }), 'mirror', 'Usage Budget mirrors its screen when one is published');
+  assert.equal(L.monitorMode({ bot: 'Usage', screen: scr }), 'usage');
+  assert.equal(L.monitorMode({ bot: 'Usage' }, '', { image: true }), 'mirror', 'Usage mirrors its screen when one is published');
   assert.equal(L.monitorMode({ bot: 'Comp', routine: { name: 'r' } }, 'work', { image: true }), 'routine');
   assert.equal(L.monitorMode({ bot: 'Comp', screen: scr }, 'game'), 'game');
   assert.equal(L.monitorMode({ bot: 'Comp', screen: scr }, 'work'), 'screen');
@@ -291,16 +291,16 @@ test('meetings: members by name, alias or bot_id; unknown bots and empty meeting
     { id: 'm1', title: 'Stand-up', members: [ID.claude, 'Comp', 'dr eggbot', 'Ghost', 7, 'Comp'], started_at: ago(5), chat_id: '' },
     { id: 'm2', members: ['Ghost'] }, null, 'x', { members: 'Claude' }, { title: '', members: ['Comp'], started_at: 'soon' }
   ], bots);
-  assert.deepEqual(m.map(x => [x.id, x.title, x.members]), [['m1', 'Stand-up', ['Claude', 'Comp', 'HR - Bot Trainer']], ['meeting-2', 'Meeting', ['Comp']]]);
+  assert.deepEqual(m.map(x => [x.id, x.title, x.members]), [['m1', 'Stand-up', ['Claude', 'Comp', 'HR']], ['meeting-2', 'Meeting', ['Comp']]]);
   assert.equal(m[1].started_at, '');
   for (const bad of [undefined, null, {}, 'meet']) assert.deepEqual(L.parseMeetings(bad, bots), []);
   assert.deepEqual(L.parseStatus({ bots: [] }).meetings, []);
   assert.equal(L.parseStatus({ bots: [{ bot: 'Comp' }], meetings: [{ members: ['Comp'] }] }).meetings.length, 1);
 });
 test('Needs Tim link: PR link, else the bot chat link, else the bot name with no link', () => {
-  const items = L.parseItems([{ id: 'a', title: 'Fix', priority: 'Needs Tim', status: 'needs_tim', question: 'ok?', owner: 'QA bot', link: 'https://github.com/o/r/pull/63' }]);
+  const items = L.parseItems([{ id: 'a', title: 'Fix', priority: 'Needs Tim', status: 'needs_tim', question: 'ok?', owner: 'QA', link: 'https://github.com/o/r/pull/63' }]);
   assert.deepEqual(L.needsTarget({ link: 'https://github.com/o/r/pull/9', bot: 'Root', bot_id: 'r1' }), { href: 'https://github.com/o/r/pull/9', kind: 'pr', label: 'Root' });
-  assert.equal(L.needsTarget({ bot: 'QA bot', bot_id: 'q1', items }).href, 'https://github.com/o/r/pull/63');
+  assert.equal(L.needsTarget({ bot: 'QA', bot_id: 'q1', items }).href, 'https://github.com/o/r/pull/63');
   assert.deepEqual(L.needsTarget({ bot: 'Root', bot_id: 'r 1' }), { href: 'grokbot://app/v1/agent?id=r%201', kind: 'chat', label: 'Root' });
   assert.deepEqual(L.needsTarget({ bot: 'Contractor' }), { href: '', kind: 'none', label: 'Contractor' });
   assert.equal(L.needsTarget({ link: 'javascript:alert(1)', bot: 'X' }).href, '');
@@ -310,33 +310,33 @@ test('Needs Tim link: PR link, else the bot chat link, else the bot name with no
 });
 test('floor plan: only a needs-Tim bot with a question waves; meetings beat work; idle bots pick from the busy mix', () => {
   const B = (bot, status, question) => ({ bot, status, question: question || '' });
-  const bots = L.parseStatus({ bots: [B('Root', 'waiting_tim', 'key?'), B('QA bot', 'blocked'), B('Claude', 'working'), B('Software', 'working'),
+  const bots = L.parseStatus({ bots: [B('Root', 'waiting_tim', 'key?'), B('QA', 'blocked'), B('Claude', 'working'), B('Cursor', 'working'),
     B('Sniffer', 'waiting'), B('Comp', 'needs_tim'), B('GUI', 'idle'), B('ChatGPT', 'idle'), B('Gauge', 'queued')] }).bots;
-  const meetings = [{ id: 'm', title: 'x', members: ['Software', 'Root'] }];
+  const meetings = [{ id: 'm', title: 'x', members: ['Cursor', 'Root'] }];
   const p = L.planOffice(bots, meetings, NOW, 'live');
   assert.equal(p.plans.Root.act, 'wave');
-  for (const n of ['QA bot', 'Sniffer', 'Comp', 'Gauge']) assert.notEqual(p.plans[n].act, 'wave', n + ' must not raise a hand');
-  assert.deepEqual(p.plans.Software, { act: 'meeting', seat: 0, meeting: 'm' });
-  assert.deepEqual(p.meeting.seated, ['Software']);
+  for (const n of ['QA', 'Sniffer', 'Comp', 'Gauge']) assert.notEqual(p.plans[n].act, 'wave', n + ' must not raise a hand');
+  assert.deepEqual(p.plans.Cursor, { act: 'meeting', seat: 0, meeting: 'm' });
+  assert.deepEqual(p.meeting.seated, ['Cursor']);
   for (const n of ['Sniffer', 'Comp', 'GUI', 'ChatGPT', 'Gauge']) assert.ok(L.IDLE_ACTS.concat('train', 'listen').includes(p.plans[n].act), n + ':' + p.plans[n].act);
   const chat = Object.entries(p.plans).filter(([, v]) => v.act === 'chat');
   if (chat.length) { assert.equal(chat[0][1].partner, chat[1][0]); assert.notEqual(chat[0][1].host, chat[1][1].host); }
   assert.deepEqual(L.planOffice(bots, [], NOW, 'failed').plans, {});
 })
-test('floor plan: HR - Bot Trainer visits idle bots, and trains two at the table only when no meeting holds it', () => {
-  const bots = [{ bot: 'HR - Bot Trainer', status: 'idle' }, { bot: 'Comp', status: 'idle' }, { bot: 'GUI', status: 'idle' }, { bot: 'Claude', status: 'working' }];
+test('floor plan: HR visits idle bots, and trains two at the table only when no meeting holds it', () => {
+  const bots = [{ bot: 'HR', status: 'idle' }, { bot: 'Comp', status: 'idle' }, { bot: 'GUI', status: 'idle' }, { bot: 'Claude', status: 'working' }];
   const base = Math.floor(NOW / 1000 / L.TRAIN_CYCLE_S) * L.TRAIN_CYCLE_S * 1000;
   const train = L.planOffice(bots, [], base + 5000, 'live');
-  assert.equal(train.plans['HR - Bot Trainer'].act, 'lead');
+  assert.equal(train.plans['HR'].act, 'lead');
   assert.deepEqual(train.training.trainees.slice().sort(), ['Comp', 'GUI']);
-  assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(train.plans.Claude.act));
+  assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk'].includes(train.plans.Claude.act));
   const visit = L.planOffice(bots, [], base + (L.TRAIN_S + 1) * 1000, 'live');
-  const v = visit.plans['HR - Bot Trainer'];
+  const v = visit.plans['HR'];
   assert.equal(v.act, 'visit'); assert.ok(['Comp', 'GUI'].includes(v.partner));
-  assert.deepEqual([visit.plans[v.partner].act, visit.plans[v.partner].partner], ['listen', 'HR - Bot Trainer']);
+  assert.deepEqual([visit.plans[v.partner].act, visit.plans[v.partner].partner], ['listen', 'HR']);
   const meet = L.planOffice(bots, [{ id: 'm', title: 'x', members: ['Claude'] }], base + 5000, 'live');
-  assert.equal(meet.plans['HR - Bot Trainer'].act, 'visit', 'no training while a meeting holds the table');
-  assert.ok(['work', 'coffee', 'fridge', 'visitdesk'].includes(L.planOffice([{ bot: 'HR - Bot Trainer', status: 'working' }, { bot: 'Comp', status: 'idle' }], [], base + 5000, 'live').plans['HR - Bot Trainer'].act));
+  assert.equal(meet.plans['HR'].act, 'visit', 'no training while a meeting holds the table');
+  assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk'].includes(L.planOffice([{ bot: 'HR', status: 'working' }, { bot: 'Comp', status: 'idle' }], [], base + 5000, 'live').plans['HR'].act));
 });
 test('ambient chatter is generic, deterministic and never empty', () => {
   for (const k of ['chat', 'visit', 'reply', 'train', 'other']) { const a = L.ambientLine(k, 'seed', 3); assert.ok(a && a === L.ambientLine(k, 'seed', 3)); }
@@ -349,14 +349,44 @@ test('demo v2: screens, a meeting that ends on the next poll, PR-linked, chat-li
   assert.equal(p.bots.find(b => b.bot === 'Comp').screen, null);
   const n1 = L.demoNextStatus(d, NOW + 6000), n2 = L.demoNextStatus(n1, NOW + 60000), m1 = L.parseStatus(n1).meetings;
   assert.deepEqual(p.meetings, []); assert.deepEqual(n2.meetings, []);
-  assert.deepEqual(m1[0].members, ['Software', 'ChatGPT', 'Comp']); assert.match(m1[0].title, /^EXAMPLE/);
+  assert.deepEqual(m1[0].members, ['Cursor', 'ChatGPT', 'Comp']); assert.match(m1[0].title, /^EXAMPLE/);
   assert.equal(n2.items.filter(i => i.id === 'ex-64').length, 1);
   assert.ok(p.needsTim.every(n => /EXAMPLE/.test(n.text)));
-  const qa = p.items.find(i => i.owner === 'QA bot');
-  assert.equal(L.needsTarget({ bot: 'QA bot', bot_id: 'x', items: p.items }).href, qa.link);
+  const qa = p.items.find(i => i.owner === 'QA');
+  assert.equal(L.needsTarget({ bot: 'QA', bot_id: 'x', items: p.items }).href, qa.link);
   assert.equal(L.needsTarget({ bot: p.needsTim[1].bot }).kind, 'none');
   const cyc = Math.floor(NOW / 1000 / L.TRAIN_CYCLE_S) * L.TRAIN_CYCLE_S * 1000, seen = new Set();
   for (let t = 0; t < 3600; t += 37) Object.values(L.planOffice(p.bots, [], cyc + 3600000 + t * 1000, 'live').plans).forEach(v => seen.add(v.act));
   assert.ok(['chat', 'wander', 'coffee', 'fridge', 'lounge', 'visit', 'listen', 'wave'].every(a => seen.has(a)), [...seen].join());
-  assert.equal(L.planOffice(p.bots, [], cyc + 1000, 'live').plans['HR - Bot Trainer'].act, 'lead');
+  assert.equal(L.planOffice(p.bots, [], cyc + 1000, 'live').plans['HR'].act, 'lead');
+});
+
+/* ---------- item 17: 14-bot roster matches the sidebar ---------- */
+test('item 17: roster is the 14 sidebar bots, in sidebar order, short names, exact ids', async () => {
+  const want = [['President', '431e8cf1-f077-4548-82b7-46c1959dc4c9'], ['QA', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc'], ['HR', '372936ae-81e1-4013-b0d0-9ee47d97a3c4'],
+    ['Cursor', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f'], ['Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841'], ['ChatGPT', '7bcb0d85-ec55-4e17-907f-3e71688e8799'],
+    ['Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'], ['Usage', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'], ['Edgar', '811cc842-4bef-47c2-98d2-0f4bb78f7169'],
+    ['Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a'], ['Gauge', '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6'], ['Sniffer', '321469c4-1299-43e7-bd32-1704f58777be'],
+    ['GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a'], ['Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d']];
+  assert.equal(L.ROSTER.length, 14);
+  assert.deepEqual(L.ROSTER.map(r => [r.name, r.id]), want);
+  const demo = L.parseStatus(L.demoStatus(NOW)).bots;
+  assert.equal(demo.length, 14);
+  assert.deepEqual(demo.map(b => [b.bot, b.bot_id]), want);
+  // a shuffled feed still lands in sidebar order; old names resolve by id
+  const shuffled = want.slice().reverse().map(([bot, bot_id]) => ({ bot: bot === 'Cursor' ? 'Software' : bot, bot_id }));
+  assert.deepEqual(L.parseStatus({ bots: shuffled }).bots.map(b => b.bot), want.map(w => w[0]));
+  // desks, one per bot, no overlap; Cursor keeps the old Software desk
+  const names = demo.map(b => b.bot), d = L.deskLayout(names.length, names);
+  assert.equal(new Set(d.map(p => p.x + ',' + p.z)).size, 14);
+  assert.deepEqual([d[names.indexOf('Cursor')].x, d[names.indexOf('Cursor')].z], [-3.8, -4]);
+  // avatars: each bot has its own sidebar-matched body
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
+  const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
+  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['teardrop', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['cookie6', '#a8733f'],
+    ChatGPT: ['wedge', '#f79a1d'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['flower', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
+    Gauge: ['pill', '#f2399a'], Sniffer: ['blob', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['clover4', '#f2389b'] };
+  for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
+  assert.equal(Object.keys(A.AVATARS).length, 14);
+  assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');
 });

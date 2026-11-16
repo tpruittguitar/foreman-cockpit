@@ -6,6 +6,7 @@ Everything is vendored here and pinned. Nothing loads from a CDN at runtime, and
 |---|---|---|---|---|---|
 | three.js (ES module build, minified) | https://github.com/mrdoob/three.js (npm package `three`) | 0.170.0 (r170) | MIT (verified in the package's `LICENSE` and `package.json` `"license": "MIT"`) | three.js authors | `office/vendor/three/three.module.min.js`, `office/vendor/three/LICENSE` |
 | PointerLockControls addon | `examples/jsm/controls/PointerLockControls.js` in the same three.js 0.170.0 package | 0.170.0 | MIT (same license file) | three.js authors | `office/vendor/three/addons/PointerLockControls.js` |
+| CSS3DRenderer addon (pipeline wall display, iframe on a 3D plane) | `examples/jsm/renderers/CSS3DRenderer.js` from the npm package `three` 0.187.0 (only core `Matrix4`/`Object3D`/`Quaternion`/`Vector3` are used, so it runs on the vendored r170 core; copied unmodified) | 0.187.0 | MIT (three.js `LICENSE`) | three.js authors | `office/vendor/three/addons/CSS3DRenderer.js` |
 
 Fonts come from the repo's existing `fonts/` folder (Inter, IBM Plex Mono), which is already covered by `licenses/`.
 

@@ -377,3 +377,67 @@ export function drawWriterHealth(ctx, W, H, o) {
     ctx.textAlign = 'right'; ctx.fillStyle = m && m.value != null && m.source ? '#c9ccd2' : '#7d838b'; ctx.font = `600 ${22 * s}px ${SANS}`;
     ctx.fillText(fit(ctx, m && m.value != null && m.source ? String(typeof m.value === 'object' ? JSON.stringify(m.value) : m.value) : 'no data', 330 * s), W - 24 * s, y); ctx.textAlign = 'left'; });
 }
+
+/* Window view (Tim item 5): a simple small town at the edge of the hills. `sky` is L.skyState(now) (America/New_York time of
+   day): gradient sky, sun or moon, stars at night, hills, a street of small houses, a church steeple, trees, lit windows and
+   street lamps after dusk. Original artwork, drawn with plain canvas shapes. */
+export function drawTown(ctx, W, H, sky) {
+  const dl = sky.daylight, night = 1 - dl;
+  const g = ctx.createLinearGradient(0, 0, 0, H * 0.72); g.addColorStop(0, sky.top); g.addColorStop(1, sky.bottom);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (sky.stars > 0.02) { ctx.fillStyle = `rgba(255,255,255,${0.85 * sky.stars})`; for (let i = 0; i < 60; i++) { const x = (i * 97 + 31) % W, y = (i * 53 + 7) % (H * 0.5), r = 0.8 + (i % 3) * 0.5; ctx.fillRect(x, y, r, r); } }
+  const body = sky.sun || sky.moon;
+  if (body && (sky.sun || sky.moon)) {
+    const x = W * (0.1 + 0.8 * body.x), y = H * 0.62 - H * 0.5 * body.y, r = H * (sky.sun ? 0.075 : 0.06);
+    const halo = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 3.2); halo.addColorStop(0, sky.sun ? 'rgba(255,236,170,0.55)' : 'rgba(200,215,255,0.25)'); halo.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = halo; ctx.fillRect(x - r * 3.2, y - r * 3.2, r * 6.4, r * 6.4);
+    ctx.fillStyle = sky.sun ? '#fff3c4' : '#eef2ff'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    if (sky.moon) { ctx.fillStyle = sky.top; ctx.beginPath(); ctx.arc(x + r * 0.45, y - r * 0.2, r * 0.9, 0, 7); ctx.fill(); } // crescent
+  }
+  if (dl > 0.3) { ctx.fillStyle = `rgba(255,255,255,${0.55 * dl})`; for (const [cx, cy, w] of [[0.2, 0.2, 0.14], [0.62, 0.14, 0.18], [0.85, 0.28, 0.12]]) for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.ellipse(W * (cx + k * 0.025), H * (cy + (k % 2) * 0.015), W * w * (1 - k * 0.2), H * 0.035, 0, 0, 7); ctx.fill(); } }
+  const shade = (c, k) => { const n = parseInt(c.slice(1), 16), f = v => Math.round(v * k); return `rgb(${f(n >> 16 & 255)},${f(n >> 8 & 255)},${f(n & 255)})`; };
+  const lum = 0.22 + 0.78 * dl;
+  ctx.fillStyle = shade('#4e6a58', lum); ctx.beginPath(); ctx.moveTo(0, H * 0.62); for (let x = 0; x <= W; x += 16) ctx.lineTo(x, H * (0.5 + 0.07 * Math.sin(x / W * 5 + 1) + 0.04 * Math.sin(x / W * 13))); ctx.lineTo(W, H * 0.7); ctx.lineTo(0, H * 0.7); ctx.fill();
+  ctx.fillStyle = shade('#3c5a45', lum); ctx.beginPath(); ctx.moveTo(0, H * 0.66); for (let x = 0; x <= W; x += 16) ctx.lineTo(x, H * (0.6 + 0.04 * Math.sin(x / W * 7 + 3))); ctx.lineTo(W, H * 0.74); ctx.lineTo(0, H * 0.74); ctx.fill();
+  ctx.fillStyle = shade('#35503e', lum); ctx.fillRect(0, H * 0.7, W, H * 0.3); // grass
+  ctx.fillStyle = shade('#6c6a66', lum); ctx.fillRect(0, H * 0.86, W, H * 0.07); // main street
+  ctx.fillStyle = `rgba(240,225,150,${0.5 * lum})`; for (let x = 8; x < W; x += 44) ctx.fillRect(x, H * 0.893, 22, 3);
+  const houses = [[0.04, 0.12, 0.13, '#c9b79c'], [0.19, 0.1, 0.12, '#b6c7d6'], [0.33, 0.13, 0.12, '#d8c7b4'], [0.7, 0.11, 0.13, '#c7d3b8'], [0.85, 0.12, 0.12, '#d6b7b0']];
+  const lit = sky.lights;
+  const house = (x, h, w, c) => {
+    const px = W * x, pw = W * w, ph = H * h, py = H * 0.82 - ph;
+    ctx.fillStyle = shade(c, lum); ctx.fillRect(px, py, pw, ph);
+    ctx.fillStyle = shade('#6b4a3a', lum); ctx.beginPath(); ctx.moveTo(px - 4, py); ctx.lineTo(px + pw / 2, py - ph * 0.55); ctx.lineTo(px + pw + 4, py); ctx.fill();
+    for (const wx of [0.22, 0.6]) { ctx.fillStyle = lit ? 'rgba(255,214,120,0.95)' : shade('#5d7388', 0.6 + 0.4 * dl); ctx.fillRect(px + pw * wx, py + ph * 0.3, pw * 0.2, ph * 0.28); }
+    ctx.fillStyle = shade('#5a3d2c', lum); ctx.fillRect(px + pw * 0.44, py + ph * 0.6, pw * 0.14, ph * 0.4);
+  };
+  houses.forEach(([x, h, w, c]) => house(x, h, w, c));
+  { // church with a steeple in the middle of the street
+    const px = W * 0.5, py = H * 0.82, bw = W * 0.1, bh = H * 0.14;
+    ctx.fillStyle = shade('#e6e0d4', lum); ctx.fillRect(px - bw / 2, py - bh, bw, bh); ctx.fillRect(px - bw * 0.16, py - bh - H * 0.17, bw * 0.32, H * 0.17);
+    ctx.fillStyle = shade('#5b4a58', lum); ctx.beginPath(); ctx.moveTo(px - bw * 0.22, py - bh - H * 0.17); ctx.lineTo(px, py - bh - H * 0.3); ctx.lineTo(px + bw * 0.22, py - bh - H * 0.17); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(px - bw / 2 - 3, py - bh); ctx.lineTo(px, py - bh - H * 0.08); ctx.lineTo(px + bw / 2 + 3, py - bh); ctx.fill();
+    ctx.fillStyle = lit ? 'rgba(255,214,120,0.95)' : shade('#6b7f94', 0.6 + 0.4 * dl); ctx.fillRect(px - bw * 0.1, py - bh * 0.8, bw * 0.2, bh * 0.4);
+  }
+  for (const [x, s] of [[0.17, 1], [0.31, 0.8], [0.47, 0.9], [0.64, 1.1], [0.79, 0.85], [0.97, 1]]) { // trees
+    ctx.fillStyle = shade('#4a3a2c', lum); ctx.fillRect(W * x - 2, H * 0.82 - 12 * s, 4, 14 * s);
+    ctx.fillStyle = shade('#3f7a52', lum); ctx.beginPath(); ctx.arc(W * x, H * 0.82 - 22 * s, 13 * s, 0, 7); ctx.fill();
+  }
+  if (lit) for (const x of [0.12, 0.27, 0.42, 0.58, 0.74, 0.9]) { // street lamps
+    const px = W * x, py = H * 0.84; ctx.fillStyle = '#2a2d31'; ctx.fillRect(px - 1, py - H * 0.1, 2, H * 0.1);
+    const lg = ctx.createRadialGradient(px, py - H * 0.1, 1, px, py - H * 0.1, H * 0.09); lg.addColorStop(0, 'rgba(255,225,150,0.9)'); lg.addColorStop(1, 'rgba(255,225,150,0)');
+    ctx.fillStyle = lg; ctx.fillRect(px - H * 0.09, py - H * 0.19, H * 0.18, H * 0.18);
+  }
+  if (night > 0.5) { ctx.fillStyle = `rgba(6,10,28,${0.25 * night})`; ctx.fillRect(0, 0, W, H); }
+}
+
+/* Pipeline Explorer wall display, plain face: shown on phones / TV / when the live embed is unavailable (the live page is
+   embedded as an iframe on the same wall spot otherwise). Clicking it opens the real page. */
+export function drawPipelineWall(ctx, W, H, o) {
+  ctx.fillStyle = '#0d1014'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#37e0ff'; ctx.lineWidth = 4; ctx.strokeRect(14, 14, W - 28, H - 28);
+  ctx.fillStyle = '#eef3ff'; ctx.textAlign = 'center'; ctx.font = `800 ${H * 0.14}px ${SANS}`; ctx.fillText('Pipeline Explorer', W / 2, H * 0.4);
+  ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${H * 0.075}px ${SANS}`; ctx.fillText('foreman-cockpit.pages.dev/pipeline', W / 2, H * 0.55);
+  ctx.fillStyle = '#37e0ff'; ctx.font = `700 ${H * 0.085}px ${SANS}`; ctx.fillText(o && o.live ? 'Click to browse it live' : 'Click to open the live page', W / 2, H * 0.75);
+  ctx.textAlign = 'left';
+}

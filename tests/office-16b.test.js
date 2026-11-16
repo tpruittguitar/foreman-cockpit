@@ -11,7 +11,7 @@ const plan = list => L.planOffice(list, [], NOW, 'live', Object.fromEntries(list
 test('fresh working bot keeps the working pose', () => {
   const b = bot('Claude', 'working', 5), f = L.freshness(b, NOW);
   assert.deepEqual([f.stale, f.ageMin, f.label], [false, 5, '']);
-  assert.ok(['work', 'coffee', 'fridge', 'visitdesk', 'wander'].includes(plan([b]).Claude.act));
+  assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk', 'wander'].includes(plan([b]).Claude.act));
   assert.notEqual(plan([b]).Claude.act, 'stale');
 });
 
