@@ -193,6 +193,7 @@ function openBot(name) {
     ${!st.alert ? `<dt>Question</dt><dd>${esc(b.question || '—')}</dd>` : ''}
     ${meet ? `<dt>Meeting</dt><dd>${esc(meet.title)}${meet.started_at ? ' · since ' + L.hhmm(meet.started_at) : ''}</dd>` : ''}</dl>
     ${tg.href ? linkHTML(tg.href, (tg.kind === 'pr' ? 'Open PR for ' : st.alert ? 'Answer ' : 'Open ') + b.bot) : `<p><b>${esc(b.bot)}</b> · no PR or chat link known</p>`}
+    ${linkHTML(L.fallbackLink(idFor(b.bot, b.bot_id)), '💬 Chat with ' + b.bot)}
     <button class="linkbtn" type="button" data-screen="${esc(b.bot)}">View screen</button>
     <div class="fallback">${esc(L.fallbackText(b))}${tg.href ? '<br>' + esc(tg.href) : ''}</div>
     ${mine.length ? '<h3>Cards</h3><ul>' + mine.map(i => `<li><button class="linkbtn" data-item="${esc(i.id)}">${esc(L.cardTitle(i))}</button> · ${esc(i.priority)} · ${L.statusWord(i).word}</li>`).join('') + '</ul>' : ''}
@@ -821,13 +822,16 @@ function buildWorld() {
   }
   const canvas = renderer.domElement;
   let down = null;
-  canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; down = { x: e.clientX, y: e.clientY }; });
+  // a plain click only picks (never pointer-locks); hold the right button to mouse-look
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; if (e.button === 2) { down = null; if (!touch && !TV) controls.lock(); return; } down = { x: e.clientX, y: e.clientY }; });
+  document.addEventListener('mouseup', e => { if (e.button === 2 && controls.isLocked) controls.unlock(); });
   canvas.addEventListener('pointerup', e => {
-    if (e.pointerType === 'touch' || !down) return;
+    if (e.pointerType === 'touch' || !down || e.button === 2) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6; down = null; if (moved || panelOpen) return;
     lastInput = performance.now();
     const p = controls.isLocked ? pick(0, 0) : pick(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-    if (!activate(p) && !controls.isLocked && !touch && !TV) controls.lock();
+    activate(p);
   });
   canvas.addEventListener('pointermove', e => { if (e.pointerType === 'touch' || controls.isLocked) return; hoverAt = [e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1]; });
   let hoverAt = null;

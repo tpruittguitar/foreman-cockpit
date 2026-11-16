@@ -108,6 +108,22 @@ function colours(buf) {
         // software rendering here runs at a few frames a second, so give the walk time (not asserted)
         await page.waitForFunction(() => window.__office.info().poses.filter(p => /^(Software|Comp):meet$/.test(p)).length === 2, null, { timeout: 50000 }).catch(() => {}); await page.evaluate(() => window.__office.view([-5.4, 2.6, -4.6], [-9.9, 0.7, -8.0])); await page.waitForTimeout(4000); await shot(page, 'desktop-meeting.png'); }
     }
+    // a plain click on a bot opens its panel without pointer lock (no Esc needed), and the panel links the bot's chat
+    if (await page.evaluate(() => window.__office.webgl)) {
+      await page.click('#start-btn').catch(() => {}); await page.evaluate(() => document.exitPointerLock && document.exitPointerLock());
+      let bpt = null;
+      for (let y = 300; y < 1000 && !bpt; y += 20) for (let x = 100; x < 1820 && !bpt; x += 20) {
+        const hit = await page.evaluate(([a, b]) => window.__office.pickAt(a, b), [x, y]);
+        if (hit && hit.bot && await page.evaluate(([a, b]) => (document.elementFromPoint(a, b) || {}).tagName, [x, y]) === 'CANVAS') bpt = [x, y, hit.bot];
+      }
+      assert.ok(bpt, 'a bot is clickable on screen');
+      await page.mouse.click(bpt[0], bpt[1]);
+      await page.waitForSelector('#panel:not([hidden])', { timeout: 90000 });
+      assert.equal(await page.evaluate(() => document.pointerLockElement), null, 'click does not lock the pointer');
+      assert.ok(await page.$('#panel a[href^="grokbot://app/v1/agent?id="]'), 'bot panel has the chat link');
+      assert.match(await page.textContent('#panel'), new RegExp('Chat with ' + bpt[2]));
+      await page.click('#panel-close');
+    }
     await page.click('#start-btn'); // click-to-start pointer lock (may be refused headless; must not error)
     await page.waitForTimeout(300);
   });
