@@ -378,6 +378,8 @@ function openUsage() { showPanel(`<h2 id="panel-title">AI usage</h2>${usageListH
 addEventListener('hashchange', () => { if (location.hash === '#usage') openUsage(); });
 function openConvo(name) {
   const lines = L.recentConversations(S.parsed ? S.parsed.conversations : [], Date.now()).filter(c => c.from === name);
+  const rb = botByName(name), rp = rb ? L.replayFor(rb, Date.now()) : null; // a bubble only shows a one-line cut; the full text lives here
+  if (!lines.length && rp) return showPanel(`<h2 id="panel-title">${esc(name)} · recent</h2><p>${esc(rp.text)}</p><p class="fallback">${rp.min}m ago</p>`);
   if (!lines.length) return showPanel(`<h2 id="panel-title">${esc(name)} is chatting</h2><p>Ambient idle chatter: decoration while the bot is idle. It is not from OFFICE_STATUS.json and is not a real conversation.</p>`);
   showPanel(`<h2 id="panel-title">${esc(name)} is talking</h2><ul>${lines.map(c => `<li><b>${esc(c.from)} → ${esc(c.to)}</b> · ${L.relTime(c.at, Date.now())}<br>${esc(c.text || 'talking with ' + c.to)}</li>`).join('')}</ul>`);
 }

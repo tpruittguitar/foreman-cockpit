@@ -112,9 +112,9 @@ function colours(buf) {
       const href = await page.getAttribute('#chat-open', 'href');
       assert.match(href, /^grokbot:\/\/app\/v1\/agent\?id=[0-9a-f-]{36}$/, 'Open chat link');
       assert.equal(await page.textContent('#chat-send'), 'Send');
-      // speech bubbles stay small (Tim 11/16): one bubble per bot, at most ~120 px wide and 2 short lines
+      // speech bubbles stay small (Tim 11/16): one bubble per bot, at most ~120 px wide, one line with an ellipsis
       const bub = await page.evaluate(() => [...document.querySelectorAll('.bubbles')].map(e => ({ n: e.querySelectorAll('.bubble').length, b: [...e.querySelectorAll('.bubble')].map(x => { const r = x.getBoundingClientRect(); return [r.width, r.height, x.textContent.length]; }) })));
-      for (const g of bub) { assert.ok(g.n <= 1, 'one bubble per bot'); for (const [bw, bh, len] of g.b) { assert.ok(bw <= 124, 'bubble width ' + bw); assert.ok(bh <= 32, 'bubble height ' + bh); assert.ok(len <= 64, 'bubble text ' + len); } }
+      for (const g of bub) { assert.ok(g.n <= 1, 'one bubble per bot'); for (const [bw, bh, len] of g.b) { assert.ok(bw <= 124, 'bubble width ' + bw); assert.ok(bh <= 20, 'bubble is one line, height ' + bh); assert.ok(len <= 64, 'bubble text ' + len); } }
       await page.click('#panel-close');
       // a plain click on a monitor (bot without screen_url) opens its screen popup
       let mon = null; const seen = [];
