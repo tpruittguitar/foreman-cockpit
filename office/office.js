@@ -136,7 +136,13 @@ function items() {
     owner: w.ownerName, ownerKnown: true, link: w.link, updated_at: w.at, project: 'Job pipeline', pr: null, question: '', note: w.status, source: 'work', prState: '', work: w }));
   return L.applyPrStates(S.parsed.items.concat(work), S.prStates);
 }
-function botByName(n) { return bots().find(b => b.bot === n); }
+/* item 19a: a bot whose automation is running (bots[].routine, or a running row for its AI on AUTOMATIONS_STATUS) shows it */
+function withRoutine(b) {
+  if (!b || b.routine || !S.auto) return b;
+  const r = S.auto.rows.find(x => x.running && x.ai === b.bot);
+  return r ? Object.assign({}, b, { routine: { name: r.name, started_at: r.started_at } }) : b;
+}
+function botByName(n) { return withRoutine(bots().find(b => b.bot === n)); }
 function alertBots() { return bots().filter(b => L.statusStyle(b.status).alert); }
 function botTarget(b) { return L.needsTarget({ link: b.link, bot: b.bot, bot_id: idFor(b.bot, b.bot_id), items: items() }); }
 /* Needs Tim board rows: only current asks (L.needsList), then "?" rows that always explain themselves. */
@@ -863,6 +869,7 @@ function buildWorld() {
   const seated = p => ['sit', 'type', 'game', 'meet', 'deskSleep', 'nap', 'lounge', 'bike'].includes(p);
   function decide(c, b, convo) {
     const st0 = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name);
+    if (c.spot) return { key: 'spot', spot: c.spot, pose: 'stand' }; // test/screenshot hook only
     if (st0.alert) { book.release(c.name); return { key: 'stand', spot: d.stand, pose: 'wave' }; } // needs Tim: stays at its own desk, waving
     if (c.pickups.length) { // board card life: pin a new card, or take one off the board and carry it to the desk
       const pk = c.pickups[0], id = pk.itemId, key = 'pick:' + id;
@@ -1307,6 +1314,7 @@ function buildWorld() {
     screenPoint(name, dx = 0, dy = 0) { const d = deskOf(name); if (!d) return null; camera.updateMatrixWorld(); const v = d.mon.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(dx, dy, 0)).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     botPoint(name) { const c = chars.get(name); if (!c) return null; camera.updateMatrixWorld(); const v = c.root.position.clone().setY(c.top * 0.55 + c.rig.position.y).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     view(p, l) { tour = null; glideTo([p, l], 1); },
+    spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
     refresh() { syncDesks(); ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
     info: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
@@ -1336,3 +1344,5 @@ T.screenPoint = (n, dx, dy) => (world ? world.screenPoint(n, dx, dy) : null);
 T.view = (p, l) => world && world.view(p, l);
 T.pickAt = (x, y) => (world ? world.pickAt(x, y) : null);
 T.botPoint = n => (world ? world.botPoint(n) : null);
+T.spotlight = (n, x, z) => world && world.spotlight(n, x, z); // screenshots only
+T.openBot = n => openBot(n); T.openBoard = () => openBoard(); T.openAutomations = () => openAutomations(); // screenshots / tests

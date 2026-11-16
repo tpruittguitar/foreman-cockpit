@@ -238,3 +238,21 @@ test('work diff: first load, new, owner change, removed, no change', () => {
   assert.deepEqual(L.diffWork(a, a.concat({ id: '3', poster: 'Gauge', ownerName: 'Gauge' })), [{ kind: 'pin', id: '3', bot: 'Gauge', owner: 'Gauge' }]);
   assert.deepEqual(L.diffWork(a, [{ id: '1', poster: 'Gauge', ownerName: 'Root' }, a[1]]), [{ kind: 'take', id: '1', bot: 'Root', from: 'Gauge' }]);
 });
+
+/* ---------- automations (items 19/20) ---------- */
+test('automations: STALE beyond 2x interval (never OK), overlap detection, per-hour concurrency, ET day buckets', () => {
+  const a = L.parseAutomations(L.demoAutomations(NOW), NOW);
+  assert.equal(a.rows.find(r => r.ai === 'Grok').result, 'STALE', 'data older than 2x its interval is STALE');
+  assert.equal(a.rows.find(r => r.ai === 'Gauge').running, true);
+  const bad = L.writerOverlaps(a.runs); assert.ok(bad.size >= 2 && [...bad].every(r => r.writer));
+  const d0 = L.etDayStart(NOW) - 86400000, conc = L.concurrencyByHour(a.runs, d0);
+  assert.equal(conc.length, 72); assert.ok(conc[9] >= 2, 'clogged hour counted');
+  assert.equal(new Date(L.etDayStart(NOW)).toISOString(), '2026-11-16T05:00:00.000Z', 'ET midnight (EST)');
+  assert.equal(new Date(L.etDayStart(Date.parse('2026-07-04T03:00:00Z'))).toISOString(), '2026-07-03T04:00:00.000Z', 'ET midnight (EDT)');
+  assert.equal(L.simpleResult('NO_RECEIPT'), 'FAIL'); assert.equal(L.parseAutomations({ runs: [{ start: '2026-11-16T00:00:00Z', result: 'NO_RECEIPT', expected: true }] }, NOW).runs[0].result, 'UPCOMING');
+  assert.deepEqual(L.parseAutomations(null, NOW).rows, []);
+});
+test('writer health: missing metrics stay "no data"', () => {
+  const a = L.parseAutomations(L.demoAutomations(NOW), NOW);
+  assert.equal(a.writer.last_ping.source, null); assert.equal(a.writer.error_rate.status, 'red');
+});

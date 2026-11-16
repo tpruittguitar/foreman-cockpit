@@ -232,13 +232,13 @@ function makePresident(hi) {
   const skull = new THREE.Mesh(geo('pHead2', () => new THREE.SphereGeometry(0.25, seg, Math.round(seg * 0.75))), skin); skull.scale.set(1.06, 0.98, 0.96); head.add(skull);
   for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar', () => new THREE.SphereGeometry(0.05, 16, 12)), skin); ear.scale.set(0.55, 1, 0.8); ear.position.set(sx * 0.262, -0.02, -0.01); head.add(ear); }
   // messy hair: a smooth cap plus soft swept spikes (rounded cones) over the top, sides and a fringe
-  const cap = new THREE.Mesh(geo('pHair2', () => new THREE.SphereGeometry(0.262, seg, 20, 0, Math.PI * 2, 0, Math.PI * 0.5)), hair); cap.scale.set(1.07, 1.02, 1.0); cap.rotation.x = -0.32; cap.position.set(0, 0.02, -0.01); head.add(cap);
-  const back = new THREE.Mesh(geo('pHairB', () => new THREE.SphereGeometry(0.26, seg, 16, 0, Math.PI * 2, Math.PI * 0.35, Math.PI * 0.4)), hair); back.rotation.x = 0.55; back.scale.set(1.08, 1, 1.02); head.add(back);
-  const spikeG = geo('pSpike2', () => { const g = new THREE.ConeGeometry(0.06, 0.2, 12, 1); g.translate(0, 0.1, 0); return g; });
+  const cap = new THREE.Mesh(geo('pHair2', () => new THREE.SphereGeometry(0.262, seg, 20, 0, Math.PI * 2, 0, Math.PI * 0.5)), hair); cap.scale.set(1.07, 1.02, 1.0); cap.rotation.x = 0.38; cap.position.set(0, 0.06, -0.02); head.add(cap);
+  const back = new THREE.Mesh(geo('pHairB', () => new THREE.SphereGeometry(0.26, seg, 16, Math.PI, Math.PI, Math.PI * 0.3, Math.PI * 0.42)), hair); back.rotation.x = 0.2; // back half only back.scale.set(1.08, 1, 1.02); head.add(back);
+  const spikeG = geo('pSpike2', () => { const g = new THREE.ConeGeometry(0.075, 0.15, 14, 1); g.translate(0, 0.06, 0); return g; });
   const spikes = [[0, 0.22, 0.1, -0.7, 0.1], [-0.11, 0.21, 0.08, -0.6, 0.6], [0.12, 0.2, 0.08, -0.6, -0.6], [-0.21, 0.12, 0.04, -0.2, 1.2], [0.21, 0.12, 0.04, -0.2, -1.2],
     [0.03, 0.25, -0.04, 0.2, -0.2], [-0.14, 0.23, -0.1, 0.6, 0.6], [0.14, 0.23, -0.1, 0.6, -0.5], [-0.23, 0.04, -0.06, 0.4, 1.6], [0.23, 0.04, -0.06, 0.4, -1.6], [0, 0.12, -0.23, 1.5, 0],
-    [-0.08, 0.15, 0.19, -1.9, 0.5], [0.07, 0.14, 0.2, -2.0, -0.35], [-0.17, 0.1, 0.16, -1.6, 0.9], [0.16, 0.1, 0.17, -1.7, -0.8]];
-  spikes.forEach(([x, y, z, rx, rz], k) => { const sp = new THREE.Mesh(spikeG, hair); sp.position.set(x, y, z); sp.rotation.set(rx, k * 0.4, rz); sp.scale.set(1, 0.8 + (k % 3) * 0.15, 0.7); head.add(sp); });
+    [-0.08, 0.19, 0.17, -1.75, 0.5], [0.07, 0.185, 0.18, -1.85, -0.35], [-0.18, 0.13, 0.14, -1.5, 0.9], [0.17, 0.13, 0.15, -1.55, -0.8]];
+  spikes.forEach(([x, y, z, rx, rz], k) => { const sp = new THREE.Mesh(spikeG, hair); sp.position.set(x, y, z); sp.rotation.set(rx, k * 0.4, rz); sp.scale.set(1, 0.6 + (k % 3) * 0.12, 0.55); head.add(sp); });
   // face: tall oval eyes, pink blush, no mouth
   const face = makeFace(0.236, 1.45, false, true); face.position.y = -0.04; head.add(face);
   const blushM = mat('blush2', () => new THREE.MeshStandardMaterial({ color: 0xf2a39a, roughness: 0.9, transparent: true, opacity: 0.85 }));

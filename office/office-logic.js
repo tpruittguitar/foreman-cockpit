@@ -568,6 +568,21 @@
     else if (g && g.work && g.work[0] && !g.work[0].owner) g.work[0].owner = 'Root'; // Root takes Gauge's finding off the board
     return o;
   }
+  function demoAutomations(now) {
+    const H = 3600000, d0 = etDayStart(now) - 86400000, runs = [];
+    const add = (ai, name, hours, res, writer, dur) => hours.forEach(h => { const st = d0 + h * H; runs.push({ ai, name, start: new Date(st).toISOString(), end: new Date(st + (dur || 12) * MIN).toISOString(), result: st > now ? '' : res, writer: !!writer, expected: st > now }); });
+    add('ChatGPT', 'EXAMPLE usage reader', [2, 8, 14, 20, 26, 32, 38, 44, 50, 56, 62, 68], 'OK');
+    add('ChatGPT', 'EXAMPLE writer gofer', [9, 10, 11, 33, 34, 35, 57, 58], 'OK', true, 40);
+    add('Claude', 'EXAMPLE intake', [9, 33, 34, 57], 'FAIL', true, 35);
+    add('Grok', 'EXAMPLE shared helper', [5, 17, 29, 41, 53, 65], 'SKIP');
+    add('Gauge', 'EXAMPLE audit', [6, 12, 18, 30, 36, 42, 54, 60, 66], 'EMPTY');
+    return { generated_at: new Date(now - 4 * MIN).toISOString(), automations: [
+      { ai: 'ChatGPT', name: 'EXAMPLE usage reader', result: 'OK', last_run_at: new Date(now - 50 * MIN).toISOString(), next_run_at: new Date(now + 310 * MIN).toISOString() },
+      { ai: 'Claude', name: 'EXAMPLE intake', result: 'FAIL', last_run_at: new Date(now - 2 * H).toISOString(), next_run_at: new Date(now + 22 * H).toISOString() },
+      { ai: 'Grok', name: 'EXAMPLE shared helper', result: 'OK', last_run_at: new Date(now - 30 * H).toISOString(), next_run_at: new Date(now - 18 * H).toISOString() },
+      { ai: 'Gauge', name: 'EXAMPLE audit', result: 'EMPTY', last_run_at: new Date(now - 3 * H).toISOString(), next_run_at: new Date(now + 3 * H).toISOString(), running: true, started_at: new Date(now - 2 * MIN).toISOString() }], runs,
+      writer_health: { last_ping: { value: null, status: null, source: null }, last_write_age_min: { value: 42, status: 'green', source: 'EXAMPLE' }, writes_per_hour: { value: 0.5, status: 'amber', source: 'EXAMPLE' }, error_rate: { value: 0.3, status: 'red', source: 'EXAMPLE' }, timeout_rate: { value: null, status: null, source: null }, lock_waits: { value: 1, status: 'green', source: 'EXAMPLE' }, queue_depth: { value: null, status: null, source: null } } };
+  }
   const DEMO_PULLS = [
     { repo: 'foreman-cockpit', number: 0, title: 'EXAMPLE: ready PR with passing checks', url: '', draft: false, checks: 'passing', readyForTim: true }
   ];
@@ -908,6 +923,7 @@
     if (['OK', 'SUCCESS', 'PASS', 'DONE', 'GREEN'].includes(v)) return 'OK';
     if (['FAIL', 'FAILED', 'FAILURE', 'ERROR', 'RED', 'TIMEOUT'].includes(v)) return 'FAIL';
     if (['SKIP', 'SKIPPED', 'NOOP', 'NO-OP'].includes(v)) return 'SKIP';
+    if (v === 'STALE') return 'STALE';
     if (['EMPTY', 'NONE', 'NOTHING'].includes(v)) return 'EMPTY';
     return v ? 'FAIL' : 'EMPTY';
   }
@@ -951,6 +967,6 @@
     latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
-    writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES
+    writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations
   };
 });

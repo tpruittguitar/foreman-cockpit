@@ -39,13 +39,13 @@ function colours(buf) {
       if (drop) j.bots = j.bots.filter(b => b.bot !== 'Newbie');
       r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(j) }); });
     const page = await ctx.newPage(), errors = [];
-    page.on('console', m => { if (m.type() === 'error' && !(opts.allowNetwork && /Failed to load resource/.test(m.text()))) errors.push(m.text()); });
+    page.on('console', m => { if (m.type() === 'error' && !(opts.allowNetwork && /Failed to load resource|CORS policy|net::ERR_FAILED/.test(m.text()))) errors.push(m.text()); });
     page.on('pageerror', e => errors.push(String(e)));
     try {
       await page.goto(base + url);
       await page.waitForFunction(() => window.__office && window.__office.ready, null, { timeout: 60000 });
       await fn(page);
-      assert.deepEqual(errors, [], 'console errors');
+      assert.deepEqual(errors, [], 'console errors: ' + errors.join(' | ').slice(0, 600));
       console.log('ok', name);
     } catch (e) { failures++; console.log('FAIL', name, e && e.message); }
     await ctx.close();
