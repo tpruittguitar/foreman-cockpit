@@ -7,7 +7,7 @@ set -euo pipefail
 REPO=tpruittguitar/office-mailbox
 cmd=${1:-}; bot=${2:-}
 [[ "$bot" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || { echo "usage: $0 check|reply <bot_id> [msg_id text]" >&2; exit 2; }
-list() { gh api "repos/$REPO/contents/$1" --jq '.[] | select(.type=="file") | .name' 2>/dev/null || true; }
+list() { local o; o=$(gh api "repos/$REPO/contents/$1" 2>/dev/null) || return 0; jq -r 'if type=="array" then .[] | select(.type=="file") | .name else empty end' <<<"$o"; }
 case "$cmd" in
   check)
     answered=$(list "outbox/$bot")
