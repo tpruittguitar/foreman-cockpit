@@ -957,6 +957,44 @@
     }
     return out.sort((a, b) => time(a.at) - time(b.at)).slice(-CHAT_MAX);
   }
+  /* control/PRESIDENT_CHAT_FEED.jsonl may not be published yet. A 404 is the normal "not published" state, not an error:
+     never log it, show CHAT_NOT_PUBLISHED, and back off to CHAT_PROBE_MS. While not (yet) known to exist, check the
+     control/ directory listing through the contents API (one 200 response, so the browser prints no network 404) and only
+     read the raw file once the name is listed. If the API budget is spent (gate closed), fall back to the raw URL at the
+     slow rate. Once found it is read every call (the caller's normal poll rate). Never throws, never logs.
+     opt: { fetch, gate, dirUrl, rawUrl, name } */
+  const CHAT_PROBE_MS = 5 * MIN, CHAT_NOT_PUBLISHED = 'Chat not published yet', CHAT_UNAVAILABLE = 'Chat feed unavailable';
+  function chatFeedFromResponse(status, text) {
+    if (status === 404) return { chat: null, err: CHAT_NOT_PUBLISHED, published: false };
+    if (!(status >= 200 && status < 300)) return { chat: null, err: CHAT_UNAVAILABLE, published: null };
+    return { chat: parseChatFeed(text), err: '', published: true };
+  }
+  function createChatFeed(opt) {
+    const st = { published: null, nextAt: 0, chat: null, err: CHAT_NOT_PUBLISHED };
+    const view = () => ({ chat: st.chat, err: st.err, published: st.published });
+    const notYet = now => { st.published = false; st.chat = null; st.err = CHAT_NOT_PUBLISHED; st.nextAt = now + CHAT_PROBE_MS; return view(); };
+    async function get(now) {
+      if (now < st.nextAt) return view();
+      const f = opt.fetch, gate = opt.gate;
+      try {
+        if (st.published !== true && gate && gate.open(now)) {
+          const r = await f(opt.dirUrl, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
+          gate.note(r, now);
+          if (r.status === 404) return notYet(now);
+          if (r.ok) {
+            const list = await r.json();
+            if (!Array.isArray(list) || !list.some(e => e && e.name === opt.name)) return notYet(now);
+          } else if (st.published === false) { st.nextAt = now + CHAT_PROBE_MS; return view(); } // rate limited etc.: stay quiet
+        }
+        const r = await f(opt.rawUrl + '?t=' + Math.floor(now / MIN), { cache: 'no-cache' });
+        const res = chatFeedFromResponse(r.status, r.ok ? await r.text() : '');
+        if (res.published === false) return notYet(now);
+        st.chat = res.chat; st.err = res.err; if (res.published) st.published = true; st.nextAt = 0;
+      } catch (e) { st.chat = null; st.err = CHAT_UNAVAILABLE; st.nextAt = 0; }
+      return view();
+    }
+    return { get, state: st };
+  }
 
   /* ---------- Gauge's audit (optional bots[].audit) ---------- */
   const AUDIT_CHECKS = [['ask_tim', 'Ask Tim'], ['stuck_processes', 'Stuck processes'], ['suspicious_data', 'Suspicious data'], ['constraint', 'Constraint']];
@@ -1048,7 +1086,7 @@
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
-    screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
+    screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations
   };

@@ -46,6 +46,7 @@ const gate = L.createGate(); // one GitHub API budget shared by status, PR list 
 const fetchFn = (u, o) => fetch(u, o);
 const statusSrc = L.createJsonSource({ apiUrl: API_FILE(STATUS_PATH), rawUrl: RAW_FILE(STATUS_PATH), gate, fetch: fetchFn });
 const autoSrc = L.createJsonSource({ apiUrl: API_FILE(AUTO_PATH), rawUrl: RAW_FILE(AUTO_PATH), gate, fetch: fetchFn });
+const chatSrc = L.createChatFeed({ dirUrl: API_FILE('control'), rawUrl: CHAT_FEED_URL, name: 'PRESIDENT_CHAT_FEED.jsonl', gate, fetch: fetchFn });
 async function api(url) {
   if (!gate.open(Date.now())) { const e = new Error('GitHub rate limit: waiting for reset'); e.status = 403; throw e; }
   const r = await fetch(url, { cache: 'no-cache', headers: { Accept: 'application/vnd.github+json' } });
@@ -89,7 +90,7 @@ function slowLoads(now) {
     rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsErr = ''; }, e => { S.readingsErr = e.message; }).then(refreshAll);
   }
   fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
-  rawText(CHAT_FEED_URL).then(t => { S.chat = L.parseChatFeed(t); S.chatErr = ''; }, e => { S.chat = null; S.chatErr = e.status === 404 ? 'Chat not published yet' : 'Chat feed unavailable'; }).then(refreshAll);
+  chatSrc.get(now).then(r => { S.chat = r.chat; S.chatErr = r.err; refreshAll(); }); // 404 = not published yet: quiet, slower
   autoSrc.get(now).then(r => { if (r.ok) { S.auto = L.parseAutomations(r.data, Date.now()); S.autoErr = ''; } else S.autoErr = r.status === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : r.error; refreshAll(); });
 }
 async function poll() {
