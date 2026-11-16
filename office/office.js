@@ -591,7 +591,7 @@ function buildWorld() {
   function bonsai(x, y, z, s = 1) { const g = new THREE.Group(); g.position.set(x, y, z); g.scale.setScalar(s); scene.add(g); add(bpotG, MAT.pot, 0, 0.04, 0, g);
     const t = add(trunkG, MAT.bark, 0.02, 0.2, 0, g); t.rotation.z = 0.35;
     for (const [dx, dy, dz] of [[-0.06, 0.34, 0.02], [0.09, 0.3, -0.03], [0.02, 0.42, 0]]) add(padG, MAT.leafDk, dx, dy, dz, g).scale.set(1.2, 0.45, 0.9); }
-  for (const [x, z] of [[-11.3, 9.3], [6.6, 9.4], [-11.3, -3.3], [7.2, -9.3]]) planter(x, z);
+  for (const [x, z] of [[-11.3, 9.3], [6.6, 9.4], [-11.3, -3.3]]) planter(x, z); // Tim 9:40 AM: no plant in front of the usage board (was 7.2, -9.3)
 
   /* ---------- boards ---------- */
   function makeBoard(id, w, h, cx, cy, cz, rotY, cw, chh) {
