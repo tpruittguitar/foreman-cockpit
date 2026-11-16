@@ -1028,7 +1028,7 @@ function decorate(r){
   return r;
 }
 function isNew(r){if(S.seen[r.id])return false;if(r.dateAdded){var age=(Date.now()-r.dateAdded.getTime())/864e5;if(age<=S.newDays)return true}return !S.seen[r.id]}
-function ruling(r){return S.rulings[r.id]||null}
+function ruling(r){var ru=S.rulings[r.id];return ru&&ru.writeStatus!=='SUPERSEDED'?ru:null}
 var EXPECT_BUCKET={DECLINE:'DECLINED_BY_TIM',APPLIED:'APPLIED',MANUAL_RESEARCH:'MANUAL_RESEARCH',DUPLICATE:'DUPLICATE',CLOSED_DEAD:'CLOSED_DEAD',INVALID_DISCOVERY:'INVALID_DISCOVERY'};
 function rulingState(r){
   var ru=ruling(r);if(!ru)return null;
