@@ -234,3 +234,22 @@ test('bot names match the Grok Bot sidebar; older names are mapped', () => {
   for (const n of ['Usage Budget', 'HR - Bot Trainer', 'Archive \u00b7 Application State Tracker']) assert.ok(demo.includes(n), n);
   for (const n of ['Usage Ctrl', 'dr eggbot', 'Archive']) assert.ok(!demo.includes(n), n);
 });
+
+test('renamed bots are matched by bot_id first', () => {
+  assert.equal(L.canonicalBot('Old Name', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'), 'Usage Budget');
+  assert.equal(L.canonicalBot('x', '372936ae-81e1-4013-b0d0-9ee47d97a3c4'), 'HR - Bot Trainer');
+  assert.equal(L.canonicalBot('Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d'), 'Archive \u00b7 Application State Tracker');
+  assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
+});
+
+test('avatars are keyed by bot_id; HR - Bot Trainer has a normal shape; Archive has a short tag', async () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
+  const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
+  for (const id of Object.values(A.BOT_IDS)) assert.ok(A.AVATARS[id], id);
+  for (const k of Object.keys(A.AVATARS)) assert.match(k, /^[0-9a-f-]{36}$/);
+  const hr = A.avatarFor('Anything', '372936ae-81e1-4013-b0d0-9ee47d97a3c4');
+  assert.notEqual(hr.shape, 'egg'); assert.equal(hr.color, '#8f6ee8');
+  assert.deepEqual(A.avatarFor('Usage Ctrl', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'), A.avatarFor('Usage Budget'));
+  assert.equal(A.shortTag('Archive \u00b7 Application State Tracker'), 'Archive');
+  assert.equal(A.shortTag('Usage Budget'), 'Usage Budget');
+});

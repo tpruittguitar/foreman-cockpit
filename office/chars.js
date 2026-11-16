@@ -126,8 +126,8 @@ function limb(radius, len, m, key) {
 }
 
 /* ---------- jelly bot ---------- */
-export function makeBot(name, hiQuality) {
-  const a = avatarFor(name);
+export function makeBot(name, hiQuality, botId) {
+  const a = avatarFor(name, botId);
   if (a.shape === 'minifig') return makePresident(hiQuality);
   const key = 'body:' + a.shape + ':' + a.rot;
   const bodyG = geo(key, () => {

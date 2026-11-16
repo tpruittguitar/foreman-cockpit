@@ -142,13 +142,15 @@
 
   /* Older OFFICE_STATUS names mapped to the exact Grok Bot sidebar names. */
   const BOT_ALIASES = { 'Usage Ctrl': 'Usage Budget', 'Usage Ctr': 'Usage Budget', 'dr eggbot': 'HR - Bot Trainer', 'Archive': 'Archive \u00b7 Application State Tracker' };
-  function canonicalBot(name) { const n = str(name).trim(); return BOT_ALIASES[n] || n; }
+  /* Renamed bots matched by bot_id first, so the label follows the sidebar whatever name the file carries. */
+  const BOT_ID_NAMES = { 'f1a70b7a-6051-45d7-8031-e46a4cba066f': 'Usage Budget', '372936ae-81e1-4013-b0d0-9ee47d97a3c4': 'HR - Bot Trainer', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive \u00b7 Application State Tracker' };
+  function canonicalBot(name, botId) { const id = str(botId).trim(), n = str(name).trim(); return BOT_ID_NAMES[id] || BOT_ALIASES[n] || n; }
 
   function parseBots(list) {
     if (!Array.isArray(list)) return [];
     const seen = new Set(), out = [];
     for (const r of list) {
-      const bot = canonicalBot(r && r.bot);
+      const bot = canonicalBot(r && r.bot, r && r.bot_id);
       if (!bot || seen.has(bot)) continue;
       seen.add(bot);
       out.push({

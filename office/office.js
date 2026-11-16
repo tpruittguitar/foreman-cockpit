@@ -5,7 +5,8 @@ import * as THREE from 'three';
 import { PointerLockControls } from './vendor/three/addons/PointerLockControls.js';
 import { makeBot, animate } from './chars.js';
 import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign } from './draw.js';
-import { avatarFor } from './avatars.js';
+import { avatarFor, shortTag } from './avatars.js';
+const TAG_MAX_PX = 240; // full bot name unless the label would be wider than this (or 30% of the screen)
 
 const L = window.OfficeLogic;
 const Q = new URLSearchParams(location.search);
@@ -473,10 +474,10 @@ function buildWorld() {
   function ensureChars() {
     for (const b of bots()) {
       if (chars.has(b.bot) || !deskOf(b.bot)) continue;
-      const c = makeBot(b.bot, !LOW), d = deskOf(b.bot);
+      const c = makeBot(b.bot, !LOW, b.bot_id), d = deskOf(b.bot);
       c.phase = Math.random() * 6; c.pickups = []; c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
       c.root.position.set(d.seat.x, 0, d.seat.z); c.root.rotation.y = Math.PI; c.pose = 'sit';
-      scene.add(c.root); chars.set(b.bot, c);
+      scene.add(c.root); chars.set(b.bot, c); c.botId = b.bot_id;
       c.tag = document.createElement('div'); c.tag.className = 'tag'; $('labels').appendChild(c.tag);
       c.bub = document.createElement('div'); c.bub.className = 'bubbles'; c.bub.hidden = true; c.bub.onclick = () => openConvo(b.bot); $('labels').appendChild(c.bub);
       c.tagKey = ''; c.bubKey = '';
@@ -569,7 +570,10 @@ function buildWorld() {
       if (key !== c.tagKey) {
         c.tagKey = key;
         c.tag.className = 'tag' + (frozen ? ' frozen' : '') + (hoverBot === c.name ? ' hl' : '');
-        c.tag.innerHTML = (st.alert && !frozen ? `<span class="chip">⚠ ${st.word}</span>` : S.state === 'stale' || frozen ? '<span class="chip stale">?</span>' : '') + esc(c.name);
+        const chip = st.alert && !frozen ? `<span class="chip">⚠ ${st.word}</span>` : S.state === 'stale' || frozen ? '<span class="chip stale">?</span>' : '';
+        c.tag.innerHTML = chip + esc(c.name); c.tag.title = '';
+        const short = shortTag(c.name, c.botId);
+        if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = chip + esc(short); c.tag.title = c.name; }
       }
       tmpV.set(c.root.position.x, c.top + (st.alert ? 0.75 : 0.18) + c.rig.position.y, c.root.position.z).project(camera);
       const dist = camera.position.distanceTo(c.root.position);
