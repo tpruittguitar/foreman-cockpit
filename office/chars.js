@@ -3,6 +3,7 @@
    No models, sprites, billboards or textures. Procedural animation only. */
 import * as THREE from 'three';
 import { avatarFor, shapePoints } from './avatars.js';
+import { drawCanLabel } from './draw.js';
 
 const G = {}; // shared geometries
 function geo(key, make) { return G[key] || (G[key] = make()); }
@@ -66,13 +67,18 @@ function makeCup() {
   const top = new THREE.Mesh(geo('cupTop', () => new THREE.CylinderGeometry(0.037, 0.037, 0.008, 14)), mat('coffee', () => new THREE.MeshStandardMaterial({ color: 0x4a2a17 })));
   top.position.y = 0.047; g.add(top); return g;
 }
-function makeCan() {
-  const g = new THREE.Group();
-  g.add(new THREE.Mesh(geo('can', () => new THREE.CylinderGeometry(0.033, 0.033, 0.125, 14)), mat('canW', () => new THREE.MeshStandardMaterial({ color: 0xf6f6f6, metalness: 0.5, roughness: 0.25 }))));
-  const band = new THREE.Mesh(geo('canBand', () => new THREE.CylinderGeometry(0.0345, 0.0345, 0.03, 14)), black()); band.position.y = 0.01; g.add(band);
-  const lid = new THREE.Mesh(geo('canLid', () => new THREE.CylinderGeometry(0.03, 0.03, 0.006, 12)), mat('alu', () => new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.8, roughness: 0.3 }))); lid.position.y = 0.065; g.add(lid);
-  return g;
+/* Energy can, shared by held cans and the instanced cans on desks and in the fridge: one geometry, one canvas texture.
+   Cylinder groups: side (black wrap with the green claw "M"), top and bottom (aluminium). */
+export const canGeometry = () => geo('can', () => new THREE.CylinderGeometry(0.033, 0.033, 0.125, 16));
+export function canMaterials() {
+  return mat('canMats', () => {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 128; drawCanLabel(c.getContext('2d'), 256, 128);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+    const alu = new THREE.MeshStandardMaterial({ color: 0xb8bcc2, metalness: 0.8, roughness: 0.3 });
+    return [new THREE.MeshStandardMaterial({ map: t, metalness: 0.45, roughness: 0.3, emissive: 0x0d2a08, emissiveIntensity: 0.4 }), alu, alu];
+  });
 }
+function makeCan() { const g = new THREE.Group(); g.add(new THREE.Mesh(canGeometry(), canMaterials())); return g; }
 function makeCue() {
   const m = new THREE.Mesh(geo('cue', () => new THREE.CylinderGeometry(0.009, 0.016, 1.3, 8)), mat('cueWood', () => new THREE.MeshStandardMaterial({ color: 0xc8a06a, roughness: 0.5 })));
   m.rotation.x = Math.PI / 2; const g = new THREE.Group(); g.add(m); return g;
@@ -220,22 +226,42 @@ export function animate(c, pose, t, dt, opts) {
   const ph = c.phase || 0;
   let armR = { x: 0, z: c.rest.armR.z }, armL = { x: 0, z: c.rest.armL.z }, legX = 0, lift = 0, bob = 0, lieZ = 0, lieY = 0;
   c.cup.visible = (pose === 'coffee' && opts.holding);
-  c.can.visible = (pose === 'fridge' && opts.holding);
+  c.can.visible = (pose === 'fridge' && opts.holding) || (!!opts.can && ['talk', 'stand', 'walk'].includes(pose));
   c.cue.visible = pose === 'pool';
-  c.zzz.visible = pose === 'nap';
+  c.zzz.visible = pose === 'nap' || pose === 'deskSleep';
   const sideR = 1;
+  let lean = 0, turnY = 0;
+  // eager to work: an occasional quick glance (towards the desk / monitor) while standing about
+  const glance = still ? 0 : Math.max(0, Math.sin(t * 0.7 + ph * 3) - 0.85) / 0.15;
   switch (pose) {
     case 'walk': {
       const s = Math.sin(t * 9 + ph); legX = s * 0.6; armR.x = -s * 0.5; armL.x = s * 0.5; bob = Math.abs(Math.cos(t * 9 + ph)) * 0.03; break;
     }
-    case 'sit': case 'type': {
+    case 'sit': case 'type': case 'game': case 'meet': {
       lift = c.sitLift; legX = -1.45;
-      if (pose === 'type' && !still) { armR.x = -1.15 + 0.2 * Math.sin(t * 15 + ph); armL.x = -1.15 + 0.2 * Math.sin(t * 15 + ph + Math.PI); bob = 0.012 * Math.sin(t * 4 + ph); }
-      else { armR.x = -1.0; armL.x = -1.0; }
+      if (pose === 'type' && !still) {
+        // typing bursts with short pauses to read the monitor; leaning in
+        const burst = Math.sin(t * 1.3 + ph) > -0.45 ? 1 : 0;
+        armR.x = -1.15 + 0.2 * burst * Math.sin(t * 15 + ph); armL.x = -1.15 + 0.2 * burst * Math.sin(t * 15 + ph + Math.PI);
+        bob = 0.012 * Math.sin(t * 4 + ph) * burst; lean = burst ? 0.14 : 0.04;
+      } else if (pose === 'game' && !still) {
+        armR.x = -1.2 + 0.12 * Math.sin(t * 22 + ph); armL.x = -1.2 + 0.12 * Math.sin(t * 19 + ph); lean = 0.2; bob = 0.01 * Math.sin(t * 7);
+        turnY = 0.06 * Math.sin(t * 2.2 + ph);
+      } else if (pose === 'meet' && !still) { armR.x = -0.9 + 0.25 * Math.max(0, Math.sin(t * 2 + ph)); armL.x = -1.0; lean = 0.1; turnY = 0.35 * Math.sin(t * 0.4 + ph); }
+      else { armR.x = -1.0; armL.x = -1.0; lean = pose === 'type' ? 0.12 : 0.06; }
+      break;
+    }
+    case 'deskSleep': {
+      lift = c.sitLift; legX = -1.45; armR.x = -1.55; armL.x = -1.55; lean = 0.62;
+      if (!still) bob = 0.006 * Math.sin(t * 1.4 + ph);
+      c.zzz.children.forEach(z => { const p = ((t * 0.25 + z.userData.phase) % 1); z.position.set(0.12 + p * 0.2, c.top + 0.1 + p * 0.45, 0.25); z.scale.setScalar(0.45 + p * 0.8); });
       break;
     }
     case 'wave': {
-      armR.z = -(2.55 + (still ? 0 : 0.35 * Math.sin(t * 9 + ph))) * sideR; armR.x = 0;
+      // needs Tim: stands at its own desk waving both arms, looping
+      const w = still ? 0 : Math.sin(t * 9 + ph);
+      armR.z = -(2.55 + 0.35 * w) * sideR; armR.x = 0;
+      armL.z = 2.55 - 0.35 * w; armL.x = 0;
       bob = still ? 0 : Math.abs(Math.sin(t * 4.5 + ph)) * 0.025; break;
     }
     case 'pool': {
@@ -254,10 +280,13 @@ export function animate(c, pose, t, dt, opts) {
       break;
     }
     case 'board': armR.x = -2.4; armR.z = c.rest.armR.z; break;
-    case 'talk': if (!still) { armR.x = -0.5 + 0.35 * Math.sin(t * 3 + ph); armL.x = -0.3 + 0.2 * Math.sin(t * 2.3 + ph); } bob = still ? 0 : 0.01 * Math.sin(t * 6); break;
+    case 'talk': if (!still) { armR.x = (opts.can ? -0.9 : -0.5) + 0.35 * Math.sin(t * 3 + ph); armL.x = -0.3 + 0.2 * Math.sin(t * 2.3 + ph); } bob = still ? 0 : 0.01 * Math.sin(t * 6); turnY = 0.5 * glance; break;
     case 'frozen': break;
-    default: if (!still) bob = 0.008 * Math.sin(t * 2 + ph); // stand / loiter
+    default: if (!still) bob = 0.008 * Math.sin(t * 2 + ph) + 0.012 * Math.max(0, Math.sin(t * 3.1 + ph)); // stand / loiter: bouncing on its toes
+      turnY = 0.6 * glance; if (opts.can) armR.x = -0.8;
   }
+  c.body.rotation.x = lerp(c.body.rotation.x, lean, Math.min(1, dt * 5));
+  c.body.rotation.y = lerp(c.body.rotation.y, turnY, Math.min(1, dt * 5));
   if (pose !== 'nap' && c.body.scale.x !== 1) c.body.scale.set(1, 1, 1);
   c.armR.rotation.x = lerp(c.armR.rotation.x, armR.x, k); c.armR.rotation.z = lerp(c.armR.rotation.z, armR.z, k);
   c.armL.rotation.x = lerp(c.armL.rotation.x, armL.x, k); c.armL.rotation.z = lerp(c.armL.rotation.z, armL.z, k);

@@ -1,6 +1,8 @@
 /* 3D office viewer smoke test (office.html). Demo mode at desktop 1920x1080, TV mode at 1080p and 4K, a 390x844 touch
    phone (flat view, then "Walk in 3D"), and the failed-data state (GitHub hosts answer 500 here; nothing leaves the runner).
-   Checks: no console errors, the canvas renders (many distinct colours), HUD text, TV keys, overlay open/close.
+   Checks: no console errors, the canvas renders (many distinct colours), HUD text, TV keys, overlay open/close,
+   v2: Needs Tim rows link to a PR, else the bot's Grok Bot chat, else name only; monitor popup by click, TV keys and touch;
+   the floor plan (waving, meeting/training, idle chat/sleep/game/wander).
    Run: node tests/office.browser.js     OFFICE_SHOTS=<dir> writes screenshots. */
 require('./helpers/block-production-writer.cjs');
 const { chromium } = require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
@@ -48,6 +50,15 @@ function colours(buf) {
     if (shots) { fs.mkdirSync(shots, { recursive: true }); fs.writeFileSync(path.join(shots, file), buf); }
     return buf;
   }
+  // the demo's example meeting toggles on each demo poll; step polls until it is in the wanted state
+  async function demoMeeting(page, on) {
+    for (let k = 0; k < 6; k++) {
+      const ok = await page.waitForFunction(want => !!window.__office.info().meeting === want, on, { timeout: 8000 }).then(() => true, () => false);
+      if (ok) return;
+      await page.evaluate(() => window.__office.poll());
+    }
+    throw new Error('demo meeting never ' + (on ? 'started' : 'ended'));
+  }
   async function assert3D(page, file) {
     const st = await page.evaluate(() => ({ mode: window.__office.mode, webgl: window.__office.webgl }));
     if (st.webgl === false) { // no WebGL in this browser: the flat view must stand in, with a note
@@ -65,13 +76,38 @@ function colours(buf) {
   await scenario('desktop demo 1920x1080', '?demo=1', { viewport: { width: 1920, height: 1080 } }, async page => {
     assert.equal(await page.textContent('#demo-badge'), 'EXAMPLE DATA');
     assert.match(await page.textContent('#asof'), /Data as of \d\d:\d\d/);
-    assert.equal(await page.textContent('#needs-n'), '3');
+    assert.equal(await page.textContent('#needs-n'), '4');
     await assert3D(page, 'desktop-1920x1080.png');
     await page.click('#list-btn');
     assert.match(await page.textContent('#panel'), /Needs Tim/);
     assert.ok(await page.$('#panel a[href]'), 'needs list has clickable links');
+    assert.ok(await page.$('#panel a[href*="/pull/63"]'), 'QA bot row opens its PR link');
+    assert.ok(await page.$('#panel a[href="grokbot://app/v1/agent?id=70f0889b-ecd4-457b-a69c-304cd2aff540"]'), 'Root row opens its Grok Bot chat');
+    assert.match(await page.textContent('#panel .nolink'), /EXAMPLE contractor · no PR or chat link known/);
     await page.keyboard.press('Escape');
     assert.equal(await page.isHidden('#panel'), true);
+    if (await page.evaluate(() => window.__office.webgl)) {
+      const info = await page.evaluate(() => window.__office.info());
+      assert.match(info.poses.find(p => p.startsWith('Root:')), /wave|walk/, 'needs Tim bot waves at its desk');
+      assert.equal(info.plan.Claude.act, 'work', 'working bots keep working');
+      // with no meeting, idle bots chat / sleep / game / wander and the trainer visits or trains
+      // (slow software renderers may already be past the first demo steps: step on until the meeting is off)
+      await demoMeeting(page, false);
+      const acts = new Set(Object.values((await page.evaluate(() => window.__office.info())).plan).map(p => p.act));
+      assert.ok(['chat', 'sleep', 'game', 'wander', 'lead', 'train', 'visit', 'listen'].filter(a => acts.has(a)).length >= 4, [...acts].join());
+      if (shots) {
+        await page.evaluate(() => window.__office.view([8.6, 1.6, -6.0], [11.3, 1.0, -8.4])); await page.waitForTimeout(800); await shot(page, 'desktop-fridge.png');
+        await page.evaluate(() => window.__office.view([-1.4, 1.9, 5.4], [-2.2, 0.9, 1.6])); await page.waitForTimeout(3000); await shot(page, 'desktop-desks.png');
+      }
+      // second demo poll (6 s) starts the example meeting: members walk to the conference table and sit
+      await demoMeeting(page, true);
+      const mi = await page.evaluate(() => window.__office.info());
+      assert.deepEqual(['Software', 'Comp'].map(n => mi.plan[n].act), ['meeting', 'meeting'], 'meeting members head for the conference table');
+      assert.ok(mi.goals.some(g => /^Software:meeting:0:/.test(g)), 'Software walks to seat 0');
+      if (shots) {
+        // software rendering here runs at a few frames a second, so give the walk time (not asserted)
+        await page.waitForFunction(() => window.__office.info().poses.filter(p => /^(Software|Comp):meet$/.test(p)).length === 2, null, { timeout: 50000 }).catch(() => {}); await page.evaluate(() => window.__office.view([-5.4, 2.6, -4.6], [-9.9, 0.7, -8.0])); await page.waitForTimeout(4000); await shot(page, 'desktop-meeting.png'); }
+    }
     await page.click('#start-btn'); // click-to-start pointer lock (may be refused headless; must not error)
     await page.waitForTimeout(300);
   });
@@ -92,8 +128,30 @@ function colours(buf) {
         assert.match(await page.textContent('#focusname'), /WORKING|IDLE|NEEDS TIM|BLOCKED/);
         await page.keyboard.press('Enter');
         await page.waitForSelector('#panel:not([hidden])');
+        // TV keys reach the monitor popup: arrows move focus to "View screen", OK opens it, Back closes
+        for (let k = 0; k < 8 && !(await page.evaluate(() => document.activeElement && document.activeElement.dataset.screen)); k++) await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('#panel .screenpop, #panel h3');
+        assert.match(await page.textContent('#panel-title'), /'s screen$/);
+        if (w === 1920) await shot(page, 'tv-1920x1080-screen-popup.png');
         await page.keyboard.press('Backspace');
         assert.equal(await page.isHidden('#panel'), true, 'Back closes');
+        // clicking the monitor itself opens the same popup
+        const name = (await page.textContent('#focusname')).split(' · ')[0];
+        await waitFrames(page, (await page.evaluate(() => window.__office.frames)) + 3); // let the camera settle (4K software rendering is slow)
+        let pt = null; const seen = []; // a point on the monitor that no bot, Zzz or bubble covers right now
+        for (const [dx, dy] of [[0.3, 0.22], [-0.3, 0.22], [0, 0.24], [0.4, 0], [-0.4, 0], [0, 0]]) {
+          const p = await page.evaluate(([n, x, y]) => window.__office.screenPoint(n, x, y), [name, dx, dy]);
+          const hit = await page.evaluate(([x, y]) => window.__office.pickAt(x, y), p);
+          const top = await page.evaluate(([x, y]) => (document.elementFromPoint(x, y) || {}).tagName, p);
+          seen.push([hit, top]); if (hit && hit.monitor === name && top === 'CANVAS') { pt = p; break; }
+        }
+        assert.ok(pt, 'monitor is clickable: ' + JSON.stringify(seen));
+        await page.mouse.click(pt[0], pt[1]);
+        await page.waitForSelector('#panel:not([hidden])', { timeout: 90000 });
+        assert.equal(await page.textContent('#panel-title'), name + "'s screen");
+        await page.keyboard.press('Escape');
+        assert.equal(await page.isHidden('#panel'), true, 'Esc closes');
       }
     });
   }
@@ -102,10 +160,17 @@ function colours(buf) {
     assert.equal(await page.isVisible('#flat'), true, 'phones open on the flat view');
     await page.waitForSelector('#flat-body .needs .row');
     await shot(page, 'phone-390x844-flat.png');
-    await page.tap('#flat-body .needs button[data-bot]');
+    assert.ok(await page.$('#flat-body .needs a[href^="grokbot://app/v1/agent?id="]'), 'Needs Tim row opens the bot chat');
+    assert.ok(await page.$('#flat-body .needs a[href*="/pull/63"]'), 'Needs Tim row opens the PR');
+    await page.tap('#flat-body button[data-bot="Root"]');
     await page.waitForSelector('#panel:not([hidden])');
     assert.match(await page.textContent('#panel'), /grokbot:\/\/app\/v1\/agent\?id=/);
+    await page.tap('#panel [data-screen]');
+    await page.waitForSelector('#panel .screenpop');
+    assert.match(await page.textContent('#panel .screenpop'), /EXAMPLE test runner|job-board/);
+    await shot(page, 'phone-390x844-screen-popup.png');
     await page.tap('#panel-close');
+    assert.equal(await page.isHidden('#panel'), true, 'close button works on touch');
     await page.tap('#walk3d');
     await assert3D(page, 'phone-390x844-3d.png');
     if (await page.evaluate(() => window.__office.webgl)) assert.equal(await page.isVisible('#joystick'), true, 'virtual joystick');

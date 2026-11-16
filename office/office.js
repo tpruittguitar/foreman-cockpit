@@ -3,9 +3,9 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { PointerLockControls } from './vendor/three/addons/PointerLockControls.js';
-import { makeBot, animate } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign } from './draw.js';
-import { avatarFor, shortTag } from './avatars.js';
+import { makeBot, animate, canGeometry, canMaterials } from './chars.js';
+import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawWhiteboard } from './draw.js';
+import { shortTag, idFor } from './avatars.js';
 const TAG_MAX_PX = 240; // full bot name unless the label would be wider than this (or 30% of the screen)
 
 const L = window.OfficeLogic;
@@ -83,11 +83,16 @@ function bots() { return S.parsed ? S.parsed.bots : []; }
 function items() { return S.parsed ? S.parsed.items : []; }
 function botByName(n) { return bots().find(b => b.bot === n); }
 function alertBots() { return bots().filter(b => L.statusStyle(b.status).alert); }
+/* Click target for a bot (Needs Tim rows and bot characters): PR link, else Grok Bot chat, else none. */
+function botTarget(b) { return L.needsTarget({ link: b.link, bot: b.bot, bot_id: idFor(b.bot, b.bot_id), items: items() }); }
 function needsEntries() {
   const e = [];
-  for (const b of alertBots()) e.push({ glyph: '⚠', tone: 'alert', text: b.bot + ': ' + (b.question || b.task || L.statusStyle(b.status).word), bot: b.bot });
-  for (const n of S.parsed ? S.parsed.needsTim : []) e.push({ glyph: '⚠', tone: 'alert', text: n.text, link: n.link });
-  for (const p of S.pulls.filter(p => p.readyForTim)) e.push({ glyph: '◆', tone: 'info', text: p.repo + (p.number ? ' #' + p.number : '') + ' ready: ' + p.title, link: p.url });
+  for (const b of alertBots()) e.push({ glyph: '⚠', tone: 'alert', text: b.bot + ': ' + (b.question || b.task || L.statusStyle(b.status).word), bot: b.bot, target: botTarget(b) });
+  for (const n of S.parsed ? S.parsed.needsTim : []) {
+    const known = n.bot && botByName(n.bot);
+    e.push({ glyph: '⚠', tone: 'alert', text: n.text, link: n.link, owner: n.bot, target: L.needsTarget({ link: n.link, bot: n.bot, bot_id: n.bot_id || (known ? idFor(known.bot, known.bot_id) : idFor(n.bot)), items: items() }) });
+  }
+  for (const p of S.pulls.filter(p => p.readyForTim)) e.push({ glyph: '◆', tone: 'info', text: p.repo + (p.number ? ' #' + p.number : '') + ' ready: ' + p.title, link: p.url, target: L.needsTarget({ link: p.url }) });
   if (S.asks.length) e.push({ glyph: '?', tone: 'stale', text: S.asks.length + ' open asks in forge-coordination', link: `https://github.com/${OWNER}/forge-coordination/tree/main/asks/open` });
   if (S.pullsErr) e.push({ glyph: '?', tone: 'stale', text: 'Open PRs: data source unavailable (' + S.pullsErr + ')' });
   if (S.asksErr) e.push({ glyph: '?', tone: 'stale', text: 'Open asks: data source unavailable (' + S.asksErr + ')' });
@@ -113,6 +118,14 @@ function refreshAll() {
 }
 
 /* ============================== flat view (phones) ============================== */
+/* One Needs Tim row: a link to its target (PR, else chat) or, with neither known, the owning bot's name and no link. */
+function targetAttrs(href) { return `href="${esc(href)}"${/^https?:/i.test(href) ? ' target="_blank" rel="noopener"' : ''}`; }
+function needsRowHTML(e) {
+  const t = e.target || { href: '', kind: 'none', label: '' };
+  const inner = `<span class="glyph st ${e.tone}">${e.glyph}</span><span>${esc(e.text)}${t.href ? ` <span class="kind">${t.kind === 'pr' ? '↗ PR' : t.kind === 'chat' ? '↗ chat' : '↗'}</span>` : ''}</span>`;
+  if (t.href) return `<a class="needlink" data-kind="${t.kind}" ${targetAttrs(t.href)}>${inner}</a>`;
+  return `<span class="needlink nolink">${inner}${t.label ? `<span class="meta">${esc(t.label)} · no PR or chat link known</span>` : ''}</span>`;
+}
 function stWord(b) { const st = L.statusStyle(b.status); return `<span class="st ${st.alert ? 'alert' : st.status}">${st.glyph} ${st.word}</span>`; }
 function renderFlat() {
   if ($('flat').hidden) return;
@@ -120,11 +133,7 @@ function renderFlat() {
   const ne = needsEntries();
   h.push(`<section class="needs"><h2>⚠ Needs Tim (${needsCount()})</h2>`);
   if (!ne.length) h.push('<div class="row">✓ Nothing waiting on Tim</div>');
-  for (const e of ne) {
-    const inner = `<span class="glyph st ${e.tone}">${e.glyph}</span><span>${esc(e.text)}</span>`;
-    if (e.bot) h.push(`<div class="row"><button class="rowbtn" data-bot="${esc(e.bot)}">${inner}</button></div>`);
-    else h.push(`<div class="row">${e.link ? `<a href="${esc(e.link)}" target="_blank" rel="noopener">${inner}</a>` : inner}</div>`);
-  }
+  for (const e of ne) h.push(`<div class="row">${needsRowHTML(e)}</div>`);
   h.push('</section>');
   h.push('<section><h2>Project board</h2>');
   for (const r of L.buildBoard(items(), { max: 99 })) {
@@ -156,7 +165,7 @@ $('flat-body').addEventListener('click', e => {
 /* ============================== overlay panel ============================== */
 let panelOpen = false, panelReturn = null;
 function showPanel(html) {
-  $('panel-body').innerHTML = html; $('panel').hidden = false; panelOpen = true;
+  $('panel-body').innerHTML = html; $('panel').hidden = false; $('panel').classList.remove('wide'); panelOpen = true;
   if (world && world.controls && world.controls.isLocked) world.controls.unlock();
   const f = $('panel').querySelector('a,button.linkbtn') || $('panel-close'); f.focus();
 }
@@ -164,24 +173,28 @@ function closePanel() { $('panel').hidden = true; panelOpen = false; if (panelRe
 $('panel-close').onclick = closePanel;
 $('panel').addEventListener('click', e => {
   if (e.target === $('panel')) closePanel();
-  const b = e.target.closest('[data-bot]'), it = e.target.closest('[data-item]'), go = e.target.closest('[data-go]');
-  if (go) { closePanel(); world && world.goToBot(go.dataset.go); }
+  const b = e.target.closest('[data-bot]'), it = e.target.closest('[data-item]'), go = e.target.closest('[data-go]'), sc = e.target.closest('[data-screen]');
+  if (sc) openScreen(sc.dataset.screen);
+  else if (go) { closePanel(); world && world.goToBot(go.dataset.go); }
   else if (b) openBot(b.dataset.bot); else if (it) openItem(it.dataset.item);
 });
 function linkHTML(href, label) { return `<a class="open" href="${esc(href)}" ${/^https?:/.test(href) ? 'target="_blank" rel="noopener"' : ''}>${esc(label)}</a>`; }
 function openBot(name) {
   const b = botByName(name);
   if (!b) return showPanel(`<h2 id="panel-title">${esc(name)}</h2><p>No data for this bot${S.state === 'failed' ? ' (office data unavailable)' : ''}.</p>`);
-  const st = L.statusStyle(b.status), now = Date.now(), link = L.linkFor(b), mine = L.sortItems(items().filter(i => i.owner === b.bot));
+  const st = L.statusStyle(b.status), now = Date.now(), tg = botTarget(b), mine = L.sortItems(items().filter(i => i.owner === b.bot));
+  const meet = (S.parsed ? S.parsed.meetings : []).find(m => m.members.includes(b.bot));
   const wait = st.alert ? L.waitingMinutes(b.last_action_at, now) : null;
   showPanel(`<h2 id="panel-title">${esc(b.bot)} ${stWord(b)}</h2>
     ${st.alert ? `<div class="q">${b.question ? esc(b.question) : '(no question recorded)'}${wait != null ? `<div class="fallback">waiting ${wait} min</div>` : ''}</div>` : ''}
     <dl><dt>Status</dt><dd>${st.glyph} ${st.word}${b.rawStatus && b.rawStatus !== b.status ? ' (' + esc(b.rawStatus) + ')' : ''}</dd>
     <dt>Task</dt><dd>${esc(b.task || '—')}</dd>
     <dt>Last action</dt><dd>${esc(b.last_action || '—')} · ${L.relTime(b.last_action_at, now)}</dd>
-    ${!st.alert ? `<dt>Question</dt><dd>${esc(b.question || '—')}</dd>` : ''}</dl>
-    ${linkHTML(link, st.alert ? 'Answer ' + b.bot : 'Open ' + b.bot)}
-    <div class="fallback">${esc(L.fallbackText(b))}<br>${esc(link)}</div>
+    ${!st.alert ? `<dt>Question</dt><dd>${esc(b.question || '—')}</dd>` : ''}
+    ${meet ? `<dt>Meeting</dt><dd>${esc(meet.title)}${meet.started_at ? ' · since ' + L.hhmm(meet.started_at) : ''}</dd>` : ''}</dl>
+    ${tg.href ? linkHTML(tg.href, (tg.kind === 'pr' ? 'Open PR for ' : st.alert ? 'Answer ' : 'Open ') + b.bot) : `<p><b>${esc(b.bot)}</b> · no PR or chat link known</p>`}
+    <button class="linkbtn" type="button" data-screen="${esc(b.bot)}">View screen</button>
+    <div class="fallback">${esc(L.fallbackText(b))}${tg.href ? '<br>' + esc(tg.href) : ''}</div>
     ${mine.length ? '<h3>Cards</h3><ul>' + mine.map(i => `<li><button class="linkbtn" data-item="${esc(i.id)}">${esc(L.cardTitle(i))}</button> · ${esc(i.priority)} · ${L.statusWord(i).word}</li>`).join('') + '</ul>' : ''}
     ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
 }
@@ -198,7 +211,7 @@ function openItem(id) {
 }
 function openNeeds() {
   const ne = needsEntries();
-  showPanel(`<h2 id="panel-title">⚠ Needs Tim</h2><ul>${ne.length ? ne.map(e => `<li><span class="st ${e.tone}">${e.glyph}</span> ${e.bot ? `<button class="linkbtn" data-bot="${esc(e.bot)}">${esc(e.text)}</button> · <button class="linkbtn" data-go="${esc(e.bot)}">go to desk</button>` : e.link ? `<a href="${esc(e.link)}" target="_blank" rel="noopener">${esc(e.text)}</a>` : esc(e.text)}</li>`).join('') : '<li>✓ Nothing waiting on Tim</li>'}</ul>
+  showPanel(`<h2 id="panel-title">⚠ Needs Tim</h2><ul>${ne.length ? ne.map(e => `<li>${needsRowHTML(e)}${e.bot ? ` · <button class="linkbtn" data-bot="${esc(e.bot)}">details</button> · <button class="linkbtn" data-go="${esc(e.bot)}">go to desk</button>` : ''}</li>`).join('') : '<li>✓ Nothing waiting on Tim</li>'}</ul>
     <h3>Open PRs</h3><ul>${S.pullsErr ? `<li class="src-down">? Data source unavailable: ${esc(S.pullsErr)}</li>` : S.pulls.length ? S.pulls.map(p => `<li>${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.repo)} #${p.number}</a>` : esc(p.repo)} ${esc(p.title)} · ${p.draft ? 'draft' : 'ready'} · checks ${esc(p.checks)}</li>`).join('') : '<li>None open</li>'}</ul>
     <h3>Open asks</h3><ul>${S.asksErr ? `<li class="src-down">? Data source unavailable: ${esc(S.asksErr)}</li>` : S.asks.length ? S.asks.map(a => `<li><a href="https://github.com/${OWNER}/forge-coordination/blob/main/asks/open/${encodeURIComponent(a)}" target="_blank" rel="noopener">${esc(a)}</a></li>`).join('') : '<li>None</li>'}</ul>
     ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
@@ -216,7 +229,43 @@ function openUsage() {
 }
 function openConvo(name) {
   const lines = L.recentConversations(S.parsed ? S.parsed.conversations : [], Date.now()).filter(c => c.from === name);
+  if (!lines.length) return showPanel(`<h2 id="panel-title">${esc(name)} is chatting</h2><p>Ambient idle chatter: decoration while the bot is idle. It is not from OFFICE_STATUS.json and is not a real conversation.</p>`);
   showPanel(`<h2 id="panel-title">${esc(name)} is talking</h2><ul>${lines.map(c => `<li><b>${esc(c.from)} → ${esc(c.to)}</b> · ${L.relTime(c.at, Date.now())}<br>${esc(c.text || 'talking with ' + c.to)}</li>`).join('')}</ul>`);
+}
+/* Clicked a Needs Tim row on the 3D board: open its PR / chat link, or show the bot name when no link is known. */
+function openHref(href) {
+  if (/^https?:/i.test(href)) window.open(href, '_blank', 'noopener'); else location.href = href;
+}
+function openNeedsEntry(i) {
+  const e = needsEntries()[i]; if (!e) return openNeeds();
+  if (e.target && e.target.href) return openHref(e.target.href);
+  const who = e.bot || e.owner;
+  if (!who) return openNeeds();
+  showPanel(`<h2 id="panel-title">${esc(who)}</h2><p>${esc(e.text)}</p><p class="fallback">No PR or Grok Bot chat link is known for ${esc(who)}.</p>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
+}
+/* Monitor popup: the same content as the desk monitor, larger and as text. */
+function openScreen(name) {
+  const b = botByName(name) || { bot: name, bot_id: '', status: 'idle', task: '', last_action: '', last_action_at: '', screen: null };
+  const now = Date.now(), act = world ? world.activity(name) : '', mode = L.monitorMode(b, act);
+  let body = '';
+  if (mode === 'checksheet') {
+    const list = L.sortItems(items()).slice(0, 12);
+    body = `<h3>Forge checksheet</h3><ul>${list.map(i => `<li><span class="pbadge ${L.priorityBadge(i.priority).loud ? 'loud' : ''}">${esc(L.priorityBadge(i.priority).text)}</span> ${esc(L.cardTitle(i))} · ${esc(i.owner)} · ${L.statusWord(i).word}</li>`).join('') || '<li>No items yet</li>'}</ul>`;
+  } else if (mode === 'usage') {
+    const u = S.parsed ? S.parsed.usage : { services: [] };
+    body = `<h3>Usage board</h3><ul>${u.services.map(s => { const w = L.usageWord(s.pct_used); return `<li><b>${esc(s.name)}</b> <span class="st ${w.tone}">${w.glyph} ${w.word}</span> · ${s.pct_used == null ? 'no reading' : Math.round(s.pct_used) + '% used'}<div class="ubar"><i style="width:${Math.round(s.pct_used || 0)}%" class="${w.tone}"></i></div></li>`; }).join('') || '<li>No usage readings yet</li>'}</ul>`;
+  } else {
+    if (mode === 'game') body += '<p class="fallback">On a break: playing a game (ambient, not data). Its screen data:</p>';
+    if (b.screen) body += `<div class="screenpop"><div class="sp-title">${esc(b.screen.title || 'Screen')}${b.screen.updated_at ? `<span>${L.relTime(b.screen.updated_at, now)}</span>` : ''}</div><pre>${b.screen.lines.map(esc).join('\n')}</pre></div>`;
+    else {
+      const mine = L.sortItems(items().filter(i => i.owner === b.bot));
+      const lines = mine.map(i => '$ ' + L.cardTitle(i) + '\n  ' + i.priority + ' · ' + L.statusWord(i).word);
+      if (b.question) lines.push('? ' + b.question);
+      body += `<div class="screenpop"><div class="sp-title">terminal</div><pre>${esc(b.task || '(no task)')}\n${esc((b.last_action || '(no last action)') + ' · ' + L.relTime(b.last_action_at, now))}\n\n${esc(lines.join('\n') || '$ no open items for ' + b.bot)}</pre></div>`;
+    }
+  }
+  showPanel(`<h2 id="panel-title">${esc(b.bot)}'s screen</h2>${body}<button class="linkbtn" type="button" data-bot="${esc(b.bot)}">About ${esc(b.bot)}</button>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
+  $('panel').classList.add('wide');
 }
 
 /* HUD buttons */
@@ -335,7 +384,7 @@ function buildWorld() {
     lampBase: new THREE.CylinderGeometry(0.07, 0.08, 0.025, 14), lampArm: new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6), shade: new THREE.ConeGeometry(0.09, 0.12, 14, 1, true), bulb: new THREE.SphereGeometry(0.035, 10, 8),
     plate: box(0.42, 0.09, 0.05), mug: new THREE.CylinderGeometry(0.04, 0.035, 0.1, 12),
     seat: box(0.5, 0.07, 0.48), back: box(0.48, 0.5, 0.06), pole: new THREE.CylinderGeometry(0.03, 0.03, 0.38, 8), spoke: box(0.04, 0.03, 0.32), ring: new THREE.TorusGeometry(1.15, 0.035, 8, 48) };
-  const desks = [];
+  const desks = [], deskCans = [];
   const monW = LOW ? 448 : 640, monH = LOW ? 280 : 400;
   SEATS.forEach((name, i) => {
     const x = DESK_X[i % 4], z = DESK_Z[Math.floor(i / 4)], g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
@@ -355,7 +404,9 @@ function buildWorld() {
     // nameplate: 3D block, name on its front face
     const np = canvasTex(256, 56); drawSign(np.ctx, 256, 56, name, '#141416', '#eceef1'); np.t.needsUpdate = true;
     add(deskGeo.plate, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(np.t), MAT.dark], 0.5, 0.815, 0.36, g);
+    // a coffee mug on some desks, energy cans (instanced below) on the rest
     if (i % 3 === 0) add(deskGeo.mug, MAT.white, -0.6, 0.82, 0.05, g);
+    else { deskCans.push([x - 0.6, z + 0.05, i]); if (i % 4 === 1) deskCans.push([x - 0.48, z - 0.1, i + 0.5]); }
     // chair
     const ch = new THREE.Group(); ch.position.set(0, 0, 0.85); g.add(ch);
     add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
@@ -363,6 +414,7 @@ function buildWorld() {
     const hover = new THREE.Mesh(deskGeo.ring, MAT.hover); hover.layers.set(1); hover.rotation.x = Math.PI / 2; hover.position.set(0, 0.04, 0.3); hover.visible = false; g.add(hover);
     const focus = new THREE.Mesh(deskGeo.ring, MAT.focus); focus.layers.set(1); focus.rotation.x = Math.PI / 2; focus.position.set(0, 0.05, 0.3); focus.scale.setScalar(1.08); focus.visible = false; g.add(focus);
     g.traverse(o => { if (o.isMesh && o !== hover && o !== focus) o.userData.deskBot = name; });
+    mon.userData.monitor = name;
     block(x, z, 0.8, 0.4); block(x, z + 0.85, 0.32, 0.3, true);
     desks.push({ name, i, x, z, g, mon, scr, ledMat, shadeMat, bulbMat, hover, focus, lod: '', drawnKey: '',
       seat: { x, z: z + 0.72, face: Math.PI }, stand: { x: x + 1.12, z: z + 0.15, face: 0 }, visit: { x: x - 1.12, z: z + 0.15, face: Math.PI / 2 },
@@ -403,12 +455,53 @@ function buildWorld() {
   const cs = canvasTex(256, 64); drawSign(cs.ctx, 256, 64, 'COFFEE', '#111', '#f4e7d0'); cs.t.needsUpdate = true;
   const csg = add(box(0.06, 0.22, 0.9), [screenMat(cs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark, MAT.dark], 0.35, 1.95, 0, coffee); csg.rotation.y = Math.PI; csg.position.x = 0.32;
   block(11.3, -6.2, 0.4, 0.82);
+  // glass-door drinks fridge: lit interior, shelves of energy cans (one InstancedMesh for every can in the room)
   const fridge = new THREE.Group(); fridge.position.set(11.3, 0, -8.4); scene.add(fridge);
-  add(box(0.75, 1.9, 0.85), MAT.white, 0, 0.95, 0, fridge); add(box(0.02, 1.86, 0.02), MAT.metal, -0.38, 0.95, 0, fridge);
-  add(box(0.04, 0.6, 0.04), MAT.metal, -0.4, 1.2, 0.3, fridge);
-  const fs = canvasTex(512, 64); drawSign(fs.ctx, 512, 64, 'WHITE MONSTER', '#f4f4f4', '#111'); fs.t.needsUpdate = true;
-  const fsg = add(box(0.06, 0.16, 0.8), [MAT.dark, screenMat(fs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark], -0.37, 1.65, 0, fridge); void fsg;
+  const fbody = std(0x2b2d31, 0.5, { metalness: 0.4 });
+  add(box(0.75, 0.12, 0.85), fbody, 0, 0.06, 0, fridge); add(box(0.75, 0.1, 0.85), fbody, 0, 1.95, 0, fridge);
+  add(box(0.75, 1.8, 0.04), fbody, 0, 1.0, -0.405, fridge); add(box(0.75, 1.8, 0.04), fbody, 0, 1.0, 0.405, fridge);
+  add(box(0.04, 1.8, 0.85), new THREE.MeshStandardMaterial({ color: 0xe8f4ff, emissive: 0xcfe6ff, emissiveIntensity: 0.9 }), 0.355, 1.0, 0, fridge);
+  const shelfY = [0.42, 0.82, 1.22, 1.62];
+  for (const y of shelfY) add(box(0.66, 0.015, 0.76), MAT.metal, 0, y - 0.01, 0, fridge);
+  add(box(0.02, 1.84, 0.82), new THREE.MeshStandardMaterial({ color: 0xa8d0e6, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.18, depthWrite: false }), -0.375, 1.0, 0, fridge);
+  for (const [w, h, y, dz] of [[0.03, 1.84, 1.0, -0.41], [0.03, 1.84, 1.0, 0.41], [0.03, 0.04, 0.1, 0], [0.03, 0.04, 1.9, 0]]) add(box(w, h, dz ? 0.03 : 0.84), MAT.dark, -0.39, y, dz, fridge);
+  add(box(0.04, 0.6, 0.04), MAT.metal, -0.42, 1.2, 0.33, fridge);
+  const fs = canvasTex(512, 64); drawSign(fs.ctx, 512, 64, 'ENERGY', '#0b0b0c', '#5cff3a'); fs.t.needsUpdate = true;
+  add(box(0.06, 0.16, 0.8), [MAT.dark, screenMat(fs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark], -0.37, 2.1, 0, fridge);
+  const fridgeCans = [];
+  for (const y of shelfY) for (let k = 0; k < 5; k++) fridgeCans.push([11.3 - 0.1 + (k % 2) * 0.12, y + 0.0625, -8.4 - 0.3 + k * 0.15]);
+  {
+    const cans = new THREE.InstancedMesh(canGeometry(), canMaterials(), fridgeCans.length + deskCans.length), m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
+    // label faces the room (-x) in the fridge and the bot on desks
+    fridgeCans.forEach(([x, y, z], k) => { q.setFromEuler(new THREE.Euler(0, Math.PI + (k % 3) * 0.2, 0)); cans.setMatrixAt(k, m.compose(new THREE.Vector3(x, y, z), q, one)); });
+    deskCans.forEach(([x, z, seed], k) => { q.setFromEuler(new THREE.Euler(0, seed * 1.7, 0)); cans.setMatrixAt(fridgeCans.length + k, m.compose(new THREE.Vector3(x, 0.8325, z), q, one)); });
+    cans.instanceMatrix.needsUpdate = true; scene.add(cans);
+  }
   block(11.3, -8.4, 0.42, 0.45);
+
+  /* ---------- conference table (back-left corner), chairs and a whiteboard ---------- */
+  const CONF = { x: -9.6, z: -7.8 };
+  const conf = new THREE.Group(); conf.position.set(CONF.x, 0, CONF.z); scene.add(conf);
+  add(box(3.0, 0.06, 1.2), MAT.wood, 0, 0.74, 0, conf);
+  for (const [lx, lz] of [[-1.35, -0.48], [1.35, -0.48], [-1.35, 0.48], [1.35, 0.48]]) add(deskGeo.leg, MAT.metal, lx, 0.36, lz, conf);
+  // seats: 0/1 nearest the whiteboard end (training), then along both sides, then the far end
+  const CONF_SEATS = [[-1.0, -1.05, 0], [-1.0, 1.05, Math.PI], [0, -1.05, 0], [0, 1.05, Math.PI], [1.0, -1.05, 0], [1.0, 1.05, Math.PI], [1.95, 0, -Math.PI / 2]]
+    .map(([dx, dz, face]) => ({ x: CONF.x + dx, z: CONF.z + dz, face }));
+  for (const st of CONF_SEATS) {
+    const ch = new THREE.Group(); ch.position.set(st.x - Math.sin(st.face) * 0.13, 0, st.z - Math.cos(st.face) * 0.13); ch.rotation.y = st.face - Math.PI; scene.add(ch);
+    add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
+    for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); }
+    block(ch.position.x, ch.position.z, 0.28, 0.28, true);
+  }
+  const TRAINER_SPOT = { x: -11.4, z: CONF.z, face: Math.PI / 2 };
+  const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(-RW / 2 + 0.05, 1.6, -8.8); wbG.rotation.y = Math.PI / 2; scene.add(wbG);
+  add(box(1.75, 0.95, 0.05), MAT.metal, 0, 0, 0, wbG);
+  add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
+  add(box(1.2, 0.03, 0.08), MAT.metal, 0, -0.5, 0.05, wbG);
+  let wbKey = '';
+  function drawWB(meeting) { const k = meeting ? meeting.id + meeting.title + meeting.seated.join() : 'skills'; if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, 512, 256, { meeting, demo: DEMO }); wb.t.needsUpdate = true; }
+  drawWB(null);
+  block(CONF.x, CONF.z, 1.5, 0.6);
   // walls for the viewer
   const WALL = 0.35;
 
@@ -499,7 +592,17 @@ function buildWorld() {
     if (!h) return new THREE.Vector3(-2, 2.5, -RD / 2 + 0.1);
     return new THREE.Vector3(-2 + (h.x + h.w / 2 - 0.5) * BW, 2.5 + (0.5 - (h.y + h.h / 2)) * BH, -RD / 2 + 0.1);
   }
+  /* who does what (L.planOffice), refreshed twice a second */
+  let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
+  function updatePlan() {
+    const t = performance.now(); if (t - planAt < 500) return; planAt = t; // wall time: slow renderers still re-plan twice a second
+    plan = L.planOffice(bots().filter(b => deskOf(b.bot)), S.parsed ? S.parsed.meetings : [], Date.now(), S.state);
+    drawWB(plan.meeting);
+  }
+  const charPos = n => { const o = chars.get(n); return o ? { x: o.pos.x, z: o.pos.y } : null; };
   function decide(c, b, convo) {
+    const st0 = L.statusStyle(b ? b.status : 'idle'), d0 = deskOf(c.name);
+    if (st0.behavior === 'wave') { releaseSlot(c); return { key: 'stand', spot: d0.stand, pose: 'wave' }; } // needs Tim: stays at its own desk
     if (c.pickups.length) {
       const id = c.pickups[0], key = 'pick:' + id + ':' + c.pickups.length;
       if (c.goalKey === key && c.arrived) {
@@ -509,12 +612,24 @@ function buildWorld() {
       const p = cardCenter(id);
       return { key, spot: { x: Math.max(-6.4, Math.min(2.4, p.x)), z: -8.9, face: Math.PI }, pose: 'board' };
     }
-    if (convo && deskOf(convo.to)) { releaseSlot(c); const d = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: d.visit, pose: 'talk' }; }
-    const st = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name);
-    if (st.behavior === 'work') { releaseSlot(c); return { key: 'seat', spot: d.seat, pose: 'type' }; }
-    if (st.behavior === 'wave') { releaseSlot(c); return { key: 'stand', spot: d.stand, pose: 'wave' }; }
+    if (convo && deskOf(convo.to)) { releaseSlot(c); const d = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: d.visit, pose: 'talk', faceBot: convo.to }; }
+    const p = plan.plans[c.name] || { act: st0.behavior === 'work' ? 'work' : 'wander' }, d = d0;
+    if (p.act !== 'wander') releaseSlot(c);
+    switch (p.act) {
+      case 'work': return { key: 'seat', spot: d.seat, pose: 'type' };
+      case 'meeting': case 'train': return { key: p.act + ':' + p.seat, spot: CONF_SEATS[p.seat], pose: 'meet', ambient: p.act === 'train' ? 'reply' : '' };
+      case 'lead': return { key: 'lead', spot: TRAINER_SPOT, pose: 'talk', ambient: 'train' };
+      case 'sleep': return { key: 'sleep', spot: d.seat, pose: 'deskSleep' };
+      case 'game': return { key: 'game', spot: d.seat, pose: 'game' };
+      case 'chat': { // the guest walks to the host's desk; the host stands up at its own seat
+        if (p.host) return { key: 'host:' + p.partner, spot: d.seat, pose: 'talk', faceBot: p.partner, ambient: 'chat', pair: [p.partner, c.name].sort().join('|'), can: p.can };
+        const hd = deskOf(p.partner); return { key: 'guest:' + p.partner, spot: hd.visit, pose: 'talk', faceBot: p.partner, ambient: 'chat', pair: [p.partner, c.name].sort().join('|'), can: p.can };
+      }
+      case 'listen': return { key: 'listen', spot: d.seat, pose: 'talk', faceBot: p.partner, ambient: 'reply', pair: p.partner + '|' + c.name, can: p.can };
+      case 'visit': { const td = deskOf(p.partner); return { key: 'visit:' + p.partner, spot: td.visit, pose: 'talk', faceBot: p.partner, ambient: 'visit', pair: c.name + '|' + p.partner, can: p.can }; }
+    }
     if (!c.slot || clock > c.slotUntil) pickSlot(c);
-    return { key: 'act:' + c.slotKey, spot: c.slot, pose: c.slot.kind === 'loiter' ? 'stand' : c.slot.kind, lie: c.slot.lie };
+    return { key: 'act:' + c.slotKey, spot: c.slot, pose: c.slot.kind === 'loiter' ? 'stand' : c.slot.kind, lie: c.slot.lie, can: p.can };
   }
   const angLerp = (a, b, k) => { let d = ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return a + d * k; };
   function updateChar(c, dt) {
@@ -543,18 +658,19 @@ function buildWorld() {
     } else {
       if (!c.arrived) { c.arrived = true; c.arrivedAt = clock; }
       let face = g.spot.face;
-      if (g.pose === 'talk' && deskOf(convo.to)) { const d = deskOf(convo.to), o = chars.get(convo.to), tx = o ? o.pos.x : d.x, tz = o ? o.pos.y : d.z; face = Math.atan2(tx - c.pos.x, tz - c.pos.y); }
+      if (g.faceBot) { const o = charPos(g.faceBot) || deskOf(g.faceBot); if (o) face = Math.atan2(o.x - c.pos.x, o.z - c.pos.y); }
       c.root.rotation.y = angLerp(c.root.rotation.y, face, Math.min(1, dt * 6));
       const lie = g.lie && pose === 'nap' ? g.lie : null;
       c.root.position.x += ((lie ? lie.x : c.pos.x) - c.root.position.x) * Math.min(1, dt * 4);
       c.root.position.z += ((lie ? lie.z : c.pos.y) - c.root.position.z) * Math.min(1, dt * 4);
     }
     c.pose = pose;
-    c.setExpression(pose === 'nap' ? 'sleepy' : st.alert ? 'worried' : S.state === 'stale' ? 'puzzled' : pose === 'type' || pose === 'talk' ? 'happy' : 'neutral');
+    c.goalNow = g;
+    c.setExpression(pose === 'nap' || pose === 'deskSleep' ? 'sleepy' : st.alert ? 'worried' : S.state === 'stale' ? 'puzzled' : pose === 'stand' ? 'neutral' : 'happy');
     c.warn.visible = st.alert;
     c.quest.visible = S.state === 'stale' && !st.alert;
     if (st.alert) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
-    animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4 });
+    animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!g.can });
     c.rig.position.x = pose === 'nap' ? 0.5 : 0;
   }
 
@@ -584,15 +700,29 @@ function buildWorld() {
       c.tag.style.display = vis ? '' : 'none';
       const sx = (tmpV.x * 0.5 + 0.5) * w, sy = (-tmpV.y * 0.5 + 0.5) * h;
       if (vis) c.tag.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy}px)`;
-      const lines = convoLines.filter(l => l.from === c.name);
-      const bk = lines.map(l => l.at + l.text).join('|');
+      const lines = convoLines.filter(l => l.from === c.name), amb = lines.length ? '' : ambientText(c);
+      const bk = lines.length ? lines.map(l => l.at + l.text).join('|') : amb;
       if (bk !== c.bubKey) {
         c.bubKey = bk;
-        c.bub.innerHTML = lines.map((l, k) => `<div class="bubble${l.text ? '' : ' who'}" style="opacity:${[0.45, 0.72, 1][3 - lines.length + k] || 1}">${esc(L.bubbleText(l))}</div>`).join('');
+        c.bub.innerHTML = lines.length ? lines.map((l, k) => `<div class="bubble${l.text ? '' : ' who'}" style="opacity:${[0.45, 0.72, 1][3 - lines.length + k] || 1}">${esc(L.bubbleText(l))}</div>`).join('')
+          : amb ? `<div class="bubble ambient"><span class="amb">ambient</span> ${esc(amb)}</div>` : '';
       }
-      c.bub.hidden = !lines.length || !vis;
+      c.bub.hidden = !(lines.length || amb) || !vis;
+      c.bub.style.pointerEvents = lines.length ? '' : 'none'; // ambient bubbles never block clicks on monitors
       if (lines.length && vis) c.bub.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy - (TV ? 46 : 26)}px)`;
     }
+  }
+
+  /* Ambient chatter: once both are in place, the pair takes turns every 4 s (decoration, marked "ambient"). */
+  function ambientText(c) {
+    const g = c.goalNow; if (!g || !g.ambient || !c.arrived || S.state === 'failed') return '';
+    const tick = Math.floor(clock / 4);
+    if (g.pose === 'meet') return tick % 3 === 1 && g.ambient === 'reply' ? L.ambientLine('reply', c.name, tick) : '';
+    if (g.ambient === 'train') return L.ambientLine('train', c.name, tick);
+    const other = g.faceBot && chars.get(g.faceBot);
+    if (other && !other.arrived) return '';
+    const pair = (g.pair || c.name).split('|'), speaker = pair[tick % 2];
+    return speaker === c.name ? L.ambientLine(g.ambient, g.pair || c.name, tick) : '';
   }
 
   /* ---------- card-to-desk lines ---------- */
@@ -623,7 +753,7 @@ function buildWorld() {
     project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { rows: rows.slice(page * per, page * per + per), perPage: per, page, pages, state: S.state, asOf: S.parsed && S.parsed.updatedAt, demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem });
     t.t.needsUpdate = true;
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { usage: S.parsed ? S.parsed.usage : null, now: Date.now(), demo: DEMO, failed: S.state === 'failed' }); u.t.needsUpdate = true;
-    const n = needs.tex; drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); n.t.needsUpdate = true;
+    const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); n.t.needsUpdate = true;
     updateLines();
     for (const [id, ln] of lines) ln.material = hl.has(id) || (hoverBot && ln.userData.owner === hoverBot) ? MAT.lineHi : MAT.lineFaint;
     boardDirty = false;
@@ -632,10 +762,11 @@ function buildWorld() {
     const b = botByName(d.name) || { bot: d.name, bot_id: '', status: 'idle', task: '', last_action: '', last_action_at: '', question: '' };
     const lod = L.lodFor(camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2)));
     const mine = L.sortItems(items().filter(i => i.owner === d.name));
-    const key = lod + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (d.name === 'President' ? items().length : '') + Math.floor(Date.now() / 30000);
+    const act = (plan.plans[d.name] || {}).act || '', mode = S.state === 'failed' ? L.monitorMode(b, '') : L.monitorMode(b, act);
+    const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (d.name === 'President' ? items().length : '') + Math.floor(Date.now() / (mode === 'game' && lod !== 'far' ? 120 : 30000));
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;
-    drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, lod, now: Date.now(), items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', usage: S.parsed && S.parsed.usage });
+    drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, lod, now: Date.now(), items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', usage: S.parsed && S.parsed.usage, mode });
     d.scr.t.needsUpdate = true;
     const st = L.statusStyle(b.status), col = new THREE.Color(S.state === 'failed' ? '#8b9099' : st.color);
     d.ledMat.color.copy(col); d.ledMat.emissive.copy(col);
@@ -662,11 +793,13 @@ function buildWorld() {
     if (!hit || hit.distance > 30) return null;
     const o = hit.object;
     if (o.userData.board) {
+      if (o.userData.board === 'needs' && hit.uv) { const y = 1 - hit.uv.y, r = needs.hits.find(r => y >= r.y && y <= r.y + r.h); return r ? { needsIdx: r.i } : { board: 'needs' }; }
       if (o.userData.board !== 'project') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
       const h = project.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
       return h ? (h.id ? { item: h.id } : { more: h.more }) : { board: 'project' };
     }
+    if (o.userData.monitor) return { monitor: o.userData.monitor };
     if (o.userData.charName) return { bot: o.userData.charName };
     if (o.userData.deskBot) return { bot: o.userData.deskBot };
     return null;
@@ -674,6 +807,7 @@ function buildWorld() {
   function activate(p) {
     if (!p) return false;
     if (p.item) openItem(p.item); else if (p.more) openBoard(p.more); else if (p.bot) openBot(p.bot);
+    else if (p.monitor) openScreen(p.monitor); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
     else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard('');
     return true;
   }
@@ -820,7 +954,7 @@ function buildWorld() {
     requestAnimationFrame(frame);
     if (minFrame && now - lastFrame < minFrame) return;
     lastFrame = now;
-    const dt = Math.min(0.1, (now - last) / 1000); last = now; clock += dt; acc += dt;
+    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now; // rAF time can precede the setup time: never negative clock += dt; acc += dt;
     if (glide) {
       const k = Math.min(1, (now - glide.t0) / glide.dur), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
       camera.position.lerpVectors(glide.p0, glide.p1, e); camera.quaternion.slerpQuaternions(glide.q0, glide.q1, e);
@@ -840,11 +974,12 @@ function buildWorld() {
     }
     if (pages() > 1 && clock - pageAt > 12) { page++; pageAt = clock; boardDirty = true; }
     if (boardDirty) drawBoards();
-    if (now - deskTick > 300) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
+    if (now - deskTick > 120) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
     if (now - dayTick > 60000) { dayTick = now; applyDaylight(); }
     let ai = 0; const p = L.pulse(clock, reducedMQ.matches);
     for (const d of desks) { const b = botByName(d.name); if (b && L.statusStyle(b.status).alert && S.state !== 'failed') { d.bulbMat.emissiveIntensity = 0.6 + 1.6 * p; if (ai < alertLights.length) { const l = alertLights[ai++]; l.position.set(d.x + 0.63, 1.3, d.z - 0.1); l.intensity = 2.5 * p + 0.6; } } else d.bulbMat.emissiveIntensity = 1.5; }
     for (; ai < alertLights.length; ai++) alertLights[ai].intensity = 0;
+    updatePlan();
     for (const c of chars.values()) updateChar(c, dt);
     updateLabels();
     renderer.render(scene, camera);
@@ -857,9 +992,14 @@ function buildWorld() {
 
   return {
     controls, goToBot,
+    activity: name => (plan.plans[name] || {}).act || '',
+    // test hooks: where a desk monitor is on screen; glide the camera to a view (screenshots)
+    screenPoint(name, dx = 0, dy = 0) { const d = deskOf(name); if (!d) return null; const v = d.mon.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(dx, dy, 0)).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
+    view(p, l) { tour = null; glideTo([p, l], 1); },
+    pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
     refresh() { ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
     info: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length,
-      poses: [...chars.values()].map(c => c.name + ':' + c.pose), lights: scene.children.filter(o => o.isLight).length })
+      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, meeting: plan.meeting && plan.meeting.id, training: !!plan.training, lights: scene.children.filter(o => o.isLight).length })
   };
 }
 
@@ -878,3 +1018,7 @@ document.fonts && document.fonts.load("700 20px 'Inter PE'").catch(() => {});
 });
 addEventListener('error', e => T.errors.push(String(e.message)));
 T.info = () => (world ? world.info() : null);
+T.poll = () => (DEMO ? poll() : null); // test hook: next demo step now (the example meeting toggles each poll)
+T.screenPoint = (n, dx, dy) => (world ? world.screenPoint(n, dx, dy) : null);
+T.view = (p, l) => world && world.view(p, l);
+T.pickAt = (x, y) => (world ? world.pickAt(x, y) : null);

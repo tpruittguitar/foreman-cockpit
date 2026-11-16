@@ -28,7 +28,7 @@ function exampleTag(ctx, x, y, s) {
 
 /* ---------- desk monitor ---------- */
 export function drawDesk(ctx, W, H, o) {
-  // o: { bot, lod, now, items, demo, frozen, usage, state, allItems }
+  // o: { bot, lod, now, items, demo, frozen, usage, state, allItems, mode: L.monitorMode(bot, activity) }
   const b = o.bot, st = L.statusStyle(b.status), tone = o.frozen ? C.idle : toneOf(st);
   const s = W / 640;
   ctx.fillStyle = '#0c0d0f'; ctx.fillRect(0, 0, W, H);
@@ -36,7 +36,9 @@ export function drawDesk(ctx, W, H, o) {
   ctx.fillStyle = '#1e2024'; ctx.fillRect(0, 0, W, 34 * s);
   ['#ff5f57', '#febc2e', '#28c840'].forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc((18 + i * 18) * s, 17 * s, 5 * s, 0, 7); ctx.fill(); });
   ctx.fillStyle = '#9aa0a8'; ctx.font = `500 ${15 * s}px ${MONO}`;
-  const app = b.bot === 'President' ? 'Forge checksheet' : b.bot === 'Usage Budget' ? 'Usage board' : 'terminal';
+  const mode = o.mode || 'terminal';
+  if (mode === 'game' && o.lod !== 'far') return drawGame(ctx, W, H, s, o.now, b.bot);
+  const app = { checksheet: 'Forge checksheet', usage: 'Usage board', screen: (b.screen && b.screen.title) || 'app' }[mode] || 'terminal';
   ctx.fillText(fit(ctx, b.bot.toLowerCase().replace(/\s+/g, '-') + ' — ' + app, 420 * s), 74 * s, 22 * s);
   if (o.demo) { ctx.textAlign = 'left'; exampleTag(ctx, W - 150 * s, 23 * s, 13 * s); }
   // state strip
@@ -65,8 +67,9 @@ export function drawDesk(ctx, W, H, o) {
   ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${27 * s}px ${SANS}`;
   ctx.fillText(fit(ctx, (b.last_action || '(no last action)') + ' · ' + L.relTime(b.last_action_at, o.now), maxW), x0, 164 * s);
   ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.moveTo(x0, 182 * s); ctx.lineTo(W - x0, 182 * s); ctx.stroke();
-  if (b.bot === 'President') return checksheet(ctx, W, H, s, o.allItems, o.now);
-  if (b.bot === 'Usage Budget') return miniUsage(ctx, W, H, s, o.usage, o.now);
+  if (mode === 'checksheet') return checksheet(ctx, W, H, s, o.allItems, o.now);
+  if (mode === 'usage') return miniUsage(ctx, W, H, s, o.usage, o.now);
+  if (mode === 'screen') return miniApp(ctx, W, H, s, b.screen, o.now);
   // terminal: this bot's own items and question, from the data only
   ctx.font = `500 ${20 * s}px ${MONO}`;
   const lines = [];
@@ -75,6 +78,43 @@ export function drawDesk(ctx, W, H, o) {
   if (!lines.length) lines.push({ t: '$ no open items for ' + b.bot, c: '#7d828a' });
   lines.push({ t: '$ _', c: '#7d828a' });
   lines.slice(0, 7).forEach((l, i) => { ctx.fillStyle = l.c; ctx.fillText(fit(ctx, l.t, maxW), x0, (214 + i * 25) * s); });
+}
+/* bots[].screen as a mini app window: title bar, up to 6 lines, "updated" time. Text only from the data. */
+function miniApp(ctx, W, H, s, scr, now) {
+  const x0 = 22 * s, y0 = 194 * s, w = W - 44 * s, h = H - y0 - 18 * s;
+  ctx.fillStyle = '#16181c'; rr(ctx, x0, y0, w, h, 8 * s); ctx.fill();
+  ctx.fillStyle = '#23262c'; rr(ctx, x0, y0, w, 30 * s, 8 * s); ctx.fill(); ctx.fillRect(x0, y0 + 20 * s, w, 10 * s);
+  ctx.fillStyle = '#e9ebef'; ctx.font = `700 ${18 * s}px ${SANS}`; ctx.fillText(fit(ctx, scr.title || 'Screen', w - 150 * s), x0 + 12 * s, y0 + 21 * s);
+  if (scr.updated_at) { ctx.textAlign = 'right'; ctx.fillStyle = '#9aa0a8'; ctx.font = `500 ${15 * s}px ${SANS}`; ctx.fillText(L.relTime(scr.updated_at, now), x0 + w - 12 * s, y0 + 21 * s); ctx.textAlign = 'left'; }
+  ctx.font = `500 ${19 * s}px ${MONO}`; ctx.fillStyle = '#d7dae0';
+  scr.lines.forEach((l, i) => ctx.fillText(fit(ctx, l, w - 24 * s), x0 + 12 * s, y0 + (56 + i * 26) * s));
+}
+/* Idle break: a tiny side-scroller (ambient, not data), animated from the clock. */
+function drawGame(ctx, W, H, s, now, seed) {
+  const t = now / 1000, gy = H * 0.78;
+  const sky = ctx.createLinearGradient(0, 34 * s, 0, gy); sky.addColorStop(0, '#1b2a6b'); sky.addColorStop(1, '#4a3b8f');
+  ctx.fillStyle = sky; ctx.fillRect(0, 34 * s, W, gy - 34 * s);
+  ctx.fillStyle = '#9aa0a8'; ctx.font = `500 ${15 * s}px ${MONO}`; ctx.fillText('break — pixel run (idle)', 74 * s, 22 * s);
+  ctx.fillStyle = '#ffffff55'; for (let k = 0; k < 14; k++) { const x = ((k * 97 + seed.length * 13) % W - t * 12 * s % W + W) % W; ctx.fillRect(x, (50 + (k * 37) % 120) * s, 3 * s, 3 * s); }
+  ctx.fillStyle = '#2bd46a'; ctx.fillRect(0, gy, W, H - gy);
+  ctx.fillStyle = '#1a9a4c'; for (let x = -((t * 160 * s) % (40 * s)); x < W; x += 40 * s) ctx.fillRect(x, gy, 20 * s, 8 * s);
+  const period = 1.6, ph = (t % period) / period, ox = W - ph * (W + 80 * s);
+  ctx.fillStyle = '#ff5a5a'; ctx.fillRect(ox, gy - 46 * s, 30 * s, 46 * s);
+  const jump = Math.max(0, Math.sin(Math.min(1, Math.max(0, (ph - 0.62) / 0.3)) * Math.PI)) * 96 * s;
+  ctx.fillStyle = '#ffd23f'; rr(ctx, 120 * s, gy - 44 * s - jump, 40 * s, 44 * s, 6 * s); ctx.fill();
+  ctx.fillStyle = '#111'; ctx.fillRect(146 * s, gy - 34 * s - jump, 6 * s, 8 * s);
+  ctx.fillStyle = '#fff'; ctx.font = `800 ${24 * s}px ${MONO}`; ctx.textAlign = 'right'; ctx.fillText('SCORE ' + String(Math.floor(t * 7) % 100000).padStart(5, '0'), W - 20 * s, 66 * s); ctx.textAlign = 'left';
+}
+/* Conference whiteboard: ambient "New skills" doodle, or the meeting title from the data. */
+export function drawWhiteboard(ctx, W, H, o) {
+  ctx.fillStyle = '#f4f5f2'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#c9ccc6'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, W - 6, H - 6);
+  ctx.fillStyle = o.meeting ? '#1f4fb8' : '#1d7a3c'; ctx.font = `800 ${H * 0.2}px ${SANS}`;
+  ctx.fillText(fit(ctx, o.meeting ? o.meeting.title : 'New skills', W - 60), 30, H * 0.3);
+  ctx.font = `600 ${H * 0.1}px ${SANS}`; ctx.fillStyle = '#333';
+  const lines = o.meeting ? ['Meeting · ' + o.meeting.seated.length + ' at the table', ...o.meeting.seated.slice(0, 3)] : ['✓ read the task twice', '✓ small PRs, green checks', '✓ ask Tim early'];
+  lines.forEach((l, i) => ctx.fillText(fit(ctx, l, W - 60), 36, H * (0.5 + i * 0.14)));
+  if (o.demo && o.meeting) exampleTag(ctx, W - 230, H * 0.92, 22);
 }
 function checksheet(ctx, W, H, s, items, now) {
   const sorted = L.sortItems(items || []);
@@ -226,15 +266,47 @@ export function drawNeeds(ctx, W, H, o) {
   if (o.demo) exampleTag(ctx, 380 * s, 58 * s, 20 * s);
   ctx.font = `600 ${30 * s}px ${SANS}`;
   const lines = o.entries.length ? o.entries : [{ glyph: '✓', text: 'Nothing waiting on Tim', tone: 'idle' }];
+  const hits = [];
   lines.slice(0, 11).forEach((e, i) => {
-    const y = (122 + i * 50) * s;
+    const y = (122 + i * 50) * s, link = e.target && e.target.href;
     ctx.fillStyle = TONE[e.tone] || '#ddd'; ctx.font = `800 ${30 * s}px ${SANS}`; ctx.fillText(e.glyph, 30 * s, y);
-    ctx.fillStyle = '#eceef1'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText(fit(ctx, e.text, W - 100 * s), 76 * s, y);
+    ctx.font = `600 ${30 * s}px ${SANS}`;
+    const tail = link ? (e.target.kind === 'pr' ? '  ↗ PR' : e.target.kind === 'chat' ? '  ↗ chat' : '  ↗') : '';
+    const tw = tail ? ctx.measureText(tail).width : 0;
+    const txt = fit(ctx, e.text, W - 100 * s - tw);
+    ctx.fillStyle = '#eceef1'; ctx.fillText(txt, 76 * s, y);
+    if (tail) { ctx.fillStyle = C.info; ctx.fillText(tail, 76 * s + ctx.measureText(txt).width, y); }
+    if (o.entries.length) hits.push({ y: (y - 38 * s) / H, h: 50 * s / H, i });
   });
   if (lines.length > 11) { ctx.fillStyle = '#9aa0a8'; ctx.fillText('+' + (lines.length - 11) + ' more — open the list', 76 * s, (122 + 11 * 50) * s); }
+  return hits;
 }
 
-/* Small label sign (COFFEE, WHITE MONSTER) */
+/* Energy-can wrap: black can, a green claw-scratch "M" drawn procedurally (a lookalike mark, not any brand's artwork or
+   wordmark). Drawn twice round the can so it shows from both sides. */
+export function drawCanLabel(ctx, W, H) {
+  ctx.fillStyle = '#0b0b0c'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#9aa0a6'; ctx.fillRect(0, 0, W, H * 0.05); ctx.fillRect(0, H * 0.95, W, H * 0.05);
+  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const claw = (pts, w0) => { // ragged tapered stroke through pts
+    const left = [], right = [];
+    pts.forEach(([x, y], i) => { const w = w0 * (1 - i / pts.length * 0.75), j = (rnd() - 0.5) * w0 * 0.35; left.push([x - w + j, y]); right.push([x + w + j, y]); });
+    ctx.beginPath(); left.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    right.reverse().forEach(([x, y]) => ctx.lineTo(x, y)); ctx.closePath(); ctx.fill();
+  };
+  for (const cx of [W * 0.25, W * 0.75]) {
+    const u = W * 0.16, top = H * 0.2, bot = H * 0.78;
+    ctx.fillStyle = '#5cff3a'; ctx.shadowColor = '#3cff2a'; ctx.shadowBlur = W * 0.01;
+    const line = (x0, y0, x1, y1) => Array.from({ length: 9 }, (_, i) => [x0 + (x1 - x0) * i / 8, y0 + (y1 - y0) * i / 8]);
+    claw(line(cx - u, top, cx - u * 1.06, bot), W * 0.022);       // left leg
+    claw(line(cx - u * 0.92, top, cx, H * 0.6), W * 0.018);       // left diagonal
+    claw(line(cx + u * 0.92, top, cx, H * 0.6), W * 0.018);       // right diagonal
+    claw(line(cx + u, top, cx + u * 1.06, bot), W * 0.022);       // right leg
+    ctx.shadowBlur = 0;
+  }
+}
+
+/* Small label sign (COFFEE, ENERGY) */
 export function drawSign(ctx, W, H, text, bg, fg) {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = fg; ctx.font = `800 ${H * 0.55}px ${SANS}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
