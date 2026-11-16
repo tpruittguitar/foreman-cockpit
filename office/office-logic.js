@@ -80,7 +80,7 @@
     const out = [];
     for (const r of list) {
       if (!r || typeof r !== 'object' || !str(r.id).trim() || !str(r.title).trim()) continue;
-      const owner = str(r.owner).trim();
+      const owner = canonicalBot(r.owner);
       out.push({
         id: str(r.id).trim(), title: str(r.title).trim(), priority: normPriority(r.priority),
         status: str(r.status).trim().toLowerCase() || 'working', owner,
@@ -163,8 +163,9 @@
   function parseConversations(list, botNames) {
     if (!Array.isArray(list)) return [];
     const names = botNames ? new Set(botNames) : null;
-    return list.filter(c => c && str(c.from) && str(c.to) && time(c.at) != null && (!names || (names.has(str(c.from)) && names.has(str(c.to)))))
-      .map(c => ({ from: str(c.from), to: str(c.to), text: str(c.text).trim(), at: str(c.at) }));
+    return list.filter(c => c && str(c.from) && str(c.to) && time(c.at) != null)
+      .map(c => ({ from: canonicalBot(c.from), to: canonicalBot(c.to), text: str(c.text).trim(), at: str(c.at) }))
+      .filter(c => !names || (names.has(c.from) && names.has(c.to)));
   }
   function parseUsage(u) {
     const services = (u && Array.isArray(u.services) ? u.services : []).filter(s => s && str(s.name)).map(s => {

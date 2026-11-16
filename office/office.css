@@ -101,3 +101,10 @@ html.tv :focus-visible, html.tv .tvfocus { outline: 6px solid var(--focus) !impo
 html.tv #focusname { border-width: 6px; bottom: var(--safe); }
 html.tv .hint { bottom: calc(var(--safe) + 3.2em); }
 @media (prefers-reduced-motion: reduce) { .bubble { transition: none; } }
+
+/* Narrow / portrait phones in 3D: stack the HUD, keep the hint clear of the joystick */
+@media (max-width: 600px) {
+  #hud-tr { top: calc(var(--safe) + 4.6em); right: auto; left: var(--safe); flex-wrap: wrap; font-size: .9em; }
+  .hint { bottom: calc(var(--safe) + 150px); white-space: normal; text-align: center; max-width: 88vw; }
+  #banner { top: calc(var(--safe) + 7.6em); }
+}

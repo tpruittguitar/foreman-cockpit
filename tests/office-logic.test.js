@@ -253,3 +253,11 @@ test('avatars are keyed by bot_id; HR - Bot Trainer has a normal shape; Archive 
   assert.equal(A.shortTag('Archive \u00b7 Application State Tracker'), 'Archive');
   assert.equal(A.shortTag('Usage Budget'), 'Usage Budget');
 });
+
+test('older bot names in items and conversations map to the sidebar names', () => {
+  const p = L.parseStatus({ updated_at: ago(1), bots: [{ bot: 'Usage Ctrl', bot_id: 'f1a70b7a-6051-45d7-8031-e46a4cba066f' }, { bot: 'Claude', bot_id: 'd4118f0c-1b06-4e9a-982f-f5314451c841' }],
+    items: [{ id: 'u', title: 'Usage', owner: 'Usage Ctrl' }], conversations: [{ from: 'Usage Ctrl', to: 'Claude', text: 'hi', at: ago(1) }] });
+  assert.equal(p.bots[0].bot, 'Usage Budget');
+  assert.equal(p.items[0].owner, 'Usage Budget'); assert.equal(p.items[0].ownerKnown, true);
+  assert.deepEqual(p.conversations.map(c => c.from), ['Usage Budget']);
+});

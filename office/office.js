@@ -263,6 +263,9 @@ function buildWorld() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x121214);
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 60);
+  // keep a wide horizontal view in portrait (phones), 62deg vertical on landscape screens and TVs
+  const fitFov = () => { const asp = innerWidth / innerHeight; camera.fov = asp >= 1 ? 62 : Math.min(100, 2 * Math.atan(Math.tan(0.62) / asp) * 180 / Math.PI); camera.updateProjectionMatrix(); };
+  fitFov();
   camera.layers.enable(1); // layer 1: focus/hover rings, never hit by the pick ray
   camera.position.set(0.3, 1.75, 9.0); camera.lookAt(-0.6, 1.05, -4);
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
@@ -848,7 +851,7 @@ function buildWorld() {
     T.frames++;
   }
   const pages = () => Math.max(1, Math.ceil(L.buildBoard(items()).length / 2));
-  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setPixelRatio(fitRatio()); renderer.setSize(innerWidth, innerHeight); });
+  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; fitFov(); renderer.setPixelRatio(fitRatio()); renderer.setSize(innerWidth, innerHeight); });
   reducedMQ.addEventListener && reducedMQ.addEventListener('change', () => { boardDirty = true; });
   requestAnimationFrame(frame);
 
