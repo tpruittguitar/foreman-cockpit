@@ -209,13 +209,15 @@ export function drawBoard(ctx, W, H, o) {
   }
   const top = ty + th + 18 * s, colW = (W - 72 * s) / 4, headH = 48 * s, cardH = 92 * s, gap = 10 * s;
   const fit = Math.max(1, Math.floor((H - top - headH - 44 * s) / (cardH + gap)));
+  // Each column pages on its own cycle (L.columnPage); hits.pages = the longest cycle, so the caller knows to keep ticking.
   let pages = 1;
-  for (const c of o.cols) if (!c.collapsed) pages = Math.max(pages, Math.ceil(c.cards.length / fit));
-  const page = (o.page || 0) % pages;
   o.cols.forEach((c, ci) => {
     const cx = 36 * s + ci * colW, cw = colW - 18 * s;
+    const pg = c.collapsed ? { items: [], page: 0, pages: 1 } : L.columnPage(c.cards, fit, o.page || 0);
+    pages = Math.max(pages, pg.pages);
     ctx.fillStyle = c.id === 'needs_tim' ? C.alert : c.id === 'done' ? '#8b9099' : '#c6c9cf'; ctx.font = `800 ${30 * s}px ${SANS}`;
-    ctx.fillText((c.id === 'needs_tim' ? '⚠ ' : c.id === 'done' ? '✓ ' : '') + c.label + ' (' + c.total + ')', cx + 4 * s, top + 32 * s);
+    ctx.fillText(fitText(ctx, (c.id === 'needs_tim' ? '⚠ ' : c.id === 'done' ? '✓ ' : '') + c.label + ' (' + c.total + ')', cw - (pg.pages > 1 ? 80 * s : 0)), cx + 4 * s, top + 32 * s);
+    if (pg.pages > 1) { ctx.textAlign = 'right'; ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${20 * s}px ${SANS}`; ctx.fillText('p ' + (pg.page + 1) + '/' + pg.pages, cx + cw, top + 30 * s); ctx.textAlign = 'left'; }
     if (ci) { ctx.fillStyle = '#22262b'; ctx.fillRect(cx - 10 * s, top, 2 * s, H - top - 30 * s); }
     const y0 = top + headH;
     if (c.collapsed) {
@@ -223,7 +225,7 @@ export function drawBoard(ctx, W, H, o) {
       ctx.fillText(c.total ? c.total + ' done · tap to expand' : 'nothing done yet', cx + 16 * s, y0 + 44 * s);
       hits.push({ x: cx / W, y: y0 / H, w: cw / W, h: 70 * s / H, done: true }); return;
     }
-    const slice = c.cards.slice(page * fit, page * fit + fit);
+    const slice = pg.items;
     if (!c.total && c.id === 'needs_tim') { ctx.fillStyle = '#7fd9a0'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillText('Nothing needs Tim ✓', cx + 8 * s, y0 + 40 * s); }
     slice.forEach((it, k) => {
       const y = y0 + k * (cardH + gap), hl = o.highlight && o.highlight.has(it.id), glow = o.glow && o.glow.has(it.id), focus = o.focusId === it.id, nt = c.id === 'needs_tim';
@@ -241,10 +243,9 @@ export function drawBoard(ctx, W, H, o) {
       ctx.fillText(fitText(ctx, w.glyph + ' ' + w.word, cw * 0.55), cx + cw - 10 * s, y + 82 * s); ctx.textAlign = 'left';
       hits.push({ x: cx / W, y: y / H, w: cw / W, h: cardH / H, id: it.id });
     });
-    const rest = c.cards.length - (page * fit + slice.length) + c.more;
+    const rest = c.more; // cards beyond the cap; everything in c.cards is reachable by paging
     if (rest > 0) { const y = y0 + fit * (cardH + gap) + 18 * s; ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${22 * s}px ${SANS}`; ctx.fillText('+' + rest + ' more · open the board', cx + 8 * s, y); hits.push({ x: cx / W, y: (y - 22 * s) / H, w: cw / W, h: 30 * s / H, more: c.id }); }
   });
-  if (pages > 1) { ctx.textAlign = 'right'; ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${22 * s}px ${SANS}`; ctx.fillText('Page ' + (page + 1) + '/' + pages, W - 36 * s, H - 12 * s); ctx.textAlign = 'left'; }
   hits.pages = pages;
   return hits;
 }

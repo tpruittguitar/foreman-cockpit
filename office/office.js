@@ -1307,7 +1307,8 @@ function buildWorld() {
       focusTarget(s.target); glideTo(s.target.view, 1600); tour.until = now + s.dwellMs;
     }
     if (now - hoverTick > 90) { hoverTick = now; if (!TV || !hop) { const p = hoverAt && !down ? pick(...hoverAt) : null; if (!TV || p) setHover(p); } }
-    if (pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % pagesN; pageAt = clock; boardDirty = true; }
+    // free-running page tick: each board column takes tick mod its own page count (L.columnPage)
+    if (pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % 1e9; pageAt = clock; boardDirty = true; }
     if (boardDirty) drawBoards();
     if (now - deskTick > 120) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
     if (now - dayTick > 60000) { dayTick = now; applyDaylight(); }
