@@ -253,11 +253,13 @@
   const IDLE_PATTERN = ['chat', 'chat', 'sleep', 'game', 'wander', 'chat', 'chat', 'wander', 'sleep', 'game'];
   function hash(s) { let h = 2166136261; for (const ch of str(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
   function holdsCan(name) { return hash('can:' + name) % 3 !== 0; }
-  function planOffice(bots, meetings, now, state) {
+  // fresh (optional, item 16b): name -> freshness(); a stale non-alert bot stands puzzled at its desk instead of its status act
+  function planOffice(bots, meetings, now, state, fresh) {
     const plans = {}, list = bots || [];
     let meeting = null, training = null;
     if (state === 'failed') return { plans, meeting, training };
     for (const b of list) if (statusStyle(b.status).alert) plans[b.bot] = { act: 'wave' };
+    for (const b of list) if (!plans[b.bot] && fresh && fresh[b.bot] && fresh[b.bot].stale) plans[b.bot] = { act: 'stale' };
     let seat = 0;
     for (const m of meetings || []) {
       const seated = [];
@@ -798,6 +800,43 @@
     if (t % period >= 45) return null;
     return BREAK_ACTS[hash(name + ':b' + Math.floor(t / period)) % BREAK_ACTS.length];
   }
+  /* ---------- Item 16b: pose follows the freshest real signal ----------
+     A bot's "last seen" is the newest of: the row's last_action_at, its screen text, running routine, audit and work
+     card times (all on the OFFICE_STATUS row), plus extra times the page already reads (PR updated_at for the bot's
+     PR-linked cards, its Actions/automation runs, its mirrored terminal screen). Older than BOT_STALE_MIN, or no time
+     at all -> stale: never typing, whatever the status says. Times more than a minute in the future are ignored. */
+  const BOT_STALE_MIN = 120;
+  function ageText(min) { return min < 60 ? min + ' min ago' : min < 48 * 60 ? Math.floor(min / 60) + ' h ago' : Math.floor(min / 1440) + ' d ago'; }
+  function freshness(bot, now, extra) {
+    const b = bot || {};
+    const own = [b.last_action_at, b.screen && b.screen.updated_at, b.routine && b.routine.started_at, b.audit && b.audit.last_at]
+      .concat((b.work || []).map(w => w.at));
+    let lastSeen = null;
+    for (const v of own.concat(extra || [])) {
+      const t = typeof v === 'number' ? v : time(v);
+      if (t != null && t <= now + MIN && (lastSeen == null || t > lastSeen)) lastSeen = t;
+    }
+    const ageMin = lastSeen == null ? null : Math.max(0, Math.floor((now - lastSeen) / MIN));
+    const stale = ageMin == null || ageMin > BOT_STALE_MIN;
+    return { lastSeen, ageMin, stale, label: stale ? 'stale · last seen ' + (ageMin == null ? 'unknown' : ageText(ageMin)) : '' };
+  }
+  /* Extra signal times for one bot from data the page already holds: ctx = { items, prTimes (Map prKey -> ISO),
+     screens (parseScreensIndex), auto (parseAutomations) }. */
+  function botSignals(bot, ctx) {
+    const c = ctx || {}, out = [], name = str(bot && bot.bot), id = str(bot && bot.bot_id);
+    for (const i of c.items || []) if (i.owner === name && c.prTimes) { const t = c.prTimes.get(prKey(i.link)); if (t) out.push(t); }
+    const sc = id && c.screens && c.screens.screens && c.screens.screens[id];
+    if (sc && !sc.paused) out.push(sc.at);
+    for (const r of (c.auto && c.auto.rows) || []) if (r.ai === name) out.push(r.last_run_at, r.running ? r.started_at : '');
+    return out;
+  }
+  /* GitHub pulls list -> Map prKey -> updated_at (same key as prStates) */
+  function prTimes(owner, repo, list) {
+    const m = new Map();
+    for (const p of Array.isArray(list) ? list : []) if (p && p.number && time(p.updated_at) != null) m.set((owner + '/' + repo).toLowerCase() + '#' + p.number, str(p.updated_at));
+    return m;
+  }
+
   /* Idle with a recent last action: replay it for up to RECENT_REPLAY_MIN minutes. */
   function replayFor(bot, now) {
     if (!bot || bot.status !== 'idle' || !str(bot.last_action).trim()) return null;
@@ -982,7 +1021,7 @@
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
