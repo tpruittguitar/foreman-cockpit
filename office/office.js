@@ -996,13 +996,13 @@ function buildWorld() {
       c.tag.style.display = vis ? '' : 'none';
       const sx = (tmpV.x * 0.5 + 0.5) * w, sy = (-tmpV.y * 0.5 + 0.5) * h;
       if (vis) c.tag.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy}px)`;
-      const lines = convoLines.filter(l => l.from === c.name), amb = lines.length ? '' : rp ? '' : ambientText(c);
+      const lines = convoLines.filter(l => l.from === c.name).slice(-1), amb = lines.length ? '' : rp ? '' : ambientText(c);
       const bk = lines.length ? lines.map(l => l.at + l.text).join('|') : rp ? 'rp' + rp.text : amb;
       if (bk !== c.bubKey) {
         c.bubKey = bk;
-        c.bub.innerHTML = lines.length ? lines.map((l, k) => `<div class="bubble${l.text ? '' : ' who'}" style="opacity:${[0.45, 0.72, 1][3 - lines.length + k] || 1}">${esc(L.bubbleText(l))}</div>`).join('')
-          : rp ? `<div class="bubble recent"><span class="amb">recent · ${rp.min}m ago</span> ${esc(L.truncate(rp.text, 80))}</div>`
-          : amb ? `<div class="bubble ambient"><span class="amb">ambient</span> ${esc(amb)}</div>` : '';
+        c.bub.innerHTML = lines.length ? lines.map(l => `<div class="bubble${l.text ? '' : ' who'}">${esc(L.bubbleText(l))}</div>`).join('')
+          : rp ? `<div class="bubble recent"><span class="amb">recent · ${rp.min}m ago</span> ${esc(L.truncate(rp.text, 40))}</div>`
+          : amb ? `<div class="bubble ambient"><span class="amb">ambient</span> ${esc(L.truncate(amb, 40))}</div>` : '';
       }
       const show = lines.length || amb || rp;
       c.bub.hidden = !show || !vis;
