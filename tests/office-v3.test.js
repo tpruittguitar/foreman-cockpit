@@ -142,6 +142,18 @@ test('desk layout scales to N bots without overlaps; extra unknown bot gets a de
   assert.equal(L.deskLayout(fewer.length).length, names.length - 1);
 });
 
+test("Tim's desk rule: President and the whole back row sit where the v2 layout had them", () => {
+  const roster = ['President', 'Root', 'Software', 'GUI', 'QA bot', 'Sniffer', 'Comp', 'Archive · Application State Tracker', 'Claude', 'ChatGPT', 'Usage Budget', 'HR - Bot Trainer', 'Gauge', 'Edgar'];
+  for (const names of [roster, roster.slice().reverse(), roster.slice(0, 9)]) {
+    const d = L.deskLayout(names.length, names), at = n => { const p = d[names.indexOf(n)]; return [p.x, p.z]; };
+    assert.deepEqual(at('Claude'), [-7, -4]); assert.deepEqual(at('Software'), [-3.8, -4]);
+    assert.deepEqual(at('Comp'), [-0.6, -4]); assert.deepEqual(at('GUI'), [2.6, -4]);
+    assert.deepEqual(at('President'), [-3.8, -0.6]);
+    assert.equal(d.filter(p => p.z === -4).length, 4, 'back row holds only the four v2 back-row bots');
+    for (let i = 0; i < d.length; i++) for (let j = i + 1; j < d.length; j++) assert.ok(Math.abs(d[i].x - d[j].x) >= 3 || Math.abs(d[i].z - d[j].z) >= 3);
+  }
+});
+
 /* ---------- busy office + replay ---------- */
 test('idle schedule: changes every 2-3 min, staggered per bot, sleep+game <= 25%, moving acts favoured', () => {
   const names = ['Root', 'GUI', 'Comp', 'Sniffer', 'Claude', 'ChatGPT', 'Gauge', 'Edgar'];
