@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Office · Foreman Cockpit</title>
+<link rel="stylesheet" href="office/office.css">
+<script type="importmap">{"imports":{"three":"./office/vendor/three/three.module.min.js"}}</script>
+<script src="office/office-logic.js"></script>
+<script type="module" src="office/office.js"></script>
+</head>
+<body>
+<!-- Read-only 3D office: bots, the project board and the AI usage wall from control/OFFICE_STATUS.json.
+     ?demo=1 example data · ?tv=1 10-foot UI for screen mirroring · ?view=3d / ?view=flat force a view. -->
+<div id="stage" aria-hidden="true"></div>
+<div id="labels" aria-hidden="true"></div>
+<div id="crosshair" hidden></div>
+<div id="focusname" hidden></div>
+
+<header id="hud-tl" class="hud">
+  <span id="demo-badge" class="badge-example" hidden>EXAMPLE DATA</span>
+  <span id="asof" class="asof">Loading office data…</span>
+</header>
+<nav id="hud-tr" class="hud" aria-label="Office actions">
+  <button id="needs-btn" type="button" class="needs-btn" title="Jump to the desks that need you (Enter)">⚠ Needs you: <b id="needs-n">0</b></button>
+  <button id="list-btn" type="button" title="Needs Tim list with links">☰ List</button>
+  <button id="flat-btn" type="button" title="Flat board-and-list view" hidden>▤ Flat view</button>
+</nav>
+<div id="banner" role="alert" hidden></div>
+<div id="start" class="start" hidden>
+  <div class="start-card">
+    <h1>Bot office</h1>
+    <p id="start-hint">Click to walk in. <b>WASD</b> or arrow keys to move, mouse to look, click a desk, card or raised hand for details. <b>Esc</b> releases the mouse.</p>
+    <button id="start-btn" type="button">Walk in</button>
+  </div>
+</div>
+<div id="hint" class="hint" hidden></div>
+<div id="joystick" class="joystick" hidden><div class="knob"></div></div>
+
+<section id="flat" class="flat" hidden aria-label="Office board and list">
+  <div class="flat-head">
+    <h1>Bot office</h1>
+    <button id="walk3d" type="button">Walk in 3D</button>
+  </div>
+  <div id="flat-body"></div>
+</section>
+
+<div id="panel" class="panel" role="dialog" aria-modal="true" aria-labelledby="panel-title" hidden>
+  <div class="panel-card">
+    <button id="panel-close" class="panel-close" type="button" aria-label="Close (Back)">✕</button>
+    <div id="panel-body"></div>
+  </div>
+</div>
+</body>
+</html>
