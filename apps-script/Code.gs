@@ -2346,12 +2346,15 @@ function timFlexChoice_(ruling) {
   if (v === 'UNKNOWN') return '';
   return /^(HIGH_FLEX|SOFT_FLEX|NO_FLEX|STRICT)$/.test(v) ? v : null;
 }
-/* Lengths that refuse the write. DEGREE_TEXT keeps its raw-length intake check. EMPLOYER_PRIMARY_BUSINESS is measured after clean_ and is never clipped. */
-var FIELD_LENGTH_LIMITS = { DEGREE_TEXT: 12000, EMPLOYER_PRIMARY_BUSINESS: 80 };
+/* Lengths that refuse the write. DEGREE_TEXT keeps its raw-length intake check. EMPLOYER_PRIMARY_BUSINESS is measured after clean_ and is never clipped.
+   ROLE_TEXT (posting text the lanes already fetched, read by the keyword scorer) is clipped to its limit and never refuses. */
+var FIELD_LENGTH_LIMITS = { DEGREE_TEXT: 12000, EMPLOYER_PRIMARY_BUSINESS: 80, ROLE_TEXT: 4000 };
+var FIELD_CLIP_ONLY = ['ROLE_TEXT'];
 function fieldTooLongDetail_(raw, cleaned) {
   var keys = Object.keys(FIELD_LENGTH_LIMITS);
   for (var i = 0; i < keys.length; i++) {
     var k = keys[i], src = k === 'EMPLOYER_PRIMARY_BUSINESS' ? cleaned : raw;
+    if (FIELD_CLIP_ONLY.indexOf(k) >= 0) continue;
     if (src && String(src[k] || '').length > FIELD_LENGTH_LIMITS[k]) return k + '_TOO_LONG';
   }
   return '';
@@ -2378,8 +2381,8 @@ function applyFields_(fields, P, O, set, flexPolicy) {
     var v = fields[keys[i]]; if (v === undefined || v === null) continue;
     v = clean_(Array.isArray(v) ? v.join(',') : (typeof v === 'object' ? JSON.stringify(v) : v));
     var limit = FIELD_LENGTH_LIMITS[k];
-    if (limit != null && v.length > limit) return fieldTooLongFailure_(k);
-    if (k !== 'EMPLOYER_PRIMARY_BUSINESS') v = v.slice(0, k === 'DEGREE_TEXT' ? FIELD_LENGTH_LIMITS.DEGREE_TEXT : 1500);
+    if (limit != null && v.length > limit && FIELD_CLIP_ONLY.indexOf(k) < 0) return fieldTooLongFailure_(k);
+    if (k !== 'EMPLOYER_PRIMARY_BUSINESS') v = v.slice(0, limit != null ? limit : 1500);
     if (v === '') continue;
     if (['SOURCE_URL','INITIATING_URL','COMPANY_SOURCE_URL'].indexOf(k)>=0 && !/^https?:\/\/[^\s]+$/i.test(v)) return { ok: false, error: 'URL must be a usable http(s) initiating or company source link' };
     if ((k === 'FLEX' || k === 'FLEX_HINT') && !/^(YES|HIGH_FLEX|SOFT|SOFT_FLEX|NO|NO_FLEX|STRICT_NO|STRICT|UNKNOWN)$/i.test(v)) return { ok: false, error: k + ' must be YES, SOFT, NO, STRICT_NO, or UNKNOWN' };
@@ -2830,10 +2833,10 @@ function classifyNeverConsider(rec, R) {
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
 }
 /* ================= pure functions: intake planning ================= */
-var INTAKE_FACT_KEYS = ['PAY_POSTED', 'SALARY_BASE_POSTED', 'SALARY_BASE_EST', 'SALARY_BASIS', 'SALARY_CONF', 'SALARY_SOURCE', 'SALARY_ASOF', 'SALARY_NOTE', 'SALARY_BASE_LOW', 'SALARY_BASE_HIGH', 'SALARY_MIDPOINT', 'SALARY_SCORE_POINT', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID'];
+var INTAKE_FACT_KEYS = ['PAY_POSTED', 'SALARY_BASE_POSTED', 'SALARY_BASE_EST', 'SALARY_BASIS', 'SALARY_CONF', 'SALARY_SOURCE', 'SALARY_ASOF', 'SALARY_NOTE', 'SALARY_BASE_LOW', 'SALARY_BASE_HIGH', 'SALARY_MIDPOINT', 'SALARY_SCORE_POINT', 'DEGREE_TEXT', 'FLEX_HINT', 'FLEX_CLASS', 'FLEX_BASIS', 'REPORTING_LEVEL', 'EMPLOYER_DOMAIN_HINT', 'SCOUT_NOTES', 'POSTING_DATE', 'REMOTE_HYBRID', 'ROLE_TEXT'];
 function sanitizeRecord(rec) {
   var out = {}; if (!rec || typeof rec !== 'object') return null;
-  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'IDENTITY_SITE_SOURCE_URL', 'IDENTITY_SITE_VALUE', 'IDENTITY_SITE_EVIDENCE', 'IDENTITY_SITE_MODE', 'OPERATING_SCOPE', 'OPERATING_SCOPE_SOURCE_URL', 'OPERATING_SCOPE_EVIDENCE', 'IDENTITY_PRIOR_SCOPE_EVIDENCE', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) { var cleaned = clean_(rec[k]); out[k] = k === 'EMPLOYER_PRIMARY_BUSINESS' ? cleaned : cleaned.slice(0, k === 'DEGREE_TEXT' ? FIELD_LENGTH_LIMITS.DEGREE_TEXT : 400); } });
+  ['INTAKE_KEY', 'COMPANY', 'TITLE', 'LOCATION', 'REQ_ID', 'SOURCE', 'SOURCE_URL', 'INITIATING_URL', 'COMPANY_SOURCE_URL', 'SOURCE_PROVIDER', 'DISCOVERY_SOURCE', 'DISCOVERED_AT_ET', 'IDENTITY_CONFIDENCE', 'PROPOSED_BUCKET', 'EMPLOYER_ALIASES', 'EMPLOYER_RELATIONSHIP_EVIDENCE', 'EMPLOYER_RELATIONSHIP_URL', 'EMPLOYER_PRIMARY_BUSINESS', 'IDENTITY_SITE_SOURCE_URL', 'IDENTITY_SITE_VALUE', 'IDENTITY_SITE_EVIDENCE', 'IDENTITY_SITE_MODE', 'OPERATING_SCOPE', 'OPERATING_SCOPE_SOURCE_URL', 'OPERATING_SCOPE_EVIDENCE', 'IDENTITY_PRIOR_SCOPE_EVIDENCE', 'NEVER_CONSIDER_RULE_ID', 'NEVER_CONSIDER_REASON', 'EXCLUSION_CONFIDENCE', 'EXCLUSION_REASON'].concat(INTAKE_FACT_KEYS).forEach(function (k) { if (rec[k] !== undefined && rec[k] !== null) { var cleaned = clean_(rec[k]); out[k] = k === 'EMPLOYER_PRIMARY_BUSINESS' ? cleaned : cleaned.slice(0, FIELD_LENGTH_LIMITS[k] || 400); } });
   var unk = rec.INITIAL_UNKNOWN_FIELDS; out.INITIAL_UNKNOWN_FIELDS = Array.isArray(unk) ? unk.map(clean_).filter(Boolean).join(',') : clean_(unk || '');
   out.SOURCE_URL=PipelinePolicy.links(out).preferred;
   if (out.SOURCE_URL && !/^https?:\/\//i.test(out.SOURCE_URL)) out.SOURCE_URL = '';
