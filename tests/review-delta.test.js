@@ -3,7 +3,7 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const R = require('../pipeline-review.js'), Scoring = require('../pipeline-scoring.js');
 
 const row = over => ({ id: 'J1', COMPANY: 'Acme Robotics', TITLE: 'Director, Manufacturing Operations', LOCATION: 'Nashville, TN', BUCKET: 'READY_TO_PURSUE',
-  payload: Object.assign({ EXPERIENCE_FIT: '74', FLEX_CLASS: 'HIGH_FLEX', FLEX: 'HIGH', SALARY_BASE_EST: '$240000-$260000', SALARY_BASIS: 'POSTED_ROLE_RANGE' }, over || {}) });
+  payload: Object.assign({ SCOPE_FIT_RAW: '74', FLEX_CLASS: 'HIGH_FLEX', FLEX: 'HIGH', SALARY_BASE_EST: '$240000-$260000', SALARY_BASIS: 'POSTED_ROLE_RANGE' }, over || {}) });
 
 test('snapshot records what Tim saw: overall, part scores (-1 unknown), boost, model revision', () => {
   const sc = Scoring.scoreRow(row(), {});
@@ -16,7 +16,7 @@ test('snapshot records what Tim saw: overall, part scores (-1 unknown), boost, m
 
 test('delta: the overall change and its cause come from the two score objects (L-2)', () => {
   const before = Scoring.scoreRow(row(), {}), rec = R.snapshot(before, 26, 1000);
-  const after = Scoring.scoreRow(row({ EXPERIENCE_FIT: '94' }), {});
+  const after = Scoring.scoreRow(row({ SCOPE_FIT_RAW: '94' }), {});
   const d = R.delta(rec, after, 26);
   assert.equal(d.d, after.overall - before.overall); assert.ok(d.d > 0);
   assert.equal(d.causes[0].key, 'experience'); assert.equal(d.causes[0].from, Math.round(before.parts.experience.score)); assert.equal(d.causes[0].to, Math.round(after.parts.experience.score));

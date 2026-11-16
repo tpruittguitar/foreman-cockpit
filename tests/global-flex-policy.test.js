@@ -210,11 +210,17 @@ test('Writer surfaces CANONICAL_DEFAULTS when canonical rules are readable but s
   assert.match(r.flexPolicyWarning,/No structured FLEX policy keys found/);
 });
 
+test('approved FLEX helper reads NO_FLEX_MODIFIER from policy',()=>{
+  const html=require('node:fs').readFileSync('pipeline.html','utf8');
+  assert.match(html,/NO_FLEX: degree required without recorded equivalency\. Modifier '\+PipelineRules\.flexPolicy\(text\)\.NO_FLEX_MODIFIER\+'\./);
+  assert.doesNotMatch(html,/Modifier -10\./);
+});
+
 // ---- PR #33 hardening: prose sync against the live-shaped section, and provenance on every write path ----
 const LIVE_FLEX='TIM_PIPELINE_RULES_CANONICAL\nSECTION=DEGREE_FLEX\n'+
 '- HIGH_FLEX: reviewed requirements mention no degree, or explicitly accept a non-degree experience route. Modifier +15. Blank unresearched requirements remain UNKNOWN.\n'+
 '- SOFT_FLEX: degree listed and the same requirements block offers multiple degree-or-experience paths. Modifier +6.\n'+
-'- NO_FLEX: degree required without recorded equivalency. Modifier -10. Still pursue if adjusted fit is 80+ and pay/title rules clear.\n'+
+'- NO_FLEX: degree required without recorded equivalency. Modifier -60. Still pursue if adjusted fit is 80+ and pay/title rules clear.\n'+
 '- STRICT: explicit strict classification or confirmed single required degree path without equivalency. Modifier -10 for reporting; do not pursue unless Tim overrides. Do not automatically convert NO_FLEX to STRICT.\n'+
 '- Adjusted fit = clamp(raw scope fit + FLEX modifier, 0, 100). Report class, modifier, raw fit, adjusted fit, exact degree wording, and evidence. Apply pay and title rules afterward. Store unadjusted fit in SCOPE_FIT_RAW; do not apply the modifier twice.\n'+
 '- Compatibility: YES=HIGH_FLEX, SOFT=SOFT_FLEX, NO=NO_FLEX, STRICT_NO=STRICT. FLEX concerns degree eligibility, not remote/hybrid work.\n'+

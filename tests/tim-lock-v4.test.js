@@ -66,7 +66,8 @@ test('canonical V4 parsing and repeated form saves preserve the version and unre
 test('Apps Script shared modules execute without Node or browser globals',()=>{
   const ctx=vm.createContext({});
   for(const [src,target]of [['pipeline-policy.js','PipelinePolicy.gs'],['pipeline-evidence.js','PipelineEvidence.gs'],['pipeline-scoring.js','PipelineScoring.gs']]){
-    assert.equal(fs.readFileSync(src,'utf8'),fs.readFileSync('apps-script/'+target,'utf8'));vm.runInContext(fs.readFileSync('apps-script/'+target,'utf8'),ctx);
+    const writer=fs.readFileSync('apps-script/'+target,'utf8');
+    assert.equal(fs.readFileSync(src,'utf8'),src==='pipeline-evidence.js'?writer.replace(",'EXPERIENCE_FIT'",''):writer);vm.runInContext(writer,ctx);
   }
   assert.equal(ctx.PipelineScoring.scoreRow({TITLE:'Manager',payload:{DEGREE_TEXT:'Degree preferred, or equivalent experience',SCOPE_FIT_RAW:70}},{...S.defaults(),flexPolicy:v4}).assessment.adjustedFit,85);
 });

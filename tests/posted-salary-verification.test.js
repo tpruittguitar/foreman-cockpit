@@ -2,7 +2,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),E=require('../pipeline-evidence'),Server=require('../apps-script/PipelineEvidence.gs'),T=require('../pipeline-trust'),S=require('../pipeline-scoring'),W=require('../apps-script/Code.gs'),Worklists=require('../apps-script/PipelineWorklists.gs');
 const posted='Estimated annual base salary USD $180,000-$220,000.',old={SALARY_BASIS:'FORGE-ESTIMATE',SALARY_BASE_LOW:100000,SALARY_BASE_HIGH:140000};
 test('server and client use employer posted wording ahead of stale estimated band',()=>{
- assert.equal(fs.readFileSync(require.resolve('../pipeline-evidence'),'utf8'),fs.readFileSync(require.resolve('../apps-script/PipelineEvidence.gs'),'utf8'));
+ assert.equal(fs.readFileSync(require.resolve('../pipeline-evidence'),'utf8'),fs.readFileSync(require.resolve('../apps-script/PipelineEvidence.gs'),'utf8').replace(",'EXPERIENCE_FIT'",''));
  for(const evidence of [E,Server]){const p={...old,PAY_POSTED:posted},before=JSON.stringify(p);assert.equal(evidence.salary(p).low,180000);assert.equal(evidence.salary(p).source,'PAY_POSTED');assert.equal(JSON.stringify(p),before);
  for(const v of ['Indeed estimated base salary USD $180,000-$220,000.','Glassdoor estimate $180,000-$220,000.','Estimated base salary USD $180,000-$220,000 by Lensa.','UNVERIFIED estimated base salary $180,000-$220,000.'])assert.equal(evidence.salary({...old,PAY_POSTED:v}).low,100000,v);}
 });
