@@ -731,10 +731,32 @@
   }
 
   /* ---------- Floor: desk layout for N bots (item 13), standing slots and separation (item 22) ---------- */
-  const DESK_SPACING = { x: 3.2, z: 3.4 }, DESK_FIRST_Z = -4.2, DESK_CENTER_X = -2.2;
-  function deskLayout(n) {
-    const cols = n <= 12 ? 4 : n <= 15 ? 5 : 6, out = [];
-    for (let i = 0; i < n; i++) { const c = i % cols, r = Math.floor(i / cols); out.push({ x: +(DESK_CENTER_X + (c - (cols - 1) / 2) * DESK_SPACING.x).toFixed(2), z: +(DESK_FIRST_Z + r * DESK_SPACING.z).toFixed(2), row: r, col: c }); }
+  /* Tim (Nov 16, 9:07 AM): President's desk and the whole back row stay where the earlier (v2) layout had them.
+     The v2 grid is 4 columns at DESK_X by 3 rows at DESK_Z (back row first). Pinned names keep their v2 spot; everyone
+     else fills the free v2 spots in roster order, then overflow spots (right side first, then a front row). */
+  const DESK_X = [-7, -3.8, -0.6, 2.6], DESK_Z = [-4, -0.6, 2.8];
+  const DESK_PINS = { Claude: [0, 0], Software: [1, 0], Comp: [2, 0], GUI: [3, 0], President: [1, 1] }; // [col, row] in the v2 grid
+  const DESK_OVERFLOW = [[5.8, -0.6], [5.8, 2.8], [5.8, 6.2], [2.6, 6.2], [-0.6, 6.2], [-3.8, 6.2]];
+  function deskLayout(n, names) {
+    const grid = [];
+    DESK_Z.forEach((z, r) => DESK_X.forEach((x, c) => grid.push({ x, z, row: r, col: c })));
+    const spots = grid.concat(DESK_OVERFLOW.map(([x, z], k) => ({ x, z, row: DESK_Z.length + Math.floor(k / 3), col: DESK_X.length + k })));
+    for (let k = 0; spots.length < n; k++) spots.push({ x: DESK_X[k % 4], z: +(DESK_Z[2] + 3.4 * (2 + Math.floor(k / 4))).toFixed(2), row: 5 + Math.floor(k / 4), col: k % 4 });
+    const key = (p) => p.x + ',' + p.z, used = new Set(), out = new Array(n);
+    const nm = names || [];
+    for (let i = 0; i < n; i++) {
+      const pin = DESK_PINS[nm[i]];
+      if (!pin) continue;
+      const p = grid[pin[1] * DESK_X.length + pin[0]];
+      if (used.has(key(p))) continue; // a duplicate name falls back to a free spot
+      out[i] = Object.assign({}, p); used.add(key(p));
+    }
+    let s = 0;
+    for (let i = 0; i < n; i++) {
+      if (out[i]) continue;
+      while (used.has(key(spots[s]))) s++;
+      out[i] = Object.assign({}, spots[s]); used.add(key(spots[s])); s++;
+    }
     return out;
   }
   const MIN_SEP = 0.8;          // metres between any two standing / walking bots

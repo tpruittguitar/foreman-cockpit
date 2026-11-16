@@ -765,7 +765,7 @@ function buildWorld() {
     const names = bots().map(b => b.bot), k = names.join('|');
     if (k === rosterKey) return false; rosterKey = k;
     for (const d of desks.splice(0)) disposeDesk(d);
-    const lay = L.deskLayout(names.length);
+    const lay = L.deskLayout(names.length, names);
     names.forEach((n, i) => desks.push(makeDesk(n, lay[i].x, lay[i].z)));
     for (const [n, c] of chars) if (!names.includes(n)) { scene.remove(c.root); c.tag.remove(); c.bub.remove(); book.release(n); chars.delete(n); }
     for (const c of chars.values()) { c.goalKey = ''; const d = deskOf(c.name); if (d) { c.pos.set(d.seat.x, d.seat.z); c.root.position.set(d.seat.x, 0, d.seat.z); c.path = []; } }
