@@ -1,6 +1,7 @@
 'use strict';
 // Simplify plan PR 1 (Tim 2026-10-20 19:39-19:43 ET): Act Now list and the decision rule.
 const test = require('node:test'), assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const A = require('../pipeline-act-now.js');
 const day = n => new Date(Date.parse('2026-10-20T12:00:00Z') - n * 864e5);
 const row = (id, o) => Object.assign({ id, PRIMARY_ID: id, COMPANY: 'Acme', TITLE: 'Director of Quality', LOCATION: 'Austin, TX', BUCKET: 'READY_TO_PURSUE', payload: {}, compMid: 200000, dateAdded: day(1) }, o || {});
@@ -66,5 +67,21 @@ test('REV-131: a ruling the outbox is still resending counts as pending (decided
   assert.equal(A.saveState({ writeStatus: 'WRITE_FAILED', error: 'row is protected', outbox: { auto: false } }), 'NOT_SAVED');
   const r = row('A'), ru = { kind: 'DECLINE', ts: '2026-10-20T12:00:00Z', writeStatus: 'RESULT_UNKNOWN', outbox: { auto: true }, requestId: 'PX-1' };
   assert.equal(A.rule(r, ru, 80).hidden, true);
+});
+
+test('a SUPERSEDED ruling is ignored and the row follows the master bucket', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../pipeline.html'), 'utf8');
+  const src = html.match(/function ruling\(r\)\{[^}]*\}/);
+  assert.ok(src, 'ruling() is in pipeline.html');
+  const box = { S: { rulings: { A: { kind: 'DECLINE', ts: '2026-10-15T03:47:41Z', writeStatus: 'SUPERSEDED', error: 'Superseded: master APPLIED kept', actor: 'TIM' } } } };
+  vm.createContext(box); vm.runInContext(src[0], box);
+  const r = row('A', { BUCKET: 'APPLIED', payload: { APP_DATE: '2026-10-20' } });
+  assert.equal(box.ruling(r), null);
+  const d = A.decision(r, box.ruling(r));
+  assert.equal(d.kind, 'APPLIED'); assert.equal(d.master, true); assert.equal(d.state, 'SAVED');
+  const rule = A.rule(r, box.ruling(r), 80);
+  assert.equal(rule.decided, true); assert.equal(rule.hidden, true); assert.equal(rule.back, undefined);
+  const m = A.pick([r], ctx({ A: 80 }, {}, { ruling: box.ruling }));
+  assert.deepEqual(m.items.map(x => x.r.id), []); assert.equal(m.counts.decided, 1);
 });
 
