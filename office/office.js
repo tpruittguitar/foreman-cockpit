@@ -1136,7 +1136,7 @@ function buildWorld() {
     c.quest.visible = false; // "?" is gone: only a real needs_tim item shows anything (the warning triangle + arm wave)
     c.updateFace(dt, clock, reduced);
     if (needs) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
-    const dk = deskOf(c.name), perch = ['sit', 'type', 'game', 'deskSleep'].includes(pose) && !!dk && Math.hypot(c.pos.x - dk.seat.x, c.pos.y - dk.seat.z) < 0.1;
+    const perch = ['sit', 'type', 'game', 'deskSleep'].includes(pose) && !!dk && Math.hypot(c.pos.x - dk.seat.x, c.pos.y - dk.seat.z) < 0.1;
     animate(c, pose, clock, dt, { perch, chair: goal.key === 'lead' && pose === 'talk', reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null });
     c.rig.position.x = pose === 'nap' ? 0.5 : 0;
   }
@@ -1452,6 +1452,7 @@ function buildWorld() {
       keys.add(a); return;
     }
     if (e.key === 'Enter' && document.activeElement === document.body) { $('needs-btn').click(); return; }
+    if (e.code === 'Space' && !e.repeat) jumpReq = true;
     keys.add(e.code);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
   });
@@ -1469,7 +1470,16 @@ function buildWorld() {
       }
     }
   }
+  let jumpReq = false, jumpState = { y: 0, vy: 0, air: false };
+  function doJump(dt, settle) {
+    const want = jumpReq && !TV; jumpReq = false;
+    if (!jumpState.air && !want && !settle) return;
+    if (want) { glide = null; tour = null; }
+    jumpState = L.jumpStep({ y: camera.position.y, vy: jumpState.vy, air: jumpState.air }, dt, want, L.EYE_HEIGHT);
+    camera.position.y = jumpState.y;
+  }
   function move(dt) {
+    doJump(dt, false);
     const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     let f = 0, s = 0;
@@ -1487,12 +1497,12 @@ function buildWorld() {
     if (vel.lengthSq() < 1e-5) return;
     glide = null; tour = null;
     const p = camera.position.clone().addScaledVector(vel, dt); collide(p); camera.position.x = p.x; camera.position.z = p.z;
-    camera.position.y += (L.EYE_HEIGHT - camera.position.y) * Math.min(1, dt * 8); // walking settles back to eye height after a desk hop
+    if (!jumpState.air) doJump(dt, true); // walking settles back to eye height after a desk hop
   }
   function showHint() {
     const h = $('hint'); h.hidden = false;
     h.textContent = TV ? (hop ? '◀ ▶ desks and boards · ▲ ▼ rows · OK opens · Back closes · H free walk' : '▲ ▼ walk · ◀ ▶ turn · OK opens · H hop mode')
-      : touch ? 'Joystick to walk · drag to look · tap a bot, screen or card' : 'Click a bot, screen or card · hold and drag to look · WASD to walk';
+      : touch ? 'Joystick to walk · drag to look · tap a bot, screen or card' : 'Click a bot, screen or card · hold and drag to look · WASD to walk · Space to jump';
   }
   showHint();
   if (TV) setTimeout(() => hopTo({ row: 0, col: 1 }), 300);

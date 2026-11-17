@@ -844,6 +844,23 @@
   const MIN_SEP = 0.8;          // metres between any two standing / walking bots
   /* Walk camera: floor level, eye height = 1.3 x the President's head height (hip 0.52 + head centre 0.63 + face offset, chars.js makePresident). */
   const PRESIDENT_HEAD_Y = 1.16, EYE_HEIGHT = +(PRESIDENT_HEAD_Y * 1.3).toFixed(3); // Tim: eye height raised ~30% (was exactly the head height, 1.07)
+  /* Desktop Space-to-jump: a ballistic arc from the floor (eye) height. jumpStep is pure; state = {y, vy, air}. */
+  const JUMP_V = 3.2, GRAVITY = 9.8, SETTLE_RATE = 8;
+  function jumpStep(state, dt, wantJump, floorY) {
+    const fl = floorY == null ? EYE_HEIGHT : floorY;
+    let { y, vy, air } = state || { y: fl, vy: 0, air: false };
+    if (y == null) y = fl;
+    if (!air && wantJump) { air = true; vy = JUMP_V; }
+    if (air) {
+      const ny = y + vy * dt - 0.5 * GRAVITY * dt * dt;
+      vy -= GRAVITY * dt; y = ny;
+      if (vy < 0 && y <= fl) { y = fl; vy = 0; air = false; }
+    } else {
+      vy = 0; y += (fl - y) * Math.min(1, dt * SETTLE_RATE);
+      if (Math.abs(y - fl) < 1e-3) y = fl;
+    }
+    return { y, vy, air };
+  }
   const CLEARANCE = 0.35;      // extra stand-off from desks, props, board and lounge furniture so faces stay visible
   /* Standing slots in front of the board: two staggered rows, >= MIN_SEP apart, sized to n. */
   function boardSlots(n, cx, z, width) {
@@ -1700,7 +1717,7 @@
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
-    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
+    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
