@@ -169,3 +169,21 @@ test('blinking: random 2-6.5 s apart, each blink ~0.16 s, seedable, all within 0
   assert.equal(L.blinkAmount(b, 0.5, rng), 0);
   assert.ok(L.blinkAmount(b, 1 + L.BLINK_DUR / 2, rng) > 0.95, 'mid-blink the eyes are shut');
 });
+
+/* ---------- fridge always stays stocked ---------- */
+test('fridge: stock never reaches 0, floors at 60%, restock triggers at 70%', () => {
+  assert.equal(L.FRIDGE_MIN, L.FRIDGE_CAP * 0.6); assert.equal(L.FRIDGE_LOW, L.FRIDGE_CAP * 0.7);
+  let s = L.FRIDGE_CAP, min = s;
+  for (let i = 0; i < 500; i++) { s = L.fridgeTake(s); min = Math.min(min, s); }
+  assert.equal(s, L.FRIDGE_MIN); assert.ok(min > 0);
+  assert.equal(L.fridgeTake(0), L.FRIDGE_MIN, 'even a bad/empty value is lifted to the floor');
+  assert.equal(L.fridgeLow(14, 20), true); assert.equal(L.fridgeLow(15, 20), false);
+});
+test('fridge: refills gradually by itself when no idle bot can restock', () => {
+  let s = L.FRIDGE_MIN, steps = 0;
+  assert.equal(L.pickRestocker([], s, null), null, 'no idle bot');
+  while (L.fridgeLow(s) && steps < 100) { const n = L.fridgeAutoRefill(s, false); assert.ok(n - s <= 1, 'one can at a time'); s = n; steps++; }
+  assert.ok(s > L.FRIDGE_LOW && steps > 1, 'back above the restock mark');
+  assert.equal(L.fridgeAutoRefill(L.FRIDGE_MIN, true), L.FRIDGE_MIN, 'a restocker on the way does the refill, not the timer');
+  assert.equal(L.fridgeAutoRefill(L.FRIDGE_CAP, false), L.FRIDGE_CAP);
+});
