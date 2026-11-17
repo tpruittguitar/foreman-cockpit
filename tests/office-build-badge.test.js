@@ -20,3 +20,14 @@ test('PR number parsed from commit subject', () => {
   assert.equal(prFromSubject('Fix issue #12 in parser'), null);
   assert.equal(prFromSubject(''), null);
 });
+
+test('wall plate shows PR, ET release time, short SHA and version details', () => {
+  const info = { commit: 'c1c7628aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', commitShort: 'c1c7628', pr: 321, builtAt: '2026-11-17T03:05:00Z', release: 'main', branch: 'main', deployId: 'abcdef123456', app: 'Pipeline Explorer' };
+  assert.deepEqual(L.buildPlate(info), { title: 'PR #321', when: 'Nov 16, 10:05 PM ET', sha: 'c1c7628', detail: 'main · deploy abcdef12 · Pipeline Explorer' });
+});
+test('wall plate matches the corner badge data and falls back when unknown', () => {
+  const info = { commit: 'abcdef1234567', builtAt: '2026-07-04T16:00:00Z' };
+  const p = L.buildPlate(info);
+  assert.equal(L.buildBadge(info), p.title + ' · ' + p.sha + ' · ' + p.when);
+  assert.equal(L.buildPlate(null).title, 'BUILD UNKNOWN');
+});

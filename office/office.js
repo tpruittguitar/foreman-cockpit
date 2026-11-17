@@ -46,7 +46,9 @@ const S = {
   glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null
 };
 // Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
+let buildInfo, onBuildInfo = null; // buildInfo === undefined until the fetch settles; the wall plate repaints from it
 fetch('build-info.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(info => {
+  buildInfo = info; if (onBuildInfo) onBuildInfo();
   const line = L.buildBadge(info), el = document.getElementById('build-badge');
   if (el) el.textContent = line;
   console.info(line);
@@ -592,6 +594,21 @@ function buildWorld() {
     const holo = new THREE.MeshBasicMaterial({ map: sg.t, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
     add(new THREE.PlaneGeometry(2.6, 0.82), holo, 10.1, 3.5, -RD / 2 + 0.25);
     add(box(2.8, 0.02, 0.2), MAT.cyan, 10.1, 3.02, -RD / 2 + 0.2);
+    // release plate on the wall directly under the sign and its shelf: PR, release time (ET), short SHA, version details (build-info.json)
+    {
+      const pl = canvasTex(1024, 288), g = pl.ctx;
+      const paint = () => {
+        const d = L.buildPlate(buildInfo);
+        g.clearRect(0, 0, 1024, 288); g.fillStyle = 'rgba(8,16,22,0.78)'; g.fillRect(8, 8, 1008, 272);
+        g.strokeStyle = '#5ff0ff'; g.lineWidth = 6; g.shadowColor = '#37e0ff'; g.shadowBlur = 16; g.strokeRect(14, 14, 996, 260);
+        g.fillStyle = '#7ff4ff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.font = "800 92px 'Inter PE', system-ui, sans-serif"; g.fillText(d.title + (d.sha ? '  ·  ' + d.sha : ''), 512, 80);
+        g.shadowBlur = 8; g.font = "700 64px 'Inter PE', system-ui, sans-serif"; g.fillText(d.when, 512, 160);
+        g.font = "600 44px 'Inter PE', system-ui, sans-serif"; g.fillStyle = '#b4eef7'; g.fillText(d.detail, 512, 230, 960); pl.t.needsUpdate = true;
+      };
+      onBuildInfo = paint; if (buildInfo !== undefined) paint();
+      add(new THREE.PlaneGeometry(2.7, 0.76), new THREE.MeshBasicMaterial({ map: pl.t, transparent: true, depthWrite: false, toneMapped: false }), 10.1, 2.52, -RD / 2 + 0.2);
+    }
     const art = (cx, cz, rot, seed) => {
       const a = canvasTex(256, 320), g = a.ctx, gr = g.createLinearGradient(0, 0, 256, 320);
       gr.addColorStop(0, '#1b2128'); gr.addColorStop(1, '#2c3440'); g.fillStyle = gr; g.fillRect(0, 0, 256, 320);
