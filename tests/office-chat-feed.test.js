@@ -19,14 +19,14 @@ function quietConsole(fn) {
 }
 
 test('404 status maps to "not published", other failures to "unavailable"', () => {
-  assert.deepEqual(L.chatFeedFromResponse(404, ''), { chat: null, err: L.CHAT_NOT_PUBLISHED, published: false });
+  assert.deepEqual(L.chatFeedFromResponse(404, ''), { chat: [], err: '', published: false });
   assert.equal(L.chatFeedFromResponse(500, '').err, L.CHAT_UNAVAILABLE);
   const ok = L.chatFeedFromResponse(200, FEED); assert.equal(ok.err, ''); assert.equal(ok.chat.length, 1);
 });
 test('not listed in control/: no raw fetch (no network 404), "not published", no console output, slower re-check', async () => {
   const h = harness({ dir: res(200, JSON.stringify([{ name: 'OFFICE_STATUS.json' }])), raw: res(404) });
   const { v, said } = await quietConsole(() => h.src.get(NOW));
-  assert.deepEqual(v, { chat: null, err: 'Chat not published yet', published: false });
+  assert.deepEqual(v, { chat: [], err: '', published: false });
   assert.deepEqual(said, []);
   assert.deepEqual(h.calls, [DIR]);
   await h.src.get(NOW + MIN); // normal 60 s poll: backed off, no request
@@ -37,7 +37,7 @@ test('not listed in control/: no raw fetch (no network 404), "not published", no
 test('raw 404 (gate closed, raw fallback) -> "not published", quiet, backs off', async () => {
   const h = harness({ raw: res(404) }, false);
   const { v, said } = await quietConsole(() => h.src.get(NOW));
-  assert.equal(v.err, L.CHAT_NOT_PUBLISHED); assert.equal(v.chat, null); assert.deepEqual(said, []);
+  assert.equal(v.err, ''); assert.deepEqual(v.chat, []); assert.deepEqual(said, []);
   await h.src.get(NOW + 2 * MIN); assert.equal(h.calls.length, 1);
 });
 test('once listed, feed is read at the normal rate; a later 404 returns to "not published"', async () => {
@@ -47,7 +47,12 @@ test('once listed, feed is read at the normal rate; a later 404 returns to "not 
   assert.equal(v.err, ''); assert.equal(v.chat[0].text, 'EXAMPLE hello'); assert.deepEqual(h.calls, [DIR, RAW + '?t=' + Math.floor(NOW / MIN)]);
   v = await h.src.get(NOW + MIN); assert.equal(h.calls.length, 3); assert.ok(h.calls[2].startsWith(RAW)); // no second directory check
   raw = res(404);
-  v = await h.src.get(NOW + 2 * MIN); assert.equal(v.err, L.CHAT_NOT_PUBLISHED); assert.equal(v.chat, null);
+  v = await h.src.get(NOW + 2 * MIN); assert.equal(v.err, ''); assert.deepEqual(v.chat, []);
+});
+test('403 on the directory listing keeps the raw-file fallback (unchanged behaviour)', async () => {
+  const h = harness({ dir: res(403), raw: res(200, FEED) });
+  const v = await h.src.get(NOW);
+  assert.equal(v.chat.length, 1); assert.equal(h.calls.length, 2);
 });
 test('network error / 500 -> "unavailable", retried at the normal rate, never throws', async () => {
   const h = harness({ dir: () => { throw new TypeError('offline'); }, raw: res(500) });

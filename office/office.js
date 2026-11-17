@@ -426,7 +426,7 @@ function openScreen(name) {
   let body = '';
   const mirror = sc.show === 'image' ? `<figure class="mirror"><img alt="${esc(b.bot)}'s screen" crossorigin="anonymous" src="${esc(SCREENS_BASE + encodeURIComponent(id) + '.jpg?t=' + Math.floor(now / 60000))}"><figcaption>${esc(sc.why)}</figcaption></figure>` : '';
   if (mode === 'president') {
-    const chat = S.chat && S.chat.length ? '<div class="pchat">' + S.chat.map(m => `<div class="msg ${m.from === 'Tim' ? 'me' : 'bot'}"><b>${esc(m.from)}</b> <span class="meta">${L.etClock(Date.parse(m.at))} ET</span><div></div></div>`).join('') + '</div>' : `<p class="fallback">${esc(S.chatErr || 'Chat not published yet')}</p>`;
+    const chat = S.chat && S.chat.length ? '<div class="pchat">' + S.chat.map(m => `<div class="msg ${m.from === 'Tim' ? 'me' : 'bot'}"><b>${esc(m.from)}</b> <span class="meta">${L.etClock(Date.parse(m.at))} ET</span><div></div></div>`).join('') + '</div>' : `<p class="fallback">${esc(S.chatErr || 'No chat messages yet')}</p>`;
     body = `<div class="split"><section><h3>Tim ↔ President</h3>${chat}</section><section><h3>Screen</h3>${mirror || `<p class="fallback">${esc(sc.why)}</p>` + checksheetHTML()}</section></div>`;
   } else if (mode === 'mirror') body = mirror;
   else if (mode === 'usage') body = `<p class="fallback">${esc(sc.why)} · showing the usage chart</p>` + usageListHTML();
@@ -509,7 +509,7 @@ function buildWorld() {
   const fitFov = () => { const asp = innerWidth / innerHeight; camera.fov = asp >= 1 ? 62 : Math.min(100, 2 * Math.atan(Math.tan(0.62) / asp) * 180 / Math.PI); camera.updateProjectionMatrix(); };
   fitFov();
   camera.layers.enable(1);
-  camera.position.set(0.3, 1.75, 9.0); camera.lookAt(-0.6, 1.05, -4);
+  camera.position.set(0.3, L.EYE_HEIGHT, 9.0); camera.lookAt(-0.6, L.EYE_HEIGHT - 0.1, -4); // walk camera: floor level, eye = President's head height
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
   const CL = L.CLEARANCE;
 
@@ -678,7 +678,10 @@ function buildWorld() {
   block(9.4, 7.3, 0.65, 0.38);
   bonsai(9.3, 0.44, 7.3, 1.1);
   // exercise bike
-  const bike = new THREE.Group(); bike.position.set(9.2, 0, 1.3); // Tim item 1: well clear of the desks (was 7.4, 3.3 beside Edgar's desk) bike.rotation.y = -Math.PI / 2; scene.add(bike);
+  // Tim (bike_location_1829.png): open floor between the pool table and the waterfall wall, in front of the lounge chair.
+  // (A trailing "//" comment used to swallow rotation + scene.add on this line, so the bike was never added to the scene.)
+  const bike = new THREE.Group(); bike.position.set(9.4, 0, 2.7);
+  bike.rotation.y = -Math.PI / 2; scene.add(bike);
   add(box(0.25, 0.05, 1.0), MAT.dark, 0, 0.03, 0, bike); const fw = add(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 24), MAT.metal, 0, 0.3, 0.35, bike); fw.rotation.z = Math.PI / 2;
   add(box(0.05, 0.62, 0.05), MAT.metal, 0, 0.36, -0.15, bike).rotation.x = -0.25; add(box(0.2, 0.05, 0.28), MAT.dark, 0, 0.68, -0.22, bike);
   add(box(0.05, 0.7, 0.05), MAT.metal, 0, 0.6, 0.38, bike).rotation.x = 0.2; add(box(0.42, 0.04, 0.04), MAT.metal, 0, 0.95, 0.45, bike); add(box(0.43, 0.012, 0.012), MAT.cyan, 0, 0.98, 0.45, bike);
@@ -1371,6 +1374,7 @@ function buildWorld() {
     if (vel.lengthSq() < 1e-5) return;
     glide = null; tour = null;
     const p = camera.position.clone().addScaledVector(vel, dt); collide(p); camera.position.x = p.x; camera.position.z = p.z;
+    camera.position.y += (L.EYE_HEIGHT - camera.position.y) * Math.min(1, dt * 8); // walking settles back to eye height after a desk hop
   }
   function showHint() {
     const h = $('hint'); h.hidden = false;

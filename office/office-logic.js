@@ -780,7 +780,9 @@
     return out;
   }
   const MIN_SEP = 0.8;          // metres between any two standing / walking bots
-  const CLEARANCE = 0.35;       // extra stand-off from desks, props, board and lounge furniture so faces stay visible
+  /* Walk camera: floor level, eye height = the President's head height (body 0.36 + head 0.69 + face offset, chars.js makePresident). */
+  const PRESIDENT_HEAD_Y = 1.07, EYE_HEIGHT = PRESIDENT_HEAD_Y;
+  const CLEARANCE = 0.35;      // extra stand-off from desks, props, board and lounge furniture so faces stay visible
   /* Standing slots in front of the board: two staggered rows, >= MIN_SEP apart, sized to n. */
   function boardSlots(n, cx, z, width) {
     const w = width || 8, per = Math.max(1, Math.floor(w / MIN_SEP) + 1), out = [];
@@ -977,21 +979,21 @@
     return out.sort((a, b) => time(a.at) - time(b.at)).slice(-CHAT_MAX);
   }
   /* control/PRESIDENT_CHAT_FEED.jsonl may not be published yet. A 404 is the normal "not published" state, not an error:
-     never log it, show CHAT_NOT_PUBLISHED, and back off to CHAT_PROBE_MS. While not (yet) known to exist, check the
+     never log it, treat it as an empty feed (chat [], err ''), and back off to CHAT_PROBE_MS. While not (yet) known to exist, check the
      control/ directory listing through the contents API (one 200 response, so the browser prints no network 404) and only
      read the raw file once the name is listed. If the API budget is spent (gate closed), fall back to the raw URL at the
      slow rate. Once found it is read every call (the caller's normal poll rate). Never throws, never logs.
      opt: { fetch, gate, dirUrl, rawUrl, name } */
   const CHAT_PROBE_MS = 5 * MIN, CHAT_NOT_PUBLISHED = 'Chat not published yet', CHAT_UNAVAILABLE = 'Chat feed unavailable';
   function chatFeedFromResponse(status, text) {
-    if (status === 404) return { chat: null, err: CHAT_NOT_PUBLISHED, published: false };
+    if (status === 404) return { chat: [], err: '', published: false }; // missing feed = empty feed, not an error
     if (!(status >= 200 && status < 300)) return { chat: null, err: CHAT_UNAVAILABLE, published: null };
     return { chat: parseChatFeed(text), err: '', published: true };
   }
   function createChatFeed(opt) {
-    const st = { published: null, nextAt: 0, chat: null, err: CHAT_NOT_PUBLISHED };
+    const st = { published: null, nextAt: 0, chat: [], err: '' };
     const view = () => ({ chat: st.chat, err: st.err, published: st.published });
-    const notYet = now => { st.published = false; st.chat = null; st.err = CHAT_NOT_PUBLISHED; st.nextAt = now + CHAT_PROBE_MS; return view(); };
+    const notYet = now => { st.published = false; st.chat = []; st.err = ''; st.nextAt = now + CHAT_PROBE_MS; return view(); };
     async function get(now) {
       if (now < st.nextAt) return view();
       const f = opt.fetch, gate = opt.gate;
@@ -1228,7 +1230,7 @@
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
-    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
+    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,

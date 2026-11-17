@@ -207,7 +207,7 @@ function shirtTexture() {
   });
 }
 function makePresident(hi) {
-  const seg = hi ? 64 : 32;
+  const seg = hi ? 96 : 48; // higher poly: smooth round head, hair locks and eyes
   const skin = new THREE.MeshStandardMaterial({ color: 0xf3c29c, roughness: 0.62 });
   const shirt = new THREE.MeshStandardMaterial({ color: 0x1b1b1e, roughness: 0.72 });
   const pants = new THREE.MeshStandardMaterial({ color: 0x2c2d31, roughness: 0.75 });
@@ -240,13 +240,13 @@ function makePresident(hi) {
   const armR = arm(-1), armL = arm(1); body.add(armR, armL);
   // big round smooth head
   const head = new THREE.Group(); head.position.y = 0.69; body.add(head);
-  const skull = new THREE.Mesh(geo('pHead3', () => new THREE.SphereGeometry(0.25, seg, Math.round(seg * 0.75))), skin); skull.scale.set(1.06, 0.98, 0.96); head.add(skull);
+  const skull = new THREE.Mesh(geo('pHead3', () => new THREE.SphereGeometry(0.25, seg, Math.round(seg * 0.75))), skin); skull.scale.set(1.04, 1.0, 1.0); head.add(skull); // rounder head
   for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar', () => new THREE.SphereGeometry(0.05, 24, 16)), skin); ear.scale.set(0.55, 1, 0.8); ear.position.set(sx * 0.262, -0.02, -0.01); head.add(ear); }
   // Tim item 6 (ref: president_head_ref_1116.png): bigger chibi head, higher polygon count (64x48 skull, bendable 14x8 hair strands),
   // messy black hair with a swept, curled fringe over the forehead and lighter grey tips, tall slanted oval eyes, wide blush, no mouth.
-  const hair2 = mat('hair2', () => new THREE.MeshStandardMaterial({ color: 0x3a3836, roughness: 0.55 }));
-  const strandG = (len, w, bend) => geo('strand' + len + ':' + w + ':' + bend, () => { const g = new THREE.ConeGeometry(w, len, 14, 8); g.translate(0, len / 2, 0); const p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) { const u = p.getY(i) / len; p.setX(i, p.getX(i) + bend * u * u); p.setZ(i, p.getZ(i) * 0.6); } g.computeVertexNormals(); return g; });
+  const hair2 = mat('hair2', () => new THREE.MeshStandardMaterial({ color: 0x1a1918, roughness: 0.45 }));
+  const strandG = (len, w, bend) => geo('strand' + len + ':' + w + ':' + bend, () => { const g = new THREE.SphereGeometry(1, 28, 20); g.scale(w * 0.95, len / 2, w * 0.7); g.translate(0, len / 2, 0); const p = g.attributes.position; // smooth tapered lock (no sharp spikes)
+    for (let i = 0; i < p.count; i++) { const u = p.getY(i) / len; p.setX(i, p.getX(i) + bend * 1.6 * u * u); } g.computeVertexNormals(); return g; });
   head.scale.setScalar(1.1);
   const cap = new THREE.Mesh(geo('pHair3', () => new THREE.SphereGeometry(0.262, seg, 32, 0, Math.PI * 2, 0, Math.PI * 0.52)), hair); cap.scale.set(1.07, 1.02, 1.0); cap.rotation.x = 0.28; cap.position.set(0, 0.08, -0.03); head.add(cap);
   const back = new THREE.Mesh(geo('pHairB3', () => new THREE.SphereGeometry(0.26, seg, 24, Math.PI, Math.PI, Math.PI * 0.3, Math.PI * 0.42)), hair); back.rotation.x = 0.2; back.scale.set(1.08, 1, 1.02); head.add(back);
@@ -262,10 +262,10 @@ function makePresident(hi) {
   fringe.forEach(([x, y, z, rx, rz, len, w, bend, lt]) => { const sp = new THREE.Mesh(strandG(len, w, bend), lt ? hair2 : hair); sp.position.set(x, y, z); sp.rotation.set(rx, 0, rz); head.add(sp); });
   // face: tall slanted oval eyes (closer together than the bots'), big pink blush, no mouth
   const face = makeFace(0.238, 0.95, false, true, -0.2); face.position.y = -0.02; head.add(face);
-  face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1; e.position.x = sx * 0.1; e.position.y = 0.04; e.scale.x = 0.037 * 0.95 * 1.1; e.userData.sy = 0.072 * 0.95 * 0.95; e.scale.y = e.userData.sy; face.userData.shines[i].position.set(sx * 0.1 + 0.011, 0.066, 0.024); });
+  face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1; e.position.x = sx * 0.1; e.position.y = 0.035; e.scale.x = 0.052; e.userData.sy = 0.092; /* big oval eyes */ e.scale.y = e.userData.sy; face.userData.shines[i].position.set(sx * 0.1 + 0.014, 0.075, 0.03); });
   face.userData.brows.forEach((b, i) => (b.position.x = (i ? 1 : -1) * 0.1));
   const blushM = mat('blush3', () => new THREE.MeshStandardMaterial({ color: 0xe9a58d, roughness: 0.9, transparent: true, opacity: 0.8 }));
-  for (const sx of [-1, 1]) { const b = new THREE.Mesh(geo('blush3', () => new THREE.SphereGeometry(0.035, 20, 12)), blushM); b.scale.set(1.7, 0.85, 0.25); b.rotation.z = sx * 0.12; b.position.set(sx * 0.14, -0.1, 0.216); head.add(b); }
+  for (const sx of [-1, 1]) { const b = new THREE.Mesh(geo('blush3', () => new THREE.SphereGeometry(0.035, 24, 16)), blushM); b.scale.set(1.9, 1.0, 0.25); b.rotation.z = sx * 0.12; b.position.set(sx * 0.14, -0.1, 0.216); head.add(b); }
   return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.36, sitLift: 0.1, kind: 'president', head });
 }
 
