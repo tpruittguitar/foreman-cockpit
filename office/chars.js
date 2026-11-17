@@ -160,25 +160,83 @@ function limb(radius, len, m, key) {
   mesh.position.y = -(len / 2 + radius) * 0.85; pivot.add(mesh); pivot.userData.len = len + radius * 2; return pivot;
 }
 
+
+/* Studio "puffy" body: ONE smooth inflated skin per bot (no extrusion, no slab faces, no stacked lobes).
+   The avatar silhouette is the equator (radius r(theta)); each latitude ring shrinks it like a sphere, so the front and back are
+   domes and the sides are round. Front-to-back thickness = THICK x the width of the face view (studio samples are ~1:1, never more). */
+export const BOT_THICK = 0.9;
+function radialProfile(pts, n) {
+  const r = new Float32Array(n);
+  for (let k = 0; k < n; k++) {
+    const t = k / n * Math.PI * 2, dx = Math.cos(t), dy = Math.sin(t); let best = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i], q = pts[(i + 1) % pts.length], ex = q[0] - p[0], ey = q[1] - p[1], den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const uu = (dx * p[1] - dy * p[0]) / (dy * ex - dx * ey), t2 = (p[0] + uu * ex) * dx + (p[1] + uu * ey) * dy;
+      if (uu >= 0 && uu <= 1 && t2 > best) best = t2;
+    }
+    r[k] = best || 0.3;
+  }
+  for (let pass = 0; pass < 6; pass++) { const c = r.slice(); for (let k = 0; k < n; k++) r[k] = (c[(k + n - 1) % n] + 2 * c[k] + c[(k + 1) % n]) / 4; } // round tips and valleys
+  return r;
+}
+/* Claude's starburst, built in the studio language: a smooth-union SDF of a round core and exactly 6 round-capped rays (valleys fused into the
+   core by the smooth-min), meshed by marching along rays from the centre (the shape is star-shaped, so each ray hits the skin once). */
+function starSDF(rot) {
+  const CORE = 0.23, R0 = 0.175, R1 = 0.115, LEN = 0.335, K = 0.07, ZS = 1.35, tips = [];
+  for (let i = 0; i < 6; i++) { const t = Math.PI / 2 + rot + i * Math.PI / 3; tips.push([Math.cos(t) * LEN, Math.sin(t) * LEN]); }
+  const smin = (p, q) => { const h = Math.max(K - Math.abs(p - q), 0) / K; return Math.min(p, q) - h * h * K * 0.25; };
+  return (x, y, z0) => {
+    const z = z0 / ZS; // puffier front-to-back so the thickness matches the width of the face view
+    let d = Math.hypot(x, y, z) - CORE;
+    for (const [tx, ty] of tips) {
+      const l2 = tx * tx + ty * ty, u = Math.max(0, Math.min(1, (x * tx + y * ty) / l2)), dx = x - tx * u, dy = y - ty * u;
+      d = smin(d, Math.hypot(dx, dy, z) - (R0 + (R1 - R0) * u));
+    }
+    return d;
+  };
+}
+function puffBody(a, hi) {
+  const NT = hi ? 160 : 96, NP = hi ? 64 : 40, star = a.shape === 'starburst';
+  let ringAt, W, D, hbar, zFront;
+  if (star) {
+    const f = starSDF(a.rot || 0);
+    ringAt = (ph, t) => { const dx = Math.sin(ph) * Math.cos(t), dy = Math.sin(ph) * Math.sin(t), dz = Math.cos(ph); let lo = 0.02, hi2 = 1.2;
+      for (let n = 0; n < 28; n++) { const m = (lo + hi2) / 2; if (f(dx * m, dy * m, dz * m) < 0) lo = m; else hi2 = m; } return [dx * lo, dy * lo, dz * lo]; };
+    zFront = (x, y) => { let lo = 0, hi2 = 1; for (let n = 0; n < 28; n++) { const m = (lo + hi2) / 2; if (f(x, y, m) < 0) lo = m; else hi2 = m; } return lo; };
+    hbar = 0;
+  } else {
+    const pts = shapePoints(a), prof = radialProfile(pts, NT);
+    let wmax = 0, wmin = 0; for (let k = 0; k < NT; k++) { const x = Math.cos(k / NT * Math.PI * 2) * prof[k]; wmax = Math.max(wmax, x); wmin = Math.min(wmin, x); }
+    D = (wmax - wmin) * BOT_THICK / 2;
+    ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.sin(ph); return [Math.cos(t) * r, Math.sin(t) * r, Math.cos(ph) * D]; };
+    zFront = (x, y) => { const rho = Math.hypot(x, y), th = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2), f = th / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, R = prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f));
+      return Math.sqrt(Math.max(0, 1 - Math.min(1, rho / R) ** 2)) * D; };
+  }
+  const pos = [], idx = [], P0 = ringAt(1e-4, 0), P1 = ringAt(Math.PI - 1e-4, 0);
+  pos.push(0, 0, P0[2]);
+  for (let j = 1; j < NP; j++) for (let k = 0; k < NT; k++) pos.push(...ringAt(j / NP * Math.PI, k / NT * Math.PI * 2));
+  pos.push(0, 0, P1[2]);
+  const ring = j => 1 + (j - 1) * NT, last = pos.length / 3 - 1;
+  for (let k = 0; k < NT; k++) { const k2 = (k + 1) % NT; idx.push(0, ring(1) + k, ring(1) + k2); idx.push(last, ring(NP - 1) + k2, ring(NP - 1) + k); }
+  for (let j = 1; j < NP - 1; j++) for (let k = 0; k < NT; k++) {
+    const k2 = (k + 1) % NT, A = ring(j) + k, B = ring(j) + k2, C = ring(j + 1) + k, E = ring(j + 1) + k2;
+    idx.push(A, C, B, B, C, E);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  g.computeBoundingBox(); const b0 = g.boundingBox, ox = (b0.max.x + b0.min.x) / 2, oy = (b0.max.y + b0.min.y) / 2, SC = star ? 0.82 : 0.95;
+  g.translate(-ox, -oy, 0); g.scale(SC, SC, SC); g.computeVertexNormals(); g.computeBoundingBox();
+  g.userData.zAt = (x, y) => zFront(x / SC + ox, y / SC + oy) * SC; // front surface height at body-local (x, y)
+  clayColors(g, a.color, (b0.max.x - b0.min.x) / 2 * SC, (b0.max.y - b0.min.y) / 2 * SC);
+  return g;
+}
+
 /* ---------- jelly bot ---------- */
 export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident(hiQuality);
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const bodyG = geo(key, () => {
-    const pts = shapePoints(a).map(([x, y]) => new THREE.Vector2(x, y));
-    // Tim item 7: rounded 3D bodies, not flat front and back. Thin slab + deep round bevel, then the faces are pushed out
-    // into a pillow dome (strongest at the centre, none at the rim) so the front and back are curved too.
-    const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: 0.06, bevelEnabled: true, bevelThickness: 0.2, bevelSize: 0.09, bevelSegments: hiQuality ? 10 : 6, curveSegments: 14 });
-    g.center(); g.computeBoundingBox();
-    const hb = g.boundingBox, hx = (hb.max.x - hb.min.x) / 2, hy = (hb.max.y - hb.min.y) / 2, pos = g.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const nx = pos.getX(i) / hx, ny = pos.getY(i) / hy, r2 = Math.min(1, nx * nx * 0.5 + ny * ny * 0.5 + Math.abs(nx * ny) * 0.0), dome = 0.16 * Math.pow(1 - r2, 0.8);
-      pos.setZ(i, pos.getZ(i) + Math.sign(pos.getZ(i)) * dome);
-    }
-    g.scale(0.85, 0.85, 0.85); g.computeBoundingBox(); g.computeVertexNormals();
-    clayColors(g, a.color, hx * 0.85, hy * 0.85); return g;
-  });
+  const bodyG = geo(key, () => puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
   const bodyM = clayMat(hiQuality), limbM = jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
@@ -186,10 +244,11 @@ export function makeBot(name, hiQuality, botId, override) {
   const legLen = 0.16;
   body.position.y = legLen + halfH - 0.02;
   const mesh = new THREE.Mesh(bodyG, bodyM); body.add(mesh);
-  const face = makeFace(bb.max.z - 0.012, 1.0, false, true, 0); face.position.y = 0.02; body.add(face);
+  const face = makeFace(bb.max.z - 0.012, 1.0, false, true, 0);
+  face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte oval eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   { const eyeM = mat('eyeClay', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 1, metalness: 0 }));
-    face.userData.eyes.forEach((e, i) => { e.material = eyeM; e.position.set((i ? 1 : -1) * 0.1, -0.02, 0); e.scale.set(0.05, 0.1, 0.03); e.userData.sy = 0.1; face.userData.shines[i].scale.set(0, 0, 0); });
+    face.userData.eyes.forEach((e, i) => { e.material = eyeM; const ex = (i ? 1 : -1) * 0.1, ey = -0.02 + 0.02; e.position.set(ex, -0.02, Math.min(0, bodyG.userData.zAt(ex, ey) - bb.max.z) + 0.004); e.scale.set(0.05, 0.1, 0.03); e.userData.sy = 0.1; face.userData.shines[i].scale.set(0, 0, 0); });
     face.rotation.z = a.rot || 0; }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
