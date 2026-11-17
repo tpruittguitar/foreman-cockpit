@@ -370,7 +370,7 @@ function makePresident(hi) {
     return [x, y, z];
   };
   const headShape = (g, grow) => { const p = g.attributes.position, v = new THREE.Vector3(); for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).normalize(); const [x, y, z] = deform(v.x, v.y, v.z, grow); p.setXYZ(i, x, y, z); } g.computeVertexNormals(); return g; };
-  const head = new THREE.Group(); head.position.y = 0.615; head.scale.setScalar(0.94); body.add(head);
+  const head = new THREE.Group(); head.position.y = 0.615; head.scale.setScalar(0.86); body.add(head);
   head.add(new THREE.Mesh(geo('pHead6', () => headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75)), 0)), skin));
   for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar4', () => new THREE.SphereGeometry(0.052, 28, 18)), skin); ear.scale.set(0.5, 1.2, 0.95); ear.position.set(sx * (HA - 0.004), -0.03, -0.015); ear.rotation.z = sx * 0.1; head.add(ear); }
   // hair: smooth glossy near-black. One smooth cap, then rounded teardrop locks laid over it (fringe, sides, layered back)
@@ -378,12 +378,12 @@ function makePresident(hi) {
   const hairLine = (x, z) => { const u = Math.cos(Math.atan2(x, z)); return u > 0 ? 0.07 + 0.075 * Math.pow(u, 1.3) : 0.07 + 0.2 * u; };
   const capG = grow => { const g = headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.6), 0, Math.PI * 2, 0, Math.PI * 0.62), grow), p = g.attributes.position;
     for (let i = 0; i < p.count; i++) { const lo = hairLine(p.getX(i), p.getZ(i)); if (p.getY(i) < lo) p.setY(i, lo); } g.computeVertexNormals(); return g; };
-  head.add(new THREE.Mesh(geo('pCap4', () => capG(0.03)), hairM[0]));
+  head.add(new THREE.Mesh(geo('pCap4', () => capG(0.04)), hairM[0]));
   // lock: rounded teardrop, root at the origin, tip at -y, slightly bent over the head and optionally curled sideways
   const clump = (len, w, th, bend, curl) => geo('clump4' + [len, w, th, bend, curl].map(v => v.toFixed(3)).join(':'), () => {
     const g = new THREE.SphereGeometry(1, 28, 20), p = g.attributes.position;
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), t = (y + 1) / 2, d = (1 - t) * len;
-      p.setXYZ(i, x * w * (0.45 + 0.55 * Math.pow(t, 0.7)) + curl * d * d, -(1 - t) * len + 0.0 - (y < 0 ? 0 : 0) , z * th * (0.5 + 0.5 * t) - bend * d * d); }
+      const k = 0.08 + 0.92 * Math.pow(t, 0.75); p.setXYZ(i, x * w * k + curl * d * d, -(1 - t) * len, z * th * (0.4 + 0.6 * t) - bend * d * d); }
     g.computeVertexNormals(); return g; });
   const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), Yup = new THREE.Vector3(0, 1, 0), MAT = new THREE.Matrix4();
   const lock = (azd, eld, len, w, ang, layer, o = {}) => {
@@ -407,13 +407,17 @@ function makePresident(hi) {
       const el = eld * Math.PI / 180, [px, py, pz] = deform(Math.sin(azd * Math.PI / 180) * Math.cos(el), Math.sin(el), Math.cos(azd * Math.PI / 180) * Math.cos(el), 0), hl = hairLine(px, pz);
       if (py < hl - 0.02) continue;
       const len = Math.min(0.24 + rnd() * 0.04, Math.max(0.07, py - hl + 0.06)), w = eld > 70 ? 0.12 : (aa < 110 ? 0.15 : 0.17) + rnd() * 0.015;
-      lock(azd + (rnd() - 0.5) * 8, eld + (rnd() - 0.5) * 3, len, w, (rnd() - 0.5) * 0.3 - azd / 700, 1 + (ri + k) % 3, { lift: 0.02 - ri * 0.002, th: 0.04, bend: 1.4 });
+      lock(azd + (rnd() - 0.5) * 8, eld + (rnd() - 0.5) * 3, len, w, (rnd() - 0.5) * 0.3 - azd / 700, 1 + (ri + k) % 3, { lift: 0.045 - ri * 0.004, th: 0.05, bend: 1.4 });
     }
   });
   // fringe: a few large rounded locks combed forward and to the side over the forehead (his right = +x side sweeps more)
   [[52, 40, 0.2, 0.12, -0.8, 1, 0.0], [20, 48, 0.28, 0.13, -0.6, 2, 0.8], [-12, 50, 0.27, 0.13, -0.2, 1, 0.3], [-44, 46, 0.22, 0.12, 0.3, 2, -0.6],
     [32, 64, 0.26, 0.15, -0.5, 3, 0.4], [-20, 66, 0.25, 0.15, 0.0, 3, 0.0]]
     .forEach(([azd, eld, len, w, ang, l, curl]) => lock(azd, eld, len, w, ang, l, { bend: 1.0, lift: 0.024, th: 0.04, curl: curl * 0.5 }));
+  // crown volume: a ring of pointed tufts standing up and swept back and to his left, plus a tall centre crest
+  [[0, 78, 0.22, 0.17, 3.0, 2], [50, 70, 0.24, 0.18, 2.8, 3], [-40, 70, 0.24, 0.18, 3.3, 1], [100, 66, 0.22, 0.18, 3.5, 2], [-100, 66, 0.22, 0.18, 2.9, 3], [150, 62, 0.22, 0.18, 3.2, 1], [-150, 62, 0.22, 0.18, 3.0, 2], [180, 74, 0.24, 0.18, 3.14, 3],
+    [20, 60, 0.2, 0.16, 2.7, 1], [80, 52, 0.19, 0.16, 3.9, 3], [-80, 52, 0.19, 0.16, 2.4, 2], [125, 48, 0.19, 0.16, 3.4, 1], [-125, 48, 0.19, 0.16, 2.9, 3]]
+    .forEach(([azd, eld, len, w, ang, l]) => lock(azd, eld, len, w, ang, l, { bend: -0.2, lift: 0.035, th: 0.05 }));
   // face: small MATTE vertical black oval eyes, mid-face and fairly close; faint blush; no mouth, no nose
   const eyeX = 0.1, eyeY = -0.04;
   const frontPt = (x, y) => { // surface z at head-local (x, y)
