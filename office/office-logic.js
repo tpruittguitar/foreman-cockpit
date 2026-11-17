@@ -1253,9 +1253,13 @@
   /* Items 10 / 11: idle activity rotation. A shuffled "bag" so every activity comes round before one repeats; never the
      same activity twice in a row; 60-150 s each (randomized); restock only when the fridge is not full, forced when low. */
   const IDLE_ACTIVITIES = ['couch_sleep', 'desk_nap', 'hr_training', 'video_game', 'exercise_bike', 'group_chat', 'restock_fridge', 'pool'];
-  const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 6;
+  const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 14, FRIDGE_MIN = 12, FRIDGE_REFILL_S = 20; // low = 70% (call a restocker), floor = 60% (never shown lower)
   function createIdleState() { return { act: null, until: 0, bag: [], last: null }; }
   function fridgeLow(stock, cap) { return stock <= FRIDGE_LOW * ((cap || FRIDGE_CAP) / FRIDGE_CAP); }
+  /* The fridge stays stocked: a can taken (or drained) never goes below the 60% floor, and with no restocker on the way it
+     tops itself up one can at a time (every FRIDGE_REFILL_S) until it is back above the low mark. */
+  function fridgeTake(stock) { return Math.max(FRIDGE_MIN, stock - 1); }
+  function fridgeAutoRefill(stock, restockerActive) { return !restockerActive && fridgeLow(stock) && stock < FRIDGE_CAP ? stock + 1 : stock; }
   function idleTick(state, rng, nowSec, ctx) {
     const c = ctx || {}, restock = c.restock || 'ok'; // 'force' | 'ok' | 'no'
     if (restock === 'force' && state.act !== 'restock_fridge') { state.act = 'restock_fridge'; state.last = state.act; state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S); return state.act; }
@@ -1366,7 +1370,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, createIdleState, fridgeLow, idleTick,
+    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
   };

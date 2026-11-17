@@ -754,7 +754,7 @@ function buildWorld() {
   add(box(0.06, 0.16, 0.8), [MAT.dark, screenMat(fs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark], -0.37, 2.1, 0, fridge);
   block(11.3, -8.4, 0.42, 0.45);
   // energy cans: two InstancedMeshes (one per lookalike style), stock / desk cans alternate deterministically per slot
-  const fridgeCans = []; const fridgeRng = L.makeRng(SEED ^ 0x51ed); let fridgeStock = 9 + Math.floor(fridgeRng() * 8), fridgeDrain = 0, lastDeskCans = []; // item 10: simulated stock (no real inventory data)
+  const fridgeCans = []; const fridgeRng = L.makeRng(SEED ^ 0x51ed); let fridgeStock = L.FRIDGE_CAP, fridgeDrain = 0, fridgeRefill = 0, lastDeskCans = []; // item 10: simulated stock (no real inventory data)
   for (const y of shelfY) for (let k = 0; k < 5; k++) fridgeCans.push([11.3 - 0.1 + (k % 2) * 0.12, y + 0.0625, -8.4 - 0.3 + k * 0.15]);
   const canSets = [0, 1].map(st => { const m = new THREE.InstancedMesh(canGeometry(), canMaterials(st), 64); m.count = 0; scene.add(m); return m; });
   function layoutCans(deskCans) {
@@ -765,6 +765,7 @@ function buildWorld() {
     deskCans.forEach(([x, z, seed]) => put(canStyle(seed), new THREE.Vector3(x, 0.8325, z), seed.length * 1.7));
     canSets.forEach(s => (s.instanceMatrix.needsUpdate = true));
   }
+  layoutCans([]); // stocked from the first frame, even before any desk data arrives
 
   /* ---------- meeting room: back-left corner, conference table, chairs and the "New skills" whiteboard ---------- */
   const deskGeo = { top: box(1.6, 0.05, 0.8), leg: box(0.05, 0.72, 0.05), kb: box(0.46, 0.025, 0.15), mouse: new THREE.CapsuleGeometry(0.022, 0.03, 3, 8),
@@ -1034,7 +1035,7 @@ function buildWorld() {
     c.goalNow = goal;
     // item 10: restock = the box goes into the fridge (stock back to full); a refresh at the fridge uses one can
     if (goal.pose === 'restock' && c.arrived && !c.restocked && clock - c.arrivedAt > 1.8) { fridgeStock = L.FRIDGE_CAP; layoutCans(lastDeskCans); c.restocked = true; c.restockedAt = clock; S.restocker = null; }
-    if (goal.pose === 'fridge' && c.arrived && clock - c.arrivedAt > 1.4 && c.tookKey !== c.goalKey) { c.tookKey = c.goalKey; fridgeStock = Math.max(0, fridgeStock - 1); layoutCans(lastDeskCans); }
+    if (goal.pose === 'fridge' && c.arrived && clock - c.arrivedAt > 1.4 && c.tookKey !== c.goalKey) { c.tookKey = c.goalKey; fridgeStock = L.fridgeTake(fridgeStock); layoutCans(lastDeskCans); }
     c.setExpression(pose === 'nap' || pose === 'deskSleep' ? 'sleepy' : needs ? 'worried' : pose === 'stand' || pose === 'stretch' ? 'neutral' : 'happy'); // eased + blinking in c.updateFace
     c.warn.visible = needs;
     c.quest.visible = false; // "?" is gone: only a real needs_tim item shows anything (the warning triangle + arm wave)
@@ -1406,7 +1407,8 @@ function buildWorld() {
     walkingNow = [...chars.values()].filter(c => c.path.length).length;
     // item 13: the cue ball is hit and rolls while someone is playing; item 10: simulated drinks get used up slowly
     poolNow = L.poolShot(clock); const playing = [...chars.values()].some(c => c.pose === 'pool' && c.arrived), pb = playing ? poolNow.ball : L.POOL.start; cueBall.position.set(pb.x, 0.865, pb.z);
-    fridgeDrain += dt; if (fridgeDrain > 150) { fridgeDrain = 0; if (fridgeStock > 0) { fridgeStock--; layoutCans(lastDeskCans); } }
+    fridgeDrain += dt; if (fridgeDrain > 150) { fridgeDrain = 0; const n = L.fridgeTake(fridgeStock); if (n !== fridgeStock) { fridgeStock = n; layoutCans(lastDeskCans); } }
+    fridgeRefill += dt; if (fridgeRefill > L.FRIDGE_REFILL_S) { fridgeRefill = 0; const n = L.fridgeAutoRefill(fridgeStock, !!S.restocker); if (n !== fridgeStock) { fridgeStock = n; layoutCans(lastDeskCans); } } // no idle bot to restock: it refills itself, never empty
     for (const c of chars.values()) updateChar(c, dt);
     separateChars();
     updateLabels();
