@@ -1,0 +1,40 @@
+<!doctype html><meta charset="utf-8"><title>Stand-on-chair harness</title>
+<!-- Proof view: ?bots=Name,Name,Name&poses=type,game,deskSleep&az=20&el=12&hr=1. Desk + chair stand-ins sized like office.js; bots stand ON the chair seat. -->
+<style>html,body{margin:0;background:#34363a}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"../office/vendor/three/three.module.min.js"}}</script>
+<script src="../office/office-logic.js"></script>
+<script type="module">
+import * as THREE from 'three';
+import { makeBot, animate } from '../office/chars.js';
+const q = new URLSearchParams(location.search);
+const W = +q.get('w') || 1100, H = +q.get('h') || 620;
+const az = (+q.get('az') || 25) * Math.PI / 180, el = (+q.get('el') || 12) * Math.PI / 180, zoom = +q.get('zoom') || 1;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(W, H); r.setPixelRatio(1);
+r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x3c3f44);
+scene.add(new THREE.HemisphereLight(0xdfe6f0, 0x4a4540, 1.1));
+const key = new THREE.DirectionalLight(0xfff2e6, 2.1); key.position.set(2, 3.5, 4); scene.add(key);
+const fill = new THREE.DirectionalLight(0xaec4ff, 0.7); fill.position.set(-3, 1.5, 2); scene.add(fill);
+const gm = new THREE.MeshStandardMaterial({ color: 0x59606d, roughness: 0.6 }), cm = new THREE.MeshStandardMaterial({ color: 0x2a2d32, roughness: 0.6 }), fl = new THREE.MeshStandardMaterial({ color: 0x70757d, roughness: 0.9 });
+const bx = (w, h, d, x, y, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m || gm); o.position.set(x, y, z); scene.add(o); return o; };
+bx(14, 0.02, 6, 0, -0.01, 0, fl);
+const names = (q.get('bots') || 'Edgar,Gauge,Sage').split(','), poses = (q.get('poses') || 'type,game,deskSleep').split(',');
+const chars = [];
+names.forEach((n, i) => {
+  const x = (i - (names.length - 1) / 2) * 2.0;
+  bx(1.6, 0.05, 0.8, x, 0.745, 0); bx(0.46, 0.4, 0.04, x, 0.98, -0.2); bx(0.05, 0.22, 0.05, x, 0.86, -0.2);
+  bx(0.5, 0.07, 0.48, x, 0.46, 0.85, cm); bx(0.48, 0.5, 0.06, x, 0.78, 1.09, cm); bx(0.06, 0.38, 0.06, x, 0.24, 0.85);
+  const c = makeBot(n, true); c.root.position.set(x, 0, 0.72); c.root.rotation.y = Math.PI; scene.add(c.root); chars.push([c, poses[i % poses.length]]);
+});
+if (q.get('hr')) { // trainer on the training-room chair, facing the table
+  const x = names.length ? (names.length) * 1.0 + 1.2 : 0, c = makeBot('HR', true);
+  bx(0.5, 0.07, 0.48, x, 0.46, 0.13 + 1.6, cm); bx(0.48, 0.5, 0.06, x, 0.78, 0.37 + 1.6, cm); bx(0.06, 0.38, 0.06, x, 0.24, 1.73);
+  c.root.position.set(x, 0, 1.6); c.root.rotation.y = Math.PI; scene.add(c.root); chars.push([c, 'lead']);
+}
+for (const [c, p] of chars) { for (let i = 0; i < 60; i++) animate(c, p === 'lead' ? 'talk' : p, 0, 0.1, { reduced: true, perch: p !== 'lead', chair: p === 'lead' }); c.updateFace(0.1, 0); }
+const cam = new THREE.PerspectiveCamera(30, W / H, 0.1, 50);
+const d = 7.5 / zoom, ty = +q.get('ty') || 0.7;
+cam.position.set(Math.sin(az) * Math.cos(el) * d, ty + Math.sin(el) * d, 0.6 + Math.cos(az) * Math.cos(el) * d); cam.lookAt(+q.get('tx') || 0, ty, 0.6);
+r.render(scene, cam); document.title = 'ready';
+</script>

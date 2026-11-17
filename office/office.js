@@ -817,7 +817,10 @@ function buildWorld() {
     for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); }
     block(ch.position.x, ch.position.z, 0.28, 0.28, true);
   }
-  const TRAINER_SPOT = { x: CONF.x, z: 9.3, face: Math.PI }; // in front of the whiteboard on the front wall, facing the table
+  const TRAINER_SPOT = { x: CONF.x, z: 9.3, face: Math.PI };
+  { const ch = new THREE.Group(); ch.position.set(TRAINER_SPOT.x, 0, TRAINER_SPOT.z + 0.13); scene.add(ch); /* HR stands on this chair while teaching (bots are short) */
+    add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
+    for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); } } // in front of the whiteboard on the front wall, facing the table
   const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(CONF.x, 1.7, RD / 2 - 0.05); wbG.rotation.y = Math.PI; scene.add(wbG);
   add(box(1.75, 0.95, 0.05), MAT.metal, 0, 0, 0, wbG);
   add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
@@ -1117,7 +1120,8 @@ function buildWorld() {
     c.quest.visible = false; // "?" is gone: only a real needs_tim item shows anything (the warning triangle + arm wave)
     c.updateFace(dt, clock);
     if (needs) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
-    animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null });
+    const dk = deskOf(c.name), perch = ['sit', 'type', 'game', 'deskSleep'].includes(pose) && !!dk && Math.hypot(c.pos.x - dk.seat.x, c.pos.y - dk.seat.z) < 0.1;
+    animate(c, pose, clock, dt, { perch, chair: goal.key === 'lead' && pose === 'talk', reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null });
     c.rig.position.x = pose === 'nap' ? 0.5 : 0;
   }
   /* separation: no two upright bots closer than MIN_SEP (seated / lying bots are fixed points) */
