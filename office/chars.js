@@ -302,11 +302,11 @@ function makePresident(hi) {
   const armR = arm(-1), armL = arm(1); body.add(armR, armL);
 
   /* ---- head: big smooth near-sphere, wider than tall ---- */
-  const HA = 0.30, HB = 0.272, HC = 0.28, HN = 2.15;
+  const HA = 0.315, HB = 0.272, HC = 0.285, HN = 2.9;
   const deform = (dx, dy, dz, grow) => {
     const r = 1 / Math.pow(Math.pow(Math.abs(dx), HN) + Math.pow(Math.abs(dy), HN) + Math.pow(Math.abs(dz), HN), 1 / HN);
     let x = dx * r * HA, y = dy * r * HB, z = dz * r * HC;
-    if (y < 0) { const j = Math.min(1, -y / HB); x *= 1 - 0.06 * j * j; z *= 1 - 0.03 * j * j; }     // gently tapered jaw
+    if (y < 0) { const j = Math.min(1, -y / HB); x *= 1 - 0.015 * j * j; z *= 1 - 0.01 * j * j; }     // gently tapered jaw
     if (grow) { const l = Math.hypot(x / HA, y / HB, z / HC) || 1; x += x / HA / l * grow; y += y / HB / l * grow; z += z / HC / l * grow; }
     return [x, y, z];
   };
@@ -315,11 +315,11 @@ function makePresident(hi) {
   head.add(new THREE.Mesh(geo('pHead6', () => headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75)), 0)), skin));
   for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar4', () => new THREE.SphereGeometry(0.052, 28, 18)), skin); ear.scale.set(0.5, 1.2, 0.95); ear.position.set(sx * (HA - 0.004), -0.03, -0.015); ear.rotation.z = sx * 0.1; head.add(ear); }
   // hair: smooth glossy near-black. One smooth cap, then rounded teardrop locks laid over it (fringe, sides, layered back)
-  const hairM = [0x1c1c1e, 0x232326, 0x2a2a2e, 0x313135].map((c, i) => mat('hairG' + i, () => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.5, metalness: 0, clearcoat: 0.2, clearcoatRoughness: 0.5 })));
+  const hairM = [0x1c1c1e, 0x232326, 0x2a2a2e, 0x313135].map((c, i) => mat('hairM' + i, () => new THREE.MeshStandardMaterial({ color: c, roughness: 0.92, metalness: 0 })));
   const hairLine = (x, z) => { const u = Math.cos(Math.atan2(x, z)); return u > 0 ? 0.07 + 0.075 * Math.pow(u, 1.3) : 0.07 + 0.2 * u; };
   const capG = grow => { const g = headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.6), 0, Math.PI * 2, 0, Math.PI * 0.62), grow), p = g.attributes.position;
     for (let i = 0; i < p.count; i++) { const lo = hairLine(p.getX(i), p.getZ(i)); if (p.getY(i) < lo) p.setY(i, lo); } g.computeVertexNormals(); return g; };
-  head.add(new THREE.Mesh(geo('pCap4', () => capG(0.014)), hairM[0]));
+  head.add(new THREE.Mesh(geo('pCap4', () => capG(0.03)), hairM[0]));
   // lock: rounded teardrop, root at the origin, tip at -y, slightly bent over the head and optionally curled sideways
   const clump = (len, w, th, bend, curl) => geo('clump4' + [len, w, th, bend, curl].map(v => v.toFixed(3)).join(':'), () => {
     const g = new THREE.SphereGeometry(1, 28, 20), p = g.attributes.position;
@@ -341,20 +341,20 @@ function makePresident(hi) {
   };
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   // back and crown: a few rows of big rounded locks, upper rows overlapping lower ones, all swept the same way; sides stay short
-  [[80, 1, 0.0], [66, 4, 0.3], [50, 5, 0.1], [34, 6, 0.4], [18, 6, 0.0], [4, 6, 0.5]].forEach(([eld, n, off], ri) => {
+  [[80, 1, 0.0], [62, 3, 0.3], [42, 4, 0.1], [22, 4, 0.4], [4, 4, 0.0]].forEach(([eld, n, off], ri) => {
     for (let k = 0; k < n; k++) {
       const azd = ((k + off) / n * 360 + 540) % 360 - 180, aa = Math.abs(azd);
       if (aa < 58 && eld < 56) continue;
       const el = eld * Math.PI / 180, [px, py, pz] = deform(Math.sin(azd * Math.PI / 180) * Math.cos(el), Math.sin(el), Math.cos(azd * Math.PI / 180) * Math.cos(el), 0), hl = hairLine(px, pz);
       if (py < hl - 0.02) continue;
-      const len = Math.min(0.24 + rnd() * 0.04, Math.max(0.07, py - hl + 0.06)), w = eld > 70 ? 0.09 : (aa < 110 ? 0.1 : 0.125) + rnd() * 0.012;
-      lock(azd + (rnd() - 0.5) * 8, eld + (rnd() - 0.5) * 3, len, w, (rnd() - 0.5) * 0.3 - azd / 700, 1 + (ri + k) % 3, { lift: 0.008 - ri * 0.0012, th: 0.03, bend: 1.6 });
+      const len = Math.min(0.24 + rnd() * 0.04, Math.max(0.07, py - hl + 0.06)), w = eld > 70 ? 0.12 : (aa < 110 ? 0.15 : 0.17) + rnd() * 0.015;
+      lock(azd + (rnd() - 0.5) * 8, eld + (rnd() - 0.5) * 3, len, w, (rnd() - 0.5) * 0.3 - azd / 700, 1 + (ri + k) % 3, { lift: 0.02 - ri * 0.002, th: 0.04, bend: 1.4 });
     }
   });
   // fringe: a few large rounded locks combed forward and to the side over the forehead (his right = +x side sweeps more)
-  [[58, 36, 0.17, 0.085, -0.8, 1, 0.0], [40, 44, 0.24, 0.095, -0.7, 2, 0.5], [18, 50, 0.27, 0.095, -0.55, 1, 0.9], [-4, 52, 0.25, 0.095, -0.35, 2, 0.9], [-26, 50, 0.23, 0.095, 0.0, 1, -0.4], [-48, 44, 0.19, 0.09, 0.25, 2, -0.6], [-66, 36, 0.14, 0.08, 0.45, 1, 0.0],
-    [30, 62, 0.24, 0.11, -0.6, 3, 0.4], [-8, 64, 0.23, 0.11, -0.2, 3, 0.2], [-38, 60, 0.2, 0.1, 0.1, 3, -0.3]]
-    .forEach(([azd, eld, len, w, ang, l, curl]) => lock(azd, eld, len, w, ang, l, { bend: 1.0, lift: 0.012, th: 0.03, curl: curl * 0.5 }));
+  [[52, 40, 0.2, 0.12, -0.8, 1, 0.0], [20, 48, 0.28, 0.13, -0.6, 2, 0.8], [-12, 50, 0.27, 0.13, -0.2, 1, 0.3], [-44, 46, 0.22, 0.12, 0.3, 2, -0.6],
+    [32, 64, 0.26, 0.15, -0.5, 3, 0.4], [-20, 66, 0.25, 0.15, 0.0, 3, 0.0]]
+    .forEach(([azd, eld, len, w, ang, l, curl]) => lock(azd, eld, len, w, ang, l, { bend: 1.0, lift: 0.024, th: 0.04, curl: curl * 0.5 }));
   // face: small MATTE vertical black oval eyes, mid-face and fairly close; faint blush; no mouth, no nose
   const eyeX = 0.1, eyeY = -0.04;
   const frontPt = (x, y) => { // surface z at head-local (x, y)
@@ -362,7 +362,7 @@ function makePresident(hi) {
   const face = makeFace(0, 0.95, false, true, 0); head.add(face);
   const matteEye = mat('eyeMatte4', () => new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 1, metalness: 0 }));
   face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1, z = frontPt(sx * eyeX, eyeY); e.material = matteEye; e.position.set(sx * eyeX, eyeY, z - 0.003);
-    e.scale.set(0.021, 0.056, 0.012); e.userData.sy = 0.056; e.rotation.set(0, 0, 0);
+    e.geometry = geo('pSlot', () => new THREE.CapsuleGeometry(1, 2.9, 8, 16)); e.scale.set(0.017, 0.0204, 0.012); e.userData.sy = 0.0204; e.rotation.set(0, 0, 0);
     const n = new THREE.Vector3(sx * eyeX / (HA * HA), eyeY / (HB * HB), z / (HC * HC)).normalize(); e.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); face.userData.shines[i].scale.set(0, 0, 0); });
   face.userData.brows.forEach((b, i) => { b.position.set((i ? 1 : -1) * eyeX, 0.1, frontPt((i ? 1 : -1) * eyeX, 0.1) + 0.004); });
   const blushM = mat('blush6', () => new THREE.MeshStandardMaterial({ color: 0xe3917f, roughness: 0.95, transparent: true, opacity: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
