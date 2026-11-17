@@ -824,6 +824,23 @@
     }
     return pts;
   }
+  /* One soft separation step for walkers: pairs closer than min get pushed apart plus a small sideways slide (so a head-on pair passes instead of stalling).
+     A point only moves if its new spot is free (isFree(x, z)), so nobody is ever nudged into a furniture box. Mutates and returns pts. */
+  function separateWalkers(pts, min, isFree) {
+    const m = min || MIN_SEP;
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      const a = pts[i], b = pts[j]; if (a.fixed && b.fixed) continue;
+      let dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
+      if (d >= m) continue;
+      if (d < 1e-6) { dx = Math.cos(i * 2.4 + j); dz = Math.sin(i * 2.4 + j); d = 1; }
+      const ux = dx / d, uz = dz / d, push = (m - d) / 2 + 1e-3, side = push * 0.6;
+      const mv = (p, sx, sz) => { const nx = p.x + sx, nz = p.z + sz; if (p.fixed) return; if (!isFree || isFree(nx, nz)) { p.x = nx; p.z = nz; } else if (isFree(nx, p.z)) p.x = nx; else if (isFree(p.x, nz)) p.z = nz; };
+      const fa = a.fixed ? 0 : b.fixed ? 2 : 1, fb = b.fixed ? 0 : a.fixed ? 2 : 1;
+      mv(a, -ux * push * fa - uz * side, -uz * push * fa + ux * side);
+      mv(b, ux * push * fb + uz * side, uz * push * fb - ux * side);
+    }
+    return pts;
+  }
   /* Walking cap: never more than a third of the bots walking at once. */
   function walkCap(total) { return Math.max(1, Math.floor(total / 3)); }
   function admitWalkers(requests, walkingNow, total) {
@@ -1376,7 +1393,7 @@
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
-    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
+    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, separateWalkers, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
