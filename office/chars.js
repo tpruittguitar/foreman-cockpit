@@ -209,7 +209,7 @@ function shirtTexture() {
 function makePresident(hi) {
   const seg = hi ? 96 : 48; // higher poly: smooth round head, hair locks and eyes
   const skin = new THREE.MeshStandardMaterial({ color: 0xf3c29c, roughness: 0.62 });
-  const shirt = new THREE.MeshStandardMaterial({ color: 0x1b1b1e, roughness: 0.72 });
+  const shirt = new THREE.MeshStandardMaterial({ color: 0x232326, roughness: 0.72 });
   const pants = new THREE.MeshStandardMaterial({ color: 0x2c2d31, roughness: 0.75 });
   const hair = new THREE.MeshStandardMaterial({ color: 0x1d1b1a, roughness: 0.5 });
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
@@ -238,34 +238,68 @@ function makePresident(hi) {
   const arm = side => { const p = new THREE.Group(); const m = new THREE.Mesh(geo('pArm2', () => new THREE.CapsuleGeometry(0.052, 0.12, 6, 16)), shirt); m.position.y = -0.1; p.add(m);
     const hand = new THREE.Mesh(geo('pHand2', () => new THREE.SphereGeometry(0.048, 16, 12)), skin); hand.position.y = -0.22; p.add(hand); p.userData.len = 0.26; p.position.set(side * 0.215, 0.33, 0); p.rotation.z = side * 0.18; return p; };
   const armR = arm(-1), armL = arm(1); body.add(armR, armL);
-  // big round smooth head
-  const head = new THREE.Group(); head.position.y = 0.69; body.add(head);
-  const skull = new THREE.Mesh(geo('pHead3', () => new THREE.SphereGeometry(0.25, seg, Math.round(seg * 0.75))), skin); skull.scale.set(1.04, 1.0, 1.0); head.add(skull); // rounder head
-  for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar', () => new THREE.SphereGeometry(0.05, 24, 16)), skin); ear.scale.set(0.55, 1, 0.8); ear.position.set(sx * 0.262, -0.02, -0.01); head.add(ear); }
-  // Tim item 6 (ref: president_head_ref_1116.png): bigger chibi head, higher polygon count (64x48 skull, bendable 14x8 hair strands),
-  // messy black hair with a swept, curled fringe over the forehead and lighter grey tips, tall slanted oval eyes, wide blush, no mouth.
-  const hair2 = mat('hair2', () => new THREE.MeshStandardMaterial({ color: 0x1a1918, roughness: 0.45 }));
-  const strandG = (len, w, bend) => geo('strand' + len + ':' + w + ':' + bend, () => { const g = new THREE.SphereGeometry(1, 28, 20); g.scale(w * 0.95, len / 2, w * 0.7); g.translate(0, len / 2, 0); const p = g.attributes.position; // smooth tapered lock (no sharp spikes)
-    for (let i = 0; i < p.count; i++) { const u = p.getY(i) / len; p.setX(i, p.getX(i) + bend * 1.6 * u * u); } g.computeVertexNormals(); return g; });
-  head.scale.setScalar(1.1);
-  const cap = new THREE.Mesh(geo('pHair3', () => new THREE.SphereGeometry(0.262, seg, 32, 0, Math.PI * 2, 0, Math.PI * 0.52)), hair); cap.scale.set(1.07, 1.02, 1.0); cap.rotation.x = 0.28; cap.position.set(0, 0.08, -0.03); head.add(cap);
-  const back = new THREE.Mesh(geo('pHairB3', () => new THREE.SphereGeometry(0.26, seg, 24, Math.PI, Math.PI, Math.PI * 0.3, Math.PI * 0.42)), hair); back.rotation.x = 0.2; back.scale.set(1.08, 1, 1.02); head.add(back);
-  // [x, y, z, rotX, rotZ, len, width, bend, light?]: crown / sides / back tufts
-  const tufts = [[0, 0.23, 0.04, -0.5, 0.1, 0.17, 0.08, 0.04], [-0.1, 0.22, 0.05, -0.55, 0.6, 0.17, 0.075, -0.05, 1], [0.12, 0.21, 0.05, -0.55, -0.6, 0.17, 0.075, 0.05],
-    [-0.2, 0.14, 0.03, -0.2, 1.15, 0.16, 0.07, -0.05, 1], [0.2, 0.14, 0.03, -0.2, -1.15, 0.16, 0.07, 0.05], [0.04, 0.25, -0.05, 0.25, -0.25, 0.16, 0.08, 0.05, 1],
-    [-0.14, 0.23, -0.1, 0.6, 0.6, 0.16, 0.075, -0.04], [0.14, 0.23, -0.1, 0.6, -0.5, 0.16, 0.075, 0.04, 1], [-0.23, 0.04, -0.07, 0.4, 1.6, 0.15, 0.07, -0.04],
-    [0.23, 0.04, -0.07, 0.4, -1.6, 0.15, 0.07, 0.04, 1], [0, 0.12, -0.24, 1.5, 0, 0.16, 0.08, 0.03], [-0.1, 0.1, -0.23, 1.35, 0.4, 0.14, 0.07, -0.03, 1], [0.1, 0.1, -0.23, 1.35, -0.4, 0.14, 0.07, 0.03]];
-  tufts.forEach(([x, y, z, rx, rz, len, w, bend, lt], k) => { const sp = new THREE.Mesh(strandG(len, w, bend), lt ? hair2 : hair); sp.position.set(x, y, z); sp.rotation.set(rx, k * 0.4, rz); head.add(sp); });
-  // swept fringe: long curled strands over the forehead (the curve in the reference), slightly right of centre
-  const fringe = [[-0.13, 0.205, 0.17, -1.2, 0.5, 0.2, 0.05, -0.07], [-0.04, 0.215, 0.18, -1.3, 0.1, 0.22, 0.05, 0.06, 1], [0.04, 0.215, 0.18, -1.3, -0.15, 0.25, 0.05, 0.08],
-    [0.12, 0.205, 0.17, -1.2, -0.5, 0.22, 0.05, 0.07, 1], [0.19, 0.17, 0.14, -1.0, -0.9, 0.2, 0.05, 0.06], [-0.19, 0.17, 0.14, -1.0, 0.9, 0.18, 0.05, -0.06, 1]];
-  fringe.forEach(([x, y, z, rx, rz, len, w, bend, lt]) => { const sp = new THREE.Mesh(strandG(len, w, bend), lt ? hair2 : hair); sp.position.set(x, y, z); sp.rotation.set(rx, 0, rz); head.add(sp); });
-  // face: tall slanted oval eyes (closer together than the bots'), big pink blush, no mouth
-  const face = makeFace(0.238, 0.95, false, true, -0.2); face.position.y = -0.02; head.add(face);
-  face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1; e.position.x = sx * 0.1; e.position.y = 0.035; e.scale.x = 0.052; e.userData.sy = 0.092; /* big oval eyes */ e.scale.y = e.userData.sy; face.userData.shines[i].position.set(sx * 0.1 + 0.014, 0.075, 0.03); });
-  face.userData.brows.forEach((b, i) => (b.position.x = (i ? 1 : -1) * 0.1));
-  const blushM = mat('blush3', () => new THREE.MeshStandardMaterial({ color: 0xe9a58d, roughness: 0.9, transparent: true, opacity: 0.8 }));
-  for (const sx of [-1, 1]) { const b = new THREE.Mesh(geo('blush3', () => new THREE.SphereGeometry(0.035, 24, 16)), blushM); b.scale.set(1.9, 1.0, 0.25); b.rotation.z = sx * 0.12; b.position.set(sx * 0.14, -0.1, 0.216); head.add(b); }
+  // Tim (ref: president_vs_avatar_1829.png, right half): rounded-square chibi head with a fuller jaw and cheeks, warm peach skin,
+  // soft layered dark brown-black hair swept over the forehead with side fringe over the tops of the ears, small matte vertical
+  // black oval eyes set wide apart, soft pink blush, visible ears, no mouth. Smooth meshes, no polygon limit.
+  const HA = 0.27, HB = 0.245, HC = 0.255, HN = 3.2;                       // head half-extents (x, y, z) and squareness exponent
+  const surfZ = (x, y) => HC * Math.pow(Math.max(0.0001, 1 - Math.pow(Math.abs(x / HA), HN) - Math.pow(Math.abs(y / HB), HN)), 1 / HN);
+  const head = new THREE.Group(); head.position.y = 0.69; head.scale.setScalar(1.08); body.add(head);
+  skin.color.set(0xee9d68); skin.roughness = 0.7;                           // warm peach, not pale
+  const headShape = (g, grow) => { // sphere -> rounded square (superellipsoid), fuller jaw and cheeks
+    const p = g.attributes.position, v = new THREE.Vector3();
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).normalize();
+      const r = 1 / Math.pow(Math.pow(Math.abs(v.x), HN) + Math.pow(Math.abs(v.y), HN) + Math.pow(Math.abs(v.z), HN), 1 / HN);
+      let x = v.x * r * HA, y = v.y * r * HB, z = v.z * r * HC;
+      const jaw = y < 0 ? Math.min(1, -y / HB) : 0, cheek = Math.exp(-Math.pow((y + 0.075) / 0.1, 2));
+      x *= 1 + 0.07 * jaw * (1 - 0.35 * jaw) + 0.05 * cheek; z *= 1 + 0.03 * cheek;
+      if (grow) { const l = Math.hypot(x / HA, y / HB, z / HC) || 1; x += x / HA / l * grow; y += y / HB / l * grow; z += z / HC / l * grow; }
+      p.setXYZ(i, x, y, z);
+    }
+    g.computeVertexNormals(); return g;
+  };
+  const skull = new THREE.Mesh(geo('pHead4', () => headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75)), 0)), skin); head.add(skull);
+  for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar2', () => new THREE.SphereGeometry(0.056, 24, 16)), skin); ear.scale.set(0.7, 1.15, 0.85); ear.position.set(sx * 0.312, -0.04, -0.012); head.add(ear); }
+  // hair: matte, dark brown-black, built in layers
+  const hairM = [0x161615, 0x232321, 0x30302d].map((c, i) => mat('hairL' + i, () => new THREE.MeshStandardMaterial({ color: c, roughness: 0.78 })));
+  const hairLine = (x, z) => { // lowest y of the hair cap: forehead hairline in front, ear-top at the sides, nape at the back
+    const az = Math.atan2(x, z), u = Math.cos(az); return u > 0 ? -0.02 + (0.1 - -0.02) * Math.pow(u, 1.4) : -0.02 + (-0.13 - -0.02) * -u;
+  };
+  const capG = (grow) => { const g = headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.6), 0, Math.PI * 2, 0, Math.PI * 0.62), grow), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const y0 = p.getY(i), lo = hairLine(p.getX(i), p.getZ(i)); if (y0 < lo) p.setY(i, lo); } g.computeVertexNormals(); return g; };
+  const under = new THREE.Mesh(geo('pCapU', () => capG(0.011)), hairM[0]); head.add(under);
+  const top = new THREE.Mesh(geo('pCapT', () => capG(0.02)), hairM[1]); top.scale.set(1, 1, 1); top.position.y = 0.006; head.add(top);
+  const leaf = (len, w, t) => geo('leaf' + len + ':' + w + ':' + t, () => { const g = new THREE.SphereGeometry(1, 28, 18), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const u = (p.getY(i) + 1) / 2, tp = 0.3 + 0.7 * u; p.setXYZ(i, p.getX(i) * w * tp, -(1 - u) * len * 1 + 0, p.getZ(i) * t * (0.7 + 0.3 * u)); }
+    g.computeVertexNormals(); return g; });
+  // a lock lying on the head surface at (x, y) (head-local), root at the top, hanging down with a sweep angle (negative = tip towards viewer-left)
+  const lock = (x, y, len, w, ang, layer, side, lift) => {
+    const z = side === 'back' ? -surfZ(x, y) : surfZ(x, y), n = new THREE.Vector3(x / (HA * HA), y / (HB * HB), z / (HC * HC)).normalize();
+    const m = new THREE.Mesh(leaf(len, w, 0.014), hairM[layer]);
+    m.position.set(x, y, z).addScaledVector(n, 0.014 + (lift || 0));
+    const q1 = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n), q2 = new THREE.Quaternion().setFromAxisAngle(n, ang);
+    m.quaternion.copy(q2.multiply(q1)); head.add(m); return m;
+  };
+  // fringe: two layers of wide soft locks swept down over the forehead (tips towards viewer-left), cut just above the eyes
+  [[0.2, 0.12, 0.15, 0.06, -0.75, 2], [0.14, 0.15, 0.17, 0.06, -0.5, 1], [0.07, 0.165, 0.18, 0.06, -0.3, 2], [0.0, 0.17, 0.19, 0.06, -0.12, 0],
+    [-0.05, 0.17, 0.18, 0.06, 0.15, 1], [-0.11, 0.165, 0.17, 0.06, 0.35, 2], [-0.17, 0.15, 0.15, 0.06, 0.5, 1], [-0.22, 0.12, 0.13, 0.055, 0.6, 2], [0.1, 0.18, 0.15, 0.07, -0.4, 0], [-0.08, 0.185, 0.15, 0.07, 0.3, 0]]
+    .forEach(([x, y, len, w, ang, l]) => lock(x, y, len, w, ang, l, 'front'));
+  // side fringe over the tops of the ears (the ears stay visible below)
+  for (const sx of [-1, 1]) [[0.235, 0.08, 0.085, 0.055, 0.12], [0.255, 0.06, 0.07, 0.05, 0.05]].forEach(([x, y, len, w, ang], k) => {
+    const m = lock(sx * x, y, len, w, 0, k ? 2 : 1, 'front'); const z = surfZ(sx * x, y) * 0.35; m.position.set(sx * x * 1.02 + sx * 0.012, y, z); const n = new THREE.Vector3(sx, 0, 0.12).normalize();
+    m.quaternion.copy(new THREE.Quaternion().setFromAxisAngle(n, sx * ang).multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n))); });
+  // crown + back layers: overlapping soft locks so the silhouette is layered, not a smooth helmet
+  [[-0.14, 0.2, 0.17, 0.08, -0.5, 2, 'front'], [0.06, 0.225, 0.17, 0.085, -0.3, 1, 'front'], [0.16, 0.2, 0.16, 0.08, -0.7, 2, 'front'], [-0.22, 0.12, 0.15, 0.075, -0.2, 1, 'front'], [0.23, 0.12, 0.14, 0.07, 0.2, 1, 'front'],
+    [-0.12, 0.2, 0.17, 0.08, 0.2, 2, 'back'], [0.1, 0.2, 0.17, 0.08, -0.15, 1, 'back'], [0, 0.1, 0.19, 0.09, 0, 2, 'back'], [-0.17, 0.07, 0.15, 0.08, 0.1, 1, 'back'], [0.17, 0.07, 0.15, 0.08, -0.1, 2, 'back']]
+    .forEach(([x, y, len, w, ang, l, side]) => lock(x, y, len, w, ang, l, side));
+  // face: small MATTE vertical black oval eyes, wide apart; no glossy shine; soft pink blush; no mouth
+  const eyeZ = surfZ(0.115, -0.035);
+  const face = makeFace(eyeZ - 0.004, 0.95, false, true, 0); face.position.y = 0; head.add(face);
+  const matteEye = mat('eyeMatte', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 1, metalness: 0 }));
+  face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1; e.material = matteEye; e.position.set(sx * 0.115, -0.035, 0); e.scale.x = 0.027; e.userData.sy = 0.052; e.scale.y = 0.052; e.scale.z = 0.02; face.userData.shines[i].scale.set(0, 0, 0); });
+  face.userData.brows.forEach((b, i) => (b.position.x = (i ? 1 : -1) * 0.115));
+  const blushM = mat('blush4', () => new THREE.MeshStandardMaterial({ color: 0xe0907a, roughness: 0.95, transparent: true, opacity: 0.7, depthWrite: false }));
+  for (const sx of [-1, 1]) { const bx = sx * 0.15, by = -0.095, b = new THREE.Mesh(geo('blush4', () => new THREE.SphereGeometry(0.032, 24, 16)), blushM); b.scale.set(1.7, 0.85, 0.2); b.rotation.set(0, sx * 0.35, sx * 0.1); b.position.set(bx, by, surfZ(bx, by) + 0.014); head.add(b); }
   return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.36, sitLift: 0.1, kind: 'president', head });
 }
 
