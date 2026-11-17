@@ -350,6 +350,54 @@ export function drawUsage(ctx, W, H, o) {
   });
 }
 
+/* ---------- Pipeline constraint wall (back wall, left of the checksheet) ----------
+   o: { sum: PipelineControlRoom.summary(...) | null, age: L.constraintAge(...), err, demo }. Mirrors the cockpit strip: stage rate cards,
+   the waiting queues between them, the CONSTRAINT stage outlined in red. Unknown stays "Unknown" / "—", never zero. */
+function shrink(ctx, text, wt, size, maxW) { // largest font <= size (px) whose text fits maxW; no ellipsis, so labels stay whole
+  for (let z = size; z > 14; z -= 1) { ctx.font = `${wt} ${z}px ${SANS}`; if (ctx.measureText(text).width <= maxW) return; }
+}
+export function drawConstraintWall(ctx, W, H, o) {
+  const s = W / 1024, sum = o.sum, RED = '#ff4d4d';
+  ctx.fillStyle = '#0d1014'; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'left'; ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${40 * s}px ${SANS}`; ctx.fillText('PIPELINE CONSTRAINT', 24 * s, 56 * s);
+  if (o.demo) exampleTag(ctx, 470 * s, 50 * s, 20 * s);
+  const age = o.age || { text: 'no data yet', stale: true };
+  ctx.textAlign = 'right'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = age.stale ? C.stale : '#c9ccd2';
+  ctx.fillText((age.stale ? '? STALE · ' : '') + age.text, W - 24 * s, 54 * s); ctx.textAlign = 'left';
+  if (!sum) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${32 * s}px ${SANS}`; ctx.fillText(fit(ctx, o.err ? 'Pipeline feed unavailable: ' + o.err : 'Waiting for the pipeline feed…', W - 48 * s), 24 * s, 160 * s); return; }
+  const cw = 184 * s, qw = 84 * s, y0 = 80 * s, ch = 380 * s, x0 = 14 * s, num = n => n.toLocaleString('en-US');
+  sum.stages.forEach((st, i) => {
+    const x = x0 + i * (cw + qw), con = st.constraint;
+    ctx.fillStyle = '#16191e'; rr(ctx, x, y0, cw, ch, 8 * s); ctx.fill();
+    ctx.lineWidth = (con ? 5 : 2) * s; ctx.strokeStyle = con ? RED : '#2b2f36'; rr(ctx, x, y0, cw, ch, 8 * s); ctx.stroke();
+    ctx.fillStyle = '#f1f2f4'; shrink(ctx, st.name, 800, 28 * s, cw - 20 * s); ctx.fillText(st.name, x + 12 * s, y0 + 44 * s);
+    if (con) { ctx.fillStyle = RED; rr(ctx, x + 12 * s, y0 + 62 * s, 150 * s, 32 * s, 4 * s); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = `800 ${22 * s}px ${SANS}`; ctx.fillText('CONSTRAINT', x + 20 * s, y0 + 86 * s); }
+    if (st.manual) {
+      ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${58 * s}px ${SANS}`; ctx.fillText(sum.needDecision == null ? '—' : num(sum.needDecision), x + 12 * s, y0 + 184 * s);
+      ctx.fillStyle = '#c9ccd2'; ctx.font = `600 ${24 * s}px ${SANS}`; ctx.fillText('ready for you', x + 12 * s, y0 + 222 * s);
+      ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${22 * s}px ${SANS}`; ctx.fillText('manual stage', x + 12 * s, y0 + 262 * s); return;
+    }
+    const known = st.perHour != null;
+    ctx.fillStyle = con ? RED : known ? '#f1f2f4' : '#9aa0a8'; ctx.font = `800 ${(known ? 58 : 40) * s}px ${SANS}`;
+    ctx.fillText(known ? (st.partial && st.perHour > 0 ? '≥ ' : '') + st.perHour.toLocaleString('en-US', { maximumFractionDigits: 1 }) : 'Unknown', x + 12 * s, y0 + 184 * s);
+    ctx.fillStyle = '#c9ccd2'; shrink(ctx, st.unit, 700, 26 * s, cw - 20 * s); ctx.fillText(st.unit, x + 12 * s, y0 + 222 * s);
+    ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`; ctx.fillText(sum.hours + ' h average', x + 12 * s, y0 + 262 * s); if (st.partial && known) { shrink(ctx, 'observed minimum', 600, 20 * s, cw - 20 * s); ctx.fillText('observed minimum', x + 12 * s, y0 + 290 * s); };
+  });
+  const names = ['Backlog', 'Waiting', 'Waiting'];
+  sum.waiting.forEach((q, i) => {
+    const cx = x0 + (i + 1) * cw + i * qw + qw / 2, n = q.count, max = Math.max(1, ...sum.waiting.map(w => w.count || 0));
+    ctx.textAlign = 'center'; ctx.fillStyle = '#c9ccd2'; ctx.font = `700 ${22 * s}px ${SANS}`; ctx.fillText(names[i], cx, y0 + 130 * s);
+    ctx.fillStyle = n ? '#f1f2f4' : '#9aa0a8'; ctx.font = `800 ${(n != null && String(n).length > 4 ? 28 : 34) * s}px ${SANS}`; ctx.fillText(n == null ? '—' : (q.partial ? '≥ ' : '') + num(n), cx, y0 + 172 * s);
+    const th = 120 * s, tx = cx - 14 * s, ty = y0 + 190 * s; ctx.fillStyle = '#2b2e33'; ctx.fillRect(tx, ty, 28 * s, th);
+    if (n) { const fh = Math.max(6 * s, th * n / max); ctx.fillStyle = '#c9aa77'; ctx.fillRect(tx, ty + th - fh, 28 * s, fh); }
+    ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`; ctx.fillText(i === 0 ? 'to intake' : i === 1 ? 'to enrich' : 'to you', cx, y0 + 346 * s); ctx.textAlign = 'left';
+  });
+  const cons = sum.stages.filter(x => x.constraint).map(x => x.name);
+  ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = cons.length ? RED : '#c9ccd2';
+  ctx.fillText(fit(ctx, cons.length ? 'CONSTRAINT: ' + cons.join(' / ') + ' · lowest ' + sum.hours + ' h output with work waiting' : sum.constraintReason, W - 48 * s), 24 * s, 510 * s);
+  if (sum.evidenceDelayed) { ctx.fillStyle = C.stale; ctx.font = `700 ${24 * s}px ${SANS}`; ctx.fillText('? Evidence refresh delayed: last verified reading shown', 24 * s, 550 * s); }
+}
+
 /* ---------- Needs Tim board (left wall) ---------- */
 export function drawNeeds(ctx, W, H, o) {
   // o: { entries:[{glyph,text,tone}], demo, state, sources:[...] }

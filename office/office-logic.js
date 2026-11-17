@@ -1103,6 +1103,18 @@
   }
   /* Newest reading time across the rows (ms or null): the monitor header and the wall both show this one time. */
   function usageLatest(rows) { const ts = (rows || []).map(r => r.at).filter(t => t != null); return ts.length ? Math.max(...ts) : null; }
+  /* Constraint wall: "measured <time> ET" and the stale tag. Same 30 min threshold the cockpit uses for a delayed process observation. */
+  const CONSTRAINT_STALE_MIN = 30;
+  function constraintAge(measuredAt, now, failed) {
+    const t = time(measuredAt);
+    if (!isFinite(t)) return { text: 'measured time unknown', stale: true };
+    return { text: 'measured ' + etClock(t) + ' ET', stale: !!failed || now < t || now - t > CONSTRAINT_STALE_MIN * MIN };
+  }
+  function demoConstraint() {
+    return { hours: 36, stages: [{ name: 'Discovery', unit: 'candidates/hr', perHour: 9.1, partial: true, constraint: false }, { name: 'Intake', unit: 'jobs/hr', perHour: 4.1, partial: true, constraint: false },
+      { name: 'Enrichment', unit: 'jobs/hr', perHour: 0, partial: true, constraint: true }, { name: 'Your decisions', manual: true, constraint: false }],
+      waiting: [{ count: 854, partial: false }, { count: 3011, partial: false }, { count: 15, partial: false }], constraintReason: '', needDecision: 15, evidenceDelayed: false };
+  }
   function usageHeader(rows, now) { const t = usageLatest(rows); return t == null ? 'No usage reading yet' : 'Latest reading ' + etClock(t) + ' ET · ' + relTime(new Date(t).toISOString(), now); }
 
   /* ---------- Desk screens: mirrors of each bot's real screen (office-screens repo; publisher not live yet) ---------- */
@@ -1511,7 +1523,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, separateWalkers, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
+    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
