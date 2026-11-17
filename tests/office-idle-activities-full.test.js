@@ -9,7 +9,9 @@ test('idle bag holds all 11 activities incl. waterfall_view, get_coffee, get_ene
   for (const seed of [1, 2, 3]) {
     const rng = L.makeRng(seed), st = L.createIdleState(), seq = []; let t = 0;
     for (let i = 0; i < 33; i++) { seq.push(L.idleTick(st, rng, t, { restock: 'ok' })); t = st.until + 0.1; }
-    for (let k = 0; k < 3; k++) assert.equal(new Set(seq.slice(k * 11, k * 11 + 11)).size, 11, 'one full bag = every activity once');
+    const other = seq.filter(x => x !== 'video_game');
+    for (let k = 0; k < 2; k++) assert.equal(new Set(other.slice(k * 10, k * 10 + 10)).size, 10, 'one full bag = every other activity once');
+    for (let k = 0; k + 5 <= seq.length; k += 5) assert.equal(seq.slice(k, k + 5).filter(x => x === 'video_game').length, 1, 'video games are 1 in 5 (Tim, Nov 17)');
     for (let i = 1; i < seq.length; i++) assert.notEqual(seq[i], seq[i - 1]);
   }
 });
