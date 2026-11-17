@@ -66,9 +66,10 @@ test('a start inside furniture (sitting on the couch / bike) leaves through free
   for (const s of lay.slots.filter(x => x.kind === 'sit' || x.kind === 'nap' || x.kind === 'bike')) for (const d of lay.desks.slice(0, 3)) checkRoute(s, d.seat, s.id + ' start');
 });
 
-test('chairs (viewerOnly boxes) are still reachable', () => {
+test('chair star bases are real obstacles, and a seat inside one is still reachable', () => {
   const confSeat = lay.slots.find(s => s.kind === 'conf');
-  assert.ok(lay.obstacles.some(o => o.viewerOnly && inBox(o, confSeat.x, confSeat.z)), 'conference seat is inside a chair box');
+  assert.ok(real.some(o => inBox(o, confSeat.x, confSeat.z)), 'conference seat is inside a (real) chair box');
+  for (const d of lay.desks) assert.ok(real.some(o => o.tag === 'desk:' + d.name && inBox(o, d.seat.x, d.seat.z)), d.name + ' desk chair base is in the mask');
   assert.ok(nav.route(lay.desks[0].seat, confSeat).length >= 1);
 });
 
@@ -99,7 +100,7 @@ test('separateWalkers: walkers and standers get pushed apart, seated bots never 
   assert.equal(pts[2].x, seat.x); assert.equal(pts[2].z, seat.z);
   assert.ok(Math.hypot(pts[0].x - pts[1].x, pts[0].z - pts[1].z) > 0.5);
   const tbl = real.find(o => o.x0 < -9 && o.x1 > -8 && o.z0 < 7.4 && o.z1 > 7.4), cx = (tbl.x0 + tbl.x1) / 2;
-  const a = { x: cx, z: tbl.z0 - 0.5 }, b = { x: cx, z: tbl.z0 - 0.62 };
+  const cz = (tbl.z0 + tbl.z1) / 2, a = { x: tbl.x0 - 0.5, z: cz }, b = { x: tbl.x0 - 0.62, z: cz }; // west end: the north / south sides are lined with chair bases
   assert.ok(free(a.x, a.z) && free(b.x, b.z));
   for (let k = 0; k < 60; k++) { L.separateWalkers([a, b], 0.72, free); assert.ok(!inBox(tbl, a.x, a.z) && !inBox(tbl, b.x, b.z)); assert.ok(free(a.x, a.z) && free(b.x, b.z)); }
 });
@@ -107,4 +108,39 @@ test('separateWalkers: walkers and standers get pushed apart, seated bots never 
 test('4000 random start/target pairs over the room (inside margins, beside sofas, at the walls): no leg crosses a real box', () => {
   let seed = 7; const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647, pt = () => ({ x: (r() - 0.5) * 22, z: (r() - 0.5) * 18, face: r() * 6.28 });
   for (let i = 0; i < 4000; i++) { const a = pt(), b = pt(); let prev = a; for (const p of nav.route(a, b)) { assert.equal(crossing(prev, p), null, 'pair ' + i + ' ' + JSON.stringify([a, b])); prev = p; } }
+});
+
+test('a walker passing a seated large bot and its chair never overlaps either (distance >= radius sum, never inside the chair base)', () => {
+  const free = (x, z) => nav.free(...nav.toCell(x, z)), RS = 0.42, RW = 0.34; // big blue bot seated, medium walker
+  let walks = 0;
+  for (const d of lay.desks.slice(0, 6)) {
+    const chair = real.find(o => o.tag === 'desk:' + d.name && inBox(o, d.seat.x, d.seat.z));
+    for (const dir of [1, -1]) for (const dz of [0, 0.3, -0.3]) {
+      const from = { x: d.seat.x - dir * 1.6, z: d.seat.z + dz }, to = { x: d.seat.x + dir * 1.6, z: d.seat.z + dz };
+      if (!free(from.x, from.z) || !free(to.x, to.z)) continue;
+      const seated = { x: d.seat.x, z: d.seat.z, fixed: true, r: RS }, me = { x: from.x, z: from.z, r: RW };
+      let prev = from, minGap = Infinity;
+      for (const p of nav.route(from, to)) {
+        const n = Math.max(1, Math.ceil(Math.hypot(p.x - prev.x, p.z - prev.z) / 0.04));
+        for (let k = 1; k <= n; k++) {
+          me.x = prev.x + (p.x - prev.x) * k / n; me.z = prev.z + (p.z - prev.z) * k / n;
+          L.separateWalkers([seated, me], 0.72, free); // what the sim does every frame
+          const gap = Math.hypot(me.x - seated.x, me.z - seated.z) - (RS + RW); minGap = Math.min(minGap, gap);
+          assert.ok(gap > -0.02, d.name + ' walker overlaps the seated bot by ' + (-gap).toFixed(3) + ' m at ' + me.x.toFixed(2) + ',' + me.z.toFixed(2));
+          assert.ok(!inBox(chair, me.x, me.z), d.name + ' walker inside the chair base at ' + me.x.toFixed(2) + ',' + me.z.toFixed(2));
+        }
+        prev = { x: me.x, z: me.z };
+      }
+      walks++;
+    }
+  }
+  assert.ok(walks >= 10, 'enough walks exercised: ' + walks);
+});
+
+test('separateWalkers uses each pair\'s radius sum, pushes the walker fully clear of a fixed bot, and falls back to min without radii', () => {
+  const big = { x: 0, z: 0, fixed: true, r: 0.42 }, w = { x: 0.2, z: 0, r: 0.3 };
+  L.separateWalkers([big, w], 0.72, () => true);
+  assert.ok(Math.hypot(w.x - big.x, w.z - big.z) >= 0.72 - 1e-6 && big.x === 0 && big.z === 0);
+  const a = { x: 0, z: 0 }, b = { x: 0.1, z: 0 }; L.separateWalkers([a, b], 0.72, () => true);
+  assert.ok(Math.hypot(a.x - b.x, a.z - b.z) >= 0.72 * 0.9);
 });

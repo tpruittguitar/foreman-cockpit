@@ -815,12 +815,12 @@ function buildWorld() {
     const ch = new THREE.Group(); ch.position.set(st.x - Math.sin(st.face) * 0.13, 0, st.z - Math.cos(st.face) * 0.13); ch.rotation.y = st.face - Math.PI; scene.add(ch);
     add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
     for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); }
-    block(ch.position.x, ch.position.z, 0.28, 0.28, true);
+    block(ch.position.x, ch.position.z, 0.3, 0.3, false, 'chair');
   }
   const TRAINER_SPOT = { x: CONF.x, z: 9.3, face: Math.PI };
   { const ch = new THREE.Group(); ch.position.set(TRAINER_SPOT.x, 0, TRAINER_SPOT.z + 0.13); scene.add(ch); /* HR stands on this chair while teaching (bots are short) */
     add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
-    for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); } } // in front of the whiteboard on the front wall, facing the table
+    for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); } block(ch.position.x, ch.position.z, 0.3, 0.3, false, 'chair'); } // in front of the whiteboard on the front wall, facing the table
   const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(CONF.x, 1.7, RD / 2 - 0.05); wbG.rotation.y = Math.PI; scene.add(wbG);
   add(box(1.75, 0.95, 0.05), MAT.metal, 0, 0, 0, wbG);
   add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
@@ -865,7 +865,7 @@ function buildWorld() {
     const focus = new THREE.Mesh(deskGeo.ring, MAT.focus); focus.layers.set(1); focus.rotation.x = Math.PI / 2; focus.position.set(0, 0.05, 0.3); focus.scale.setScalar(1.08); focus.visible = false; g.add(focus);
     g.traverse(o => { if (o.isMesh && o !== hover && o !== focus) o.userData.deskBot = name; });
     mon.userData.monitor = name;
-    block(x, z, 0.8, 0.4, false, 'desk:' + name); block(x, z + 0.85, 0.32, 0.3, true, 'desk:' + name);
+    block(x, z, 0.8, 0.4, false, 'desk:' + name); block(x, z + 0.85, 0.3, 0.3, false, 'desk:' + name);
     return { name, x, z, g, mon, scr, ledMat, shadeMat, bulbMat, hover, focus, card, lod: '', drawnKey: '', img: null, imgAt: 0,
       seat: { x, z: z + 0.72, face: Math.PI }, stand: { x: x + 1.12, z: z + 0.15 + CL, face: 0 }, visit: { x: x - 1.12, z: z + 0.15 + CL, face: Math.PI / 2 },
       cans: hasMug ? [] : [[x - 0.6, z + 0.05, name]].concat(L.hash('can2:' + name) % 4 === 1 ? [[x - 0.48, z - 0.1, name + '2']] : []), linkPoint: new THREE.Vector3(x, 0.78, z - 0.4) };
@@ -1142,7 +1142,7 @@ function buildWorld() {
   }
   /* separation: no two upright bots closer than MIN_SEP (seated / lying bots are fixed points) */
   function separateChars() {
-    const list = [...chars.values()], pts = list.map(c => ({ x: c.pos.x, z: c.pos.y, fixed: seated(c.pose) || c.pose === 'wave' }));
+    const list = [...chars.values()], pts = list.map(c => ({ x: c.pos.x, z: c.pos.y, fixed: seated(c.pose) || c.pose === 'wave', r: c.radius || 0.3 }));
     if (pts.length < 2) return;
     L.separateWalkers(pts, L.MIN_SEP * 0.9, (x, z) => free(...toCell(x, z)));
     list.forEach((c, i) => { if (!pts[i].fixed && (pts[i].x !== c.pos.x || pts[i].z !== c.pos.y)) { c.pos.set(pts[i].x, pts[i].z); c.root.position.x = c.pos.x; c.root.position.z = c.pos.y; } });
@@ -1660,7 +1660,7 @@ function buildWorld() {
   slots: SLOTS.concat(BOARD_SLOTS).map(s => ({ id: s.id, kind: s.kind, x: +s.x.toFixed(3), z: +s.z.toFixed(3), face: s.face })), trainer: TRAINER_SPOT }),
     info: () => ({ camY: +camera.position.y.toFixed(3), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
       poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
-      lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
+      lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose, +(c.radius || 0.3).toFixed(2)]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
       generic: [...chars.values()].filter(c => c.generic).map(c => c.name), idle: [...chars.values()].map(c => c.name + ':' + (c.idleAct || '')), fridge: fridgeStock, restocker: S.restocker, needs: [...S.needsSet],
       jobs: [...chars.values()].filter(c => c.job).map(c => c.name + ':' + c.job.phase), pipeline: { live: pipe.live, embed: !!pipe.css, browsing: pipe.browsing }, conf: CONF })
   };

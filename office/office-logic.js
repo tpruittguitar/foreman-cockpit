@@ -903,9 +903,10 @@
   /* One soft separation step for walkers: pairs closer than min get pushed apart plus a small sideways slide (so a head-on pair passes instead of stalling).
      A point only moves if its new spot is free (isFree(x, z)), so nobody is ever nudged into a furniture box. Mutates and returns pts. */
   function separateWalkers(pts, min, isFree) {
-    const m = min || MIN_SEP;
+    const dflt = min || MIN_SEP;
     for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
       const a = pts[i], b = pts[j]; if (a.fixed && b.fixed) continue;
+      const m = a.r != null && b.r != null ? a.r + b.r : dflt; /* each point may carry its body radius r: keep the pair at least rA + rB apart */
       let dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
       if (d >= m) continue;
       if (d < 1e-6) { dx = Math.cos(i * 2.4 + j); dz = Math.sin(i * 2.4 + j); d = 1; }
