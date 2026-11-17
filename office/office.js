@@ -14,7 +14,7 @@ const Q = new URLSearchParams(location.search);
 const DEMO = Q.get('demo') === '1', TV = Q.get('tv') === '1';
 const SEED = Q.has('seed') ? Number(Q.get('seed')) >>> 0 : (Math.random() * 4294967296) >>> 0; // seedable idle rotation (?seed=N)
 const OWNER = 'tpruittguitar';
-const STATUS_PATH = 'control/OFFICE_STATUS.json', AUTO_PATH = 'control/AUTOMATIONS_STATUS.json';
+const STATUS_PATH = 'control/OFFICE_STATUS.json', AUTO_PATH = 'control/AUTOMATIONS_STATUS.json', TRAIN_PATH = L.TRAINING_PATH;
 const API_FILE = p => `https://api.github.com/repos/${OWNER}/forge-coordination/contents/${p}?ref=main`;
 const RAW_FILE = p => `https://raw.githubusercontent.com/${OWNER}/forge-coordination/main/${p}`;
 const PR_REPOS = ['foreman-cockpit', 'forge-coordination', 'forge-policy'];
@@ -42,7 +42,7 @@ if (TV) document.documentElement.classList.add('tv');
 const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
   pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
-  readings: [], readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', auto: null, autoErr: '',
+  readings: [], readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '',
   glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null
 };
 // Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
@@ -57,6 +57,7 @@ const gate = L.createGate(); // one GitHub API budget shared by status, PR list 
 const fetchFn = (u, o) => fetch(u, o);
 const statusSrc = L.createJsonSource({ apiUrl: API_FILE(STATUS_PATH), rawUrl: RAW_FILE(STATUS_PATH), gate, fetch: fetchFn });
 const autoSrc = L.createJsonSource({ apiUrl: API_FILE(AUTO_PATH), rawUrl: RAW_FILE(AUTO_PATH), gate, fetch: fetchFn });
+const trainSrc = L.createJsonSource({ apiUrl: API_FILE(TRAIN_PATH), rawUrl: RAW_FILE(TRAIN_PATH), gate, fetch: fetchFn });
 const chatSrc = L.createChatFeed({ dirUrl: API_FILE('control'), rawUrl: CHAT_FEED_URL, name: 'PRESIDENT_CHAT_FEED.jsonl', gate, fetch: fetchFn });
 async function api(url) {
   if (!gate.open(Date.now())) { const e = new Error('GitHub rate limit: waiting for reset'); e.status = 403; throw e; }
@@ -101,6 +102,8 @@ function slowLoads(now) {
     rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsErr = ''; }, e => { S.readingsErr = e.message; }).then(refreshAll);
   }
   fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
+  /* missing or 404 OFFICE_TRAINING.json = no sessions, not an error */
+  trainSrc.get(now).then(r => { S.training = r.ok ? L.parseTraining(r.data, L.ROSTER.map(x => x.name)).sessions : []; refreshAll(); });
   chatSrc.get(now).then(r => { S.chat = r.chat; S.chatErr = r.err; refreshAll(); }); // 404 = not published yet: quiet, slower
   autoSrc.get(now).then(r => { if (r.ok) { S.auto = L.parseAutomations(r.data, Date.now()); S.autoErr = ''; } else S.autoErr = r.status === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : r.error; refreshAll(); });
 }
@@ -802,7 +805,8 @@ function buildWorld() {
   let skillList = null; // real skills from office/skills.json; null => the old fallback lines
   fetch('skills.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(j => { skillList = L.parseSkills(j); wbKey = ''; drawWB(plan.meeting); });
   function drawWB(meeting) {
-    const skill = meeting ? null : L.skillSlide(skillList, Date.now()), k = meeting ? meeting.id + meeting.title + meeting.seated.join() : skill ? 'skill' + skill.index + '/' + skillList.length : 'skills';
+    const live = meeting ? null : L.trainingSlide(plan.training, skillList), skill = live || (meeting ? null : L.skillSlide(skillList, Date.now()));
+    const k = meeting ? meeting.id + meeting.title + meeting.seated.join() : live ? 'live' + plan.training.id + live.title : skill ? 'skill' + skill.index + '/' + skillList.length : 'skills';
     if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, 512, 256, { meeting, skill, demo: DEMO }); wb.t.needsUpdate = true;
   }
   drawWB(null);
@@ -913,8 +917,8 @@ function buildWorld() {
     const t = performance.now(); if (t - planAt < 500) return; planAt = t;
     const now = Date.now(), list = bots().filter(b => deskOf(b.bot)), ctx = signalCtx();
     S.fresh = Object.fromEntries(list.map(b => [b.bot, freshOf(withRoutine(b), now, ctx)]));
-    plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh);
-    S.needsSet = S.state === 'failed' ? new Set() : L.needsTimNames(needsData()); // item 3 / 9: only a real needs_tim item waves
+    S.needsSet = S.state === 'failed' ? new Set() : L.needsTimNames(needsData());
+    plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh, { training: DEMO ? [] : S.training, needs: S.needsSet }); // item 3 / 9: only a real needs_tim item waves
     const idleNames = list.filter(b => { const c = chars.get(b.bot), p = plan.plans[b.bot]; return c && p && !p.brk && IDLE_PLAN.has(p.act) && L.statusStyle(b.status).behavior !== 'work' && !S.needsSet.has(b.bot) && !c.job && !c.jobs.length; }).map(b => b.bot);
     S.restocker = L.pickRestocker(idleNames, fridgeStock, S.restocker); // item 10: an idle bot restocks when the fridge runs low
     drawWB(plan.meeting);
