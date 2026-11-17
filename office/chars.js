@@ -382,36 +382,38 @@ function makePresident(hi) {
   const pants = new THREE.MeshStandardMaterial({ color: 0x18181a, roughness: 0.78 });
   const shoeM = mat('shoe7', () => new THREE.MeshStandardMaterial({ color: 0x151516, roughness: 0.92 }));
   const trim = mat('shirtTrim4', () => new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.7 }));
+  const P = Object.assign({ tx: 1, ty: 1, tz: 1, head: 0.86, headY: 0.6, armT: 1, armL: 1, armX: 1, armY: 1, legT: 1, legL: 1, legX: 1, shoe: 1, hx: 1, hy: 1, hz: 1, hairY: 0 }, typeof window !== 'undefined' && window.__PRES || {});
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
-  const HIP = 0.52; body.position.y = HIP;
+  const HIP = 0.52 * P.legL; body.position.y = HIP;
+  const trunk = new THREE.Group(); trunk.scale.set(P.tx, P.ty, P.tz); body.add(trunk);
   // legs: short straight black trousers with a knee joint (thigh at the hip, shin group at the knee) and flat, wide, matte shoes
   const leg = () => { const p = new THREE.Group();
     const th = new THREE.Mesh(geo('pThigh7', () => new THREE.CapsuleGeometry(0.074, 0.2, 8, 24)), pants); th.position.y = -0.14; p.add(th);
     const sh = new THREE.Group(); sh.position.y = -0.26; p.add(sh);
     const m = new THREE.Mesh(geo('pShin7', () => new THREE.CapsuleGeometry(0.07, 0.2, 8, 24)), pants); m.position.y = -0.12; sh.add(m);
-    const shoe = new THREE.Mesh(geo('pShoe7', () => { const g = new THREE.SphereGeometry(0.082, 28, 18); g.scale(1.0, 0.46, 1.8); return g; }), shoeM); shoe.position.set(0, -0.225, 0.04); sh.add(shoe);
+    const shoe = new THREE.Mesh(geo('pShoe7', () => { const g = new THREE.SphereGeometry(0.082, 28, 18); g.scale(1.0, 0.46, 1.8); return g; }), shoeM); shoe.scale.set(P.shoe, 1, P.shoe); shoe.position.set(0, -0.225, 0.04); sh.add(shoe);
     p.userData.knee = sh; return p; };
-  const legR = leg(), legL = leg(); legR.position.set(-0.092, HIP, 0); legL.position.set(0.092, HIP, 0); rig.add(legR, legL);
+  const legR = leg(), legL = leg(); legR.position.set(-0.092 * P.legX, HIP, 0); legL.position.set(0.092 * P.legX, HIP, 0); legR.scale.set(P.legT, P.legL, P.legT); legL.scale.set(P.legT, P.legL, P.legT); rig.add(legR, legL);
   // torso: wide boxy shirt body, slightly flared untucked hem
   const TN = 2.3, rows = [[-0.06, 0.232, 0.155], [0.0, 0.232, 0.155], [0.08, 0.226, 0.151], [0.19, 0.215, 0.142], [0.27, 0.2, 0.128], [0.32, 0.165, 0.108], [0.345, 0.1, 0.08], [0.355, 0.06, 0.055]];
-  const torso = new THREE.Mesh(geo('pTorso7', () => superTube(rows, TN, seg)), shirt); body.add(torso);
+  const torso = new THREE.Mesh(geo('pTorso7', () => superTube(rows, TN, seg)), shirt); trunk.add(torso);
   const frontZ = y => { for (let i = 0; i < rows.length - 1; i++) if (y >= rows[i][0] && y <= rows[i + 1][0]) { const t = (y - rows[i][0]) / (rows[i + 1][0] - rows[i][0]); return [rows[i][1] + (rows[i + 1][1] - rows[i][1]) * t, rows[i][2] + (rows[i + 1][2] - rows[i][2]) * t]; } return [rows[rows.length - 1][1], rows[rows.length - 1][2]]; };
   const fz = (x, y) => { const [rx, rz] = frontZ(y); return rz * Math.pow(Math.max(0.0001, 1 - Math.pow(Math.abs(x) / rx, TN)), 1 / TN); };
   const ringCurve = (rx, rz, n, y, a0, a1, steps) => { const pts = []; for (let i = 0; i <= steps; i++) { const a = a0 + (a1 - a0) * i / steps, c = Math.cos(a), sn = Math.sin(a), e = 2 / n; pts.push(new THREE.Vector3(Math.sign(c) * Math.pow(Math.abs(c), e) * rx, y, Math.sign(sn) * Math.pow(Math.abs(sn), e) * rz)); } return pts; };
-  const hem = new THREE.Mesh(geo('pHem7', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.232, 0.155, TN, -0.058, 0, Math.PI * 2, 120).slice(0, -1), true), 160, 0.012, 10, true)), shirt); body.add(hem);
+  const hem = new THREE.Mesh(geo('pHem7', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.232, 0.155, TN, -0.058, 0, Math.PI * 2, 120).slice(0, -1), true), 160, 0.012, 10, true)), shirt); trunk.add(hem);
   // placket + buttons down the centre front, plus a chest print ("Tim" and the round badge)
   const plkG = geo('pPlk7', () => { const g = new THREE.BoxGeometry(0.032, 0.4, 0.008, 1, 20, 1); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i) + 0.14; p.setY(i, y); p.setZ(i, p.getZ(i) + fz(0, y) + 0.002); } g.computeVertexNormals(); return g; });
-  body.add(new THREE.Mesh(plkG, trim));
+  trunk.add(new THREE.Mesh(plkG, trim));
   const btnM = mat('btn4', () => new THREE.MeshStandardMaterial({ color: 0x3a3b40, roughness: 0.45, metalness: 0.25 }));
-  for (let k = 0; k < 4; k++) { const y = 0.0 + k * 0.065, b = new THREE.Mesh(geo('pBtn4', () => new THREE.SphereGeometry(0.0095, 12, 8)), btnM); b.scale.z = 0.5; b.position.set(0, y, fz(0, y) + 0.008); body.add(b); }
+  for (let k = 0; k < 4; k++) { const y = 0.0 + k * 0.065, b = new THREE.Mesh(geo('pBtn4', () => new THREE.SphereGeometry(0.0095, 12, 8)), btnM); b.scale.z = 0.5; b.position.set(0, y, fz(0, y) + 0.008); trunk.add(b); }
   const printG = geo('pPrint7', () => { const w = 0.38, h = 0.19, g = new THREE.PlaneGeometry(w, h, 64, 1), p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = 0.195 + p.getY(i); p.setZ(i, fz(x, y) + 0.010); p.setY(i, y); } g.computeVertexNormals(); return g; });
-  body.add(new THREE.Mesh(printG, shirtTexture()));
+  trunk.add(new THREE.Mesh(printG, shirtTexture()));
   // collar: a stand band round the neck and two soft flaps lying open
-  const band = new THREE.Mesh(geo('pBand7', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.085, 0.07, 2, 0.352, Math.PI * 0.12, Math.PI * 0.88 + Math.PI, 40)), 60, 0.019, 10, false)), shirt); body.add(band);
+  const band = new THREE.Mesh(geo('pBand7', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.085, 0.07, 2, 0.352, Math.PI * 0.12, Math.PI * 0.88 + Math.PI, 40)), 60, 0.019, 10, false)), shirt); trunk.add(band);
   const flap = geo('pFlap4', () => { const sh = new THREE.Shape(); sh.moveTo(0, 0.0); sh.quadraticCurveTo(0.055, 0.032, 0.105, 0.01); sh.quadraticCurveTo(0.085, -0.036, 0.028, -0.095); sh.quadraticCurveTo(0.005, -0.055, 0, 0); return new THREE.ExtrudeGeometry(sh, { depth: 0.016, bevelEnabled: true, bevelSize: 0.008, bevelThickness: 0.006, bevelSegments: 3, curveSegments: 10 }); });
-  for (const sx of [-1, 1]) { const f = new THREE.Mesh(flap, shirt); f.scale.x = sx; f.position.set(sx * 0.014, 0.352, 0.078); f.rotation.set(-0.62, -sx * 0.22, sx * 0.1); body.add(f); }
-  const neck = new THREE.Mesh(geo('pNeck7', () => new THREE.CylinderGeometry(0.066, 0.074, 0.06, 24)), skin); neck.position.y = 0.352; body.add(neck);
+  for (const sx of [-1, 1]) { const f = new THREE.Mesh(flap, shirt); f.scale.x = sx; f.position.set(sx * 0.014, 0.352, 0.078); f.rotation.set(-0.62, -sx * 0.22, sx * 0.1); trunk.add(f); }
+  const neck = new THREE.Mesh(geo('pNeck7', () => new THREE.CylinderGeometry(0.066, 0.074, 0.06, 24)), skin); neck.position.y = 0.352; trunk.add(neck);
   // arms: thick soft tubes. Short black sleeve with a soft flared cuff to above the elbow, thick peach forearm, big hand with thumb and fingers
   const hand = side => { const h = new THREE.Group();
     const palm = new THREE.Mesh(geo('pPalm7', () => { const g = new THREE.SphereGeometry(1, 24, 16); g.scale(0.044, 0.066, 0.056); return g; }), skin); palm.position.y = -0.045; h.add(palm);
@@ -425,7 +427,7 @@ function makePresident(hi) {
     const inner = new THREE.Mesh(geo('pCuffIn7', () => new THREE.CylinderGeometry(0.082, 0.082, 0.04, 24)), pants); inner.position.y = -0.155; p.add(inner);
     const fore = new THREE.Mesh(geo('pFore7', () => new THREE.CapsuleGeometry(0.056, 0.14, 8, 20)), skin); fore.position.y = -0.25; p.add(fore);
     const h = hand(side); h.position.set(0, -0.345, 0); p.add(h);
-    p.userData.len = 0.52; p.position.set(side * 0.225, 0.275, 0); p.rotation.z = side * 0.5; return p; };
+    p.userData.len = 0.52 * P.armL; p.position.set(side * 0.225 * P.armX, 0.275 * P.armY, 0); p.rotation.z = side * 0.5; p.scale.set(P.armT, P.armL, P.armT); return p; };
   const armR = arm(-1), armL = arm(1); body.add(armR, armL);
 
   /* ---- head: big smooth near-sphere, wider than tall ---- */
@@ -438,7 +440,8 @@ function makePresident(hi) {
     return [x, y, z];
   };
   const headShape = (g, grow) => { const p = g.attributes.position, v = new THREE.Vector3(); for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).normalize(); const [x, y, z] = deform(v.x, v.y, v.z, grow); p.setXYZ(i, x, y, z); } g.computeVertexNormals(); return g; };
-  const head = new THREE.Group(); head.position.y = 0.6; head.scale.setScalar(0.86); body.add(head);
+  const head = new THREE.Group(); head.position.y = P.headY; head.scale.setScalar(P.head); body.add(head);
+  const hairG = new THREE.Group(); hairG.scale.set(P.hx, P.hy, P.hz); hairG.position.y = P.hairY; head.add(hairG);
   head.add(new THREE.Mesh(geo('pHead6', () => headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75)), 0)), skin));
   for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar4', () => new THREE.SphereGeometry(0.052, 28, 18)), skin); ear.scale.set(0.55, 1.35, 1.0); ear.position.set(sx * (HA + 0.002), -0.055, -0.01); ear.rotation.z = sx * 0.1; head.add(ear); }
   // hair: matte near-black. A solid smooth cap (clean sides and back) under a few large soft-edged clumps of varied size, plus a side-swept fringe of hooked locks from a visible parting
@@ -448,7 +451,7 @@ function makePresident(hi) {
   const hairLine = (x, z) => { const u = Math.cos(Math.atan2(x, z)); return u >= 0 ? 0.02 + 0.08 * Math.min(1, u / 0.5) : Math.max(-0.19, 0.02 - 0.32 * Math.pow(-u, 0.6)); };
   const capG = grow => { const g = headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75), 0, Math.PI * 2, 0, Math.PI * 0.76), grow), p = g.attributes.position;
     for (let i = 0; i < p.count; i++) { const lo = hairLine(p.getX(i), p.getZ(i)); if (p.getY(i) < lo) p.setY(i, lo); } g.computeVertexNormals(); return g; };
-  head.add(new THREE.Mesh(geo('pCap7', () => capG(0.045)), hairCap));
+  hairG.add(new THREE.Mesh(geo('pCap7', () => capG(0.045)), hairCap));
   // clump: a fat soft leaf (round root, softly rounded tip at -y), bent a little away from the head; sharp: 0.5 round .. 1.1 pointed
   const tuftG = (len, w, th, sharp) => geo('tuft7' + [len, w, th, sharp].map(v => v.toFixed(3)).join(':'), () => {
     const g = new THREE.SphereGeometry(1, 20, 16), p = g.attributes.position, col = [];
@@ -493,7 +496,7 @@ function makePresident(hi) {
   batches.forEach((list, li) => { if (!list.length) return; let n = 0, ni = 0; list.forEach(g => { n += g.attributes.position.count; ni += g.index.count; });
     const P = new Float32Array(n * 3), C = new Float32Array(n * 3), I = new Uint32Array(ni); let o = 0, oi = 0;
     list.forEach(g => { P.set(g.attributes.position.array, o * 3); C.set(g.attributes.color.array, o * 3); for (let i = 0; i < g.index.count; i++) I[oi++] = g.index.array[i] + o; o += g.attributes.position.count; });
-    const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.BufferAttribute(P, 3)); mg.setAttribute('color', new THREE.BufferAttribute(C, 3)); mg.setIndex(new THREE.BufferAttribute(I, 1)); mg.computeVertexNormals(); head.add(new THREE.Mesh(mg, hairM[li])); });
+    const mg = new THREE.BufferGeometry(); mg.setAttribute('position', new THREE.BufferAttribute(P, 3)); mg.setAttribute('color', new THREE.BufferAttribute(C, 3)); mg.setIndex(new THREE.BufferAttribute(I, 1)); mg.computeVertexNormals(); hairG.add(new THREE.Mesh(mg, hairM[li])); });
   // face: small MATTE vertical black oval eyes, mid-face and fairly close; faint blush; no mouth, no nose
   const eyeX = 0.1, eyeY = -0.04;
   const frontPt = (x, y) => { // surface z at head-local (x, y)

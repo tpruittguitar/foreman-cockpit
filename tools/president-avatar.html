@@ -6,7 +6,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { makeBot, animate } from '../office/chars.js';
-const q = new URLSearchParams(location.search);
+const q = new URLSearchParams(location.search); if (q.get('p')) window.__PRES = JSON.parse(q.get('p'));
 const W = +q.get('w') || 750, H = +q.get('h') || 970;
 const az = (+q.get('az') || 0) * Math.PI / 180, el = (+q.get('el') || 6) * Math.PI / 180, zoom = +q.get('zoom') || 1;
 const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(W, H); r.setPixelRatio(1);
