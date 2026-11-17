@@ -1200,14 +1200,29 @@
   /* Item 5: day / night from America/New_York wall-clock time (Tim is in Tennessee). Sunrise / sunset follow the season
      (about 36 N: day length 12 h +/- 2.2 h) and DST; no browser-local time zone is used. */
   /* Revision badge text from build-info.json (written at build/deploy time by scripts/write-build-info.cjs). */
-  function buildBadge(info) {
+  function buildParts(info) {
     const i = info && typeof info === 'object' ? info : null;
     const sha = i ? str(i.commitShort || str(i.commit).slice(0, 7)).trim() : '';
     const at = i ? time(i.builtAt) : null;
-    if (!sha && at == null) return 'build unknown';
+    if (!sha && at == null) return null;
     const pr = i && Number(i.pr) > 0 ? '#' + Math.floor(Number(i.pr)) : '—';
     const when = at == null ? 'time unknown' : new Date(at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
-    return 'PR ' + pr + ' · ' + (sha || 'unknown') + ' · ' + when;
+    return { i, pr, sha: sha || 'unknown', when };
+  }
+  function buildBadge(info) {
+    const p = buildParts(info);
+    return p ? 'PR ' + p.pr + ' · ' + p.sha + ' · ' + p.when : 'build unknown';
+  }
+  /* Wall plate under the FORGE sign: same data as the corner badge, as big lines [title, release time, commit, version details]. */
+  function buildPlate(info) {
+    const p = buildParts(info);
+    if (!p) return { title: 'BUILD UNKNOWN', when: '', sha: '', detail: '' };
+    const i = p.i, bits = [];
+    if (i.release) bits.push(String(i.release));
+    if (i.branch && i.branch !== i.release && i.branch !== 'local') bits.push(String(i.branch));
+    if (i.deployId) bits.push('deploy ' + String(i.deployId).slice(0, 8));
+    if (i.app) bits.push(String(i.app));
+    return { title: 'PR ' + p.pr, when: p.when, sha: p.sha, detail: bits.join(' · ') };
   }
   function etDate(ms) {
     const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }).formatToParts(new Date(ms));
@@ -1337,7 +1352,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, buildBadge, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, createIdleState, fridgeLow, idleTick,
+    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, createIdleState, fridgeLow, idleTick,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
   };
 });
