@@ -16,7 +16,7 @@
     }).filter(function(n){return n!=null});
   }
   function midpoint(v){var a=moneyNumbers(v);return a.length?(Math.min.apply(null,a)+Math.max.apply(null,a))/2:null}
-  var FIT_KEYS=['SCOPE_FIT_RAW','GROK_SCOPE_FIT_RAW','RAW_FIT','EXPERIENCE_FIT_SCORE','FIT_SCORE','FIT_PCT','WORK_CONTENT_FIT','FIT'];
+  var FIT_KEYS=['EXPERIENCE_FIT','SCOPE_FIT_RAW','GROK_SCOPE_FIT_RAW','RAW_FIT','EXPERIENCE_FIT_SCORE','FIT_SCORE','FIT_PCT','WORK_CONTENT_FIT','FIT'];
   function fit(p){
     p=p||{};
     var keys=FIT_KEYS;
