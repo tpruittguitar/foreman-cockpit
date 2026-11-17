@@ -695,7 +695,7 @@ function buildWorld() {
       SIT.push({ id: kind + cx + ':' + k, kind: 'sit', x: cx + Math.cos(rotY) * lx + Math.sin(rotY) * off, z: cz - Math.sin(rotY) * lx + Math.cos(rotY) * off, face }); }
     if (napOK) SIT.push({ id: 'nap' + cx, kind: 'nap', x: cx - Math.cos(rotY) * (0.5 + CL), z: cz + Math.sin(rotY) * (0.5 + CL), face, lie: { x: cx, z: cz } });
     const hx = Math.abs(Math.cos(rotY)) * 0.45 + Math.abs(Math.sin(rotY)) * len / 2, hz = Math.abs(Math.sin(rotY)) * 0.45 + Math.abs(Math.cos(rotY)) * len / 2;
-    block(cx, cz, hx, hz, true);
+    block(cx, cz, hx, hz);
     return g;
   }
   sofa(11.3, 7.7, 0, 3.0, 'secA', true);                 // sectional, along the right wall (faces -x)
@@ -1056,8 +1056,8 @@ function buildWorld() {
   function separateChars() {
     const list = [...chars.values()], pts = list.map(c => ({ x: c.pos.x, z: c.pos.y, fixed: seated(c.pose) || c.pose === 'wave' }));
     if (pts.length < 2) return;
-    L.separate(pts, L.MIN_SEP * 0.9, 3);
-    list.forEach((c, i) => { if (!pts[i].fixed && (pts[i].x !== c.pos.x || pts[i].z !== c.pos.y)) { const [ci, cj] = toCell(pts[i].x, pts[i].z); if (free(ci, cj)) { c.pos.set(pts[i].x, pts[i].z); c.root.position.x = c.pos.x; c.root.position.z = c.pos.y; } } });
+    L.separateWalkers(pts, L.MIN_SEP * 0.9, (x, z) => free(...toCell(x, z)));
+    list.forEach((c, i) => { if (!pts[i].fixed && (pts[i].x !== c.pos.x || pts[i].z !== c.pos.y)) { c.pos.set(pts[i].x, pts[i].z); c.root.position.x = c.pos.x; c.root.position.z = c.pos.y; } });
   }
 
   /* ---------- labels & speech bubbles ---------- */
