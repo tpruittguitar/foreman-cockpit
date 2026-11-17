@@ -842,8 +842,8 @@
     return out;
   }
   const MIN_SEP = 0.8;          // metres between any two standing / walking bots
-  /* Walk camera: floor level, eye height = 1.3 x the President's head height (body 0.36 + head 0.69 + face offset, chars.js makePresident). */
-  const PRESIDENT_HEAD_Y = 1.07, EYE_HEIGHT = +(PRESIDENT_HEAD_Y * 1.3).toFixed(3); // Tim: eye height raised ~30% (was exactly the head height, 1.07)
+  /* Walk camera: floor level, eye height = 1.3 x the President's head height (hip 0.52 + head centre 0.63 + face offset, chars.js makePresident). */
+  const PRESIDENT_HEAD_Y = 1.16, EYE_HEIGHT = +(PRESIDENT_HEAD_Y * 1.3).toFixed(3); // Tim: eye height raised ~30% (was exactly the head height, 1.07)
   const CLEARANCE = 0.35;      // extra stand-off from desks, props, board and lounge furniture so faces stay visible
   /* Standing slots in front of the board: two staggered rows, >= MIN_SEP apart, sized to n. */
   function boardSlots(n, cx, z, width) {
