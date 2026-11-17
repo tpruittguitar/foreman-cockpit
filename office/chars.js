@@ -191,115 +191,175 @@ export function makeBot(name, hiQuality, botId, override) {
   return c;
 }
 
-/* ---------- President: minifigure-style body with stubby arms/legs, smooth 3D chibi head ----------
-   Style from refs/president-chibi.png: big round head, soft skin, messy spiky black hair, small ears, tall oval black eyes,
-   pink blush, NO mouth. Outfit from refs/tim-portrait-vw.png: black button-up work shirt with collar and buttons, "Tim" on
-   the chest (canvas texture) and a PLAIN round badge on the other side (generic circle, no logo or trademark). */
+/* ---------- President: chibi avatar rebuilt from Tim's six-view turnaround reference (president_ref_views view1..view6) ----------
+   Large rounded-square head (wider than tall, flat-ish front, full cheeks and jaw), warm peach skin, small low ears, NO mouth and
+   NO nose, small matte black vertical-oval eyes set wide and low, soft pink round blush. Hair: matte near-black, many layered
+   leaf/petal locks (pointed strands curling over the forehead, overlapping scales at the crown and back, short above the ears).
+   Body: short chibi body, black short-sleeve collared button-up (collar, placket, untucked hem), black trousers and rounded
+   shoes, peach arms with mitten-like hands with fingers. Kept: "Tim" on the chest and a round VW-style badge (a plain drawn
+   stand-in circle emblem, not the real logo artwork). Smooth procedural meshes only, no polygon limit. */
 function shirtTexture() {
   return mat('timShirtTex', () => {
-    const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d');
-    x.clearRect(0, 0, 256, 128);
-    x.fillStyle = '#f2f2f2'; x.font = "700 40px 'Inter PE', system-ui, sans-serif"; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Tim', 64, 64);
-    x.strokeStyle = '#f2f2f2'; x.lineWidth = 7; x.beginPath(); x.arc(192, 64, 30, 0, 7); x.stroke(); // plain round badge
-    x.fillStyle = '#9aa0a8'; x.beginPath(); x.arc(192, 64, 22, 0, 7); x.fill();
-    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-    return new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.7, depthWrite: false });
+    const c = document.createElement('canvas'); c.width = 512; c.height = 256; const x = c.getContext('2d');
+    x.clearRect(0, 0, 512, 256);
+    x.fillStyle = '#f2f2f2'; x.font = "700 78px 'Inter PE', system-ui, sans-serif"; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Tim', 128, 128);
+    // VW-style round badge: a simple drawn stand-in emblem (ring, disc and a plain chevron pair), not the real logo
+    x.strokeStyle = '#f2f2f2'; x.lineWidth = 12; x.beginPath(); x.arc(384, 128, 56, 0, 7); x.stroke();
+    x.fillStyle = '#6f7f99'; x.beginPath(); x.arc(384, 128, 46, 0, 7); x.fill();
+    x.strokeStyle = '#f2f2f2'; x.lineWidth = 10; x.lineCap = 'round'; x.lineJoin = 'round';
+    x.beginPath(); x.moveTo(358, 106); x.lineTo(384, 138); x.lineTo(410, 106); x.stroke();
+    x.beginPath(); x.moveTo(358, 128); x.lineTo(384, 158); x.lineTo(410, 128); x.stroke();
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.75, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
   });
 }
+/* tube along y with a superellipse cross-section: profile rows [y, rx, rz] (exponent n), closed at both ends */
+function superTube(rows, n, seg) {
+  const pos = [], idx = [], R = rows.length;
+  rows.forEach(([y, rx, rz], i) => {
+    for (let k = 0; k < seg; k++) {
+      const a = k / seg * Math.PI * 2, c = Math.cos(a), s = Math.sin(a), e = 2 / n;
+      pos.push(Math.sign(c) * Math.pow(Math.abs(c), e) * rx, y, Math.sign(s) * Math.pow(Math.abs(s), e) * rz);
+    }
+  });
+  for (let i = 0; i < R - 1; i++) for (let k = 0; k < seg; k++) {
+    const a = i * seg + k, b = i * seg + (k + 1) % seg, c = (i + 1) * seg + k, d = (i + 1) * seg + (k + 1) % seg;
+    idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  const cap = (row, up) => { const ci = pos.length / 3; pos.push(0, rows[row][0], 0); for (let k = 0; k < seg; k++) { const a = row * seg + k, b = row * seg + (k + 1) % seg; up ? idx.push(ci, b, a) : idx.push(ci, a, b); } };
+  cap(R - 1, true); cap(0, false);
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
 function makePresident(hi) {
-  const seg = hi ? 96 : 48; // higher poly: smooth round head, hair locks and eyes
-  const skin = new THREE.MeshStandardMaterial({ color: 0xf3c29c, roughness: 0.62 });
-  const shirt = new THREE.MeshStandardMaterial({ color: 0x232326, roughness: 0.72 });
-  const pants = new THREE.MeshStandardMaterial({ color: 0x2c2d31, roughness: 0.75 });
-  const hair = new THREE.MeshStandardMaterial({ color: 0x1d1b1a, roughness: 0.5 });
+  const seg = hi ? 96 : 48;
+  const skin = new THREE.MeshStandardMaterial({ color: 0xf0b48a, roughness: 0.62 });
+  const shirt = new THREE.MeshStandardMaterial({ color: 0x1d1d20, roughness: 0.74 });
+  const pants = new THREE.MeshStandardMaterial({ color: 0x18181a, roughness: 0.78 });
+  const shoeM = mat('shoe3', () => new THREE.MeshStandardMaterial({ color: 0x0f0f10, roughness: 0.55 }));
+  const trim = mat('shirtTrim3', () => new THREE.MeshStandardMaterial({ color: 0x252528, roughness: 0.7 }));
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
-  // stubby legs (pivot at hip) with rounded shoes
-  const leg = () => { const p = new THREE.Group(); const m = new THREE.Mesh(geo('pLeg2', () => new THREE.CapsuleGeometry(0.068, 0.16, 6, 16)), pants); m.position.y = -0.13; p.add(m);
-    const shoe = new THREE.Mesh(geo('pShoe2', () => { const g = new THREE.SphereGeometry(0.08, 16, 10); g.scale(0.95, 0.5, 1.35); return g; }), mat('shoe2', () => new THREE.MeshStandardMaterial({ color: 0x111113, roughness: 0.5 }))); shoe.position.set(0, -0.27, 0.03); p.add(shoe); return p; };
-  const legR = leg(), legL = leg(); legR.position.set(-0.08, 0.34, 0); legL.position.set(0.08, 0.34, 0); rig.add(legR, legL);
-  body.position.y = 0.36;
-  // rounded torso: a smooth tapered cylinder, a little deeper at the chest
-  const torso = new THREE.Mesh(geo('pTorso2', () => { const g = new THREE.CylinderGeometry(0.16, 0.2, 0.36, seg, 1); g.scale(1.05, 1, 0.7); return g; }), shirt);
-  torso.position.y = 0.18; body.add(torso);
-  const shoulders = new THREE.Mesh(geo('pSh', () => { const g = new THREE.SphereGeometry(0.168, seg, 12, 0, Math.PI * 2, 0, Math.PI / 2); g.scale(1.05, 0.35, 0.7); return g; }), shirt);
-  shoulders.position.y = 0.36; body.add(shoulders);
-  // placket + buttons, chest print ("Tim" and the plain badge)
-  const placket = new THREE.Mesh(geo('pPlk', () => new THREE.BoxGeometry(0.022, 0.32, 0.006)), mat('plk', () => new THREE.MeshStandardMaterial({ color: 0x29292d, roughness: 0.7 })));
-  placket.position.set(0, 0.17, 0.142); placket.rotation.x = -0.11; body.add(placket);
-  const btnM = mat('btn', () => new THREE.MeshStandardMaterial({ color: 0x55565c, roughness: 0.4, metalness: 0.3 }));
-  for (let k = 0; k < 4; k++) { const b = new THREE.Mesh(geo('pBtn', () => new THREE.SphereGeometry(0.009, 8, 6)), btnM); b.position.set(0, 0.06 + k * 0.075, 0.137 + k * 0.008); body.add(b); }
-  const print = new THREE.Mesh(geo('pPrint', () => new THREE.PlaneGeometry(0.28, 0.14)), shirtTexture()); print.position.set(0, 0.255, 0.142); print.rotation.x = -0.11; body.add(print);
-  // collar: two pointed flaps either side of the neck
-  const flap = geo('pFlap', () => { const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(0.085, 0.02); sh.lineTo(0.02, -0.075); sh.closePath(); return new THREE.ExtrudeGeometry(sh, { depth: 0.012, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.004, bevelSegments: 2 }); });
-  for (const sx of [-1, 1]) { const f = new THREE.Mesh(flap, shirt); f.scale.x = -sx; f.position.set(sx * 0.012, 0.395, 0.105); f.rotation.x = -0.35; body.add(f); }
-  const neck = new THREE.Mesh(geo('pNeck2', () => new THREE.CylinderGeometry(0.055, 0.06, 0.07, 16)), skin); neck.position.y = 0.4; body.add(neck);
-  // stubby arms in black sleeves with round hands
-  const arm = side => { const p = new THREE.Group(); const m = new THREE.Mesh(geo('pArm2', () => new THREE.CapsuleGeometry(0.052, 0.12, 6, 16)), shirt); m.position.y = -0.1; p.add(m);
-    const hand = new THREE.Mesh(geo('pHand2', () => new THREE.SphereGeometry(0.048, 16, 12)), skin); hand.position.y = -0.22; p.add(hand); p.userData.len = 0.26; p.position.set(side * 0.215, 0.33, 0); p.rotation.z = side * 0.18; return p; };
+  const HIP = 0.38; body.position.y = HIP;
+  // legs: straight black trousers (pivot at the hip) and rounded black shoes
+  const leg = () => { const p = new THREE.Group();
+    const m = new THREE.Mesh(geo('pLeg3', () => { const g = new THREE.CapsuleGeometry(0.074, 0.2, 8, 24); g.scale(1, 1, 0.95); return g; }), pants); m.position.y = -0.185; p.add(m);
+    const shoe = new THREE.Mesh(geo('pShoe3', () => { const g = new THREE.SphereGeometry(0.085, 28, 18); g.scale(1.0, 0.62, 1.55); return g; }), shoeM); shoe.position.set(0, -0.335, 0.045); p.add(shoe); return p; };
+  const legR = leg(), legL = leg(); legR.position.set(-0.098, HIP, 0); legL.position.set(0.098, HIP, 0); rig.add(legR, legL);
+  // torso: boxy-round shirt body, flared untucked hem; shoulders sloping to the collar
+  const TN = 2.7, rows = [[-0.075, 0.236, 0.162], [-0.066, 0.243, 0.168], [-0.05, 0.236, 0.163], [0.0, 0.226, 0.156], [0.12, 0.218, 0.15], [0.26, 0.216, 0.148], [0.37, 0.212, 0.143], [0.42, 0.186, 0.128], [0.452, 0.135, 0.1], [0.468, 0.08, 0.07]];
+  const torso = new THREE.Mesh(geo('pTorso3', () => superTube(rows, TN, seg)), shirt); body.add(torso);
+  const frontZ = y => { let r0 = rows[0]; for (let i = 0; i < rows.length - 1; i++) if (y >= rows[i][0] && y <= rows[i + 1][0]) { const t = (y - rows[i][0]) / (rows[i + 1][0] - rows[i][0]); return [rows[i][1] + (rows[i + 1][1] - rows[i][1]) * t, rows[i][2] + (rows[i + 1][2] - rows[i][2]) * t]; } return [rows[rows.length - 1][1], rows[rows.length - 1][2]]; };
+  const fz = (x, y) => { const [rx, rz] = frontZ(y); return rz * Math.pow(Math.max(0.0001, 1 - Math.pow(Math.abs(x) / rx, TN)), 1 / TN); };
+  // hem band: a soft rolled edge so the shirt reads as untucked over the trousers
+  const ringCurve = (rx, rz, n, y, a0, a1, steps) => { const pts = []; for (let i = 0; i <= steps; i++) { const a = a0 + (a1 - a0) * i / steps, c = Math.cos(a), sn = Math.sin(a), e = 2 / n; pts.push(new THREE.Vector3(Math.sign(c) * Math.pow(Math.abs(c), e) * rx, y, Math.sign(sn) * Math.pow(Math.abs(sn), e) * rz)); } return pts; };
+  const hem = new THREE.Mesh(geo('pHem3', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.243, 0.168, TN, -0.066, 0, Math.PI * 2, 120).slice(0, -1), true), 160, 0.011, 10, true)), shirt); body.add(hem);
+  // placket + buttons down the centre front, plus a chest print ("Tim" and the round badge)
+  const plkG = geo('pPlk3', () => { const g = new THREE.BoxGeometry(0.034, 0.5, 0.008, 1, 20, 1); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i) * 0.98 + 0.2; p.setY(i, y); p.setZ(i, p.getZ(i) + fz(0, y) + 0.002); } g.computeVertexNormals(); return g; });
+  const placket = new THREE.Mesh(plkG, trim); placket.position.y = 0.0; body.add(placket);
+  const btnM = mat('btn3', () => new THREE.MeshStandardMaterial({ color: 0x3a3b40, roughness: 0.45, metalness: 0.25 }));
+  for (let k = 0; k < 5; k++) { const y = 0.05 + k * 0.07, b = new THREE.Mesh(geo('pBtn3', () => new THREE.SphereGeometry(0.0095, 12, 8)), btnM); b.scale.z = 0.5; b.position.set(0, y, fz(0, y) + 0.008); body.add(b); }
+  const printG = geo('pPrint3', () => { const w = 0.42, h = 0.21, g = new THREE.PlaneGeometry(w, h, 24, 1), p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = 0.27 + p.getY(i); p.setZ(i, fz(x, y) + 0.004); p.setY(i, y); } g.computeVertexNormals(); return g; });
+  const print = new THREE.Mesh(printG, shirtTexture()); body.add(print);
+  // collar: a stand band round the neck and two pointed flaps lying open on the shoulders
+  const band = new THREE.Mesh(geo('pBand3', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.088, 0.075, 2, 0.462, Math.PI * 0.12, Math.PI * 0.88 + Math.PI, 40).map(v => v.clone())), 60, 0.016, 10, false)), shirt); body.add(band);
+  const flap = geo('pFlap3', () => { const sh = new THREE.Shape(); sh.moveTo(0, 0.0); sh.quadraticCurveTo(0.06, 0.035, 0.115, 0.012); sh.quadraticCurveTo(0.09, -0.04, 0.03, -0.105); sh.quadraticCurveTo(0.005, -0.06, 0, 0); return new THREE.ExtrudeGeometry(sh, { depth: 0.016, bevelEnabled: true, bevelSize: 0.008, bevelThickness: 0.006, bevelSegments: 3, curveSegments: 10 }); });
+  for (const sx of [-1, 1]) { const f = new THREE.Mesh(flap, shirt); f.scale.x = sx; f.position.set(sx * 0.014, 0.466, 0.088); f.rotation.set(-0.62, -sx * 0.22, sx * 0.1); body.add(f); }
+  const neck = new THREE.Mesh(geo('pNeck3', () => new THREE.CylinderGeometry(0.062, 0.07, 0.09, 24)), skin); neck.position.y = 0.475; body.add(neck);
+  // arms: short black sleeves with a folded cuff, bare peach forearms, mitten hands with four fingers and a thumb
+  const hand = () => { const h = new THREE.Group();
+    const palm = new THREE.Mesh(geo('pPalm3', () => { const g = new THREE.SphereGeometry(1, 24, 16); g.scale(0.042, 0.052, 0.026); return g; }), skin); h.add(palm);
+    const fg = geo('pFing3', () => new THREE.CapsuleGeometry(0.0125, 0.034, 6, 12));
+    [[-0.027, 0.04, 0.03, 0.9], [-0.009, 0.05, 0.035, 1.0], [0.009, 0.05, 0.035, 1.0], [0.027, 0.04, 0.03, 0.88]].forEach(([x, y, ln, sc], i) => {
+      const f = new THREE.Mesh(fg, skin); f.scale.set(1, sc, 1); f.position.set(x, -y - 0.014, 0.004); f.rotation.set(-0.16, 0, -(x * 2.2)); h.add(f); });
+    const th = new THREE.Mesh(fg, skin); th.scale.set(1.1, 0.95, 1.1); th.position.set(0.046, -0.002, 0.008); th.rotation.set(-0.1, 0, 0.9); h.add(th);
+    return h; };
+  const arm = side => { const p = new THREE.Group();
+    const sleeve = new THREE.Mesh(geo('pSleeve3', () => { const g = new THREE.CapsuleGeometry(0.058, 0.08, 8, 24); return g; }), shirt); sleeve.position.y = -0.085; p.add(sleeve);
+    const cuff = new THREE.Mesh(geo('pCuff3', () => new THREE.TorusGeometry(0.058, 0.01, 10, 32)), shirt); cuff.rotation.x = Math.PI / 2; cuff.position.y = -0.165; p.add(cuff);
+    const fore = new THREE.Mesh(geo('pFore3', () => new THREE.CapsuleGeometry(0.041, 0.1, 8, 20)), skin); fore.position.y = -0.235; p.add(fore);
+    const h = hand(); h.position.set(0, -0.37, 0); h.rotation.y = side * -(Math.PI / 2 - 0.3); h.scale.set(side * 1.3, 1.3, 1.3); p.add(h);
+    p.userData.len = 0.4; p.position.set(side * 0.245, 0.4, 0); p.rotation.z = side * 0.3; return p; };
   const armR = arm(-1), armL = arm(1); body.add(armR, armL);
-  // Tim (ref: president_vs_avatar_1829.png, right half): rounded-square chibi head with a fuller jaw and cheeks, warm peach skin,
-  // soft layered dark brown-black hair swept over the forehead with side fringe over the tops of the ears, small matte vertical
-  // black oval eyes set wide apart, soft pink blush, visible ears, no mouth. Smooth meshes, no polygon limit.
-  const HA = 0.27, HB = 0.245, HC = 0.255, HN = 3.2;                       // head half-extents (x, y, z) and squareness exponent
-  const surfZ = (x, y) => HC * Math.pow(Math.max(0.0001, 1 - Math.pow(Math.abs(x / HA), HN) - Math.pow(Math.abs(y / HB), HN)), 1 / HN);
-  const head = new THREE.Group(); head.position.y = 0.69; head.scale.setScalar(1.08); body.add(head);
-  skin.color.set(0xee9d68); skin.roughness = 0.7;                           // warm peach, not pale
-  const headShape = (g, grow) => { // sphere -> rounded square (superellipsoid), fuller jaw and cheeks
-    const p = g.attributes.position, v = new THREE.Vector3();
-    for (let i = 0; i < p.count; i++) {
-      v.fromBufferAttribute(p, i).normalize();
-      const r = 1 / Math.pow(Math.pow(Math.abs(v.x), HN) + Math.pow(Math.abs(v.y), HN) + Math.pow(Math.abs(v.z), HN), 1 / HN);
-      let x = v.x * r * HA, y = v.y * r * HB, z = v.z * r * HC;
-      const jaw = y < 0 ? Math.min(1, -y / HB) : 0, cheek = Math.exp(-Math.pow((y + 0.075) / 0.1, 2));
-      x *= 1 + 0.07 * jaw * (1 - 0.35 * jaw) + 0.05 * cheek; z *= 1 + 0.03 * cheek;
-      if (grow) { const l = Math.hypot(x / HA, y / HB, z / HC) || 1; x += x / HA / l * grow; y += y / HB / l * grow; z += z / HC / l * grow; }
-      p.setXYZ(i, x, y, z);
+
+  /* ---- head ---- */
+  const HA = 0.272, HB = 0.245, HC = 0.255, HN = 3.0;                      // half-extents (x, y, z) and squareness exponent
+  const deform = (dx, dy, dz, grow) => {                                    // unit direction -> point on the rounded-square head (full jaw and cheeks)
+    const r = 1 / Math.pow(Math.pow(Math.abs(dx), HN) + Math.pow(Math.abs(dy), HN) + Math.pow(Math.abs(dz), HN), 1 / HN);
+    let x = dx * r * HA, y = dy * r * HB, z = dz * r * HC;
+    const jaw = y < 0 ? Math.min(1, -y / HB) : 0, cheek = Math.exp(-Math.pow((y + 0.07) / 0.11, 2));
+    x *= 1 + 0.05 * jaw * (1 - 0.3 * jaw) + 0.045 * cheek; z *= 1 + 0.025 * cheek;
+    if (jaw > 0) { z *= 1 - 0.1 * Math.pow(jaw, 2.2) * (dz < 0 ? 1 : 0.4); }                // chin tucks in a little
+    if (grow) { const l = Math.hypot(x / HA, y / HB, z / HC) || 1; x += x / HA / l * grow; y += y / HB / l * grow; z += z / HC / l * grow; }
+    return [x, y, z];
+  };
+  const headShape = (g, grow) => { const p = g.attributes.position, v = new THREE.Vector3(); for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).normalize(); const [x, y, z] = deform(v.x, v.y, v.z, grow); p.setXYZ(i, x, y, z); } g.computeVertexNormals(); return g; };
+  const head = new THREE.Group(); head.position.y = 0.685; head.scale.setScalar(1.0); body.add(head);
+  const skull = new THREE.Mesh(geo('pHead5', () => headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75)), 0)), skin); head.add(skull);
+  for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar3', () => new THREE.SphereGeometry(0.056, 28, 18)), skin); ear.scale.set(0.55, 1.25, 0.95); ear.position.set(sx * 0.3, -0.07, -0.02); ear.rotation.z = sx * 0.12; head.add(ear); }
+  // hair: matte near-black, a base cap plus many layered leaf locks
+  const hairM = [0x1b1b1c, 0x252527, 0x2f2f32, 0x38383b].map((c, i) => mat('hairM' + i, () => new THREE.MeshStandardMaterial({ color: c, roughness: 0.88, metalness: 0, side: THREE.DoubleSide })));
+  const hairLine = (x, z) => { const az = Math.atan2(x, z), u = Math.cos(az); return u > 0 ? -0.0 + (0.115 - 0.0) * Math.pow(u, 1.3) : -0.0 + (-0.17 - 0.0) * -u; };
+  const capG = grow => { const g = headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.6), 0, Math.PI * 2, 0, Math.PI * 0.62), grow), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const lo = hairLine(p.getX(i), p.getZ(i)); if (p.getY(i) < lo) p.setY(i, lo); } g.computeVertexNormals(); return g; };
+  const cap = new THREE.Mesh(geo('pCap3', () => capG(0.012)), hairM[0]); head.add(cap);
+  // leaf-shaped lock: root at the origin, tip at -y; lens-shaped section, bent to hug the head and optionally curled sideways
+  const leaf = (len, w, th, bend, curl) => geo('leaf3' + [len, w, th, bend, curl].map(v => v.toFixed(3)).join(':'), () => {
+    const NA = 14, NR = 14, pos = [], idx = [];
+    for (let i = 0; i <= NA; i++) { const a = i / NA, wp = Math.pow(Math.sin(Math.PI * Math.pow(a, 1.35)), 1.1), dist = (1 - a) * len;
+      for (let k = 0; k < NR; k++) { const f = k / NR * Math.PI * 2, c = Math.cos(f), s = Math.sin(f);
+        pos.push(c * w * wp + curl * dist * dist, -dist, Math.max(s, -0.25) * th * (0.35 + 0.65 * wp) - bend * dist * dist); } }
+    for (let i = 0; i < NA; i++) for (let k = 0; k < NR; k++) { const a = i * NR + k, b = i * NR + (k + 1) % NR, c = (i + 1) * NR + k, d = (i + 1) * NR + (k + 1) % NR; idx.push(a, b, c, b, d, c); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g; });
+  const X = new THREE.Vector3(), Y = new THREE.Vector3(), Z = new THREE.Vector3(), Yup = new THREE.Vector3(0, 1, 0), MAT = new THREE.Matrix4();
+  // lock rooted at the head surface in direction (azimuth from front, elevation), swept by `ang` about the surface normal
+  const lock = (azd, eld, len, w, ang, layer, o = {}) => {
+    const az = azd * Math.PI / 180, el = eld * Math.PI / 180, dx = Math.sin(az) * Math.cos(el), dy = Math.sin(el), dz = Math.cos(az) * Math.cos(el);
+    const [px, py, pz] = deform(dx, dy, dz, 0);
+    Z.set(Math.sign(px) * Math.pow(Math.abs(px / HA), HN - 1) / HA, Math.sign(py) * Math.pow(Math.abs(py / HB), HN - 1) / HB, Math.sign(pz) * Math.pow(Math.abs(pz / HC), HN - 1) / HC).normalize();
+    Y.copy(Yup).addScaledVector(Z, -Z.dot(Yup));
+    if (Y.length() < 0.35) Y.set(-dx, 0, -dz).addScaledVector(Z, Z.dot(X.set(dx, 0, dz)));  // crown: let the lock fall outwards
+    Y.normalize(); X.crossVectors(Y, Z).normalize(); Y.crossVectors(Z, X);
+    const m = new THREE.Mesh(leaf(len, w, o.th || 0.016, o.bend == null ? 1.9 : o.bend, o.curl || 0), hairM[layer]);
+    m.quaternion.setFromRotationMatrix(MAT.makeBasis(X, Y, Z));
+    m.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(Z.clone(), ang));
+    m.position.set(px, py, pz).addScaledVector(Z, 0.004 + (o.lift || 0)); head.add(m); return m;
+  };
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  // scales: staggered rows over the crown, sides and back; locks shorten towards the hairline so the sides stay short above the ears
+  const rowEl = [80, 68, 56, 44, 32, 20, 8, -4, -16, -28, -38];
+  rowEl.forEach((eld, ri) => {
+    const el = eld * Math.PI / 180, n = Math.max(5, Math.round(Math.PI * 2 * Math.cos(el) * 0.27 / 0.088)), off = (ri % 2) * 0.5;
+    for (let k = 0; k < n; k++) {
+      const azd = ((k + off) / n * 360 + 540) % 360 - 180, aa = Math.abs(azd);
+      if (aa < 62 && eld < 50) continue;                                // front: forehead fringe is placed by hand
+      const [px, py, pz] = deform(Math.sin(azd * Math.PI / 180) * Math.cos(el), Math.sin(el), Math.cos(azd * Math.PI / 180) * Math.cos(el), 0), hl = hairLine(px, pz);
+      if (py < hl - 0.01) continue;
+      const len = Math.min(0.15 + rnd() * 0.04, Math.max(0.05, py - hl + 0.045)), j = (rnd() - 0.5);
+      lock(azd + j * 6, eld + (rnd() - 0.5) * 3, len, 0.06 + rnd() * 0.01, (rnd() - 0.5) * 0.26 + (aa < 100 ? -azd / 500 : 0), Math.min(3, 1 + (ri % 3)), { lift: 0.006 + ri * 0.0016, th: 0.02 });
     }
-    g.computeVertexNormals(); return g;
-  };
-  const skull = new THREE.Mesh(geo('pHead4', () => headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75)), 0)), skin); head.add(skull);
-  for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar2', () => new THREE.SphereGeometry(0.056, 24, 16)), skin); ear.scale.set(0.7, 1.15, 0.85); ear.position.set(sx * 0.312, -0.04, -0.012); head.add(ear); }
-  // hair: matte, dark brown-black, built in layers
-  const hairM = [0x161615, 0x232321, 0x30302d].map((c, i) => mat('hairL' + i, () => new THREE.MeshStandardMaterial({ color: c, roughness: 0.78 })));
-  const hairLine = (x, z) => { // lowest y of the hair cap: forehead hairline in front, ear-top at the sides, nape at the back
-    const az = Math.atan2(x, z), u = Math.cos(az); return u > 0 ? -0.02 + (0.1 - -0.02) * Math.pow(u, 1.4) : -0.02 + (-0.13 - -0.02) * -u;
-  };
-  const capG = (grow) => { const g = headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.6), 0, Math.PI * 2, 0, Math.PI * 0.62), grow), p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) { const y0 = p.getY(i), lo = hairLine(p.getX(i), p.getZ(i)); if (y0 < lo) p.setY(i, lo); } g.computeVertexNormals(); return g; };
-  const under = new THREE.Mesh(geo('pCapU', () => capG(0.011)), hairM[0]); head.add(under);
-  const top = new THREE.Mesh(geo('pCapT', () => capG(0.02)), hairM[1]); top.scale.set(1, 1, 1); top.position.y = 0.006; head.add(top);
-  const leaf = (len, w, t) => geo('leaf' + len + ':' + w + ':' + t, () => { const g = new THREE.SphereGeometry(1, 28, 18), p = g.attributes.position;
-    for (let i = 0; i < p.count; i++) { const u = (p.getY(i) + 1) / 2, tp = 0.3 + 0.7 * u; p.setXYZ(i, p.getX(i) * w * tp, -(1 - u) * len * 1 + 0, p.getZ(i) * t * (0.7 + 0.3 * u)); }
-    g.computeVertexNormals(); return g; });
-  // a lock lying on the head surface at (x, y) (head-local), root at the top, hanging down with a sweep angle (negative = tip towards viewer-left)
-  const lock = (x, y, len, w, ang, layer, side, lift) => {
-    const z = side === 'back' ? -surfZ(x, y) : surfZ(x, y), n = new THREE.Vector3(x / (HA * HA), y / (HB * HB), z / (HC * HC)).normalize();
-    const m = new THREE.Mesh(leaf(len, w, 0.014), hairM[layer]);
-    m.position.set(x, y, z).addScaledVector(n, 0.014 + (lift || 0));
-    const q1 = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n), q2 = new THREE.Quaternion().setFromAxisAngle(n, ang);
-    m.quaternion.copy(q2.multiply(q1)); head.add(m); return m;
-  };
-  // fringe: two layers of wide soft locks swept down over the forehead (tips towards viewer-left), cut just above the eyes
-  [[0.2, 0.12, 0.15, 0.06, -0.75, 2], [0.14, 0.15, 0.17, 0.06, -0.5, 1], [0.07, 0.165, 0.18, 0.06, -0.3, 2], [0.0, 0.17, 0.19, 0.06, -0.12, 0],
-    [-0.05, 0.17, 0.18, 0.06, 0.15, 1], [-0.11, 0.165, 0.17, 0.06, 0.35, 2], [-0.17, 0.15, 0.15, 0.06, 0.5, 1], [-0.22, 0.12, 0.13, 0.055, 0.6, 2], [0.1, 0.18, 0.15, 0.07, -0.4, 0], [-0.08, 0.185, 0.15, 0.07, 0.3, 0]]
-    .forEach(([x, y, len, w, ang, l]) => lock(x, y, len, w, ang, l, 'front'));
-  // side fringe over the tops of the ears (the ears stay visible below)
-  for (const sx of [-1, 1]) [[0.235, 0.08, 0.085, 0.055, 0.12], [0.255, 0.06, 0.07, 0.05, 0.05]].forEach(([x, y, len, w, ang], k) => {
-    const m = lock(sx * x, y, len, w, 0, k ? 2 : 1, 'front'); const z = surfZ(sx * x, y) * 0.35; m.position.set(sx * x * 1.02 + sx * 0.012, y, z); const n = new THREE.Vector3(sx, 0, 0.12).normalize();
-    m.quaternion.copy(new THREE.Quaternion().setFromAxisAngle(n, sx * ang).multiply(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n))); });
-  // crown + back layers: overlapping soft locks so the silhouette is layered, not a smooth helmet
-  [[-0.14, 0.2, 0.17, 0.08, -0.5, 2, 'front'], [0.06, 0.225, 0.17, 0.085, -0.3, 1, 'front'], [0.16, 0.2, 0.16, 0.08, -0.7, 2, 'front'], [-0.22, 0.12, 0.15, 0.075, -0.2, 1, 'front'], [0.23, 0.12, 0.14, 0.07, 0.2, 1, 'front'],
-    [-0.12, 0.2, 0.17, 0.08, 0.2, 2, 'back'], [0.1, 0.2, 0.17, 0.08, -0.15, 1, 'back'], [0, 0.1, 0.19, 0.09, 0, 2, 'back'], [-0.17, 0.07, 0.15, 0.08, 0.1, 1, 'back'], [0.17, 0.07, 0.15, 0.08, -0.1, 2, 'back']]
-    .forEach(([x, y, len, w, ang, l, side]) => lock(x, y, len, w, ang, l, side));
-  // face: small MATTE vertical black oval eyes, wide apart; no glossy shine; soft pink blush; no mouth
-  const eyeZ = surfZ(0.115, -0.035);
-  const face = makeFace(eyeZ - 0.004, 0.95, false, true, 0); face.position.y = 0; head.add(face);
-  const matteEye = mat('eyeMatte', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 1, metalness: 0 }));
-  face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1; e.material = matteEye; e.position.set(sx * 0.115, -0.035, 0); e.scale.x = 0.027; e.userData.sy = 0.052; e.scale.y = 0.052; e.scale.z = 0.02; face.userData.shines[i].scale.set(0, 0, 0); });
-  face.userData.brows.forEach((b, i) => (b.position.x = (i ? 1 : -1) * 0.115));
-  const blushM = mat('blush4', () => new THREE.MeshStandardMaterial({ color: 0xe0907a, roughness: 0.95, transparent: true, opacity: 0.7, depthWrite: false }));
-  for (const sx of [-1, 1]) { const bx = sx * 0.15, by = -0.095, b = new THREE.Mesh(geo('blush4', () => new THREE.SphereGeometry(0.032, 24, 16)), blushM); b.scale.set(1.7, 0.85, 0.2); b.rotation.set(0, sx * 0.35, sx * 0.1); b.position.set(bx, by, surfZ(bx, by) + 0.014); head.add(b); }
+  });
+  // fringe: wide locks swept down over the forehead with a few long pointed strands curling at the tips
+  [[62, 30, 0.1, 0.06, -0.55, 1], [48, 38, 0.15, 0.065, -0.55, 2], [33, 42, 0.2, 0.05, -0.5, 1, { curl: 0.4 }], [18, 46, 0.23, 0.04, -0.4, 2, { curl: 0.6 }], [4, 48, 0.2, 0.045, -0.3, 1, { curl: 0.55 }],
+    [-9, 48, 0.17, 0.06, -0.2, 2], [-23, 46, 0.23, 0.04, 0.0, 1, { curl: -0.5 }], [-38, 42, 0.17, 0.06, 0.2, 2], [-53, 36, 0.13, 0.06, 0.35, 1],
+    [40, 54, 0.16, 0.075, -0.5, 3, { lift: 0.012 }], [12, 58, 0.17, 0.075, -0.45, 3, { lift: 0.014 }], [-14, 58, 0.17, 0.075, -0.1, 3, { lift: 0.014 }], [-40, 54, 0.16, 0.07, 0.15, 3, { lift: 0.014 }]]
+    .forEach(([azd, eld, len, w, ang, l, o]) => lock(azd, eld, len, w, ang, l, Object.assign({ bend: 1.2, lift: 0.006 }, o)));
+  for (let a = -64; a <= 64; a += 9) lock(a + (rnd() - 0.5) * 3, 34 + 10 * Math.cos(a * Math.PI / 130) + (rnd() - 0.5) * 3, 0.15 + 0.05 * rnd() + 0.03 * Math.cos(a * Math.PI / 128), 0.05, -0.38 - a / 260 + (rnd() - 0.5) * 0.3, 2, { bend: 1.0, lift: 0.003 });
+  // face: small MATTE vertical black oval eyes, wide apart and low; soft pink blush; no mouth, no nose
+  const eyeX = 0.118, eyeY = -0.065, eyeZ = deform(eyeX / HA * 0.9, eyeY / HB, 0.97, 0)[2];
+  const frontPt = (x, y) => { // surface z at head-local (x, y): march along +z until outside the deformed head
+    let z = 0.0; for (let s = 0; s < 40; s++) { const d = Math.hypot(x, y, z + 0.0001); const [px, py, pz] = deform(x / d, y / d, (z + 0.0001) / d, 0); if (Math.hypot(px, py, pz) <= d + 1e-6) break; z += 0.01; }
+    let lo = Math.max(0, z - 0.01), hi = z; for (let s = 0; s < 24; s++) { const m = (lo + hi) / 2, d = Math.hypot(x, y, m + 0.0001); const [px, py, pz] = deform(x / d, y / d, (m + 0.0001) / d, 0); if (Math.hypot(px, py, pz) <= d) hi = m; else lo = m; }
+    return hi; };
+  const face = makeFace(0, 0.95, false, true, 0); head.add(face);
+  const matteEye = mat('eyeMatte3', () => new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 1, metalness: 0 }));
+  face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1, z = frontPt(sx * eyeX, eyeY); e.material = matteEye; e.position.set(sx * eyeX, eyeY, z - 0.002);
+    e.scale.set(0.019, 0.044, 0.012); e.userData.sy = 0.044; e.rotation.set(0, 0, 0);
+    const n = new THREE.Vector3(sx * eyeX / (HA * HA), eyeY / (HB * HB), z / (HC * HC)).normalize(); e.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); face.userData.shines[i].scale.set(0, 0, 0); });
+  face.userData.brows.forEach((b, i) => { b.position.set((i ? 1 : -1) * eyeX, 0.1, frontPt((i ? 1 : -1) * eyeX, 0.1) + 0.004); });
+  const blushM = mat('blush5', () => new THREE.MeshStandardMaterial({ color: 0xe3917f, roughness: 0.95, transparent: true, opacity: 0.62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  for (const sx of [-1, 1]) { const bx = sx * 0.15, by = -0.13, z = frontPt(bx, by), b = new THREE.Mesh(geo('blush5', () => new THREE.SphereGeometry(0.036, 28, 18)), blushM);
+    b.scale.set(1.25, 1.0, 0.12); const n = new THREE.Vector3(bx / (HA * HA), by / (HB * HB), z / (HC * HC)).normalize(); b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); b.position.set(bx, by, z - 0.001); head.add(b); }
   return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.36, sitLift: 0.1, kind: 'president', head });
 }
 
