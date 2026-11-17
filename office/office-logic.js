@@ -1548,7 +1548,7 @@
     { id: 'proud', fr: 'fier', gaze: { yaw: 5, pitch: 17, roll: 0 }, split: 17, eyes: SEP(0.3, 0.15, 18) },
     { id: 'shy', fr: 'timide', gaze: { yaw: -19, pitch: -14, roll: -7 }, split: 14, eyes: SEP(0.17, 0.3) },
     { id: 'unimpressed', fr: 'blase', gaze: { yaw: -22, pitch: 2, roll: 0 }, split: 16, eyes: SEP(0.3, 0.12) },
-    { id: 'sleepy', fr: 'somnolent', gaze: { yaw: 6, pitch: -9, roll: -3 }, split: 16, eyes: SEP(0.2, 0.42, 0, 0.42) }
+    { id: 'sleepy', fr: 'somnolent', gaze: { yaw: 6, pitch: -9, roll: -3 }, split: 16, eyes: SEP(0.2, 0.42, 0, 0.01) }
   ];
   const STUDIO_FACE_IDS = STUDIO_FACES.map(f => f.id);
   /* flat weights for one face: legacy overlay weights (brows, drop, lid) + the studio eye parameters */
@@ -1559,7 +1559,7 @@
       e0w: e0.w, e0h: e0.h, e0t: e0.tilt, e0o: e0.open, e1w: e1.w, e1h: e1.h, e1t: e1.tilt, e1o: e1.open
     });
   }
-  const FACE_LEGACY = { happy: { smile: 1 }, neutral: { smile: 0.45 }, sad: { frown: 1 }, scared: { oh: 1, drop: 1 }, confused: { flat: 1 }, sleepy: { oh: 1, lid: 0.58 } };
+  const FACE_LEGACY = { happy: { smile: 1 }, neutral: { smile: 0.45 }, sad: { frown: 1 }, scared: { oh: 1, drop: 1 }, confused: { flat: 1 }, sleepy: { oh: 1, lid: 1 } };
   const EXPR = {};
   for (const f of STUDIO_FACES) EXPR[f.id] = faceWeights(f, FACE_LEGACY[f.id]);
   /* older names: worried = sad eyes + worried brows and a sweat drop; puzzled = confused eyes + the one raised brow */

@@ -135,8 +135,8 @@ function makeFace(frontZ, scale, eyeDark, noMouth, tilt) {
   f.userData.apply = (p, blink, extra) => {
     const open = (1 - p.lid) * (1 - blink);
     if (f.userData.studio) f.userData.studio(p, blink, extra);
-    else eyes.forEach((e, i) => { e.visible = p.lid < 0.6; e.scale.y = e.userData.sy * Math.max(0.1, open); shines[i].visible = e.visible && open > 0.5; });
-    lids.forEach(l => { l.visible = !f.userData.studio && p.lid > 0.05; l.scale.set(0.55 * scale, 0.5 * scale * W(p.lid), scale); });
+    else eyes.forEach((e, i) => { e.visible = true; e.scale.y = e.userData.sy * Math.max(0.1, open); shines[i].visible = e.visible && open > 0.5; });
+    lids.forEach(l => { l.visible = !f.userData.studio && p.lid > 0.05 && p.lid < 0.99; l.scale.set(0.55 * scale, 0.5 * scale * W(p.lid), scale); });
     smile.visible = !noMouth && p.smile > 0.02; smile.scale.set(scale, scale * W(p.smile), scale);
     frown.visible = !noMouth && p.frown > 0.02; frown.scale.set(scale * 0.8, scale * 0.6 * W(p.frown), scale);
     flat.visible = !noMouth && p.flat > 0.02; flat.scale.setScalar(W(p.flat));
