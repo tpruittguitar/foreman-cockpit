@@ -253,6 +253,56 @@
     return { href: '', kind: 'none', label: bot };
   }
 
+  /* ---------- Real training sessions (control/OFFICE_TRAINING.json, written by HR) ----------
+     {"sessions":[{"id","skill","trainer":"HR","trainees":["names or bot_ids"],"started_at":ISO,"until":ISO}]}
+     A session is active when started_at <= now < until. It overrides ambient training. */
+  const TRAINING_PATH = 'control/OFFICE_TRAINING.json', INVITE_S = 18;
+  function parseTraining(json, names) {
+    const out = { ok: false, sessions: [] };
+    if (!json || typeof json !== 'object' || !Array.isArray(json.sessions)) return out;
+    const known = Array.isArray(names) && names.length ? new Set(names) : null;
+    const resolve = v => { const s = str(v).trim(); return s ? canonicalBot(s, s) : ''; };
+    out.ok = true;
+    for (const r of json.sessions) {
+      if (!r || typeof r !== 'object') continue;
+      const id = str(r.id).trim(), skill = str(r.skill).trim(), startMs = time(r.started_at), untilMs = time(r.until);
+      if (!id || !skill || startMs == null || untilMs == null || untilMs <= startMs) continue;
+      const trainer = resolve(r.trainer) || TRAINER;
+      if (known && !known.has(trainer)) continue;
+      const trainees = [];
+      for (const t of Array.isArray(r.trainees) ? r.trainees : []) { const n = resolve(t); if (n && n !== trainer && !trainees.includes(n) && (!known || known.has(n))) trainees.push(n); }
+      if (!trainees.length) continue;
+      out.sessions.push({ id, skill, trainer, trainees, startMs, untilMs });
+    }
+    return out;
+  }
+  function activeTraining(sessions, now) {
+    const list = Array.isArray(sessions) ? sessions : sessions && Array.isArray(sessions.sessions) ? sessions.sessions : [];
+    return list.filter(x => x && x.startMs <= now && now < x.untilMs).sort((a, b) => a.startMs - b.startMs || (a.id < b.id ? -1 : 1))[0] || null;
+  }
+  /* Who can be pulled in: not in a meeting, not waiting on Tim. Returns { plans, training } to merge, or null when the trainer cannot lead. */
+  function trainingPlan(session, list, plans, now, needs, seatBase) {
+    if (!session) return null;
+    const byName = new Map(list.map(b => [b.bot, b]));
+    const busy = n => { const b = byName.get(n), p = plans[n]; return !b || (p && (p.act === 'wave' || p.act === 'meeting')) || (b && normStatus(b.status) === 'waiting_tim') || !!(needs && needs.has && needs.has(n)); };
+    if (busy(session.trainer)) return null;
+    const trainees = session.trainees.filter(n => !busy(n)).slice(0, Math.max(0, CONF_SEATS - (seatBase || 0)));
+    if (!trainees.length) return null;
+    const total = session.untilMs - session.startMs, per = Math.min(INVITE_S * 1000, Math.floor(total * 0.5 / trainees.length));
+    const k = per > 0 ? Math.floor((now - session.startMs) / per) : trainees.length, out = {};
+    let phase;
+    if (k < trainees.length) { phase = 'invite'; out[session.trainer] = { act: 'visit', partner: trainees[k] }; out[trainees[k]] = { act: 'listen', partner: session.trainer }; }
+    else { phase = 'session'; out[session.trainer] = { act: 'lead' }; trainees.forEach((n, i) => { out[n] = { act: 'train', seat: (seatBase || 0) + i }; }); }
+    return { plans: out, training: { id: session.id, skill: session.skill, trainer: session.trainer, trainees, phase, invited: Math.min(k, trainees.length), real: true } };
+  }
+  /* Whiteboard text override while a real session runs: the skill name (its title from skills.json when the slug matches) plus "Training: <skill>". */
+  function trainingSlide(training, skills) {
+    if (!training || !training.real) return null;
+    const key = str(training.skill).trim().toLowerCase(), hit = (skills || []).find(s => s.slug.toLowerCase() === key || s.title.toLowerCase() === key);
+    const name = hit ? hit.title : training.skill;
+    return { index: -1, title: 'Skill: ' + name, bullets: ['Training: ' + name, 'Led by ' + training.trainer, training.trainees.length + ' in the room'], counter: 'LIVE', training: true };
+  }
+
   /* ---------- What each bot is doing on the floor (ambient behaviour, never data) ----------
      Order: needs Tim / blocked -> waves at its own desk; meeting member -> conference seat; working -> types at its desk;
      idle -> chat / sleep at desk / game / wander, chosen per bot from a hash that changes every 10 minutes (no flicker).
@@ -263,7 +313,7 @@
   function hash(s) { let h = 2166136261; for (const ch of str(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
   function holdsCan(name) { return hash('can:' + name) % 3 !== 0; }
   // fresh (optional, item 16b): name -> freshness(); a stale non-alert bot stands puzzled at its desk instead of its status act
-  function planOffice(bots, meetings, now, state, fresh) {
+  function planOffice(bots, meetings, now, state, fresh, opts) {
     const plans = {}, list = bots || [];
     let meeting = null, training = null;
     if (state === 'failed') return { plans, meeting, training };
@@ -278,6 +328,8 @@
       }
       if (seated.length && !meeting) meeting = Object.assign({}, m, { seated });
     }
+    const live = trainingPlan(activeTraining(opts && opts.training, now), list, plans, now, opts && opts.needs, seat);
+    if (live) { Object.assign(plans, live.plans); training = live.training; }
     const others = n => list.map(b => b.bot).filter(x => x !== n);
     const partnerFor = (n, salt) => { const o = others(n); return o.length ? o[hash(n + ':' + salt) % o.length] : null; };
     // working (and blocked) bots type at their desk, with a short staggered break every 4-6 minutes
@@ -286,7 +338,7 @@
       plans[b.bot] = br ? { act: br, brk: true } : { act: 'work' };
       if (br === 'visitdesk') plans[b.bot].partner = partnerFor(b.bot, Math.floor(now / 60000));
     }
-    const trainer = list.find(b => b.bot === TRAINER && !plans[b.bot]);
+    const trainer = training ? null : list.find(b => b.bot === TRAINER && !plans[b.bot]);
     for (const b of list) if (!plans[b.bot] && b.bot !== TRAINER) { const r = replayFor(b, now); if (r) plans[b.bot] = { act: r.act, replay: r }; }
     const idle = list.filter(b => !plans[b.bot] && b.bot !== TRAINER).map(b => b.bot).sort();
     idle.forEach(n => { const a = idleAct(n, now); plans[n] = { act: a }; if (a === 'visitdesk') plans[n].partner = partnerFor(n, idleSlot(n, now).idx); });
@@ -1400,7 +1452,7 @@
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, fridgeLow, idleTick,
-    SKILL_CYCLE_MS, parseSkills, skillSlide,
+    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
   };
 });
