@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawWhiteboard, drawAutomations, drawWriterHealth, WRITER_METRICS, drawTown, drawPipelineWall } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawWhiteboard, drawAutomations, drawWriterHealth, WRITER_METRICS, drawTown, drawPipelineWall, drawConstraintWall } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -42,7 +42,7 @@ if (TV) document.documentElement.classList.add('tv');
 const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
   pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
-  readings: [], readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '',
+  readings: [], cons: { health: null, activity: null, err: '', tried: 0, at: 0 }, readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '',
   glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null, invite: null, hrFree: false
 };
 // Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
@@ -97,6 +97,7 @@ function slowLoads(now) {
     api(ASKS_URL).then(a => { S.asks = a.filter(f => f.type === 'file' && /\.json$/i.test(f.name)).map(f => f.name); S.asksErr = ''; },
       e => { S.asksErr = e.status === 404 ? 'asks/open not found' : e.message; }).then(refreshAll);
   }
+  if (!DEMO && now - S.cons.tried >= SLOW_MS) { S.cons.tried = now; loadConstraint(now); }
   if (now - S.readingsAt >= SLOW_MS) {
     S.readingsAt = now;
     rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsErr = ''; }, e => { S.readingsErr = e.message; }).then(refreshAll);
@@ -106,6 +107,23 @@ function slowLoads(now) {
   trainSrc.get(now).then(r => { S.training = r.ok ? L.parseTraining(r.data, L.ROSTER.map(x => x.name)).sessions : []; refreshAll(); });
   chatSrc.get(now).then(r => { S.chat = r.chat; S.chatErr = r.err; refreshAll(); }); // 404 = not published yet: quiet, slower
   autoSrc.get(now).then(r => { if (r.ok) { S.auto = L.parseAutomations(r.data, Date.now()); S.autoErr = ''; } else S.autoErr = r.status === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : r.error; refreshAll(); });
+}
+/* Constraint wall: the cockpit's own model + summary (pipeline-control-room.js) over its own feeds, refreshed with the other slow loads. */
+function loadConstraint(now) {
+  const get = u => fetch(u, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  Promise.allSettled([get('/api/pipeline-health'), get('/api/writer-activity')]).then(([h, a]) => {
+    if (h.status !== 'fulfilled') { S.cons.err = h.reason && h.reason.message || 'failed'; return; }
+    Object.assign(S.cons, { health: h.value, activity: a.status === 'fulfilled' ? a.value : null, activityErr: a.status === 'fulfilled' ? '' : (a.reason && a.reason.message || 'failed'), err: '', at: Date.now() });
+  }).then(refreshAll);
+}
+function constraintView(now) {
+  const c = S.cons, CR = window.PipelineControlRoom;
+  if (DEMO) return { sum: L.demoConstraint(), age: L.constraintAge(new Date(now - 4 * 60000).toISOString(), now), demo: true };
+  if (!c.health || !CR) return { sum: null, err: c.err, age: null };
+  let sum = null;
+  try { sum = CR.summary(CR.model({ health: c.health, activity: c.activity, activityError: c.activityErr, now }), {}); } catch (e) { return { sum: null, err: e.message, age: null }; }
+  const flow = c.health.processFlow;
+  return { sum, age: L.constraintAge(flow && flow.at, now, !!c.err || now - c.at > 2 * SLOW_MS), err: c.err };
 }
 async function poll() {
   const now = Date.now();
@@ -660,7 +678,8 @@ function buildWorld() {
   const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 1.4, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
   const autos = makeBoard('autos', 3.6, 2.2, -RW / 2 + 0.05, 2.1, 6.2, Math.PI / 2, LOW ? 640 : 1024, LOW ? 391 : 626);
   const writer = makeBoard('writer', 2.6, 1.7, 0 + 4.2, 2.3, RD / 2 - 0.05, Math.PI, LOW ? 512 : 768, LOW ? 335 : 502);
-  const boards = { project, usage, needs, autos, writer };
+  const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
+  const boards = { project, usage, needs, autos, writer, constraint };
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
      Desktop: the live page (https://foreman-cockpit.pages.dev/pipeline) in an iframe on a CSS3D plane that sits behind the WebGL
@@ -1198,6 +1217,7 @@ function buildWorld() {
     const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); n.t.needsUpdate = true;
     const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO }); a.t.needsUpdate = true;
     const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, err: S.autoErr, demo: DEMO }); wr.t.needsUpdate = true;
+    const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); cw.t.needsUpdate = true;
     updateLines();
     for (const [id, ln] of lines) ln.material = hl.has(id) || (hoverBot && ln.userData.owner === hoverBot) ? MAT.lineHi : MAT.lineFaint;
     for (const d of desks) d.card.visible = d.card.visible || items().some(i => i.work && i.owner === d.name && L.columnFor(i) !== 'done' && i.work.poster !== d.name);
@@ -1261,7 +1281,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, autos.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, constraint.screen, autos.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1286,6 +1306,7 @@ function buildWorld() {
     else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
     else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
+    else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
@@ -1375,7 +1396,7 @@ function buildWorld() {
   function focusTarget(t) {
     desks.forEach(d => (d.focus.visible = t && t.kind === 'desk' && d.name === t.bot));
     const nm = $('focusname');
-    if (t) { nm.hidden = false; nm.textContent = t.kind === 'desk' ? t.bot + ' · ' + L.statusStyle((botByName(t.bot) || {}).status).word : { needs: 'Needs Tim board', project: 'Forge checksheet', usage: 'AI usage wall' }[t.id]; }
+    if (t) { nm.hidden = false; nm.textContent = t.kind === 'desk' ? t.bot + ' · ' + L.statusStyle((botByName(t.bot) || {}).status).word : { needs: 'Needs Tim board', project: 'Forge checksheet', usage: 'AI usage wall', constraint: 'Pipeline constraint wall' }[t.id]; }
     else nm.hidden = true;
     setHover(t ? (t.kind === 'desk' ? { bot: t.bot } : null) : null);
   }
