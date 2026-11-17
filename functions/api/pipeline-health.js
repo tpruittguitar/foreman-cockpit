@@ -29,13 +29,13 @@ async function readJson(fetcher,url,limit){
 async function readDiscovery(fetcher,url){
   try{
     const j=await readJson(fetcher,url.replace('.json?','.health.json?'),256*1024);
-    if(j.schema!=='forge.discovery-health.v1'||!Number.isFinite(Date.parse(j.at))||!Number.isSafeInteger(j.failedBoards)||j.failedBoards<0||!Number.isSafeInteger(j.candidates)||j.candidates<0||!Array.isArray(j.urls)||j.urls.length>j.candidates||j.urls.some(u=>typeof u!=='string'||!/^https:\/\//.test(u)))throw Error('Invalid discovery summary');
+    if(j.schema!=='forge.discovery-health.v1'||!Number.isFinite(Date.parse(j.at))||!(j.failedBoards===null||Number.isSafeInteger(j.failedBoards)&&j.failedBoards>=0)||!Number.isSafeInteger(j.candidates)||j.candidates<0||!Array.isArray(j.urls)||j.urls.length>j.candidates||j.urls.some(u=>typeof u!=='string'||!/^https:\/\//.test(u)))throw Error('Invalid discovery summary');
     return j;
   }catch{
     // Older producer revisions and failed summary publication remain readable.
     const j=await readJson(fetcher,url,8*1024*1024);
     if(!j.summary||!j.summary.at||!Array.isArray(j.new_roles))throw Error('Unsupported discovery report');
-    return {at:j.summary.at,failedBoards:j.summary.boards?.failed||0,candidates:j.new_roles.length,urls:j.new_roles.filter(x=>x&&typeof x.url==='string'&&/^https:\/\//.test(x.url)).map(x=>x.url)};
+    return {at:j.summary.at,failedBoards:j.summary.boards?.read===0?null:j.summary.boards?.failed||0,candidates:j.new_roles.length,urls:j.new_roles.filter(x=>x&&typeof x.url==='string'&&/^https:\/\//.test(x.url)).map(x=>x.url)};
   }
 }
 export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
@@ -73,7 +73,7 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
         output.boardHealth=Object.values(j.boards).filter(x=>x&&!x.paused&&typeof x.key==='string').map(x=>({key:x.key,companies:Array.isArray(x.companies)?x.companies.slice(0,10).map(c=>String(c).slice(0,150)):[],status:String(x.status||'UNKNOWN'),error:String(x.error||'').slice(0,150),httpStatus:Number.isInteger(x.httpStatus)?x.httpStatus:null,lastAttemptAt:x.lastAttemptAt||null,lastSuccessAt:x.lastSuccessAt||null,retryAt:x.retryAt||null,consecutiveFailures:Math.max(0,+x.consecutiveFailures||0)}));
         const tracked=output.boardHealth.length,pending=output.boardHealth.filter(x=>x.status!=='OK').length,rate=tracked?pending/tracked:0;
         const problem=ageProblem(j.at,now,MAX_DISCOVERY_AGE_MS)||(rate>MAX_BOARD_HEALTH_FAILURE_RATE?pending+' of '+tracked+' boards failing (limit '+Math.round(MAX_BOARD_HEALTH_FAILURE_RATE*100)+'%)':'');
-        output.checks[key]={ok:!problem,observed:true,at:j.at,tracked,pending,failureRate:Math.round(rate*1000)/1000,...(problem?{error:problem}:{})};
+        output.checks[key]={ok:!problem,observed:true,label:'currently failing',at:j.at,tracked,pending,failureRate:Math.round(rate*1000)/1000,...(problem?{error:problem}:{})};
       }else if(key==='schedules'){
         if(j.schema!=='forge.schedule-readback.v1'||!Array.isArray(j.local))throw Error('Unsupported schedule readback');
         output.checks[key]={ok:true,at:j.at,configured:j.local.filter(x=>x.status==='ACTIVE'&&x.managed!==false).length,ids:j.local.filter(x=>x.status==='ACTIVE'&&x.managed!==false).map(x=>x.id),executionVerified:false,
@@ -81,7 +81,7 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
           configurationDiscrepancies:Array.isArray(j.configurationDiscrepancies)?j.configurationDiscrepancies:[]};
       }else{
         const problem=ageProblem(j.at,now,MAX_DISCOVERY_AGE_MS)||(j.failedBoards>MAX_FAILED_BOARDS?j.failedBoards+' boards failed (limit '+MAX_FAILED_BOARDS+')':'');
-        output.checks[key]={ok:!problem,observed:true,at:j.at,failedBoards:j.failedBoards,candidates:j.candidates,...(problem?{error:problem}:{})};
+        output.checks[key]={ok:!problem,observed:true,...(key==='boards'?{label:'latest pass'}:{}),at:j.at,failedBoards:j.failedBoards,candidates:j.candidates,...(problem?{error:problem}:{})};
         j.urls.forEach(url=>urls.add(url.replace(/#.*$/,'')));reports++;
       }
     }catch(e){output.checks[key]={ok:false,error:key==='schedules'?'Schedule execution not reported':'Could not read '+key+' evidence'};}

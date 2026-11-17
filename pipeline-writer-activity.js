@@ -5,7 +5,7 @@
   var dayFormatter=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'});
   function day(t){return dayFormatter.format(new Date(t));}
   function source(id){
-    if(/^FORGE-ENRICH_ATS-ATSBOT-/.test(id))return 'Pay enrichment (GitHub)';
+    if(/^FORGE-ENRICH_ATS-ATSBOT-/.test(id))return 'enrichment writes';
     if(/^FORGE-SOURCE-/.test(id))return 'Automatic intake (GitHub)';
     if(/^ATSCHK-/.test(id))return 'Automatic posting checks';
     if(/^FORGE-EMAIL-/.test(id))return 'Email intake';

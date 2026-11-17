@@ -63,3 +63,8 @@ test('an evidence file that cannot be read is still not ok, and only readable re
  const response=await m.healthResponse(failing,cache,now),body=await response.json();
  assert.equal(body.checks.boards.ok,false);assert.equal(body.ok,false);assert.ok(puts.some(x=>x.includes('__health_response')),'an unhealthy but fully read result is still cached for the minute');
 });
+test('a source pass that read no boards reports failedBoards null; boards and boardHealth carry their labels',async()=>{
+ const m=await api(),r=await m.loadHealth(fixture({sources:health(at,null)}),now,sha);
+ assert.equal(r.checks.sources.ok,true);assert.equal(r.checks.sources.failedBoards,null);
+ assert.equal(r.checks.boards.label,'latest pass');assert.equal(r.checks.boardHealth.label,'currently failing');assert.equal(r.checks.sources.label,undefined);
+});
