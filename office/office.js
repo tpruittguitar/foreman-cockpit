@@ -1601,6 +1601,7 @@ function buildWorld() {
     marker.visible = false; pads.forEach(st => { st.dim = false; }); dimDrag = false; applyDesktopQuality(); camera.aspect = innerWidth / innerHeight; fitFov();
     $('labels').style.display = ''; showHint(); last = performance.now(); nextFrame(); if (vrBtn) vrBtn.textContent = '🥽 Enter VR'; T.vr = false;
   });
+  if (vrBtn) { vrBtn.hidden = false; vrBtn.disabled = true; vrBtn.style.cssText = 'opacity:0.5;cursor:not-allowed'; vrBtn.textContent = '🥽 Open on Quest for VR'; vrBtn.title = 'VR needs a WebXR browser such as the Meta Quest browser'; } /* desktop: greyed-out hint, replaced below when VR is supported */
   if (vrBtn && navigator.xr && navigator.xr.isSessionSupported) {
     navigator.xr.isSessionSupported('immersive-vr').then(ok => {
       if (!ok) return; vrBtn.hidden = false; vrBtn.disabled = false; vrBtn.style.cssText = ''; vrBtn.title = 'Enter VR (Meta Quest browser): point and pull the trigger to teleport or click';
