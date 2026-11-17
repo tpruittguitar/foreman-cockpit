@@ -7,7 +7,7 @@ function fixture(requests){return {version:1,updatedAt:'2026-10-28T23:50:00Z',re
 test('GitHub pay aliases count one physical write and one row update, not one update per alias',()=>{
  const d=A.aggregate(fixture({'FORGE-ENRICH_ATS-ATSBOT-X-R1':entry('W1'),'FORGE-ENRICH_ATS-ATSBOT-X-R2':entry('W1')}),now);
  assert.equal(d.today.writes,1);assert.equal(d.today.updates,1);assert.equal(d.today.inserts,0);
- assert.equal(d.sources['Pay enrichment (GitHub)'].writes,1);assert.equal(d.buckets.reduce((s,b)=>s+b.writes,0),1);
+ assert.equal(d.sources['enrichment writes'].writes,1);assert.equal(d.buckets.reduce((s,b)=>s+b.writes,0),1);
 });
 test('new inserts differ from updates, repeated writes count but distinct jobs do not inflate',()=>{
  const d=A.aggregate(fixture({a:entry('W1',[{...item,op:'INSERT'}]),b:entry('W2'),c:entry('W3')}),now);
