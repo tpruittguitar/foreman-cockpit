@@ -221,8 +221,9 @@ function starSDF(rot) {
     }
     return d;
   };
+  /* Tim (Nov 17, 2:09 AM): the dome height follows a smooth Gaussian of the radius, not the star distance, so the middle is round with no apex point. */
   return (x, y, z) => {
-    const a = d2(x, y), H = 0.05 + 0.05 * Math.min(1, Math.max(0, -a) / 0.25), qx = a + RR, qy = Math.abs(z) - H;
+    const a = d2(x, y), H = 0.05 + 0.05 * Math.exp(-(x * x + y * y) / 0.045), qx = a + RR, qy = Math.abs(z) - H;
     return Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - RR;
   };
 }
