@@ -165,6 +165,7 @@ function limb(radius, len, m, key) {
    The avatar silhouette is the equator (radius r(theta)); each latitude ring shrinks it like a sphere, so the front and back are
    domes and the sides are round. Front-to-back thickness = THICK x the width of the face view (studio samples are ~1:1, never more). */
 export const BOT_THICK = 0.765; // Tim (Nov 17): bodies about 15% less bulbous (was 0.9)
+export const BOT_FLAT = 2.6; // front/back dome exponent: 2 = ellipsoid (pointy middle), higher = flatter, softer chubby front (Tim, Nov 17)
 function radialProfile(pts, n) {
   const r = new Float32Array(n);
   for (let k = 0; k < n; k++) {
@@ -183,12 +184,12 @@ function radialProfile(pts, n) {
 /* Claude's starburst, built in the studio language: a smooth-union SDF of a round core and exactly 6 round-capped rays (valleys fused into the
    core by the smooth-min), meshed by marching along rays from the centre (the shape is star-shaped, so each ray hits the skin once). */
 function starSDF(rot) {
-  const CORE = 0.23, R0 = 0.175, R1 = 0.115, LEN = 0.335, K = 0.07, ZS = 1.15, tips = [];
+  const CORE = 0.23, R0 = 0.175, R1 = 0.115, LEN = 0.335, K = 0.11, ZS = 1.15, CZ = 1.25, tips = [];
   for (let i = 0; i < 6; i++) { const t = Math.PI / 2 + rot + i * Math.PI / 3; tips.push([Math.cos(t) * LEN, Math.sin(t) * LEN]); }
   const smin = (p, q) => { const h = Math.max(K - Math.abs(p - q), 0) / K; return Math.min(p, q) - h * h * K * 0.25; };
   return (x, y, z0) => {
     const z = z0 / ZS; // puffier front-to-back so the thickness matches the width of the face view
-    let d = Math.hypot(x, y, z) - CORE;
+    let d = Math.hypot(x, y, z * CZ) - CORE; /* Tim (Nov 17): core no deeper than the rays, so the middle is chubby, not a pointy belly */
     for (const [tx, ty] of tips) {
       const l2 = tx * tx + ty * ty, u = Math.max(0, Math.min(1, (x * tx + y * ty) / l2)), dx = x - tx * u, dy = y - ty * u;
       d = smin(d, Math.hypot(dx, dy, z) - (R0 + (R1 - R0) * u));
@@ -209,9 +210,9 @@ function puffBody(a, hi) {
     const pts = shapePoints(a), prof = radialProfile(pts, NT);
     let wmax = 0, wmin = 0; for (let k = 0; k < NT; k++) { const x = Math.cos(k / NT * Math.PI * 2) * prof[k]; wmax = Math.max(wmax, x); wmin = Math.min(wmin, x); }
     D = (wmax - wmin) * BOT_THICK / 2;
-    ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.sin(ph); return [Math.cos(t) * r, Math.sin(t) * r, Math.cos(ph) * D]; };
+    ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, sp = Math.sin(ph), cp = Math.cos(ph), r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.pow(Math.abs(sp), 2 / BOT_FLAT); return [Math.cos(t) * r, Math.sin(t) * r, Math.sign(cp) * Math.pow(Math.abs(cp), 2 / BOT_FLAT) * D]; };
     zFront = (x, y) => { const rho = Math.hypot(x, y), th = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2), f = th / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, R = prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f));
-      return Math.sqrt(Math.max(0, 1 - Math.min(1, rho / R) ** 2)) * D; };
+      return Math.pow(Math.max(0, 1 - Math.min(1, rho / R) ** BOT_FLAT), 1 / BOT_FLAT) * D; };
   }
   const pos = [], idx = [], P0 = ringAt(1e-4, 0), P1 = ringAt(Math.PI - 1e-4, 0);
   pos.push(0, 0, P0[2]);
