@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><title>Studio expression montage</title>
+<!-- Proof view: ?bot=Edgar&cols=4. One bot per cell, one of the 16 Grok Bots studio faces each, labelled. -->
+<style>html,body{margin:0;background:#34363a;font:600 15px system-ui,sans-serif;color:#e9edf3}#wrap{position:relative}canvas{display:block}.lab{position:absolute;text-align:center;width:var(--cw);transform:translateY(-100%)}</style>
+<script type="importmap">{"imports":{"three":"../office/vendor/three/three.module.min.js"}}</script>
+<script src="../office/office-logic.js"></script>
+<div id="wrap"></div>
+<script type="module">
+import * as THREE from 'three';
+import { makeBot, animate } from '../office/chars.js';
+const q = new URLSearchParams(location.search), L = window.OfficeLogic;
+const cols = +q.get('cols') || 4, rows = Math.ceil(16 / cols), CW = +q.get('cw') || 300, CH = +q.get('ch') || 300, W = cols * CW, H = rows * CH;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(W, H); r.setPixelRatio(1);
+r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05; r.setScissorTest(true);
+const wrap = document.getElementById('wrap'); wrap.style.setProperty('--cw', CW + 'px'); wrap.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x3c3f44);
+scene.add(new THREE.HemisphereLight(0xdfe6f0, 0x4a4540, 1.1));
+const key = new THREE.DirectionalLight(0xfff2e6, 2.1); key.position.set(1.5, 2.5, 4); scene.add(key);
+const fill = new THREE.DirectionalLight(0xaec4ff, 0.7); fill.position.set(-3, 1.5, 2); scene.add(fill);
+const c = makeBot(q.get('bot') || 'Edgar', true); scene.add(c.root);
+const cam = new THREE.PerspectiveCamera(24, CW / CH, 0.1, 20); cam.position.set(0, c.top * 0.55 + 0.02, 2.3); cam.lookAt(0, c.top * 0.55, 0);
+L.STUDIO_FACES.forEach((f, i) => {
+  c.exprTarget = f.id; c.expr = L.exprParams(f.id); c.blinker.at = 1e9;
+  animate(c, 'stand', 0, 0.1, { reduced: true }); c.face.userData.apply(c.expr, 0, null); c.root.updateMatrixWorld(true);
+  const x = (i % cols) * CW, y = H - (Math.floor(i / cols) + 1) * CH;
+  r.setViewport(x, y, CW, CH); r.setScissor(x, y, CW, CH); r.render(scene, cam);
+  const d = document.createElement('div'); d.className = 'lab'; d.textContent = f.id + ' / ' + f.fr; d.style.left = (i % cols) * CW + 'px'; d.style.top = (Math.floor(i / cols) * CH + CH - 8) + 'px'; wrap.appendChild(d);
+});
+document.title = 'ready';
+</script>

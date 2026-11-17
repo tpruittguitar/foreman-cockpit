@@ -1445,19 +1445,138 @@
     return { ball: { x, z }, stroke: 0, phase: u < 6 ? 'roll' : 'rest' };
   }
 
-  /* Item 14: faces blend between expressions. Each expression is a set of weights; the face eases towards the target. */
-  const EXPR = {
-    happy: { smile: 1, frown: 0, flat: 0, oh: 0, drop: 0, worry: 0, puzzle: 0, lid: 0 },
-    neutral: { smile: 0.45, frown: 0, flat: 0, oh: 0, drop: 0, worry: 0, puzzle: 0, lid: 0 },
-    worried: { smile: 0, frown: 1, flat: 0, oh: 0, drop: 1, worry: 1, puzzle: 0, lid: 0 },
-    puzzled: { smile: 0, frown: 0, flat: 1, oh: 0, drop: 0, worry: 0, puzzle: 1, lid: 0 },
-    sleepy: { smile: 0, frown: 0, flat: 0, oh: 1, drop: 0, worry: 0, puzzle: 0, lid: 1 }
-  };
+  /* Item 14: faces blend between expressions. Each expression is a set of weights; the face eases towards the target.
+     The 16 faces of the Grok Bots studio (https://grokbots.ai/studio) are ported as data: a gaze (yaw / pitch / roll in degrees),
+     an eye split (degrees between the eyes) and per-eye {w, h, tilt, open} (w, h in studio units; tilt in degrees, clockwise on screen). */
+  const SE = (w, h, tilt, open) => ({ w, h, tilt: tilt || 0, open: open == null ? 1 : open });
+  const SEP = (w, h, tilt, open) => [SE(w, h, tilt, open), SE(w, h, -(tilt || 0), open)];
+  const STUDIO_NEUTRAL = { yaw: 28.49, pitch: 28.62, roll: -13 }, STUDIO_NEUTRAL_SPLIT = 15.46;
+  const STUDIO_FACES = [
+    { id: 'neutral', fr: 'neutre', gaze: STUDIO_NEUTRAL, split: STUDIO_NEUTRAL_SPLIT, eyes: [SE(0.186, 0.412), SE(0.186, 0.412)] },
+    { id: 'attentive', fr: 'attentif', gaze: { yaw: 4, pitch: 5, roll: -4 }, split: 16, eyes: SEP(0.21, 0.44) },
+    { id: 'surprised', fr: 'surpris', gaze: { yaw: 3, pitch: -3, roll: 0 }, split: 19, eyes: SEP(0.45, 0.47) },
+    { id: 'excited', fr: 'excite', gaze: { yaw: 6, pitch: -14, roll: 0 }, split: 19.5, eyes: SEP(0.4, 0.56, -10) },
+    { id: 'happy', fr: 'heureux', gaze: { yaw: 5, pitch: 9, roll: 0 }, split: 17, eyes: SEP(0.27, 0.17, 14) },
+    { id: 'laughing', fr: 'hilare', gaze: { yaw: 4, pitch: 14, roll: 0 }, split: 18, eyes: SEP(0.34, 0.13, 20) },
+    { id: 'angry', fr: 'colere', gaze: { yaw: 3, pitch: 7, roll: 0 }, split: 17, eyes: SEP(0.34, 0.15, 30) },
+    { id: 'sad', fr: 'triste', gaze: { yaw: 3, pitch: -13, roll: 0 }, split: 16, eyes: SEP(0.22, 0.4, -28) },
+    { id: 'scared', fr: 'effraye', gaze: { yaw: 2, pitch: -20, roll: 0 }, split: 20.5, eyes: SEP(0.4, 0.6) },
+    { id: 'suspicious', fr: 'mefiant', gaze: { yaw: 12, pitch: 6, roll: -6 }, split: 16, eyes: [SE(0.21, 0.4), SE(0.22, 0.15)] },
+    { id: 'confused', fr: 'confus', gaze: { yaw: -14, pitch: 3, roll: 8 }, split: 16.5, eyes: [SE(0.2, 0.44, -18), SE(0.28, 0.17, 14)] },
+    { id: 'curious', fr: 'curieux', gaze: { yaw: 16, pitch: -9, roll: -15 }, split: 16.5, eyes: [SE(0.24, 0.46, -8), SE(0.2, 0.38, -8)] },
+    { id: 'proud', fr: 'fier', gaze: { yaw: 5, pitch: 17, roll: 0 }, split: 17, eyes: SEP(0.3, 0.15, 18) },
+    { id: 'shy', fr: 'timide', gaze: { yaw: -19, pitch: -14, roll: -7 }, split: 14, eyes: SEP(0.17, 0.3) },
+    { id: 'unimpressed', fr: 'blase', gaze: { yaw: -22, pitch: 2, roll: 0 }, split: 16, eyes: SEP(0.3, 0.12) },
+    { id: 'sleepy', fr: 'somnolent', gaze: { yaw: 6, pitch: -9, roll: -3 }, split: 16, eyes: SEP(0.2, 0.42, 0, 0.42) }
+  ];
+  const STUDIO_FACE_IDS = STUDIO_FACES.map(f => f.id);
+  /* flat weights for one face: legacy overlay weights (brows, drop, lid) + the studio eye parameters */
+  function faceWeights(f, legacy) {
+    const e0 = f.eyes[0], e1 = f.eyes[1];
+    return Object.assign({ smile: 0, frown: 0, flat: 0, oh: 0, drop: 0, worry: 0, puzzle: 0, lid: 0 }, legacy || {}, {
+      gyaw: f.gaze.yaw, gpitch: f.gaze.pitch, groll: f.gaze.roll, split: f.split,
+      e0w: e0.w, e0h: e0.h, e0t: e0.tilt, e0o: e0.open, e1w: e1.w, e1h: e1.h, e1t: e1.tilt, e1o: e1.open
+    });
+  }
+  const FACE_LEGACY = { happy: { smile: 1 }, neutral: { smile: 0.45 }, sad: { frown: 1 }, scared: { oh: 1, drop: 1 }, confused: { flat: 1 }, sleepy: { oh: 1, lid: 0.58 } };
+  const EXPR = {};
+  for (const f of STUDIO_FACES) EXPR[f.id] = faceWeights(f, FACE_LEGACY[f.id]);
+  /* older names: worried = sad eyes + worried brows and a sweat drop; puzzled = confused eyes + the one raised brow */
+  EXPR.worried = faceWeights(STUDIO_FACES[7], { frown: 1, drop: 1, worry: 1 });
+  EXPR.puzzled = faceWeights(STUDIO_FACES[10], { flat: 1, puzzle: 1 });
   const exprParams = name => Object.assign({}, EXPR[name] || EXPR.neutral);
   function blendExpression(cur, target, dt, rate) {
     const goal = typeof target === 'string' ? exprParams(target) : target, k = 1 - Math.exp(-(rate || 9) * Math.max(0, dt)), out = {};
     for (const key of Object.keys(EXPR.happy)) { const a = cur && cur[key] != null ? cur[key] : goal[key]; const v = a + (goal[key] - a) * k; out[key] = Math.abs(goal[key] - v) < 0.002 ? goal[key] : v; }
     return out;
+  }
+  /* Which face for which situation. ctx = { pose, status, needsTim, failed, stale, mergedRecently, near, greeted, surprised, ambient, act, t, name }.
+     Order matters: alarms first, then rest, then the bot's own work, then idle life. Deterministic: same ctx -> same face. */
+  const slotPick = (t, name, tag, list, secs) => list[(Math.floor(Math.max(0, t || 0) / (secs || 12)) + hash(tag + ':' + name)) % list.length];
+  function exprFor(ctx) {
+    const c = ctx || {}, pose = c.pose || 'stand', name = c.name || '', t = c.t || 0;
+    if (c.failed) return 'scared';
+    if (pose === 'nap' || pose === 'deskSleep') return 'sleepy';
+    if (c.needsTim) return hash('needs:' + name) % 2 ? 'suspicious' : 'confused';
+    if (c.status === 'failed') return 'angry';
+    if (c.status === 'blocked') return 'sad';
+    if (c.surprised) return 'surprised';
+    if (c.greeted || c.near) return 'shy';
+    if (c.mergedRecently) return slotPick(t, name, 'merged', ['proud', 'proud', 'excited'], 6);
+    if (c.stale) return 'unimpressed';
+    if (pose === 'talk' && (c.ambient === 'chat' || c.ambient === 'group' || c.ambient === 'reply')) return slotPick(t, name, 'chat', ['happy', 'laughing', 'happy'], 5);
+    if (pose === 'game') return 'excited';
+    if (pose === 'bike') return 'excited';
+    if (pose === 'pool') return 'proud';
+    if (pose === 'type' || pose === 'board' || c.status === 'working') return 'attentive';
+    if (pose === 'coffee' || pose === 'fridge') return 'happy';
+    if (pose === 'meet') return 'attentive';
+    if (pose === 'lounge') return 'neutral';
+    if (pose === 'stand' || pose === 'walk' || pose === 'stretch' || pose === 'talk' || pose === 'sit') return slotPick(t, name, 'idle', ['curious', 'neutral', 'curious', 'neutral'], 14);
+    return 'neutral';
+  }
+  /* Studio gaze -> shift of the eye pair on the face plane (metres), spread factor and roll (radians). Capped so the eyes stay on the body. */
+  const GAZE_GAIN = 0.0007, GAZE_CAP = 0.02, ROLL_GAIN = 0.6;
+  const clampN = (v, m) => Math.max(-m, Math.min(m, v));
+  function gazeShift(p, extra) {
+    const x = (p.gyaw || 0) + (extra && extra.yaw || 0), y = (p.gpitch || 0) + (extra && extra.pitch || 0), r = (p.groll || 0) + (extra && extra.roll || 0);
+    return { x: clampN(x * GAZE_GAIN, GAZE_CAP), y: clampN(y * GAZE_GAIN, GAZE_CAP), roll: -r * ROLL_GAIN * Math.PI / 180, spread: Math.sin((p.split || STUDIO_NEUTRAL_SPLIT) * Math.PI / 180) / Math.sin(STUDIO_NEUTRAL_SPLIT * Math.PI / 180) };
+  }
+  /* Studio eye size -> metres, keeping the office slot-eye proportions: the neutral studio eye (0.186 x 0.412) is the existing 0.068 x 0.2 slot. */
+  const SLOT_W_PER_UNIT = 0.068 / 0.186, SLOT_H_PER_UNIT = 0.2 / 0.412;
+  const slotSize = (w, h) => ({ w: Math.max(0.01, w * SLOT_W_PER_UNIT), h: Math.max(0.01, h * SLOT_H_PER_UNIT) });
+  /* Studio "look" animation: the gaze drifts with slow layered noise (never still), plus a gentle breath. Returns degrees and a scale. */
+  const noise1 = (t, period, ph) => { const r = t / period * Math.PI * 2; return 0.55 * Math.sin(r + ph) + 0.3 * Math.sin(2 * r + 1.7 * ph + 1.1) + 0.15 * Math.sin(3 * r + 2.3 * ph + 2.4); };
+  function gazeWander(t, seed, amount) {
+    const a = amount == null ? 1 : amount, ph = (seed || 0) * 0.37;
+    return { yaw: (5.5 * noise1(t, 11.3, ph) + 1.6 * noise1(t, 3.7, ph + 2.1)) * a + 0, pitch: (4.2 * noise1(t, 9.1, ph + 1.3) + 1.3 * noise1(t, 4.3, ph + 0.7)) * a, roll: 2.2 * noise1(t, 13.7, ph + 3.2) * a + 0, breath: 1 + 0.006 * Math.sin(t / 3.4 * Math.PI * 2 + ph) };
+  }
+  /* Studio "move" animations as idle fidgets. Each bot gets a fidget slot every FIDGET_SLOT_S seconds (hash-staggered); about 2 in 3 slots
+     hold a fidget at a hash-picked offset. fidgetAt(t, name) -> null | { kind, u: 0..1 progress, dur }; fidgetPose turns it into modifiers. */
+  const FIDGETS = [
+    { kind: 'wink', dur: 1.2 }, { kind: 'wide', dur: 1.6 }, { kind: 'pop', dur: 1.2 }, { kind: 'bounce', dur: 1.6 },
+    { kind: 'squash', dur: 1.3 }, { kind: 'sway', dur: 2.4 }, { kind: 'spin', dur: 2.2 }, { kind: 'glance', dur: 2.0 }
+  ];
+  const FIDGET_SLOT_S = 11;
+  function fidgetAt(t, name) {
+    const off = hash('fo:' + name) % (FIDGET_SLOT_S * 1000) / 1000, tt = Math.max(0, t || 0) + off, slot = Math.floor(tt / FIDGET_SLOT_S), h = hash('fs:' + name + ':' + slot);
+    if (h % 3 === 0) return null;
+    const f = FIDGETS[(h >>> 3) % FIDGETS.length], start = 0.5 + ((h >>> 9) % 1000) / 1000 * (FIDGET_SLOT_S - f.dur - 1), u = (tt - slot * FIDGET_SLOT_S - start) / f.dur;
+    return u < 0 || u > 1 ? null : { kind: f.kind, u, dur: f.dur };
+  }
+  const bell = u => Math.sin(Math.max(0, Math.min(1, u)) * Math.PI);
+  function fidgetPose(f) {
+    const z = { yaw: 0, pitch: 0, roll: 0, wink: 0, eyeScale: 1, sy: 1, sxz: 1, hop: 0, turn: 0, tilt: 0 };
+    if (!f) return z;
+    const b = bell(f.u), u = f.u;
+    switch (f.kind) {
+      case 'wink': z.wink = Math.min(1, b * 1.6); z.roll = 4 * b; break;
+      case 'wide': z.eyeScale = 1 + 0.35 * b; z.pitch = -12 * b; break;
+      case 'pop': z.eyeScale = 1 + 0.5 * Math.sin(Math.min(1, u * 2.2) * Math.PI) * (1 - 0.35 * u); z.yaw = -14 * b; z.hop = 0.025 * Math.sin(Math.min(1, u * 2) * Math.PI); break;
+      case 'bounce': z.hop = 0.05 * Math.abs(Math.sin(u * Math.PI * 3)) * (1 - u * 0.4); z.sy = 1 + 0.04 * Math.cos(u * Math.PI * 6); z.sxz = 1 / Math.sqrt(z.sy); break;
+      case 'squash': { const k = u < 0.35 ? u / 0.35 : 1 - (u - 0.35) / 0.65; z.sy = 1 - 0.16 * Math.sin(k * Math.PI / 2); z.sxz = 1 / Math.sqrt(z.sy); z.hop = u > 0.35 && u < 0.7 ? 0.04 * Math.sin((u - 0.35) / 0.35 * Math.PI) : 0; break; }
+      case 'sway': z.tilt = 0.12 * Math.sin(u * Math.PI * 2); z.roll = -6 * Math.sin(u * Math.PI * 2); z.yaw = 5 * Math.sin(u * Math.PI * 2 + 1); break;
+      case 'spin': z.turn = Math.PI * 2 * (u < 0.7 ? 1 - Math.pow(1 - u / 0.7, 3) : 1); z.yaw = 20 * Math.sin(u * Math.PI * 4) * (1 - u); break;
+      case 'glance': z.yaw = 22 * Math.sin(u * Math.PI * 2) * b + 6 * b; z.pitch = 5 * b; break;
+      default:
+    }
+    return z;
+  }
+  /* true when one of the bot's open PRs has failing checks (pulls: summarizePull rows with url + checks) */
+  function failedPr(name, items, pulls) {
+    const bad = new Set((pulls || []).filter(p => p && p.checks === 'failing').map(p => prKey(p.url)));
+    return (items || []).some(i => i && i.owner === name && bad.has(prKey(i.link)));
+  }
+  /* true when one of the bot's PRs was merged in the last windowMin minutes (prStates: Map prKey -> state, prTimes: Map prKey -> updated_at ISO) */
+  function mergedRecently(name, items, prStates, prTimes, now, windowMin) {
+    const w = (windowMin == null ? 30 : windowMin) * MIN;
+    for (const i of items || []) {
+      if (!i || i.owner !== name) continue;
+      const k = prKey(i.link); if (!k || !prStates || prStates.get(k) !== 'merged') continue;
+      const t = prTimes && time(prTimes.get(k));
+      if (t != null && now - t >= 0 && now - t <= w) return true;
+    }
+    return false;
   }
   /* Item 15: natural random blinking. One blink = 0.16 s close-open; next one 2-6.5 s later; ~1 in 8 is a quick double. */
   const BLINK_DUR = 0.16;
@@ -1529,6 +1648,6 @@
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
-    groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
+    groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
 });

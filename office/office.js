@@ -1077,7 +1077,7 @@ function buildWorld() {
     c.setFrozen(frozen);
     const st = L.statusStyle(b ? b.status : 'idle'), needs = S.needsSet.has(c.name) && !frozen;
     if (frozen) {
-      c.warn.visible = false; c.quest.visible = false; c.zzz.visible = false; c.setExpression('puzzled'); c.updateFace(dt, clock);
+      c.warn.visible = false; c.quest.visible = false; c.zzz.visible = false; c.setExpression(L.exprFor({ failed: true, pose: c.pose, name: c.name })); c.updateFace(dt, clock, true);
       animate(c, c.pose === 'type' || c.pose === 'sit' ? 'sit' : 'frozen', clock, dt, { reduced: true, holding: false });
       return;
     }
@@ -1112,10 +1112,15 @@ function buildWorld() {
     // item 10: restock = the box goes into the fridge (stock back to full); a refresh at the fridge uses one can
     if (goal.pose === 'restock' && c.arrived && !c.restocked && clock - c.arrivedAt > 1.8) { fridgeStock = L.FRIDGE_CAP; layoutCans(lastDeskCans); c.restocked = true; c.restockedAt = clock; S.restocker = null; }
     if (goal.pose === 'fridge' && c.arrived && clock - c.arrivedAt > 1.4 && c.tookKey !== c.goalKey) { c.tookKey = c.goalKey; fridgeStock = L.fridgeTake(fridgeStock); layoutCans(lastDeskCans); }
-    c.setExpression(pose === 'nap' || pose === 'deskSleep' ? 'sleepy' : needs ? 'worried' : pose === 'stand' || pose === 'stretch' ? 'neutral' : 'happy'); // eased + blinking in c.updateFace
+    const nowMs = Date.now(), fresh = S.fresh[c.name], itemsNow = items(), gk = goal.key || '';
+    const near = !renderer.xr.isPresenting && !TV && Math.hypot(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) < 1.5 && pose !== 'nap' && pose !== 'deskSleep';
+    c.setExpression(L.exprFor({ pose, name: c.name, t: clock, needsTim: needs, status: L.failedPr(c.name, itemsNow, S.pulls) ? 'failed' : b ? L.statusStyle(b.status).status : 'idle', stale: !!(fresh && fresh.stale), near,
+      mergedRecently: L.mergedRecently(c.name, itemsNow, S.prStates, S.prTimes, nowMs), greeted: (() => { const hr = chars.get(L.TRAINER); return !!(hr && hr.goalKey === 'invite:' + c.name && hr.arrived); })(),
+      surprised: gk.startsWith('job:') && gk.endsWith(':receive') && c.arrived && clock - c.arrivedAt < 2.5, ambient: goal.ambient || '' })); // eased + blinking in c.updateFace
+
     c.warn.visible = needs;
     c.quest.visible = false; // "?" is gone: only a real needs_tim item shows anything (the warning triangle + arm wave)
-    c.updateFace(dt, clock);
+    c.updateFace(dt, clock, reduced);
     if (needs) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
     animate(c, pose, clock, dt, { reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null });
     c.rig.position.x = pose === 'nap' ? 0.5 : 0;

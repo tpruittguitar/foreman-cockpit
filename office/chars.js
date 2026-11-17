@@ -132,10 +132,11 @@ function makeFace(frontZ, scale, eyeDark, noMouth, tilt) {
   drop.position.set(0.2 * scale, 0.12 * scale, -0.01);
   f.add(smile, frown, flat, oh, drop);
   const W = v => Math.max(0.02, v);
-  f.userData.apply = (p, blink) => {
+  f.userData.apply = (p, blink, extra) => {
     const open = (1 - p.lid) * (1 - blink);
-    eyes.forEach((e, i) => { e.visible = p.lid < 0.6; e.scale.y = e.userData.sy * Math.max(0.1, open); shines[i].visible = e.visible && open > 0.5; });
-    lids.forEach(l => { l.visible = p.lid > 0.05; l.scale.set(0.55 * scale, 0.5 * scale * W(p.lid), scale); });
+    if (f.userData.studio) f.userData.studio(p, blink, extra);
+    else eyes.forEach((e, i) => { e.visible = p.lid < 0.6; e.scale.y = e.userData.sy * Math.max(0.1, open); shines[i].visible = e.visible && open > 0.5; });
+    lids.forEach(l => { l.visible = !f.userData.studio && p.lid > 0.05; l.scale.set(0.55 * scale, 0.5 * scale * W(p.lid), scale); });
     smile.visible = !noMouth && p.smile > 0.02; smile.scale.set(scale, scale * W(p.smile), scale);
     frown.visible = !noMouth && p.frown > 0.02; frown.scale.set(scale * 0.8, scale * 0.6 * W(p.frown), scale);
     flat.visible = !noMouth && p.flat > 0.02; flat.scale.setScalar(W(p.flat));
@@ -151,6 +152,29 @@ function makeFace(frontZ, scale, eyeDark, noMouth, tilt) {
   f.userData.eyes = eyes; f.userData.shines = shines; f.userData.brows = brows;
   f.userData.apply(window.OfficeLogic.exprParams('happy'), 0);
   return f;
+}
+
+/* Studio eyes: a per-eye stadium (slot) geometry in metres, rebuilt from the shared unit capsule when w x h change. The long axis follows the longer side. */
+const SLOT_ZR = 0.014; // flattened depth (half thickness), as the old slot eyes
+function slotGeometry() {
+  const base = new THREE.CapsuleGeometry(1, 1, 8, 16), g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(base.attributes.position.array.slice(), 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(base.attributes.normal.array.slice(), 3));
+  g.setIndex(base.index.clone()); g.userData.base = { pos: base.attributes.position.array, nor: base.attributes.normal.array, idx: base.index.array.slice() }; g.userData.horiz = false; base.dispose();
+  return g;
+}
+function setSlot(g, w, h) {
+  const { pos, nor } = g.userData.base, P = g.attributes.position.array, N = g.attributes.normal.array, horiz = w > h, r = Math.min(w, h) / 2, Lh = (Math.max(w, h) - Math.min(w, h)) / 2;
+  for (let i = 0; i < pos.length; i += 3) {
+    const bx = pos[i], by = pos[i + 1], bz = pos[i + 2], sg = by >= 0 ? 1 : -1, along = sg * Lh + (by - sg * 0.5) * r, across = bx * r;
+    P[i] = horiz ? along : across; P[i + 1] = horiz ? across : along; P[i + 2] = bz * SLOT_ZR;
+    N[i] = horiz ? nor[i + 1] : nor[i]; N[i + 1] = horiz ? nor[i] : nor[i + 1]; N[i + 2] = nor[i + 2];
+  }
+  if (g.userData.horiz !== horiz) { /* swapping x and y mirrors the shape: flip the triangle winding so the front faces still face out */
+    const ix = g.index.array, bi = g.userData.base.idx; for (let i = 0; i < bi.length; i += 3) { ix[i] = bi[i]; ix[i + 1] = horiz ? bi[i + 2] : bi[i + 1]; ix[i + 2] = horiz ? bi[i + 1] : bi[i + 2]; }
+    g.index.needsUpdate = true; g.userData.horiz = horiz;
+  }
+  g.attributes.position.needsUpdate = true; g.attributes.normal.needsUpdate = true; g.computeBoundingSphere();
 }
 
 /* ---------- limbs ---------- */
@@ -248,16 +272,37 @@ export function makeBot(name, hiQuality, botId, override) {
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   { const eyeM = mat('eyeClay', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 1, metalness: 0 }));
-    const rot = a.rot || 0, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004;
-    face.userData.eyes.forEach((e, i) => { e.material = eyeM; const ex = (i ? 1 : -1) * 0.1, ey = -0.02;
-      /* sit each eye ON the curved skin: sample the surface where the eye really lands (the face is rotated by rot and lifted 0.02), then
-         tilt it to the surface normal so neither end sinks into the body (Tim, Nov 17: Usage's eyes vanished into its slope) */
+    const rot = a.rot || 0, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004, ZV = new THREE.Vector3(0, 0, 1);
+    const EY = -0.02, tmpQ = new THREE.Quaternion(), qz = new THREE.Quaternion();
+    /* sit each eye ON the curved skin: sample the surface where the eye really lands (the face is rotated by rot and lifted 0.02), then
+       tilt it to the surface normal so neither end sinks into the body (Tim, Nov 17: Usage's eyes vanished into its slope) */
+    const placeEye = (e, ex, ey, tilt) => {
       const bx = ex * cr - ey * sr, by = ex * sr + ey * cr + 0.02, z = zAt(bx, by);
       const gx = (zAt(bx + H, by) - zAt(bx - H, by)) / (2 * H), gy = (zAt(bx, by + H) - zAt(bx, by - H)) / (2 * H);
       const nb = new THREE.Vector3(-gx, -gy, 1).normalize(), n = new THREE.Vector3(nb.x * cr + nb.y * sr, -nb.x * sr + nb.y * cr, nb.z);
-      e.position.set(ex, ey, z - fz).addScaledVector(n, 0.006); e.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
-      e.scale.set(0.034, 0.0408, 0.014); e.userData.sy = 0.0408; face.userData.shines[i].scale.set(0, 0, 0); });
+      e.position.set(ex, ey, z - fz).addScaledVector(n, 0.006); e.quaternion.setFromUnitVectors(ZV, n);
+      if (tilt) e.quaternion.multiply(qz.setFromAxisAngle(ZV, tilt));
+    };
+    face.userData.eyes.forEach((e, i) => { e.material = eyeM; e.geometry = slotGeometry(); setSlot(e.geometry, 0.068, 0.2); placeEye(e, (i ? 1 : -1) * 0.1, EY, 0);
+      e.scale.set(1, 1, 1); e.userData.sy = 1; face.userData.shines[i].scale.set(0, 0, 0); });
     face.userData.brows.forEach((br, i) => { const ex = (i ? 1 : -1) * 0.085, ey = 0.15, bx = ex * cr - ey * sr, by = ex * sr + ey * cr + 0.02; br.position.z = zAt(bx, by) - fz + 0.008; });
+    /* studio faces: p = blended expression weights (office-logic EXPR); extra = {yaw, pitch, roll (deg), wink 0..1, eyeScale} from the idle motions.
+       Per eye: a stadium (slot) of the studio w x h, tilted by the studio tilt, shifted by the gaze, re-seated on the surface when it moved. */
+    const L = window.OfficeLogic;
+    face.userData.studio = (p, blink, extra) => {
+      const x = extra || {}, g = L.gazeShift(p, x), key = [g.x, g.y, g.roll, g.spread, p.e0w, p.e0h, p.e0t, p.e1w, p.e1h, p.e1t, x.eyeScale].map(v => Math.round((v || 0) * 5000)).join(',');
+      face.userData.eyes.forEach((e, i) => {
+        const w = p[i ? 'e1w' : 'e0w'] * (x.eyeScale || 1), h = p[i ? 'e1h' : 'e0h'] * (x.eyeScale || 1), tilt = p[i ? 'e1t' : 'e0t'], sz = L.slotSize(w, h);
+        const open = Math.max(0.06, Math.min(p[i ? 'e1o' : 'e0o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
+        if (face.userData.slotKey !== key) {
+          const sx = (i ? 1 : -1) * 0.1 * g.spread, cx = sx * Math.cos(g.roll), cy = sx * Math.sin(g.roll);
+          placeEye(e, cx + g.x, EY + cy + g.y, -tilt * Math.PI / 180 - g.roll);
+          setSlot(e.geometry, sz.w, sz.h);
+        }
+        e.scale.set(1, open, 1); e.visible = true;
+      });
+      face.userData.slotKey = key;
+    };
     face.rotation.z = rot; }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
@@ -463,9 +508,12 @@ function finish(c) {
   const L = window.OfficeLogic, rng = L.makeRng(L.hash('blink:' + c.name));
   c.expr = L.exprParams('happy'); c.exprTarget = 'happy'; c.blinker = L.createBlinker(rng, 0); c.blinkRng = rng;
   c.setExpression = e => { c.exprTarget = e; };
-  c.updateFace = (dt, t) => { // blend towards the target expression, then blink (call once per frame)
+  c.bodyY0 = c.body.position.y; c.halfH = (c.top - 0.16) / 2; c.fidgetNow = null; c.breath = 1;
+  c.updateFace = (dt, t, reduced) => { // blend towards the target expression, then blink; studio look + move idles drift the gaze and fidget (call once per frame)
     c.expr = L.blendExpression(c.expr, c.exprTarget, dt, 9);
-    c.face.userData.apply(c.expr, c.blinkRng ? L.blinkAmount(c.blinker, t, c.blinkRng) : 0);
+    const fp = reduced ? null : L.fidgetPose(L.fidgetAt(t, c.name)), w = reduced ? null : L.gazeWander(t, L.hash(c.name) % 97, c.exprTarget === 'sleepy' ? 0.3 : 1);
+    c.fidgetNow = fp; c.breath = w ? w.breath : 1;
+    c.face.userData.apply(c.expr, c.blinkRng ? L.blinkAmount(c.blinker, t, c.blinkRng) : 0, fp ? { yaw: (w ? w.yaw : 0) + fp.yaw, pitch: (w ? w.pitch : 0) + fp.pitch, roll: (w ? w.roll : 0) + fp.roll, wink: fp.wink, eyeScale: fp.eyeScale } : w ? { yaw: w.yaw, pitch: w.pitch, roll: w.roll } : null);
   };
   c.face.userData.apply(c.expr, 0);
   c.root.traverse(o => { if (o.isMesh) o.userData.charName = c.name; });
@@ -551,9 +599,17 @@ export function animate(c, pose, t, dt, opts) {
     default: if (!still) bob = 0.008 * Math.sin(t * 2 + ph) + 0.012 * Math.max(0, Math.sin(t * 3.1 + ph)); // stand / loiter: bouncing on its toes
       turnY = 0.6 * glance; if (opts.can) armR.x = -0.8;
   }
+  /* studio "move" fidgets (hop, squash, sway, spin) only while standing about, and only for the jelly bots (the President is a rigid minifig) */
+  const fz = !still && c.kind === 'bot' && (pose === 'stand' || pose === 'talk') ? c.fidgetNow : null;
+  if (fz) { bob += fz.hop; lean += fz.tilt; }
   c.body.rotation.x = lerp(c.body.rotation.x, lean, Math.min(1, dt * 5));
-  c.body.rotation.y = lerp(c.body.rotation.y, turnY, Math.min(1, dt * 5));
-  if (pose !== 'nap' && c.body.scale.x !== 1) c.body.scale.set(1, 1, 1);
+  c.turnBase = lerp(c.turnBase || 0, turnY, Math.min(1, dt * 5));
+  c.body.rotation.y = c.turnBase + (fz ? fz.turn : 0);
+  if (pose !== 'nap') {
+    const sy = fz ? fz.sy : 1, sxz = fz ? fz.sxz : 1;
+    if (c.body.scale.y !== sy || c.body.scale.x !== sxz) c.body.scale.set(sxz, sy, sxz);
+    if (c.kind === 'bot') c.body.position.y = c.bodyY0 + c.halfH * (sy - 1);
+  }
   c.armR.rotation.x = lerp(c.armR.rotation.x, armR.x, k); c.armR.rotation.z = lerp(c.armR.rotation.z, armR.z, k);
   c.armL.rotation.x = lerp(c.armL.rotation.x, armL.x, k); c.armL.rotation.z = lerp(c.armL.rotation.z, armL.z, k);
   if (legX !== null) {
