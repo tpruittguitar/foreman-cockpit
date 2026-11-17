@@ -184,17 +184,22 @@ function radialProfile(pts, n) {
 /* Claude's starburst, built in the studio language: a smooth-union SDF of a round core and exactly 6 round-capped rays (valleys fused into the
    core by the smooth-min), meshed by marching along rays from the centre (the shape is star-shaped, so each ray hits the skin once). */
 function starSDF(rot) {
-  const CORE = 0.23, R0 = 0.175, R1 = 0.115, LEN = 0.335, K = 0.11, ZS = 1.15, CZ = 1.25, tips = [];
+  const CORE = 0.23, R0 = 0.175, R1 = 0.115, LEN = 0.335, K = 0.11, RR = 0.1, tips = [];
   for (let i = 0; i < 6; i++) { const t = Math.PI / 2 + rot + i * Math.PI / 3; tips.push([Math.cos(t) * LEN, Math.sin(t) * LEN]); }
   const smin = (p, q) => { const h = Math.max(K - Math.abs(p - q), 0) / K; return Math.min(p, q) - h * h * K * 0.25; };
-  return (x, y, z0) => {
-    const z = z0 / ZS; // puffier front-to-back so the thickness matches the width of the face view
-    let d = Math.hypot(x, y, z * CZ) - CORE; /* Tim (Nov 17): core no deeper than the rays, so the middle is chubby, not a pointy belly */
+  /* Tim (Nov 17): one chubby cushion, not round tubes poking out. The 2D star outline (core + rays, smooth-union) is inflated as a
+     rounded slab: flat-ish front with a gentle dome toward the middle and soft round edges of radius RR. */
+  const d2 = (x, y) => {
+    let d = Math.hypot(x, y) - CORE;
     for (const [tx, ty] of tips) {
       const l2 = tx * tx + ty * ty, u = Math.max(0, Math.min(1, (x * tx + y * ty) / l2)), dx = x - tx * u, dy = y - ty * u;
-      d = smin(d, Math.hypot(dx, dy, z) - (R0 + (R1 - R0) * u));
+      d = smin(d, Math.hypot(dx, dy) - (R0 + (R1 - R0) * u));
     }
     return d;
+  };
+  return (x, y, z) => {
+    const a = d2(x, y), H = 0.05 + 0.05 * Math.min(1, Math.max(0, -a) / 0.25), qx = a + RR, qy = Math.abs(z) - H;
+    return Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - RR;
   };
 }
 function puffBody(a, hi) {
