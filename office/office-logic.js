@@ -1022,9 +1022,12 @@
   function etClock(ms) { return new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }); }
   function usageRows(readings, now, fallback) {
     const latest = latestPerProvider(readings || []);
-    if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', next: countdown(nextCheck(now), now), stale: usageStale(fallback, now), source: 'OFFICE_STATUS.json' }));
-    return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => { const r = latest[p.id]; return { name: p.name, pct_used: r.usedPct, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: 'Measured ' + etClock(time(r.at)) + ' ET', next: countdown(nextCheck(now), now), stale: readingStale(r, now), source: 'AI_USAGE_READINGS.jsonl' }; });
+    if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', next: countdown(nextCheck(now), now), stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
+    return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => { const r = latest[p.id]; return { name: p.name, pct_used: r.usedPct, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: 'Measured ' + etClock(time(r.at)) + ' ET', next: countdown(nextCheck(now), now), stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' }; });
   }
+  /* Newest reading time across the rows (ms or null): the monitor header and the wall both show this one time. */
+  function usageLatest(rows) { const ts = (rows || []).map(r => r.at).filter(t => t != null); return ts.length ? Math.max(...ts) : null; }
+  function usageHeader(rows, now) { const t = usageLatest(rows); return t == null ? 'No usage reading yet' : 'Latest reading ' + etClock(t) + ' ET · ' + relTime(new Date(t).toISOString(), now); }
 
   /* ---------- Desk screens: mirrors of each bot's real screen (office-screens repo; publisher not live yet) ---------- */
   const SCREEN_FRESH_MIN = 15;
@@ -1375,7 +1378,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
+    latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,

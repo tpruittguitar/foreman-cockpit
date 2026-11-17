@@ -194,6 +194,9 @@ test('usage: latest reading per provider, Measured time, countdown to the next s
   const rows = L.usageRows(r, NOW, null);
   assert.deepEqual(rows.map(x => [x.name, x.pct_used, x.stale]), [['Claude', 27, false], ['ChatGPT', 76, false], ['Grok', null, true]]);
   assert.ok(rows.every(x => /^Measured \d{1,2}:\d\d (AM|PM) ET$/.test(x.measured) && /^Next check in \d+h \d+m$/.test(x.next)));
+  assert.equal(L.usageLatest(rows), Math.max(...rows.map(x => x.at)), 'one latest time for monitor and wall');
+  assert.match(L.usageHeader(rows, NOW), /^Latest reading \d{1,2}:\d\d (AM|PM) ET · /);
+  assert.equal(L.usageHeader([], NOW), 'No usage reading yet');
   assert.equal(L.usageRows([], NOW, { as_of: '2026-11-16T06:37:00Z', services: [{ name: 'Claude', pct_used: 27 }] })[0].source, 'OFFICE_STATUS.json', 'fallback only when no readings');
 });
 

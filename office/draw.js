@@ -69,7 +69,8 @@ export function drawDesk(ctx, W, H, o) {
   ctx.fillStyle = '#e0e3e8'; ctx.font = `600 ${30 * s}px ${SANS}`;
   ctx.fillText(fit(ctx, b.task || '(no task)', maxW), x0, 124 * s);
   ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${27 * s}px ${SANS}`;
-  ctx.fillText(fit(ctx, (b.last_action || '(no last action)') + ' · ' + L.relTime(b.last_action_at, o.now), maxW), x0, 164 * s);
+  const sub = mode === 'usage' ? L.usageHeader(o.usageRows, o.now) : (b.last_action || '(no last action)') + ' · ' + L.relTime(b.last_action_at, o.now);
+  ctx.fillText(fit(ctx, sub, maxW), x0, 164 * s);
   ctx.strokeStyle = '#2b2e33'; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.moveTo(x0, 182 * s); ctx.lineTo(W - x0, 182 * s); ctx.stroke();
   if (mode === 'checksheet') return checksheet(ctx, W, H, s, o.allItems, o.now);
   if (mode === 'usage') return miniUsage(ctx, W, H, s, o.usageRows, o.now);
@@ -174,7 +175,8 @@ function miniUsage(ctx, W, H, s, rows, now) {
   sv.slice(0, 3).forEach((u, i) => {
     const x = (22 + i * 204) * s, w = L.usageWord(u.pct_used), col = TONE[w.tone];
     ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${20 * s}px ${SANS}`; ctx.fillText(fit(ctx, u.name, 180 * s), x, 214 * s);
-    ctx.fillStyle = col; ctx.font = `800 ${50 * s}px ${SANS}`; ctx.fillText(u.pct_used == null ? '—' : Math.round(u.pct_used) + '%', x, 272 * s);
+    ctx.fillStyle = col; ctx.font = `800 ${50 * s}px ${SANS}`; const pct = u.pct_used == null ? '—' : Math.round(u.pct_used) + '%'; ctx.fillText(pct, x, 272 * s);
+    if (u.pct_used != null) { const pw = ctx.measureText(pct).width; ctx.font = `700 ${20 * s}px ${SANS}`; ctx.fillText('used', x + pw + 6 * s, 272 * s); }
     ctx.font = `800 ${17 * s}px ${SANS}`; ctx.fillText(w.glyph + ' ' + w.word, x, 300 * s);
     ctx.fillStyle = '#2b2e33'; ctx.fillRect(x, 314 * s, 180 * s, 10 * s);
     ctx.fillStyle = col; ctx.fillRect(x, 314 * s, 180 * s * (u.pct_used || 0) / 100, 10 * s);
@@ -271,7 +273,7 @@ export function drawUsage(ctx, W, H, o) {
   if (o.demo) exampleTag(ctx, 250 * s, 54 * s, 20 * s);
   const rows = o.rows || [];
   if (!rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText('Waiting for the first usage reading…', 30 * s, 140 * s); return; }
-  ctx.textAlign = 'right'; ctx.font = `600 ${22 * s}px ${SANS}`; ctx.fillStyle = '#9aa0a8'; ctx.fillText(rows[0].source, W - 30 * s, 56 * s); ctx.textAlign = 'left';
+  ctx.textAlign = 'right'; ctx.font = `600 ${22 * s}px ${SANS}`; ctx.fillStyle = '#9aa0a8'; ctx.fillText(L.usageHeader(rows, o.now) + ' · ' + rows[0].source, W - 30 * s, 56 * s); ctx.textAlign = 'left';
   const rowH = (H - 90 * s) / Math.max(3, rows.length);
   rows.slice(0, 4).forEach((u, i) => {
     const y = 84 * s + i * rowH, w = L.usageWord(u.pct_used), col = TONE[w.tone];
