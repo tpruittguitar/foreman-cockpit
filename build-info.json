@@ -4,10 +4,13 @@
   "commit": "local",
   "commitShort": "local",
   "branch": "local",
+  "pr": null,
+  "prSource": "",
+  "subject": "President avatar: closer match to the turnaround ref",
   "context": "local",
   "deployId": "",
   "deployUrl": "",
-  "siteUrl": "",
-  "builtAt": "",
+  "siteUrl": "https://foreman-cockpit.pages.dev",
+  "builtAt": "2026-11-17T04:21:29.680Z",
   "source": "source"
 }
