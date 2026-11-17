@@ -738,6 +738,7 @@ function buildWorld() {
   bike.rotation.y = -Math.PI / 2; scene.add(bike);
   add(box(0.25, 0.05, 1.0), MAT.dark, 0, 0.03, 0, bike); const fw = add(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 24), MAT.metal, 0, 0.3, 0.35, bike); fw.rotation.z = Math.PI / 2;
   add(box(0.05, 0.62, 0.05), MAT.metal, 0, 0.36, -0.15, bike).rotation.x = -0.25; add(box(0.2, 0.05, 0.28), MAT.dark, 0, 0.68, -0.22, bike);
+  add(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 12), MAT.metal, 0, 0.235, 0.04, bike).rotation.z = Math.PI / 2; for (const px of [-0.1, 0.1]) add(box(0.09, 0.03, 0.15), MAT.dark, px, 0.235, 0.04, bike); // pedals the rider's feet rest on
   add(box(0.05, 0.7, 0.05), MAT.metal, 0, 0.6, 0.38, bike).rotation.x = 0.2; add(box(0.42, 0.04, 0.04), MAT.metal, 0, 0.95, 0.45, bike); add(box(0.43, 0.012, 0.012), MAT.cyan, 0, 0.98, 0.45, bike);
   // Rider spot comes from the bike's own transform (saddle at local z -0.22, facing the handlebars at local +z), so it follows any placement / rotation.
   bike.updateMatrixWorld(true);

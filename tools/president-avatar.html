@@ -24,7 +24,7 @@ scene.add(c.root);
 const pose = q.get('pose') || 'stand'; // optional: type / sit / bike (adds stand-in office furniture to check the seated fit)
 if (pose !== 'stand') {
   const gm = new THREE.MeshStandardMaterial({ color: 0x59606d, roughness: 0.6 }), bx = (w, h, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), gm); m.position.set(x, y, z); scene.add(m); };
-  if (pose === 'bike') { bx(0.2, 0.06, 0.3, 0, 0.5, 0); bx(0.05, 0.5, 0.05, 0, 0.25, 0.1); bx(0.05, 0.06, 0.4, 0, 0.95, 0.45); bx(0.05, 0.5, 0.05, 0, 0.7, 0.45); }
+  if (pose === 'bike') { c.root.position.z = -0.22; bx(0.25, 0.05, 1.0, 0, 0.03, 0); bx(0.2, 0.05, 0.28, 0, 0.68, -0.22); bx(0.05, 0.62, 0.05, 0, 0.36, -0.15); bx(0.09, 0.03, 0.15, -0.1, 0.235, 0.04); bx(0.09, 0.03, 0.15, 0.1, 0.235, 0.04); bx(0.05, 0.7, 0.05, 0, 0.6, 0.38); bx(0.42, 0.04, 0.04, 0, 0.95, 0.45); }
   else { bx(0.5, 0.07, 0.48, 0, 0.46, 0); bx(0.48, 0.5, 0.06, 0, 0.78, -0.24); bx(1.6, 0.05, 0.8, 0, 0.745, 0.72); bx(0.46, 0.4, 0.04, 0, 0.98, 0.9); }
 }
 for (let i = 0; i < 60; i++) animate(c, pose, 0, 0.1, { reduced: true });
