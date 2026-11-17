@@ -189,7 +189,7 @@ function limb(radius, len, m, key) {
    The avatar silhouette is the equator (radius r(theta)); each latitude ring shrinks it like a sphere, so the front and back are
    domes and the sides are round. Front-to-back thickness = THICK x the width of the face view (studio samples are ~1:1, never more). */
 export const BOT_THICK = 0.765; // Tim (Nov 17): bodies about 15% less bulbous (was 0.9)
-export const BOT_FLAT = 2.6; // front/back dome exponent: 2 = ellipsoid (pointy middle), higher = flatter, softer chubby front (Tim, Nov 17)
+export const BOT_FLAT = 2; // front/back dome exponent: 2 = plain ellipsoid. Tim (Nov 17, 2:02 AM): 2.6 made bodies too fat, back to the #349 look
 function radialProfile(pts, n) {
   const r = new Float32Array(n);
   for (let k = 0; k < n; k++) {
