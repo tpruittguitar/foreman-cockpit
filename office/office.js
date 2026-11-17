@@ -45,6 +45,12 @@ const S = {
   readings: [], readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', auto: null, autoErr: '',
   glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null
 };
+// Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
+fetch('build-info.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(info => {
+  const line = L.buildBadge(info), el = document.getElementById('build-badge');
+  if (el) el.textContent = line;
+  console.info(line);
+});
 const gate = L.createGate(); // one GitHub API budget shared by status, PR list and asks
 const fetchFn = (u, o) => fetch(u, o);
 const statusSrc = L.createJsonSource({ apiUrl: API_FILE(STATUS_PATH), rawUrl: RAW_FILE(STATUS_PATH), gate, fetch: fetchFn });

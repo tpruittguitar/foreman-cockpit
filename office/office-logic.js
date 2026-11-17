@@ -1199,6 +1199,16 @@
 
   /* Item 5: day / night from America/New_York wall-clock time (Tim is in Tennessee). Sunrise / sunset follow the season
      (about 36 N: day length 12 h +/- 2.2 h) and DST; no browser-local time zone is used. */
+  /* Revision badge text from build-info.json (written at build/deploy time by scripts/write-build-info.cjs). */
+  function buildBadge(info) {
+    const i = info && typeof info === 'object' ? info : null;
+    const sha = i ? str(i.commitShort || str(i.commit).slice(0, 7)).trim() : '';
+    const at = i ? time(i.builtAt) : null;
+    if (!sha && at == null) return 'build unknown';
+    const pr = i && Number(i.pr) > 0 ? '#' + Math.floor(Number(i.pr)) : '—';
+    const when = at == null ? 'time unknown' : new Date(at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
+    return 'PR ' + pr + ' · ' + (sha || 'unknown') + ' · ' + when;
+  }
   function etDate(ms) {
     const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' }).formatToParts(new Date(ms));
     const g = k => Number(p.find(x => x.type === k).value);
@@ -1327,7 +1337,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, createIdleState, fridgeLow, idleTick,
+    needsTimNames, waterfallOffset, buildBadge, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, createIdleState, fridgeLow, idleTick,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
   };
 });
