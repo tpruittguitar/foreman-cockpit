@@ -211,6 +211,23 @@ test('screens index parse and the fallback / stale / paused rules', () => {
   assert.equal(L.screenState(ix, 'nobody', NOW).why, 'Screen offline');
   for (const bad of [null, [], 'x', { screens: [] }]) assert.deepEqual(L.parseScreensIndex(bad).screens, {});
 });
+test('liveStatus: idle row with a fresh busy screen or a running routine shows as working; nothing else changes', () => {
+  const at = m => new Date(NOW - m * 60000).toISOString(), ix = o => L.parseScreensIndex({ updated_at: at(0), screens: { 'id-1': o } });
+  const idle = { bot: 'Claude', status: 'idle', task: 'x' };
+  assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3), busy: true }), null, NOW).status, 'working');
+  assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3), busy: true }), null, NOW).live, 'screen');
+  assert.equal(L.liveStatus({ bot: 'Claude' }, 'id-1', ix({ at: at(3), busy: true }), null, NOW).status, 'working', 'empty status too');
+  assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3) }), null, NOW).status, 'idle', 'screen without the live-work terminal');
+  assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(20), busy: true }), null, NOW).status, 'idle', 'screen older than 15 min');
+  assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3), busy: true, paused: true }), null, NOW).status, 'idle', 'paused screen');
+  assert.equal(L.liveStatus(idle, 'other', ix({ at: at(3), busy: true }), null, NOW).status, 'idle', 'another bot\'s screen');
+  const auto = { rows: [{ ai: 'Claude', running: true }, { ai: 'GUI', running: false }] };
+  assert.equal(L.liveStatus(idle, 'id-9', null, auto, NOW).live, 'routine');
+  assert.equal(L.liveStatus({ bot: 'GUI', status: 'idle' }, 'id-9', null, auto, NOW).status, 'idle');
+  for (const st of ['blocked', 'needs_tim', 'error', 'working']) assert.equal(L.liveStatus({ bot: 'Claude', status: st }, 'id-1', ix({ at: at(3), busy: true }), auto, NOW).status, st);
+  assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3), busy: true }), null, NOW) === idle, false, 'returns a copy, never mutates the row');
+  assert.equal(idle.status, 'idle');
+});
 test('screen click target: screen_url (http/https only), President and Usage defaults, else popup', () => {
   assert.deepEqual(L.screenTarget(bot('Cursor')), { kind: 'url', href: 'https://example.com/live' });
   assert.deepEqual(L.screenTarget(bot('President')), { kind: 'url', href: L.PRESIDENT_SCREEN_URL }, 'javascript: rejected');
