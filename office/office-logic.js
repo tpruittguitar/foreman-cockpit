@@ -1434,7 +1434,27 @@
   const dimStep = (level, dir) => clampDim(Math.round((clampDim(level) + (dir < 0 ? -DIM_STEP : DIM_STEP)) * 100) / 100);
   const dimScale = (base, level) => base * clampDim(level);
   const dimSmooth = (cur, target, dt) => { const k = 1 - Math.exp(-8 * Math.max(0, dt || 0)), n = cur + (target - cur) * k; return Math.abs(target - n) < 0.002 ? target : n; };
+  /* WebXR (Meta Quest): teleport target clamp and quality presets. Desktop settings are frozen copies of what the
+     page always used; the VR preset only applies while renderer.xr.isPresenting. */
+  const TELEPORT_MAX_RANGE = 14, TELEPORT_MARGIN = 0.5;
+  const teleportTarget = (hit, room, from, maxRange) => { // floor hit {x,z} -> where the head may land; room = {w, d, wall}
+    if (!hit || !Number.isFinite(hit.x) || !Number.isFinite(hit.z) || !room) return null;
+    const mx = room.w / 2 - (room.wall || 0) - TELEPORT_MARGIN, mz = room.d / 2 - (room.wall || 0) - TELEPORT_MARGIN;
+    let x = hit.x, z = hit.z;
+    const lim = Number.isFinite(maxRange) ? maxRange : TELEPORT_MAX_RANGE;
+    if (from && Number.isFinite(from.x) && Number.isFinite(from.z)) { const dx = x - from.x, dz = z - from.z, d = Math.hypot(dx, dz); if (d > lim) { x = from.x + dx / d * lim; z = from.z + dz / d * lim; } }
+    return { x: Math.min(mx, Math.max(-mx, x)), z: Math.min(mz, Math.max(-mz, z)) };
+  };
+  const teleportRigPos = (target, head) => ({ x: target.x - (head && Number.isFinite(head.x) ? head.x : 0), z: target.z - (head && Number.isFinite(head.z) ? head.z : 0) }); // rig offset so the HEAD (not the rig origin) lands on target
+  const DESKTOP_QUALITY = Object.freeze({ vr: false, shadows: false, labels: true, css3d: true, deskDrawMs: 120, hoverMs: 90, maxAlertLights: 2, framebufferScale: 1, foveation: 0, targetFps: 0 });
+  const VR_QUALITY = Object.freeze({ vr: true, shadows: false, labels: false, css3d: false, deskDrawMs: 450, hoverMs: 120, maxAlertLights: 0, framebufferScale: 0.8, foveation: 1, targetFps: 72 });
+  const qualityFor = isPresenting => (isPresenting ? VR_QUALITY : DESKTOP_QUALITY);
+  const pickFrameRate = (rates, want) => { // supported frame rates from XRSession.supportedFrameRates -> the closest one at or above want, else the highest
+    const r = Array.from(rates || []).filter(Number.isFinite).sort((a, b) => a - b);
+    return r.length ? (r.find(v => v >= want) || r[r.length - 1]) : want;
+  };
   return {
+    TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, LOD, COLORS,

@@ -514,6 +514,7 @@ function buildWorld() {
   // Tim 1:54 AM: overall lighting about 10% down from the v2 build (exposure 1.45 -> 1.305; light rig unchanged)
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.45 * 0.9;
   renderer.shadowMap.enabled = false;
+  renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor'); // WebXR: inert until a VR session starts (desktop render path is unchanged)
   $('stage').appendChild(renderer.domElement);
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 60);
@@ -1195,8 +1196,8 @@ function buildWorld() {
   function applyDim() { for (const l of dimLights) l.intensity = L.dimScale(l.userData.base, dimCur); for (const d of dimMats) d.m.emissiveIntensity = L.dimScale(d.base, dimCur); dimKnob.position.y = (L.knobFromDim(dimTarget) - 0.5) * DIM_SLOT; }
   function setDim(v, save) { dimTarget = L.clampDim(v); dimKnob.position.y = (L.knobFromDim(dimTarget) - 0.5) * DIM_SLOT; if (save) { try { localStorage.setItem(L.DIM_KEY, String(+dimTarget.toFixed(3))); } catch (e) { /* private mode */ } } }
   const dimPlane = new THREE.Plane(), dimHit = new THREE.Vector3();
-  function dimDragTo(cx, cy) { // ray -> faceplate plane -> knob height along the slot
-    ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+  function dimDragTo(cx, cy) { ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); dimDragRay(); }
+  function dimDragRay() { // `ray` (mouse or VR controller) -> faceplate plane -> knob height along the slot
     dimPlane.setFromNormalAndCoplanarPoint(dimPlate.getWorldDirection(tmpV.set(0, 0, 1)).clone(), dimPlate.position);
     if (!ray.ray.intersectPlane(dimPlane, dimHit)) return;
     setDim(L.dimFromKnob(dimPlate.worldToLocal(dimHit).y / DIM_SLOT + 0.5), false);
@@ -1216,8 +1217,8 @@ function buildWorld() {
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
   const pickables = () => { const a = [project.screen, usage.screen, needs.screen, autos.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
-  function pick(nx, ny) {
-    ndc.set(nx, ny); ray.setFromCamera(ndc, camera);
+  function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
+  function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
     const hit = hits[0];
     if (!hit || hit.distance > 45) return null;
@@ -1413,34 +1414,38 @@ function buildWorld() {
   /* ---------- loop ---------- */
   let last = performance.now(), clock = 0, hoverTick = 0, deskTick = 0, dayTick = 0, lastFrame = 0;
   const minFrame = LOW ? 1000 / 31 : 0;
+  let rafQueued = false;
+  const nextFrame = () => { if (rafQueued || renderer.xr.isPresenting) return; rafQueued = true; requestAnimationFrame(t => { rafQueued = false; if (!renderer.xr.isPresenting) frame(t); }); };
   function frame(now) {
-    requestAnimationFrame(frame);
-    if (minFrame && now - lastFrame < minFrame) return;
+    const XR = renderer.xr.isPresenting, Q = L.qualityFor(XR); // XR: the headset drives the loop (setAnimationLoop); desktop keeps requestAnimationFrame
+    if (!XR) nextFrame();
+    if (!XR && minFrame && now - lastFrame < minFrame) return;
     lastFrame = now;
     const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now; // rAF time can precede the setup time: never negative
     clock += dt; // (v2 bug: this sat inside the comment above, so every animation clock stood still)
+    if (XR) { glide = null; tour = null; vrFrame(dt, now); }
     if (glide) {
       const k = Math.min(1, (now - glide.t0) / glide.dur), e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
       camera.position.lerpVectors(glide.p0, glide.p1, e); camera.quaternion.slerpQuaternions(glide.q0, glide.q1, e);
       if (k >= 1) glide = null;
     }
-    if (!panelOpen && !pipe.browsing) move(dt);
+    if (!XR && !panelOpen && !pipe.browsing) move(dt);
     if (TV && !panelOpen && !tour && now - lastInput > L.TOUR_IDLE_MS) tour = { list: L.tourOrder(targets, bots()), i: -1, until: 0 };
     if (tour && now > tour.until && tour.list.length) {
       tour.i = (tour.i + 1) % tour.list.length; const s = tour.list[tour.i];
       const r = rows.findIndex(r => r.includes(s.target)); hopPos = { row: r, col: rows[r].indexOf(s.target) };
       focusTarget(s.target); glideTo(s.target.view, 1600); tour.until = now + s.dwellMs;
     }
-    if (now - hoverTick > 90) { hoverTick = now; if (!TV || !hop) { const p = hoverAt && !down ? pick(...hoverAt) : null; if (!TV || p) setHover(p); } }
+    if (now - hoverTick > Q.hoverMs) { hoverTick = now; if (!XR && (!TV || !hop)) { const p = hoverAt && !down ? pick(...hoverAt) : null; if (!TV || p) setHover(p); } }
     // free-running page tick: each board column takes tick mod its own page count (L.columnPage)
     if (pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % 1e9; pageAt = clock; boardDirty = true; }
     if (boardDirty) drawBoards();
-    if (now - deskTick > 120) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
+    if (now - deskTick > Q.deskDrawMs) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
     if (now - dayTick > 60000) { dayTick = now; applyDaylight(); }
     if (dimCur !== dimTarget) { dimCur = L.dimSmooth(dimCur, dimTarget, dt); applyDim(); }
     wf.t.offset.y = L.waterfallOffset(wf.t.offset.y, dt, reducedMQ.matches); // waterfall: one scrolling texture, flowing DOWN (item 2)
     let ai = 0; const p = L.pulse(clock, reducedMQ.matches);
-    for (const d of desks) { const b = botByName(d.name); if (b && S.needsSet.has(d.name) && S.state !== 'failed') { d.bulbMat.emissiveIntensity = 0.6 + 1.6 * p; if (ai < alertLights.length) { const l = alertLights[ai++]; l.position.set(d.x + 0.63, 1.3, d.z - 0.1); l.intensity = 2.5 * p + 0.6; } } else d.bulbMat.emissiveIntensity = 1.5; }
+    for (const d of desks) { const b = botByName(d.name); if (b && S.needsSet.has(d.name) && S.state !== 'failed') { d.bulbMat.emissiveIntensity = 0.6 + 1.6 * p; if (ai < alertLights.length && ai < Q.maxAlertLights) { const l = alertLights[ai++]; l.position.set(d.x + 0.63, 1.3, d.z - 0.1); l.intensity = 2.5 * p + 0.6; } } else d.bulbMat.emissiveIntensity = 1.5; }
     for (; ai < alertLights.length; ai++) alertLights[ai].intensity = 0;
     updatePlan();
     walkingNow = [...chars.values()].filter(c => c.path.length).length;
@@ -1450,9 +1455,9 @@ function buildWorld() {
     fridgeRefill += dt; if (fridgeRefill > L.FRIDGE_REFILL_S) { fridgeRefill = 0; const n = L.fridgeAutoRefill(fridgeStock, !!S.restocker); if (n !== fridgeStock) { fridgeStock = n; layoutCans(lastDeskCans); } } // no idle bot to restock: it refills itself, never empty
     for (const c of chars.values()) updateChar(c, dt);
     separateChars();
-    updateLabels();
+    if (Q.labels) updateLabels();
     renderer.render(scene, camera);
-    if (pipe.css) { // CSS3D layer: same camera, scaled by PK (CSS units are pixels); hidden when the wall is behind the camera
+    if (pipe.css && Q.css3d) { // CSS3D layer: same camera, scaled by PK (CSS units are pixels); hidden when the wall is behind the camera
       const c = pipe.css, fwd = tmpV.set(0, 0, -1).applyQuaternion(camera.quaternion), toB = new THREE.Vector3(PX - camera.position.x, PY - camera.position.y, PZ - camera.position.z), show = toB.dot(fwd) > 0.1 && toB.length() < 40;
       c.r.domElement.style.visibility = show || pipe.browsing ? '' : 'hidden';
       if (show || pipe.browsing) { if (c.cssCam.fov !== camera.fov || c.cssCam.aspect !== camera.aspect) { c.cssCam.fov = camera.fov; c.cssCam.aspect = camera.aspect; c.cssCam.updateProjectionMatrix(); }
@@ -1462,7 +1467,85 @@ function buildWorld() {
   }
   addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; fitFov(); renderer.setPixelRatio(fitRatio()); renderer.setSize(innerWidth, innerHeight); if (pipe.css) pipe.css.r.setSize(innerWidth, innerHeight); });
   reducedMQ.addEventListener && reducedMQ.addEventListener('change', () => { boardDirty = true; });
-  requestAnimationFrame(frame);
+  nextFrame();
+
+  /* ---------- WebXR (Meta Quest browser): enter VR, controller rays, teleport, dimmer drag, VR-only performance trims ---------- */
+  const rig = new THREE.Group(); rig.name = 'xr-rig'; // dolly: the headset moves the camera inside it, teleport moves the rig
+  const marker = new THREE.Mesh(new THREE.RingGeometry(0.18, 0.26, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x4cc9f0, transparent: true, opacity: 0.85, depthTest: false })); marker.visible = false; marker.renderOrder = 10; scene.add(marker);
+  const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), floorHit = new THREE.Vector3(), tmpHead = new THREE.Vector3(), tmpO = new THREE.Vector3(), tmpD = new THREE.Vector3(), tmpM = new THREE.Matrix4();
+  const pads = [0, 1].map(i => {
+    const c = renderer.xr.getController(i), line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]), new THREE.LineBasicMaterial({ color: 0xffffff }));
+    line.scale.z = 4; c.add(line); rig.add(c);
+    const st = { c, line, dim: false, floor: null, p: null };
+    c.addEventListener('selectstart', () => { // trigger down: the dimmer plate grabs the knob, anything else waits for the release
+      if (!xrNow) return; aim(st); const h = ray.intersectObject(dimPlate, true)[0], o = ray.intersectObjects(pickables(), true)[0];
+      if (h && !(o && o.distance < h.distance)) { st.dim = true; dimDrag = true; dimDragRay(); }
+    });
+    c.addEventListener('selectend', () => { // trigger release: finish a dimmer drag, else click what the ray points at, else teleport to the floor point
+      if (!xrNow) return;
+      if (st.dim) { st.dim = false; dimDrag = false; setDim(dimTarget, true); return; }
+      aim(st); const p = pickRay();
+      if (p) { activate(p); return; }
+      if (st.floor) teleportTo(st.floor);
+    });
+    return st;
+  });
+  let xrNow = false;
+  function aim(st) { st.c.updateMatrixWorld(true); tmpM.identity().extractRotation(st.c.matrixWorld); tmpO.setFromMatrixPosition(st.c.matrixWorld); tmpD.set(0, 0, -1).applyMatrix4(tmpM).normalize(); ray.set(tmpO, tmpD); ray.layers.mask = camera.layers.mask; }
+  function teleportTo(pt) {
+    const t = L.teleportTarget({ x: pt.x, z: pt.z }, { w: RW, d: RD, wall: WALL }, { x: camera.getWorldPosition(tmpHead).x, z: tmpHead.z }); if (!t) return;
+    const q = { x: t.x, y: 0, z: t.z }; collide(q); // same furniture / wall clearance as walking
+    camera.getWorldPosition(tmpHead); const r = L.teleportRigPos(q, { x: tmpHead.x - rig.position.x, z: tmpHead.z - rig.position.z });
+    rig.position.x = r.x; rig.position.z = r.z; rig.position.y = 0; // y stays 0: local-floor puts the head at real standing height
+  }
+  function vrFrame() { // per-frame controller work while presenting
+    marker.visible = false;
+    for (const st of pads) {
+      if (!st.c.visible) { st.line.visible = false; continue; }
+      st.line.visible = true; aim(st); st.floor = null; let len = 4;
+      if (st.dim) { dimDragRay(); }
+      else {
+        const hit = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && h.object.layers.mask !== 2)[0], dh = ray.intersectObject(dimPlate, true)[0];
+        const near = Math.min(hit ? hit.distance : Infinity, dh ? dh.distance : Infinity);
+        if (Number.isFinite(near)) { len = Math.min(len, near); st.line.material.color.set(0x7dff9b); }
+        else if (ray.ray.intersectPlane(floorPlane, floorHit) && floorHit.distanceTo(ray.ray.origin) < 25) {
+          const t = L.teleportTarget({ x: floorHit.x, z: floorHit.z }, { w: RW, d: RD, wall: WALL }, null);
+          if (t) { st.floor = { x: floorHit.x, z: floorHit.z }; marker.position.set(t.x, 0.02, t.z); marker.visible = true; len = Math.min(len, floorHit.distanceTo(ray.ray.origin)); st.line.material.color.set(0x4cc9f0); }
+        } else st.line.material.color.set(0xffffff);
+      }
+      st.line.scale.z = len;
+    }
+  }
+  const vrBtn = $('vr-btn'); let xrSession = null, saved = null;
+  function applyDesktopQuality() { const q = L.qualityFor(false); renderer.shadowMap.enabled = q.shadows; renderer.xr.setFramebufferScaleFactor(q.framebufferScale); renderer.xr.setFoveation(q.foveation); renderer.setPixelRatio(fitRatio()); renderer.setSize(innerWidth, innerHeight); renderer.setClearColor(0x0e1013, 0); }
+  renderer.xr.addEventListener('sessionstart', () => {
+    xrNow = true; const q = L.qualityFor(true), s = renderer.xr.getSession(); xrSession = s;
+    saved = { pos: camera.position.clone(), quat: camera.quaternion.clone() };
+    const yaw = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ').y; // start where the desktop camera stood, facing the same way
+    rig.position.set(camera.position.x, 0, camera.position.z); rig.rotation.set(0, yaw, 0); scene.add(rig); rig.add(camera); camera.position.set(0, 0, 0); camera.quaternion.identity();
+    renderer.shadowMap.enabled = q.shadows; renderer.xr.setFoveation(q.foveation); renderer.setClearColor(0x0e1013, 1);
+    try { if (s.updateTargetFrameRate) s.updateTargetFrameRate(L.pickFrameRate(s.supportedFrameRates, q.targetFps)); } catch (e) { /* optional API */ }
+    $('start').hidden = true; $('hint').hidden = true; $('labels').style.display = 'none'; keys.clear(); down = null; dimDrag = false;
+    renderer.setAnimationLoop(frame); if (vrBtn) vrBtn.textContent = '🥽 Exit VR'; T.vr = true;
+  });
+  renderer.xr.addEventListener('sessionend', () => {
+    xrNow = false; xrSession = null; renderer.setAnimationLoop(null);
+    const keepX = camera.getWorldPosition(tmpHead).x, keepZ = tmpHead.z; rig.remove(camera); scene.remove(rig);
+    camera.position.set(keepX, (saved && saved.pos.y) || L.EYE_HEIGHT, keepZ); if (saved) camera.quaternion.copy(saved.quat);
+    marker.visible = false; pads.forEach(st => { st.dim = false; }); dimDrag = false; applyDesktopQuality(); camera.aspect = innerWidth / innerHeight; fitFov();
+    $('labels').style.display = ''; showHint(); last = performance.now(); nextFrame(); if (vrBtn) vrBtn.textContent = '🥽 Enter VR'; T.vr = false;
+  });
+  if (vrBtn && navigator.xr && navigator.xr.isSessionSupported) {
+    navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+      if (!ok) return; vrBtn.hidden = false; vrBtn.disabled = false; vrBtn.style.cssText = ''; vrBtn.title = 'Enter VR (Meta Quest browser): point and pull the trigger to teleport or click';
+      vrBtn.textContent = '🥽 Enter VR';
+      vrBtn.onclick = async () => {
+        if (xrSession) { xrSession.end(); return; }
+        try { const q = L.qualityFor(true); renderer.xr.setFramebufferScaleFactor(q.framebufferScale); renderer.xr.setSession(await navigator.xr.requestSession('immersive-vr', { optionalFeatures: ['local-floor', 'bounded-floor'] })); }
+        catch (e) { applyDesktopQuality(); toast('Could not start VR: ' + (e && e.message || e)); }
+      };
+    }).catch(() => {});
+  }
 
   return {
     goToBot, dirty: () => { boardDirty = true; },
