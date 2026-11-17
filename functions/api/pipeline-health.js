@@ -1,5 +1,11 @@
 const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/';
 const FILES={processStates:'state/PROCESS_COMPLETIONS.json',processFlow:'state/ENRICHMENT_FLOW.json',applicationOutcomes:'state/APPLICATION_OUTCOMES.json',emailRecovery:'state/EMAIL_RECOVERY_SUMMARY.json',attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
+// Health is judged on data age and failure rate, never on whether the snapshot merely parsed.
+const MAX_DISCOVERY_AGE_MS=9*3600000;
+const MAX_FAILED_BOARDS=10;
+const MAX_BOARD_HEALTH_FAILURE_RATE=0.10;
+const MAX_FUTURE_SKEW_MS=5*60000;
+const ageProblem=(at,now,maxAge)=>{const t=Date.parse(at);if(!Number.isFinite(t))return 'Missing timestamp';if(t-now>MAX_FUTURE_SKEW_MS)return 'Timestamp is in the future';return now-t>maxAge?'Data is '+Math.round((now-t)/60000)+' minutes old (limit '+Math.round(maxAge/60000)+')':'';};
 async function readSnapshot(fetcher,url){
   for(let attempt=0;attempt<2;attempt++){
     try{const r=await fetcher(url,{cache:'no-store',headers:{'Accept':'application/json'},signal:AbortSignal.timeout(7000)});if(attempt===0&&[408,500,502,503,504].includes(r.status)){await r.body?.cancel();continue;}return r;}
@@ -65,14 +71,17 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
       }else if(key==='boardHealth'){
         if(j.schema!=='forge.board-health.v1'||!j.boards||Array.isArray(j.boards))throw Error('Unsupported board history');
         output.boardHealth=Object.values(j.boards).filter(x=>x&&!x.paused&&typeof x.key==='string').map(x=>({key:x.key,companies:Array.isArray(x.companies)?x.companies.slice(0,10).map(c=>String(c).slice(0,150)):[],status:String(x.status||'UNKNOWN'),error:String(x.error||'').slice(0,150),httpStatus:Number.isInteger(x.httpStatus)?x.httpStatus:null,lastAttemptAt:x.lastAttemptAt||null,lastSuccessAt:x.lastSuccessAt||null,retryAt:x.retryAt||null,consecutiveFailures:Math.max(0,+x.consecutiveFailures||0)}));
-        output.checks[key]={ok:true,at:j.at,tracked:output.boardHealth.length,pending:output.boardHealth.filter(x=>x.status!=='OK').length};
+        const tracked=output.boardHealth.length,pending=output.boardHealth.filter(x=>x.status!=='OK').length,rate=tracked?pending/tracked:0;
+        const problem=ageProblem(j.at,now,MAX_DISCOVERY_AGE_MS)||(rate>MAX_BOARD_HEALTH_FAILURE_RATE?pending+' of '+tracked+' boards failing (limit '+Math.round(MAX_BOARD_HEALTH_FAILURE_RATE*100)+'%)':'');
+        output.checks[key]={ok:!problem,observed:true,at:j.at,tracked,pending,failureRate:Math.round(rate*1000)/1000,...(problem?{error:problem}:{})};
       }else if(key==='schedules'){
         if(j.schema!=='forge.schedule-readback.v1'||!Array.isArray(j.local))throw Error('Unsupported schedule readback');
         output.checks[key]={ok:true,at:j.at,configured:j.local.filter(x=>x.status==='ACTIVE'&&x.managed!==false).length,ids:j.local.filter(x=>x.status==='ACTIVE'&&x.managed!==false).map(x=>x.id),executionVerified:false,
           taskExecutionVerified:false,nativeInvocationVerified:false,configurationReadbackScope:j.configurationReadbackScope||'UNSPECIFIED',
           configurationDiscrepancies:Array.isArray(j.configurationDiscrepancies)?j.configurationDiscrepancies:[]};
       }else{
-        output.checks[key]={ok:true,at:j.at,failedBoards:j.failedBoards,candidates:j.candidates};
+        const problem=ageProblem(j.at,now,MAX_DISCOVERY_AGE_MS)||(j.failedBoards>MAX_FAILED_BOARDS?j.failedBoards+' boards failed (limit '+MAX_FAILED_BOARDS+')':'');
+        output.checks[key]={ok:!problem,observed:true,at:j.at,failedBoards:j.failedBoards,candidates:j.candidates,...(problem?{error:problem}:{})};
         j.urls.forEach(url=>urls.add(url.replace(/#.*$/,'')));reports++;
       }
     }catch(e){output.checks[key]={ok:false,error:key==='schedules'?'Schedule execution not reported':'Could not read '+key+' evidence'};}
@@ -92,6 +101,7 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
   }
   if(reports)output.candidates=urls.size;
   if(output.decisionReady&&(!output.processFlow||output.decisionReady.at!==output.processFlow.at||output.decisionReady.ids.length!==output.processFlow.queues.readyForReview)){output.decisionReady=null;output.checks.processStates={ok:false,error:'Readiness does not reconcile with process flow'};}
+  output.ok=Object.values(output.checks).every(c=>c.ok===true);
   return output;
 }
 // Resolve once per minute and pin every file to one immutable commit. Branch raw URLs can lag main.
@@ -133,8 +143,9 @@ export async function healthResponse(fetcher=fetch,cache=null,now=Date.now()){
     }catch{}
     const result=await loadHealth(fetcher,now,revision);
     result.checks.revision={ok:!error,sha:error?null:revision,error:error||undefined};
+    result.ok=result.ok&&!error;
     const body=JSON.stringify(result);
-    const complete=!error&&Object.keys(FILES).every(k=>result.checks[k]?.ok===true);
+    const complete=!error&&Object.keys(FILES).every(k=>result.checks[k]?.ok===true||result.checks[k]?.observed===true);
     if(complete){
       healthMemo={id,body};
       if(cache)try{await cache.put(key,new Response(body,{headers:headers(true)}));}catch{}
