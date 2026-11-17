@@ -116,11 +116,14 @@ function drawGame(ctx, W, H, s, now, seed) {
 export function drawWhiteboard(ctx, W, H, o) {
   ctx.fillStyle = '#f4f5f2'; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = '#c9ccc6'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, W - 6, H - 6);
-  ctx.fillStyle = o.meeting ? '#1f4fb8' : '#1d7a3c'; ctx.font = `800 ${H * 0.2}px ${SANS}`;
-  ctx.fillText(fit(ctx, o.meeting ? o.meeting.title : 'New skills', W - 60), 30, H * 0.3);
-  ctx.font = `600 ${H * 0.1}px ${SANS}`; ctx.fillStyle = '#333';
-  const lines = o.meeting ? ['Meeting · ' + o.meeting.seated.length + ' at the table', ...o.meeting.seated.slice(0, 3)] : ['✓ read the task twice', '✓ small PRs, green checks', '✓ ask Tim early'];
-  lines.forEach((l, i) => ctx.fillText(fit(ctx, l, W - 60), 36, H * (0.5 + i * 0.14)));
+  const sk = !o.meeting && o.skill;
+  ctx.fillStyle = o.meeting ? '#1f4fb8' : '#1d7a3c'; ctx.font = `800 ${H * (sk ? 0.15 : 0.2)}px ${SANS}`;
+  if (sk) for (let f = 0.15; f > 0.085 && ctx.measureText(sk.title).width > W - 130; f -= 0.01) ctx.font = `800 ${H * f}px ${SANS}`; // long skill names shrink to fit
+  ctx.fillText(fit(ctx, o.meeting ? o.meeting.title : sk ? sk.title : 'New skills', W - (sk ? 130 : 60)), 30, H * 0.3);
+  ctx.font = `600 ${H * (sk ? 0.085 : 0.1)}px ${SANS}`; ctx.fillStyle = '#333';
+  const lines = o.meeting ? ['Meeting · ' + o.meeting.seated.length + ' at the table', ...o.meeting.seated.slice(0, 3)] : sk ? sk.bullets.map(b => '✓ ' + b) : ['✓ read the task twice', '✓ small PRs, green checks', '✓ ask Tim early'];
+  lines.forEach((l, i) => ctx.fillText(fit(ctx, l, W - 50), 36, H * (0.5 + i * 0.14)));
+  if (sk) { ctx.font = `700 ${H * 0.08}px ${SANS}`; ctx.fillStyle = '#6b7280'; ctx.textAlign = 'right'; ctx.fillText(sk.counter, W - 22, H * 0.3); ctx.textAlign = 'left'; }
   if (o.demo && o.meeting) exampleTag(ctx, W - 230, H * 0.92, 22);
 }
 function drawImageFit(ctx, img, x, y, w, h) { const k = Math.min(w / img.width, h / img.height), iw = img.width * k, ih = img.height * k; ctx.fillStyle = '#000'; ctx.fillRect(x, y, w, h); ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); }

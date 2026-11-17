@@ -1336,6 +1336,20 @@
     if (u >= 1) { state.double = !state.double && rng() < 0.125; state.at = t + (state.double ? 0.12 + rng() * 0.08 : 2 + rng() * 4.5); return 0; }
     return Math.sin(u * Math.PI);
   }
+
+  /* Training whiteboard: cycle the real skills (office/skills.json, synced from the shared skills library) one per SKILL_CYCLE_MS. */
+  const SKILL_CYCLE_MS = 10000;
+  function parseSkills(j) {
+    if (!Array.isArray(j)) return null;
+    const ok = j.filter(s => s && typeof s.title === 'string' && s.title && Array.isArray(s.bullets) && s.bullets.length).map(s => ({ slug: String(s.slug || ''), title: s.title, bullets: s.bullets.slice(0, 3).map(String) }));
+    return ok.length ? ok : null;
+  }
+  function skillSlide(skills, now) { // null when there are no skills -> the caller draws the old fallback lines
+    if (!skills || !skills.length) return null;
+    const i = Math.floor(Math.max(0, now) / SKILL_CYCLE_MS) % skills.length, s = skills[i];
+    return { index: i, title: 'Skill: ' + s.title, bullets: s.bullets, counter: (i + 1) + '/' + skills.length };
+  }
+
   return {
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, LOD, COLORS,
@@ -1353,6 +1367,7 @@
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, createIdleState, fridgeLow, idleTick,
+    SKILL_CYCLE_MS, parseSkills, skillSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
   };
 });

@@ -1,0 +1,56 @@
+[
+  {
+    "slug": "claude-code-on-the-box",
+    "title": "Claude Code on the box",
+    "bullets": [
+      "Run big tasks in Claude Code",
+      "Uses the Claude subscription",
+      "Installs / signs in if needed"
+    ]
+  },
+  {
+    "slug": "forge-working-style",
+    "title": "Forge working style",
+    "bullets": [
+      "Read before any Forge work",
+      "Tim's design + approval rules",
+      "Follow his reporting style"
+    ]
+  },
+  {
+    "slug": "free-research",
+    "title": "Free research",
+    "bullets": [
+      "Source-backed facts from the web",
+      "Free Groq / OpenRouter models",
+      "Saves Grok Bot usage"
+    ]
+  },
+  {
+    "slug": "keep-live-work-terminal-open",
+    "title": "Keep live terminal open",
+    "bullets": [
+      "Keep a live terminal open",
+      "Maximized while work runs",
+      "Close only when truly idle"
+    ]
+  },
+  {
+    "slug": "message-chatgpt-dot",
+    "title": "Message ChatGPT dot",
+    "bullets": [
+      "Send a link, file or question",
+      "To Tim's ChatGPT dot agent",
+      "Or open the dot page"
+    ]
+  },
+  {
+    "slug": "run-codex-cli-with-chatgpt-login",
+    "title": "Run Codex CLI",
+    "bullets": [
+      "Hand big code tasks to Codex",
+      "Billed to Tim's ChatGPT plan",
+      "Installs / re-signs-in if needed"
+    ]
+  }
+]
