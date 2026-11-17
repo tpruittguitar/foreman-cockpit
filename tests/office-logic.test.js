@@ -383,9 +383,9 @@ test('item 17: roster is the 14 sidebar bots, in sidebar order, short names, exa
   // avatars: each bot has its own sidebar-matched body
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['teardrop', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['cookie6', '#a8733f'],
-    ChatGPT: ['wedge', '#f79a1d'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['flower', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
-    Gauge: ['pill', '#f2399a'], Sniffer: ['blob', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['clover4', '#f2389b'] };
+  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['starburst', '#a8733f'],
+    ChatGPT: ['wedge', '#f79a1d'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['cloud', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
+    Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'] };
   for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
   assert.equal(Object.keys(A.AVATARS).length, 14);
   assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');

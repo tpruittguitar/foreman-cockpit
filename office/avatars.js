@@ -34,11 +34,14 @@ const SHAPES = {
   cookie6: rot => polar(t => 0.35 + 0.075 * Math.cos(6 * t), rot),
   pentagon: rot => roundedPoly(regular(5, 0.45), 0.15, rot),
   flower: rot => polar(t => 0.31 + 0.12 * Math.pow(Math.abs(Math.cos(2.5 * t)), 0.8), rot),   // rounded petal lobes
+  hexagon: rot => roundedPoly(regular(6, 0.44), 0.16, rot),                                    // Archive: soft hexagon (Grok "hexagone")
+  cloud: rot => polar(t => 0.33 + 0.045 * Math.cos(5 * t + 0.6) + 0.02 * Math.cos(3 * t + 2.1), rot, 90), // Edgar: scalloped cloud (Grok "nuage")
+  starburst: rot => polar(t => 0.31 + 0.075 * Math.cos(8 * t), rot, 96),                       // Claude: soft starburst (not on the studio site; same clay style)
   blob: rot => polar(t => 0.38 + 0.03 * Math.cos(3 * t) + 0.02 * Math.sin(2 * t), rot),
   dial: rot => polar(() => 0.4, rot)                                                         // round gauge face
 };
 /* Sidebar shape names (profile.json avatarShape) -> our shapes. */
-const SHAPE_ALIAS = { square: 'roundsquare', tablet: 'pill', sparkle: 'star4', star: 'cookie6', clover: 'clover4', teardrop: 'teardrop', wedge: 'wedge', blob: 'blob', flower: 'flower', pentagon: 'pentagon', dial: 'dial', circle: 'blob' };
+const SHAPE_ALIAS = { square: 'roundsquare', tablet: 'pill', sparkle: 'star4', star: 'cookie6', clover: 'clover4', teardrop: 'teardrop', wedge: 'wedge', blob: 'blob', flower: 'flower', pentagon: 'pentagon', dial: 'dial', circle: 'blob', hexagon: 'hexagon', cloud: 'cloud', starburst: 'starburst' };
 /* Sidebar colour names -> hex. */
 export const MARK_COLORS = { magenta: '#e0369b', blue: '#2f7cf0', red: '#e8423f', green: '#1cc26d', yellow: '#f2c12e', black: '#2a2a2e', gray: '#8c8c8c', grey: '#8c8c8c', cyan: '#22c3d6', brown: '#a8733f', orange: '#f79a1d', purple: '#8f6ee8', pink: '#f2399a', teal: '#22b8a2' };
 /* Baked sidebar marks (avatarShape, avatarColor from each bot's profile.json, supplied by President 2:16 AM; '' = none). */
@@ -82,19 +85,19 @@ export const BOT_IDS = {
 /* bot_id -> { shape, rot, color }, matched to the current sidebar avatars (item 17). Keyed by id so renames never break an avatar. */
 export const AVATARS = {
   '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' },            // President: round face, dark hair (original art)
-  '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'teardrop', rot: 0, color: '#f2399a' },           // QA: magenta teardrop blob
+  '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'blob', rot: 0.5, color: '#f2399a' },             // QA: pink pebble
   '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'blob', rot: 0, color: '#e8423f' },               // HR: red round blob
   'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'blob', rot: 0.3, color: '#22b8a2' },             // Cursor: teal round blob
-  'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'cookie6', rot: 0.2, color: '#a8733f' },          // Claude: brown starburst
+  'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'starburst', rot: 0.2, color: '#a8733f' },          // Claude: brown starburst
   '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'wedge', rot: -0.18, color: '#f79a1d' },          // ChatGPT: orange wedge blob
   '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' },     // Root: gray rounded square
-  'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'wedge', rot: 0.25, color: '#7c7b79' },           // Usage: gray wedge
-  '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'flower', rot: 0.3, color: '#2f7cf0', prop: 'quill' }, // Edgar: blue flower + quill
-  '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.05, color: '#1cc26d' },           // Comp: green wedge
+  'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'wedge', rot: 0.6, color: '#7c7b79' },            // Usage: gray tilted wedge
+  '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'cloud', rot: 0.1, color: '#2f7cf0', prop: 'quill' }, // Edgar: blue cloud + quill
+  '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.5, color: '#1cc26d' },            // Comp: green tilted wedge
   '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
-  '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'blob', rot: -0.2, color: '#2382f2' },            // Sniffer: blue round blob
+  '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
   'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' },         // GUI: red clover
-  'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'clover4', rot: 0.2, color: '#f2389b' }           // Archive: pink clover
+  'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'hexagon', rot: 0.15, color: '#f2389b' }          // Archive: pink soft hexagon
 };
 /* bot_id -> short tag, used only when the full name does not fit the label. */
 export const SHORT_TAGS = { 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive' };

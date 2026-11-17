@@ -18,6 +18,25 @@ function jelly(color, hi) {
     : new THREE.MeshStandardMaterial({ color, roughness: 0.28, metalness: 0.02 });
 }
 
+/* Grok Bot studio "clay" finish: a flat colour with a soft radial light from the upper left and a darker rim
+   (grokbots.ai/studio BotBlob: gradient centre (-.32,-.4), r 1.55; stops white 62% / white 20% / colour / ink 40%). Baked into vertex colours. */
+function clayMat(hi) {
+  return hi ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.5, clearcoat: 0.3, clearcoatRoughness: 0.35 })
+    : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55 });
+}
+function clayColors(g, hex, hx, hy) {
+  const base = new THREE.Color(hex), white = new THREE.Color(0xffffff), ink = new THREE.Color(0x0a0a0c), pos = g.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
+  const u = Math.max(hx, hy) * 1.08, cx = -0.32 * u, cy = 0.4 * u; // svg y is down: the light sits upper left
+  for (let i = 0; i < pos.count; i++) {
+    const t = Math.min(1, Math.hypot(pos.getX(i) - cx, pos.getY(i) - cy) / (1.55 * u));
+    if (t < 0.32) c.copy(base).lerp(white, 0.62 + (0.2 - 0.62) * t / 0.32);
+    else if (t < 0.72) c.copy(base).lerp(white, 0.2 * (1 - (t - 0.32) / 0.4));
+    else c.copy(base).lerp(ink, 0.4 * (t - 0.72) / 0.28);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+}
+
 /* ---------- markers ---------- */
 function roundedTri(r, rad) {
   const s = new THREE.Shape(), v = [0, 1, 2].map(i => new THREE.Vector2(Math.cos(Math.PI / 2 + i * 2.0944) * r, Math.sin(Math.PI / 2 + i * 2.0944) * r));
@@ -86,9 +105,9 @@ export function canMaterials(style = 0) {
   });
 }
 function makeCan(style) { const g = new THREE.Group(); g.add(new THREE.Mesh(canGeometry(), canMaterials(style))); return g; }
-function makeCue() {
-  const m = new THREE.Mesh(geo('cue', () => new THREE.CylinderGeometry(0.009, 0.016, 1.3, 8)), mat('cueWood', () => new THREE.MeshStandardMaterial({ color: 0xc8a06a, roughness: 0.5 })));
-  m.rotation.x = Math.PI / 2; const g = new THREE.Group(); g.add(m); return g;
+function makeCue() { // axis along the forearm (-y in the arm frame): the grip is at the origin, tip forward, butt 0.25 behind the hand
+  const m = new THREE.Mesh(geo('cue', () => new THREE.CylinderGeometry(0.016, 0.009, 1.3, 8)), mat('cueWood', () => new THREE.MeshStandardMaterial({ color: 0xc8a06a, roughness: 0.5 })));
+  m.position.y = -0.4; const g = new THREE.Group(); g.add(m); g.rotation.x = 0.2; return g;
 }
 
 /* ---------- faces ----------
@@ -145,7 +164,7 @@ function limb(radius, len, m, key) {
 export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident(hiQuality);
-  const key = 'body:' + a.shape + ':' + a.rot;
+  const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
   const bodyG = geo(key, () => {
     const pts = shapePoints(a).map(([x, y]) => new THREE.Vector2(x, y));
     // Tim item 7: rounded 3D bodies, not flat front and back. Thin slab + deep round bevel, then the faces are pushed out
@@ -157,17 +176,21 @@ export function makeBot(name, hiQuality, botId, override) {
       const nx = pos.getX(i) / hx, ny = pos.getY(i) / hy, r2 = Math.min(1, nx * nx * 0.5 + ny * ny * 0.5 + Math.abs(nx * ny) * 0.0), dome = 0.16 * Math.pow(1 - r2, 0.8);
       pos.setZ(i, pos.getZ(i) + Math.sign(pos.getZ(i)) * dome);
     }
-    g.scale(0.85, 0.85, 0.85); g.computeBoundingBox(); g.computeVertexNormals(); return g;
+    g.scale(0.85, 0.85, 0.85); g.computeBoundingBox(); g.computeVertexNormals();
+    clayColors(g, a.color, hx * 0.85, hy * 0.85); return g;
   });
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = jelly(a.color, hiQuality);
+  const bodyM = clayMat(hiQuality), limbM = jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
   body.position.y = legLen + halfH - 0.02;
   const mesh = new THREE.Mesh(bodyG, bodyM); body.add(mesh);
-  const face = makeFace(bb.max.z - 0.012, 1.0); face.position.y = 0.02; body.add(face);
-  const limbM = bodyM;
+  const face = makeFace(bb.max.z - 0.012, 1.0, false, true, 0); face.position.y = 0.02; body.add(face);
+  // Grok Bot face: two tall matte oval eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
+  { const eyeM = mat('eyeClay', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 1, metalness: 0 }));
+    face.userData.eyes.forEach((e, i) => { e.material = eyeM; e.position.set((i ? 1 : -1) * 0.1, -0.02, 0); e.scale.set(0.05, 0.1, 0.03); e.userData.sy = 0.1; face.userData.shines[i].scale.set(0, 0, 0); });
+    face.rotation.z = a.rot || 0; }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
   armR.position.set(-ax, -0.06, 0.02); armL.position.set(ax, -0.06, 0.02);
@@ -182,7 +205,7 @@ export function makeBot(name, hiQuality, botId, override) {
     const needle = new THREE.Mesh(geo('gNeedle', () => new THREE.BoxGeometry(0.012, 0.17, 0.01)), mat('needle', () => new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0x6a5200 })));
     needle.position.set(0.05, 0.19, bb.max.z); needle.rotation.z = -0.6; body.add(needle);
   }
-  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM], colors: [new THREE.Color(a.color)], top: legLen + halfH * 2, sitLift: 0.34, kind: 'bot', generic: !!a.generic });
+  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(0xffffff), new THREE.Color(a.color)], top: legLen + halfH * 2, sitLift: 0.34, kind: 'bot', generic: !!a.generic });
   if (a.prop === 'quill') {
     const q = new THREE.Group(), feather = new THREE.Mesh(geo('quill', () => { const g = new THREE.SphereGeometry(0.05, 10, 8); g.scale(0.35, 1.6, 0.12); return g; }), white());
     feather.position.y = 0.08; const nib = new THREE.Mesh(geo('nib', () => new THREE.ConeGeometry(0.008, 0.05, 6)), black()); nib.rotation.x = Math.PI; nib.position.y = -0.02;
@@ -376,7 +399,7 @@ function finish(c) {
     c.box.add(new THREE.Mesh(geo('boxB', () => new THREE.BoxGeometry(0.3, 0.2, 0.22)), bm)); const t = new THREE.Mesh(geo('boxT', () => new THREE.BoxGeometry(0.06, 0.205, 0.225)), tape); c.box.add(t); }
   c.box.visible = false; c.body.add(c.box); c.box.position.set(0, 0.08, 0.3);
   c.cup.visible = c.can.visible = c.cue.visible = false;
-  hold.add(c.cup, c.can, c.card); c.body.add(c.cue); c.cue.position.set(-0.05, 0.05, 0.35);
+  hold.add(c.cup, c.can, c.card, c.cue); // the cue is held in the right hand, along the forearm (pool pose angles it down at the ball)
   c.warn = makeWarn(); c.warn.position.y = c.top + 0.32; c.warn.visible = false; c.root.add(c.warn);
   c.quest = makeQuestion(); c.quest.position.y = c.top + 0.25; c.quest.visible = false; c.root.add(c.quest); // never shown for idle / stale bots (Tim, item 3)
   c.zzz = makeZzz(); c.zzz.visible = false; c.root.add(c.zzz);
@@ -450,7 +473,7 @@ export function animate(c, pose, t, dt, opts) {
     }
     case 'pool': {
       const stroke = still ? 0 : opts.stroke != null ? opts.stroke : Math.max(0, Math.sin(t * 1.6 + ph)) ** 3; // opts.stroke: L.poolShot (-0.6 pull back .. 1 strike)
-      armR.x = -1.3; armL.x = -1.45; c.cue.position.z = 0.35 + stroke * 0.18; c.cue.position.y = 0.0; lean = 0.18 + 0.1 * stroke; bob = 0; break;
+      armR.x = -1.3; armR.z = c.rest.armR.z * 0.2; armL.x = -1.45; c.cue.position.y = -stroke * 0.18; /* cue slides along the forearm */ lean = 0.18 + 0.1 * stroke; bob = 0; break;
     }
     case 'nap': {
       lieZ = Math.PI / 2; lieY = c.kind === 'president' ? 0.75 : 0.88; legX = -0.2;
