@@ -95,7 +95,7 @@ export const AVATARS = {
   '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'cloud', rot: 0.1, color: '#2f7cf0', prop: 'quill' }, // Edgar: blue cloud + quill
   '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.5, color: '#1cc26d' },            // Comp: green tilted wedge
   '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
-  '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
+  '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2', thick: 0.5 }, // Sniffer: blue pill, thinner front to back (Tim, Nov 17, 2:15 AM)
   'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f', thick: 0.55 }, // GUI: red clover, thinner front to back (Tim, Nov 17, 2:13 AM)
   'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'hexagon', rot: 0.15, color: '#f2389b' }          // Archive: pink soft hexagon
 };
