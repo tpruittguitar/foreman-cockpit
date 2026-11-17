@@ -48,3 +48,9 @@ test('walk camera eye height equals the President head height and sits at floor 
   assert.equal(L.EYE_HEIGHT, L.PRESIDENT_HEAD_Y);
   assert.ok(L.EYE_HEIGHT > 0.9 && L.EYE_HEIGHT < 1.3);
 });
+
+test('accepts {t, from, text} source lines (President live source)', () => {
+  const feed = S.buildFeed('{"t":"2026-11-16T21:26:00-05:00","from":"Tim","text":"a"}\n{"t":"2026-11-16T21:26:30-05:00","from":"President","text":"ok"}', 12);
+  const rows = feed.trim().split('\n').map(l => JSON.parse(l));
+  assert.deepEqual(rows.map(r => [r.at, r.from]), [['2026-11-17T02:26:00Z', 'Tim'], ['2026-11-17T02:26:30Z', 'President']]);
+});

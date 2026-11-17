@@ -6,7 +6,7 @@
 
    usage: node scripts/president-chat-feed.cjs --source <transcript.jsonl> --repo <forge-coordination checkout> [--max 12] [--push] [--dry-run]
    env:   PRESIDENT_CHAT_SOURCE, FORGE_COORDINATION_DIR (flag defaults)
-   Source lines are tolerant: time = at|timestamp|time|ts, speaker = from|role|speaker|author (user/tim -> Tim; assistant/president -> President),
+   Source lines are tolerant: time = at|t|timestamp|time|ts, speaker = from|role|speaker|author (user/tim -> Tim; assistant/president -> President),
    text = text|content|message (string, or an array of {text} parts). Unknown speakers and empty text are skipped.
    Exit 0 with no write when the source does not exist yet. Only rewrites (and pushes) when the redacted feed changed. */
 'use strict';
@@ -39,7 +39,7 @@ function buildFeed(text, max = 12) {
   for (const line of String(text || '').split(/\r?\n/)) {
     if (!line.trim()) continue; let r; try { r = JSON.parse(line); } catch (e) { continue; }
     if (!r || typeof r !== 'object') continue;
-    const from = speaker(r.from || r.role || r.speaker || r.author), at = iso(r.at || r.timestamp || r.time || r.ts), body = redact(textOf(r.text != null ? r.text : r.content != null ? r.content : r.message).replace(/\s+/g, ' ').trim()).slice(0, 400);
+    const from = speaker(r.from || r.role || r.speaker || r.author), at = iso(r.at || r.t || r.timestamp || r.time || r.ts), body = redact(textOf(r.text != null ? r.text : r.content != null ? r.content : r.message).replace(/\s+/g, ' ').trim()).slice(0, 400);
     if (from && at && body) rows.push({ at, from, text: body });
   }
   rows.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
