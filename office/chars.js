@@ -239,7 +239,7 @@ function puffBody(a, hi) {
   } else {
     const pts = shapePoints(a), prof = radialProfile(pts, NT);
     let wmax = 0, wmin = 0; for (let k = 0; k < NT; k++) { const x = Math.cos(k / NT * Math.PI * 2) * prof[k]; wmax = Math.max(wmax, x); wmin = Math.min(wmin, x); }
-    D = (wmax - wmin) * BOT_THICK / 2;
+    D = (wmax - wmin) * (a.thick || BOT_THICK) / 2; // per-avatar front-to-back thickness override (avatars.js thick)
     ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, sp = Math.sin(ph), cp = Math.cos(ph), r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.pow(Math.abs(sp), 2 / BOT_FLAT); return [Math.cos(t) * r, Math.sin(t) * r, Math.sign(cp) * Math.pow(Math.abs(cp), 2 / BOT_FLAT) * D]; };
     zFront = (x, y) => { const rho = Math.hypot(x, y), th = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2), f = th / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, R = prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f));
       return Math.pow(Math.max(0, 1 - Math.min(1, rho / R) ** BOT_FLAT), 1 / BOT_FLAT) * D; };
@@ -266,7 +266,7 @@ function puffBody(a, hi) {
 export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident(hiQuality);
-  const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
+  const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color + ':' + (a.thick || '');
   const bodyG = geo(key, () => puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
   const bodyM = clayMat(hiQuality), limbM = jelly(a.color, hiQuality);
