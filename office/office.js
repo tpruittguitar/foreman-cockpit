@@ -804,6 +804,7 @@ function buildWorld() {
   add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
   let wbKey = '';
   let skillList = null; // real skills from office/skills.json; null => the old fallback lines
+  let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
   fetch('skills.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(j => { skillList = L.parseSkills(j); wbKey = ''; drawWB(plan.meeting); });
   function drawWB(meeting) {
     const live = meeting ? null : L.trainingSlide(plan.training, skillList), skill = live || (meeting ? null : L.skillSlide(skillList, Date.now()));
@@ -912,7 +913,6 @@ function buildWorld() {
     if (!h) return new THREE.Vector3(-2, 2.3, -RD / 2 + 0.13);
     return new THREE.Vector3(-2 + (h.x + h.w / 2 - 0.5) * BW, 2.3 + (0.5 - (h.y + h.h / 2)) * BH, -RD / 2 + 0.13); // z in front of the board face so the line starts ON the card
   }
-  let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
   const IDLE_PLAN = new Set(['wander', 'coffee', 'chat', 'fridge', 'lounge', 'bike', 'sleep', 'visitdesk', 'game']); // planOffice acts that mean "idle life"; the idle rotation (item 11) replaces them
   function updatePlan() {
     const t = performance.now(); if (t - planAt < 500) return; planAt = t;
