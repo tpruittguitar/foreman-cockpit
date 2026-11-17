@@ -170,3 +170,6 @@ table.autos { width: 100%; border-collapse: collapse; margin-top: 10px; font-siz
 .res.OK { color: #3ddc84; } .res.FAIL { color: #ff4b4b; } .res.STALE { color: #ffd23f; } .res.SKIP, .res.EMPTY { color: #9aa0a8; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #555a62; } .dot.green { background: #3ddc84; } .dot.amber { background: #ffd23f; } .dot.red { background: #ff4b4b; }
 canvas { cursor: grab; }
+
+/* Revision badge: tiny, bottom-right, never intercepts input. */
+#build-badge { position: fixed; z-index: 3; right: var(--safe); bottom: calc(var(--safe) * .6); font: 10px/1.2 ui-monospace, Menlo, monospace; color: rgba(220,226,236,.6); background: rgba(10,10,12,.45); padding: 1px 6px; border-radius: 4px; pointer-events: none; user-select: none; white-space: nowrap; }

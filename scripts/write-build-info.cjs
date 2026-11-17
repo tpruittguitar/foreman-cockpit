@@ -3,13 +3,21 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
+// PR number from a commit subject: squash-merge "... (#NNN)" or a leading "#NNN ..."; null when neither is present.
+function prFromSubject(subject) {
+  const s = String(subject || '').trim();
+  const m = s.match(/\(#(\d+)\)\s*$/) || s.match(/^#(\d+)\b/);
+  return m ? +m[1] : null;
+}
+module.exports = { prFromSubject };
+if (require.main !== module) return;
+
 // Cloudflare Pages build variables (Netlify retired 2026-11-03).
 const commit = process.env.CF_PAGES_COMMIT_SHA || 'local';
 // The PR this build came from: a squash-merge subject ending "(#NN)"; preview builds carry their branch name.
 let subject = '';
 try { subject = execSync('git log -1 --format=%s', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { subject = ''; }
-const subjectPr = (subject.match(/\(#(\d+)\)\s*$/) || [])[1];
-const pr = subjectPr ? +subjectPr : null;
+const pr = prFromSubject(subject);
 const branch = process.env.CF_PAGES_BRANCH || 'local';
 const info = {
   app: 'Pipeline Explorer',
