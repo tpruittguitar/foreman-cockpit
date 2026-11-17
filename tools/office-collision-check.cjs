@@ -28,18 +28,23 @@ const mode = process.argv[2] === 'dump' ? 'dump' : 'sample', secs = +(process.ar
     fs.writeFileSync(path.join(repo, 'tests/fixtures/office-layout.json'), JSON.stringify(JSON.parse(lay)) + '\n'); console.log('wrote tests/fixtures/office-layout.json');
   } else {
     const lay = JSON.parse(await ev('JSON.stringify(window.__office.layout())')), real = lay.obstacles.filter(o => !o.viewerOnly);
-    const bad = new Map(); let samples = 0, moved = 0, last = null;
+    const bad = new Map(), badSeat = new Map(), badPair = new Map(), SEATED = ['sit', 'type', 'game', 'meet', 'deskSleep', 'nap', 'lounge', 'bike', 'wave'];
+    /* a bot may stand inside its own chair base (it sits / stands up from it): its own desk chair, or any chair it is within 0.45 m of the centre of */
+    const ownChair = (n, b, x, z) => { const d = lay.desks.find(q => q.name === n); if (d && b.tag === 'desk:' + n && Math.hypot(x - d.seat.x, z - d.seat.z) < 0.5) return true; return b.tag === 'chair' && Math.hypot(x - (b.x0 + b.x1) / 2, z - (b.z0 + b.z1) / 2) < 0.45; }; let samples = 0, moved = 0, last = null;
     const t0 = Date.now();
     while (Date.now() - t0 < secs * 1000) {
       const pos = await ev('window.__office.info().positions'); samples++;
-      for (const [n, x, z, pose] of pos) { const o = real.find(b => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1);
+      for (const [n, x, z, pose] of pos) { const o = real.find(b => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && !ownChair(n, b, x, z));
         if (o && !['sit', 'type', 'game', 'meet', 'deskSleep', 'nap', 'lounge', 'bike'].includes(pose)) bad.set(n + '@' + x + ',' + z + ' in ' + (o.tag || [o.x0, o.x1, o.z0, o.z1].join(',')) + ' pose=' + pose, 1);
         if (last) { const p = last.find(q => q[0] === n); if (p && Math.hypot(p[1] - x, p[2] - z) > 0.01) moved++; } }
+      for (let i = 0; i < pos.length; i++) for (let j = i + 1; j < pos.length; j++) { // bot-bot: keep radius sum apart; a walker pressing into a seated bot is the failure Tim saw
+        const a = pos[i], b = pos[j], gap = Math.hypot(a[1] - b[1], a[2] - b[2]) - (a[4] + b[4]), as = SEATED.includes(a[3]), bs = SEATED.includes(b[3]);
+        if (as && bs) continue; if (gap < -0.12) { const k = a[0] + '/' + b[0] + (as || bs ? ' (vs seated)' : ''); (as || bs ? badSeat : badPair).set(k, Math.min(gap, badSeat.get(k) || badPair.get(k) || 0)); } }
       last = pos; await new Promise(r => setTimeout(r, 250));
     }
     const walkers = last.filter(p => p[3] === 'walk').length;
-    console.log('RESULT: ' + last.length + ' bots, ' + samples + ' samples over ' + secs + ' s, ' + moved + ' moves seen, ' + bad.size + ' standing/walking samples inside a non-viewerOnly box' + (bad.size ? ': ' + [...bad.keys()].slice(0, 8).join('; ') : ''));
-    if (bad.size) code = 1;
+    console.log('RESULT: ' + last.length + ' bots, ' + samples + ' samples over ' + secs + ' s, ' + moved + ' moves seen, ' + bad.size + ' standing/walking samples inside a non-viewerOnly box (chair bases included), ' + badSeat.size + ' walker-vs-seated and ' + badPair.size + ' walker-vs-walker pairs closer than the radius sum by > 0.12 m' + (badSeat.size ? ' [' + [...badSeat].slice(0, 5).map(([k, v]) => k + ' ' + v.toFixed(2)).join('; ') + ']' : '') + (bad.size ? ': ' + [...bad.keys()].slice(0, 8).join('; ') : ''));
+    if (bad.size || badSeat.size) code = 1;
   }
   ws.close(); chrome.kill(); server.close(); setTimeout(() => process.exit(code), 200);
 })().catch(e => { console.error(e); process.exit(2); });
