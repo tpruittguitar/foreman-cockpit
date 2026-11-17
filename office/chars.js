@@ -78,11 +78,11 @@ function zShape() {
 export function makeZzz() {
   const g = new THREE.Group();
   const zg = geo('z', () => { const x = new THREE.ExtrudeGeometry(zShape(), { depth: 0.025, bevelEnabled: false }); x.center(); return x; });
-  for (let i = 0; i < 3; i++) { const z = new THREE.Mesh(zg, new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xbfd8ff, emissiveIntensity: 1.3, transparent: true, depthWrite: false, depthTest: false })); z.renderOrder = 20; z.userData.phase = i / 3; g.add(z); // bright and drawn on top so a sleeper reads from across the room }
+  for (let i = 0; i < 3; i++) { const z = new THREE.Mesh(zg, new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xbfd8ff, emissiveIntensity: 1.3, transparent: true, depthWrite: false, depthTest: false })); z.renderOrder = 20; z.userData.phase = i / 3; g.add(z); } // bright and drawn on top so a sleeper reads from across the room
   return g;
 }
 export function floatZzz(zzz, t, x0, y0, z0) {
-  zzz.children.forEach(z => { const p = (t * 0.2 + z.userData.phase) % 1; z.position.set(x0 + p * 0.3 + Math.sin(p * 6.28) * 0.04, y0 + p * 2.0, z0); z.scale.setScalar(1.1 + p * 1.6); z.material.opacity = p < 0.1 ? p / 0.1 : p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4; // rise ~1.4 units, stay solid until 60% of the way up, then fade });
+  zzz.children.forEach(z => { const p = (t * 0.2 + z.userData.phase) % 1; z.position.set(x0 + p * 0.3 + Math.sin(p * 6.28) * 0.04, y0 + p * 2.0, z0); z.scale.setScalar(1.1 + p * 1.6); z.material.opacity = p < 0.1 ? p / 0.1 : p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4; }); // rise ~2 units, solid until 60% of the climb, then fade
 }
 function makeCup() {
   const g = new THREE.Group();
