@@ -116,8 +116,8 @@ function makeCue() { // axis along the forearm (-y in the arm frame): the grip i
 function makeFace(frontZ, scale, eyeDark, noMouth, tilt) {
   const f = new THREE.Group(); f.position.z = frontZ;
   const eyeM = black();
-  const eye = geo('eye', () => new THREE.SphereGeometry(1, 20, 14));
-  const eyes = [-1, 1].map(sx => { const e = new THREE.Mesh(eye, eyeM); e.userData.sy = 0.072 * scale; e.scale.set(0.042 * scale, e.userData.sy, 0.03); e.position.set(sx * 0.085 * scale, 0.05 * scale, 0); e.rotation.z = tilt || 0; f.add(e); return e; });
+  const eye = geo('pSlot', () => new THREE.CapsuleGeometry(1, 2.9, 8, 16)); /* slot eyes: tall narrow capsule, not an oval */
+  const eyes = [-1, 1].map(sx => { const e = new THREE.Mesh(eye, eyeM); e.userData.sy = 0.0294 * scale; e.scale.set(0.0245 * scale, e.userData.sy, 0.012); e.position.set(sx * 0.085 * scale, 0.05 * scale, 0); e.rotation.z = tilt || 0; f.add(e); return e; });
   const shine = geo('shine', () => new THREE.SphereGeometry(1, 8, 6));
   const shines = eyes.map(e => { const s = new THREE.Mesh(shine, white()); s.scale.set(0.012 * scale, 0.016 * scale, 0.01); s.position.set(e.position.x + 0.012 * scale, e.position.y + 0.025 * scale, 0.024); f.add(s); return s; });
   const arcG = geo('arc', () => new THREE.TorusGeometry(0.05, 0.012, 6, 16, Math.PI));
@@ -246,9 +246,9 @@ export function makeBot(name, hiQuality, botId, override) {
   const mesh = new THREE.Mesh(bodyG, bodyM); body.add(mesh);
   const face = makeFace(bb.max.z - 0.012, 1.0, false, true, 0);
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
-  // Grok Bot face: two tall matte oval eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
+  // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   { const eyeM = mat('eyeClay', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 1, metalness: 0 }));
-    face.userData.eyes.forEach((e, i) => { e.material = eyeM; const ex = (i ? 1 : -1) * 0.1, ey = -0.02 + 0.02; e.position.set(ex, -0.02, Math.min(0, bodyG.userData.zAt(ex, ey) - bb.max.z) + 0.004); e.scale.set(0.05, 0.1, 0.03); e.userData.sy = 0.1; face.userData.shines[i].scale.set(0, 0, 0); });
+    face.userData.eyes.forEach((e, i) => { e.material = eyeM; const ex = (i ? 1 : -1) * 0.1, ey = -0.02 + 0.02; e.position.set(ex, -0.02, Math.min(0, bodyG.userData.zAt(ex, ey) - bb.max.z) + 0.004); e.scale.set(0.034, 0.0408, 0.012); e.userData.sy = 0.0408; face.userData.shines[i].scale.set(0, 0, 0); });
     face.rotation.z = a.rot || 0; }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
