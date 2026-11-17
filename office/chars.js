@@ -493,6 +493,7 @@ function finish(c) {
 
 /* ---------- procedural animation: one pose per frame ---------- */
 const lerp = (a, b, k) => a + (b - a) * k;
+export const SEAT_TOP = 0.495; // chair seat top (office.js: seat box centre 0.46 + half thickness 0.035)
 export function animate(c, pose, t, dt, opts) {
   const k = Math.min(1, dt * 8), still = opts.reduced;
   const ph = c.phase || 0;
@@ -504,6 +505,7 @@ export function animate(c, pose, t, dt, opts) {
   c.zzz.visible = pose === 'nap' || pose === 'deskSleep';
   c.card.visible = !!opts.carry;
   const sideR = 1;
+  const perched = !!opts.perch && c.kind === 'bot'; // short bots stand ON the desk chair seat instead of sitting (the President keeps the seated pose)
   let lean = 0, turnY = 0;
   // eager to work: an occasional quick glance (towards the desk / monitor) while standing about
   const glance = still ? 0 : Math.max(0, Math.sin(t * 0.7 + ph * 3) - 0.85) / 0.15;
@@ -519,6 +521,7 @@ export function animate(c, pose, t, dt, opts) {
     case 'lounge': { lift = c.sitLift - 0.04; legX = -1.4; armR.x = -0.5; armL.x = -0.4; lean = -0.12; if (!still) bob = 0.006 * Math.sin(t * 1.2 + ph); turnY = 0.4 * glance; break; }
     case 'sit': case 'type': case 'game': case 'meet': {
       lift = c.sitLift; legX = -1.45;
+      if (perched) { lift = SEAT_TOP; legX = 0; }
       if (pose === 'type' && !still) {
         // typing bursts with short pauses to read the monitor; leaning in
         const burst = Math.sin(t * 1.3 + ph) > -0.45 ? 1 : 0;
@@ -534,6 +537,7 @@ export function animate(c, pose, t, dt, opts) {
     }
     case 'deskSleep': {
       lift = c.sitLift; legX = -1.45; armR.x = -1.55; armL.x = -1.55; lean = 0.62;
+      if (perched) { lift = SEAT_TOP; legX = 0; lean = 0.5; }
       if (!still) bob = 0.006 * Math.sin(t * 1.4 + ph);
       floatZzz(c.zzz, t, 0.12, c.top + 0.1, 0.25);
       break;
@@ -565,7 +569,7 @@ export function animate(c, pose, t, dt, opts) {
     }
     case 'restock': { armR.x = -1.25; armL.x = -1.25; armR.z = c.rest.armR.z * 0.3; armL.z = c.rest.armL.z * 0.3; if (!still && opts.holding) bob = 0.01 * Math.sin(t * 5); break; }
     case 'board': armR.x = -2.4; armR.z = c.rest.armR.z; break;
-    case 'talk': if (!still) { armR.x = (opts.can ? -0.9 : -0.5) + 0.35 * Math.sin(t * 3 + ph); armL.x = -0.3 + 0.2 * Math.sin(t * 2.3 + ph); } bob = still ? 0 : 0.01 * Math.sin(t * 6); turnY = 0.5 * glance; break;
+    case 'talk': if (opts.chair && c.kind === 'bot') lift = SEAT_TOP; if (!still) { armR.x = (opts.can ? -0.9 : -0.5) + 0.35 * Math.sin(t * 3 + ph); armL.x = -0.3 + 0.2 * Math.sin(t * 2.3 + ph); } bob = still ? 0 : 0.01 * Math.sin(t * 6); turnY = 0.5 * glance; break;
     case 'frozen': break;
     default: if (!still) bob = 0.008 * Math.sin(t * 2 + ph) + 0.012 * Math.max(0, Math.sin(t * 3.1 + ph)); // stand / loiter: bouncing on its toes
       turnY = 0.6 * glance; if (opts.can) armR.x = -0.8;
