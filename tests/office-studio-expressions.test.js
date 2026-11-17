@@ -21,7 +21,7 @@ test('studio values: spot checks against the studio definitions', () => {
   assert.deepEqual(f('neutral').eyes.map(e => [e.w, e.h]), [[0.186, 0.412], [0.186, 0.412]]);
   assert.deepEqual(f('angry').eyes.map(e => e.tilt), [30, -30]);
   assert.deepEqual(f('sad').eyes.map(e => e.tilt), [-28, 28]);
-  assert.equal(f('sleepy').eyes[0].open, 0.42);
+  assert.equal(f('sleepy').eyes[0].open, 0.01);
   assert.deepEqual(f('suspicious').eyes.map(e => e.h), [0.4, 0.15], 'one eye narrowed');
   assert.deepEqual(f('confused').eyes.map(e => e.tilt), [-18, 14], 'mismatched');
   assert.equal(f('scared').gaze.pitch, -20);
@@ -155,6 +155,21 @@ test('old names still work: happy, neutral, worried, puzzled, sleepy keep their 
   assert.equal(L.exprParams('neutral').smile, 0.45);
   assert.equal(L.exprParams('worried').worry, 1);
   assert.equal(L.exprParams('puzzled').puzzle, 1);
-  assert.ok(L.exprParams('sleepy').lid > 0 && L.exprParams('sleepy').lid < 1);
+  assert.ok(L.exprParams('sleepy').lid === 1);
   assert.deepEqual(L.exprParams('nonsense'), L.exprParams('neutral'));
+});
+
+test('sleep poses close the eyes (jelly slot eyes and President) and waking reopens them', () => {
+  const settle = (face, ms) => { let cur = L.exprParams('neutral'); for (let i = 0; i < ms; i++) cur = L.blendExpression(cur, face, 1 / 60); return cur; };
+  for (const pose of ['nap', 'deskSleep']) {
+    const sleeping = settle(L.exprFor({ pose, name: 'A' }), 120);
+    assert.ok(sleeping.e0o <= 0.02);
+    assert.ok(sleeping.e1o <= 0.02);
+    assert.equal(sleeping.lid, 1, 'President lid weight fully closed: ' + pose);
+  }
+  const awake = settle(L.exprFor({ pose: 'stand', name: 'A', t: 0 }), 120);
+  assert.ok(awake.e0o > 0.5 && awake.lid === 0, 'awake eyes open');
+  let cur = settle('sleepy', 120);
+  for (let i = 0; i < 120; i++) cur = L.blendExpression(cur, L.exprFor({ pose: 'stand', name: 'A', t: 0 }), 1 / 60);
+  assert.ok(cur.e0o > 0.5 && cur.lid < 0.05, 'eyes reopen after waking');
 });

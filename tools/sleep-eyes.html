@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8"><title>Sleep-eyes harness</title>
+<!-- Sleep proof: ?bot=<id|president>&pose=deskSleep|nap|stand&sleep=1 (sleep=1 sets the sleepy face; 0 keeps an awake face). Test view: ?az=30&el=8&zoom=1 (camera azimuth/elevation in degrees, zoom). Used for the turnaround proof renders. -->
+<style>html,body{margin:0;background:#34363a}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"../office/vendor/three/three.module.min.js"}}</script>
+<script src="../office/office-logic.js"></script>
+<script type="module">
+
+import * as THREE from 'three';
+import { makeBot, animate } from '../office/chars.js';
+const L = window.OfficeLogic;
+const q = new URLSearchParams(location.search);
+const W = +q.get('w') || 750, H = +q.get('h') || 970;
+const az = (+q.get('az') || 0) * Math.PI / 180, el = (+q.get('el') || 6) * Math.PI / 180, zoom = +q.get('zoom') || 1;
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(W, H); r.setPixelRatio(1);
+r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
+document.body.appendChild(r.domElement);
+const scene = new THREE.Scene();
+const bg = document.createElement('canvas'); bg.width = 4; bg.height = 256; { const x = bg.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, '#2f3134'); g.addColorStop(1, '#46494e'); x.fillStyle = g; x.fillRect(0, 0, 4, 256); }
+const bt = new THREE.CanvasTexture(bg); bt.colorSpace = THREE.SRGBColorSpace; scene.background = bt;
+scene.add(new THREE.HemisphereLight(0xdfe6f0, 0x4a4540, 1.1));
+const key = new THREE.DirectionalLight(0xfff2e6, 2.1); key.position.set(2, 3.5, 4); scene.add(key);
+const fill = new THREE.DirectionalLight(0xaec4ff, 0.7); fill.position.set(-3, 1.5, 2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffffff, 0.8); rim.position.set(0, 3, -4); scene.add(rim);
+const bot = q.get('bot') || 'president', c = bot === 'president' ? makeBot('President', true, '431e8cf1-f077-4548-82b7-46c1959dc4c9') : makeBot('Bot ' + bot.slice(0, 4), true, bot);
+scene.add(c.root);
+const pose = q.get('pose') || 'stand';
+if (pose === 'nap') { const gm = new THREE.MeshStandardMaterial({ color: 0x59606d, roughness: 0.6 }), m = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 0.7), gm); m.position.set(0.5, 0.15, 0); scene.add(m); c.rig.position.y += 0.3; }
+else if (pose !== 'stand') {
+  const gm = new THREE.MeshStandardMaterial({ color: 0x59606d, roughness: 0.6 }), bx = (w, h, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), gm); m.position.set(x, y, z); scene.add(m); };
+  if (pose === 'bike') { c.root.position.z = -0.22; bx(0.25, 0.05, 1.0, 0, 0.03, 0); bx(0.2, 0.05, 0.28, 0, 0.68, -0.22); bx(0.05, 0.62, 0.05, 0, 0.36, -0.15); bx(0.09, 0.03, 0.15, -0.1, 0.235, 0.04); bx(0.09, 0.03, 0.15, 0.1, 0.235, 0.04); bx(0.05, 0.7, 0.05, 0, 0.6, 0.38); bx(0.42, 0.04, 0.04, 0, 0.95, 0.45); }
+  else if (pose === 'deskSleep') { bx(0.5, 0.07, 0.48, 0, 0.46, 0); bx(0.48, 0.5, 0.06, 0, 0.78, -0.24); bx(1.6, 0.05, 0.8, 0, 0.745, 1.2); }
+  else { bx(0.5, 0.07, 0.48, 0, 0.46, 0); bx(0.48, 0.5, 0.06, 0, 0.78, -0.24); bx(1.6, 0.05, 0.8, 0, 0.745, 0.72); bx(0.46, 0.4, 0.04, 0, 0.98, 0.9); }
+}
+for (let i = 0; i < 60; i++) animate(c, pose, 0, 0.1, { reduced: true });
+c.setExpression(q.get('sleep') === '0' ? 'happy' : L.exprFor({ pose, name: c.name }));
+for (let i = 0; i < 60; i++) c.updateFace(0.1, 0, true);
+const cam = new THREE.PerspectiveCamera(28, W / H, 0.1, 50);
+const tx = +q.get("ty") || 0.7, d = 4.4 / zoom;
+const cx = +q.get('cx') || 0;
+cam.position.set(cx + Math.sin(az) * Math.cos(el) * d, tx + Math.sin(el) * d, Math.cos(az) * Math.cos(el) * d); cam.lookAt(cx, tx, 0);
+r.render(scene, cam); document.title = 'ready';
+</script>
