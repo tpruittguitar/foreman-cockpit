@@ -790,7 +790,12 @@ function buildWorld() {
   add(box(1.75, 0.95, 0.05), MAT.metal, 0, 0, 0, wbG);
   add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
   let wbKey = '';
-  function drawWB(meeting) { const k = meeting ? meeting.id + meeting.title + meeting.seated.join() : 'skills'; if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, 512, 256, { meeting, demo: DEMO }); wb.t.needsUpdate = true; }
+  let skillList = null; // real skills from office/skills.json; null => the old fallback lines
+  fetch('skills.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(j => { skillList = L.parseSkills(j); wbKey = ''; drawWB(plan.meeting); });
+  function drawWB(meeting) {
+    const skill = meeting ? null : L.skillSlide(skillList, Date.now()), k = meeting ? meeting.id + meeting.title + meeting.seated.join() : skill ? 'skill' + skill.index + '/' + skillList.length : 'skills';
+    if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, 512, 256, { meeting, skill, demo: DEMO }); wb.t.needsUpdate = true;
+  }
   drawWB(null);
   block(CONF.x, CONF.z, 1.5, 0.6);
   const WALL = 0.35;
