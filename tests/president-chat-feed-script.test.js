@@ -44,9 +44,9 @@ test('CLI: missing transcript writes nothing; unchanged feed is not rewritten; -
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('walk camera eye height equals the President head height and sits at floor level (below the old 1.75 m)', () => {
-  assert.equal(L.EYE_HEIGHT, L.PRESIDENT_HEAD_Y);
-  assert.ok(L.EYE_HEIGHT > 0.9 && L.EYE_HEIGHT < 1.3);
+test('walk camera eye height is 30% above the President head height and still floor level (below the old 1.75 m)', () => {
+  assert.ok(Math.abs(L.EYE_HEIGHT / L.PRESIDENT_HEAD_Y - 1.3) < 0.005, 'about 1.3 x the previous eye height');
+  assert.ok(L.EYE_HEIGHT > 1.3 && L.EYE_HEIGHT < 1.75);
 });
 
 test('accepts {t, from, text} source lines (President live source)', () => {

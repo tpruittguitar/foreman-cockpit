@@ -107,7 +107,7 @@ test('work breaks: stretch or refresh, short and occasional; otherwise the bot w
   assert.ok(seen.has('stretch') && (seen.has('coffee') || seen.has('fridge')));
   assert.ok(on * 3 < 7200 * 0.2, 'works most of the time');
   const p = L.planOffice([{ bot: 'Claude', status: 'working' }], [], NOW, 'live', { Claude: { stale: false } });
-  assert.ok(['work', 'stretch', 'coffee', 'fridge'].includes(p.plans.Claude.act));
+  assert.ok(['work', 'stretch', 'coffee', 'fridge', 'trip'].includes(p.plans.Claude.act));
 });
 
 /* ---------- item 12: job flow ---------- */

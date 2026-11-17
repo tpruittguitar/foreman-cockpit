@@ -303,6 +303,9 @@
         plans[TRAINER] = { act: 'visit', partner: target }; plans[target] = { act: 'listen', partner: TRAINER };
       } else plans[TRAINER] = { act: 'wander' };
     }
+    // idle trips: working / quiet bots periodically get up, walk to an idle spot, idle there, then walk back and sit (tripScheduleAt)
+    const tripNames = list.map(b => b.bot).filter(n => plans[n] && (plans[n].act === 'work' || plans[n].act === 'stale'));
+    if (tripNames.length) { const trips = tripScheduleAt(tripNames, now, { total: list.length }); for (const n of tripNames) if (trips[n]) plans[n] = plans[n].act === 'stale' ? Object.assign(plans[n], { trip: trips[n].spot }) : { act: 'trip', spot: trips[n].spot, brk: true }; }
     const chat = idle.filter(n => plans[n].act === 'chat');
     for (let i = 0; i + 1 < chat.length; i += 2) {
       plans[chat[i]] = { act: 'chat', partner: chat[i + 1], host: false };
@@ -780,8 +783,8 @@
     return out;
   }
   const MIN_SEP = 0.8;          // metres between any two standing / walking bots
-  /* Walk camera: floor level, eye height = the President's head height (body 0.36 + head 0.69 + face offset, chars.js makePresident). */
-  const PRESIDENT_HEAD_Y = 1.07, EYE_HEIGHT = PRESIDENT_HEAD_Y;
+  /* Walk camera: floor level, eye height = 1.3 x the President's head height (body 0.36 + head 0.69 + face offset, chars.js makePresident). */
+  const PRESIDENT_HEAD_Y = 1.07, EYE_HEIGHT = +(PRESIDENT_HEAD_Y * 1.3).toFixed(3); // Tim: eye height raised ~30% (was exactly the head height, 1.07)
   const CLEARANCE = 0.35;      // extra stand-off from desks, props, board and lounge furniture so faces stay visible
   /* Standing slots in front of the board: two staggered rows, >= MIN_SEP apart, sized to n. */
   function boardSlots(n, cx, z, width) {
@@ -828,6 +831,94 @@
     return new Set(requests.slice().sort((a, b) => a.since - b.since || a.name.localeCompare(b.name)).slice(0, room).map(r => r.name));
   }
 
+
+  /* ---------- Idle trips + pure navigation (Tim: characters get up, walk to idle spots, return to the desk) ---------- */
+  /* Nav grid with A*: obstacles are {x0,x1,z0,z1,viewerOnly?} boxes in metres; cells within `inflate` of a box (or the walls) are blocked.
+     route() returns [{x,z}] waypoints that never cross a blocked cell (line-of-sight smoothing only joins cells that are all free). */
+  function createNav(o) {
+    const RW = o.RW, RD = o.RD, CELL = o.CELL || 0.2, INF = o.inflate == null ? 0.22 : o.inflate, WALL = o.wall == null ? 0.4 : o.wall;
+    const GX = Math.round(RW / CELL), GZ = Math.round(RD / CELL), grid = new Uint8Array(GX * GZ);
+    const toCell = (x, z) => [Math.max(0, Math.min(GX - 1, Math.floor((x + RW / 2) / CELL))), Math.max(0, Math.min(GZ - 1, Math.floor((z + RD / 2) / CELL)))];
+    const cellC = (i, j) => [-RW / 2 + (i + 0.5) * CELL, -RD / 2 + (j + 0.5) * CELL];
+    function build(obstacles) {
+      for (let j = 0; j < GZ; j++) for (let i = 0; i < GX; i++) {
+        const [x, z] = cellC(i, j);
+        let b = x < -RW / 2 + WALL || x > RW / 2 - WALL || z < -RD / 2 + WALL || z > RD / 2 - WALL;
+        if (!b) for (const ob of obstacles || []) if (!ob.viewerOnly && x > ob.x0 - INF && x < ob.x1 + INF && z > ob.z0 - INF && z < ob.z1 + INF) { b = true; break; }
+        grid[j * GX + i] = b ? 1 : 0;
+      }
+    }
+    const free = (i, j) => i >= 0 && j >= 0 && i < GX && j < GZ && !grid[j * GX + i];
+    function nearestFree(i, j) {
+      if (free(i, j)) return [i, j];
+      for (let r = 1; r < 15; r++) for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++) if (Math.max(Math.abs(di), Math.abs(dj)) === r && free(i + di, j + dj)) return [i + di, j + dj];
+      return [i, j];
+    }
+    function los(ax, az, bx, bz) {
+      const d = Math.hypot(bx - ax, bz - az), n = Math.ceil(d / 0.1);
+      for (let k = 1; k < n; k++) { const [i, j] = toCell(ax + (bx - ax) * k / n, az + (bz - az) * k / n); if (!free(i, j)) return false; }
+      return true;
+    }
+    function route(from, to) {
+      const [si, sj] = nearestFree(...toCell(from.x, from.z)), [ti, tj] = nearestFree(...toCell(to.x, to.z));
+      const N = GX * GZ, gS = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
+      const open = [[0, si, sj]]; gS[sj * GX + si] = 0;
+      const h = (i, j) => Math.hypot(i - ti, j - tj);
+      let found = false, guard = 0;
+      while (open.length && guard++ < 20000) {
+        let bi = 0; for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
+        const [, i, j] = open.splice(bi, 1)[0], id = j * GX + i;
+        if (closed[id]) continue; closed[id] = 1;
+        if (i === ti && j === tj) { found = true; break; }
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+          if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (!free(ni, nj)) continue;
+          if (di && dj && (!free(i + di, j) || !free(i, j + dj))) continue;
+          const nid = nj * GX + ni, ng = gS[id] + (di && dj ? 1.414 : 1);
+          if (ng < gS[nid]) { gS[nid] = ng; came[nid] = id; open.push([ng + h(ni, nj), ni, nj]); }
+        }
+      }
+      const raw = [];
+      if (found) { let id = tj * GX + ti; while (id !== -1) { raw.push(cellC(id % GX, Math.floor(id / GX))); id = came[id]; } raw.reverse(); }
+      raw.push([to.x, to.z]);
+      const out = []; let ax = from.x, az = from.z, k = 0;
+      while (k < raw.length) {
+        let far = k; for (let m = raw.length - 1; m > k; m--) if (los(ax, az, raw[m][0], raw[m][1])) { far = m; break; }
+        out.push({ x: raw[far][0], z: raw[far][1] }); ax = raw[far][0]; az = raw[far][1]; k = far + 1;
+      }
+      return { points: out, found };
+    }
+    build(o.obstacles);
+    return { build, free, toCell, cellC, nearestFree, los, route: (a, b) => route(a, b).points, search: route, GX, GZ };
+  }
+  /* Idle trips. Each bot has its own cycle (3-5 min, staggered by hash). At the start of a cycle it may get up for TRIP_AWAY_S
+     seconds (walk out, ~60 s of idle animation at the spot, walk back and sit). A trip is admitted only if fewer than `cap` bots
+     (default: a third of the office, like walkCap) are away at that instant and the spot is free, so spots are never double-booked
+     and not everyone leaves at once. Admission depends only on bots that left earlier, so it is stable for the whole trip. */
+  const TRIP_SPOTS = ['bike', 'pool', 'lounge', 'board', 'waterfall'], TRIP_AWAY_S = 90;
+  function tripCycle(name) { const period = 180 + hash('tp:' + name) % 121; return { period, off: hash('to:' + name) % period }; }
+  function tripScheduleAt(names, nowMs, opts) {
+    const o = opts || {}, spots = o.spots || TRIP_SPOTS, cap = o.cap != null ? o.cap : walkCap(o.total || names.length), away = o.awayS || TRIP_AWAY_S;
+    const cyc = {}; for (const n of names) cyc[n] = tripCycle(n);
+    const memo = new Map();
+    // the window of `n` that contains absolute second T, or null
+    const windowAt = (n, T) => { const c = cyc[n], t = T + c.off, k = Math.floor(t / c.period), into = t - k * c.period; return into < away ? { cycle: k, start: k * c.period - c.off } : null; };
+    function admit(n, start, cycle) {
+      const key = n + '@' + start; if (memo.has(key)) return memo.get(key);
+      memo.set(key, null);
+      const taken = new Set(); let count = 0;
+      for (const m of names) {
+        if (m === n) continue; const w = windowAt(m, start);
+        if (!w || !(w.start < start || (w.start === start && m < n))) continue; // only bots that left before us
+        const a = admit(m, w.start, w.cycle); if (a) { count++; taken.add(a.spot); }
+      }
+      let res = null;
+      if (count < cap) { const pref = hash(n + ':' + cycle) % spots.length; for (let i = 0; i < spots.length; i++) { const sp = spots[(pref + i) % spots.length]; if (!taken.has(sp)) { res = { spot: sp, start, cycle }; break; } } }
+      memo.set(key, res); return res;
+    }
+    const nowS = Math.floor(nowMs / 1000), out = {};
+    for (const n of names) { const w = windowAt(n, nowS); if (!w) continue; const a = admit(n, w.start, w.cycle); if (a) out[n] = { spot: a.spot, since: a.start, into: nowS - a.start }; }
+    return out;
+  }
   /* ---------- Busy office schedule (Tim 12:19 / 12:20 AM) ---------- */
   const RECENT_REPLAY_MIN = 30;
   const IDLE_ACTS = ['wander', 'coffee', 'chat', 'fridge', 'lounge', 'chat', 'wander', 'bike', 'sleep', 'visitdesk', 'chat', 'game']; // sleep+game = 2/12
@@ -1231,7 +1322,7 @@
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, walkCap, admitWalkers,
-    RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
+    RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, usageRows, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,

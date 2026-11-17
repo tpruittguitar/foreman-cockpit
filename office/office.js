@@ -820,59 +820,11 @@ function buildWorld() {
   }
   const deskOf = n => desks.find(d => d.name === n);
 
-  /* ---------- nav grid (A*) ---------- */
-  const CELL = 0.2, GX = Math.round(RW / CELL), GZ = Math.round(RD / CELL), INF = 0.22;
-  const grid = new Uint8Array(GX * GZ);
-  const toCell = (x, z) => [Math.max(0, Math.min(GX - 1, Math.floor((x + RW / 2) / CELL))), Math.max(0, Math.min(GZ - 1, Math.floor((z + RD / 2) / CELL)))];
-  const cellC = (i, j) => [-RW / 2 + (i + 0.5) * CELL, -RD / 2 + (j + 0.5) * CELL];
-  function buildGrid() {
-    for (let j = 0; j < GZ; j++) for (let i = 0; i < GX; i++) {
-      const [x, z] = cellC(i, j);
-      let b = x < -RW / 2 + 0.4 || x > RW / 2 - 0.4 || z < -RD / 2 + 0.4 || z > RD / 2 - 0.4;
-      if (!b) for (const o of obstacles) if (!o.viewerOnly && x > o.x0 - INF && x < o.x1 + INF && z > o.z0 - INF && z < o.z1 + INF) { b = true; break; }
-      grid[j * GX + i] = b ? 1 : 0;
-    }
-  }
-  buildGrid();
-  const free = (i, j) => i >= 0 && j >= 0 && i < GX && j < GZ && !grid[j * GX + i];
-  function nearestFree(i, j) {
-    if (free(i, j)) return [i, j];
-    for (let r = 1; r < 15; r++) for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++) if (Math.max(Math.abs(di), Math.abs(dj)) === r && free(i + di, j + dj)) return [i + di, j + dj];
-    return [i, j];
-  }
-  function los(ax, az, bx, bz) {
-    const d = Math.hypot(bx - ax, bz - az), n = Math.ceil(d / 0.1);
-    for (let k = 1; k < n; k++) { const [i, j] = toCell(ax + (bx - ax) * k / n, az + (bz - az) * k / n); if (!free(i, j)) return false; }
-    return true;
-  }
-  function route(from, to) {
-    const [si, sj] = nearestFree(...toCell(from.x, from.z)), [ti, tj] = nearestFree(...toCell(to.x, to.z));
-    const N = GX * GZ, gS = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
-    const open = [[0, si, sj]]; gS[sj * GX + si] = 0;
-    const h = (i, j) => Math.hypot(i - ti, j - tj);
-    let found = false, guard = 0;
-    while (open.length && guard++ < 20000) {
-      let bi = 0; for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k;
-      const [, i, j] = open.splice(bi, 1)[0], id = j * GX + i;
-      if (closed[id]) continue; closed[id] = 1;
-      if (i === ti && j === tj) { found = true; break; }
-      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
-        if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (!free(ni, nj)) continue;
-        if (di && dj && (!free(i + di, j) || !free(i, j + dj))) continue;
-        const nid = nj * GX + ni, ng = gS[id] + (di && dj ? 1.414 : 1);
-        if (ng < gS[nid]) { gS[nid] = ng; came[nid] = id; open.push([ng + h(ni, nj), ni, nj]); }
-      }
-    }
-    const raw = [];
-    if (found) { let id = tj * GX + ti; while (id !== -1) { raw.push(cellC(id % GX, Math.floor(id / GX))); id = came[id]; } raw.reverse(); }
-    raw.push([to.x, to.z]);
-    const out = []; let ax = from.x, az = from.z, k = 0;
-    while (k < raw.length) {
-      let far = k; for (let m = raw.length - 1; m > k; m--) if (los(ax, az, raw[m][0], raw[m][1])) { far = m; break; }
-      out.push(new THREE.Vector2(raw[far][0], raw[far][1])); ax = raw[far][0]; az = raw[far][1]; k = far + 1;
-    }
-    return out;
-  }
+  /* ---------- nav grid (A*, pure: L.createNav) ---------- */
+  const nav = L.createNav({ RW, RD, CELL: 0.2, inflate: 0.22, obstacles });
+  function buildGrid() { nav.build(obstacles); }
+  const toCell = nav.toCell, free = nav.free;
+  const route = (from, to) => nav.route(from, to).map(p => new THREE.Vector2(p.x, p.z));
 
   /* ---------- reserved standing / sitting slots (one bot per slot; item 22) ---------- */
   const book = L.createSlotBook();
@@ -881,6 +833,7 @@ function buildWorld() {
     { id: 'pool1', kind: 'pool', x: 7.95 - CL, z: -2.0, face: Math.PI / 2 }, { id: 'pool2', kind: 'pool', x: 9.85 + CL, z: -1.1, face: -Math.PI / 2 },
     { id: 'coffee1', kind: 'coffee', x: 10.5 - CL, z: -6.4, face: Math.PI / 2 }, { id: 'coffee2', kind: 'coffee', x: 10.5 - CL, z: -5.4, face: Math.PI / 2 },
     { id: 'fridge1', kind: 'fridge', x: 10.45 - CL, z: -8.2, face: Math.PI / 2 }, { id: 'fridge2', kind: 'fridge', x: 9.6 - CL, z: -8.9, face: Math.PI / 2 },
+    { id: 'wf1', kind: 'waterfall', x: 10.35, z: 1.9, face: Math.PI / 2 },
     { id: 'lo1', kind: 'loiter', x: 6.4, z: 1.0, face: Math.PI / 2 }, { id: 'lo2', kind: 'loiter', x: 5.0, z: -6.6, face: Math.PI / 2 }, { id: 'lo3', kind: 'loiter', x: 6.2, z: 5.2, face: Math.PI },
     { id: 'lo4', kind: 'loiter', x: -5.2, z: 4.9, face: 0 }, { id: 'lo5', kind: 'loiter', x: 1.5, z: 6.0, face: 0 }, { id: 'lo6', kind: 'loiter', x: -3, z: 6.4, face: 0 }
   ].concat(SIT, CONF_SEATS.map((c, i) => Object.assign({ id: 'conf' + i, kind: 'conf' }, c)), L.groupChatSlots(7.2, -5.0, 4, 0.75).map((c, i) => Object.assign({ id: 'gc' + i, kind: 'gchat' }, c)));
@@ -889,7 +842,7 @@ function buildWorld() {
     if (cur && kinds.includes(cur.kind)) return cur;
     const list = SLOTS.concat(BOARD_SLOTS).filter(s => kinds.includes(s.kind) && !book.holder(s.id));
     if (!list.length) return null;
-    const s = list[L.hash(c.name + kinds.join()) % list.length]; book.take(s.id, c.name); return s;
+    const s = list[L.hash(c.name + kinds.join()) % list.length]; return book.take(s.id, c.name) ? s : null; // never two bots on one spot
   }
   const slotById = id => SLOTS.concat(BOARD_SLOTS).find(s => s.id === id);
 
@@ -979,11 +932,13 @@ function buildWorld() {
     if (c.carry) { if (c.goalKey === 'carry' && c.arrived) { c.carry = false; d.card.visible = true; } else return { key: 'carry', spot: d.seat, pose: 'sit' }; }
     if (convo && deskOf(convo.to)) { book.release(c.name); const dd = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: dd.visit, pose: 'talk', faceBot: convo.to }; }
     const p = plan.plans[c.name] || { act: S.fresh[c.name] && S.fresh[c.name].stale ? 'stale' : st0.behavior === 'work' ? 'work' : 'wander' };
-    const POSE_OF = { loiter: 'stand', sit: 'lounge', conf: 'meet', gchat: 'talk' };
+    const POSE_OF = { waterfall: 'stand', loiter: 'stand', sit: 'lounge', conf: 'meet', gchat: 'talk' };
     const slotted = kinds => { const s = takeSlot(c, kinds); return s ? { key: 'slot:' + s.id, spot: s, pose: POSE_OF[s.kind] || s.kind, lie: s.lie, can: p.can } : null; };
     if (!p.brk && IDLE_PLAN.has(p.act) && st0.behavior !== 'work') return idleGoal(c, d, slotted); // item 11: idle activity rotation
-    if (!['coffee', 'fridge', 'lounge', 'bike', 'wander', 'sleep', 'replay_board'].includes(p.act)) book.release(c.name);
-    switch (p.act) {
+    const act = p.act === 'stale' && p.trip ? 'trip' : p.act; // quiet (stale) bots take idle trips too
+    if (!['coffee', 'fridge', 'lounge', 'bike', 'wander', 'sleep', 'replay_board', 'trip'].includes(act)) book.release(c.name);
+    switch (act) {
+      case 'trip': return slotted({ bike: ['bike'], pool: ['pool'], lounge: ['sit'], board: ['board'], waterfall: ['waterfall'] }[p.trip || p.spot] || ['loiter']) || { key: 'seat:work', spot: d.seat, pose: 'type' }; // idle trip: walk there, idle, the plan flips back to work and the bot walks home and sits
       case 'stale': return { key: 'stale', spot: d.seat, pose: 'sit', stale: true }; // no fresh signal for 2 h: sits quietly, no "?" (Tim, item 3)
       case 'stretch': return { key: 'stretch', spot: d.stand, pose: 'stretch' }; // item 9: short stretch beside the desk, then back to work
       case 'work': case 'replay': return { key: 'seat:' + p.act, spot: d.seat, pose: 'type', recent: p.replay };
@@ -1445,7 +1400,7 @@ function buildWorld() {
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
     refresh() { syncDesks(); ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
-    info: () => ({ calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
+    info: () => ({ camY: +camera.position.y.toFixed(3), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
       poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
       lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
       generic: [...chars.values()].filter(c => c.generic).map(c => c.name), idle: [...chars.values()].map(c => c.name + ':' + (c.idleAct || '')), fridge: fridgeStock, restocker: S.restocker, needs: [...S.needsSet],
