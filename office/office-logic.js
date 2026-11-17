@@ -1423,7 +1423,8 @@
      same activity twice in a row; 60-150 s each (randomized); restock only when the fridge is not full, forced when low. */
   const IDLE_ACTIVITIES = ['couch_sleep', 'desk_nap', 'hr_training', 'video_game', 'exercise_bike', 'group_chat', 'restock_fridge', 'pool', 'waterfall_view', 'get_coffee', 'get_energy_drink'];
   const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 14, FRIDGE_MIN = 12, FRIDGE_REFILL_S = 20; // low = 70% (call a restocker), floor = 60% (never shown lower)
-  function createIdleState() { return { act: null, until: 0, bag: [], last: null }; }
+  const GAME_EVERY = 5; // Tim (Nov 17, 2:05 AM): video games are 1 in 5 idle activities (one game after every 4 other activities)
+  function createIdleState() { return { act: null, until: 0, bag: [], last: null, sinceGame: 0 }; }
   function fridgeLow(stock, cap) { return stock <= FRIDGE_LOW * ((cap || FRIDGE_CAP) / FRIDGE_CAP); }
   /* The fridge stays stocked: a can taken (or drained) never goes below the 60% floor, and with no restocker on the way it
      tops itself up one can at a time (every FRIDGE_REFILL_S) until it is back above the low mark. */
@@ -1434,17 +1435,19 @@
     if (restock === 'force' && state.act !== 'restock_fridge') { state.act = 'restock_fridge'; state.last = state.act; state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S); return state.act; }
     if (state.act && nowSec < state.until && !(state.act === 'restock_fridge' && restock === 'no')) return state.act;
     const ok = a => !(a === 'restock_fridge' && restock === 'no') && !(c.blocked && c.blocked.includes(a));
-    state.bag = state.bag.filter(ok);
+    const hold = () => { state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S); return state.act; };
+    if ((state.sinceGame | 0) >= GAME_EVERY - 1 && ok('video_game') && state.last !== 'video_game') { state.act = state.last = 'video_game'; state.sinceGame = 0; return hold(); }
+    state.bag = state.bag.filter(a => ok(a) && a !== 'video_game');
     if (!state.bag.length) {
-      const b = IDLE_ACTIVITIES.filter(ok);
+      const b = IDLE_ACTIVITIES.filter(a => ok(a) && a !== 'video_game');
       for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
       if (b.length > 1 && b[0] === state.last) b.push(b.shift());
       state.bag = b;
     }
     let i = state.bag.findIndex(a => a !== state.last); if (i < 0) i = 0;
     state.act = state.bag.splice(i, 1)[0] || 'video_game'; state.last = state.act;
-    state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S);
-    return state.act;
+    state.sinceGame = state.act === 'video_game' ? 0 : (state.sinceGame | 0) + 1;
+    return hold();
   }
   /* Group chat: the bots chatting right now split into groups of 2 or 3 (never a lone pair split into 1+1, never 4+).
      Returns {name: {group, i, n, members}} with a stable order (by hash) so a group does not reshuffle every frame. */
@@ -1706,7 +1709,7 @@
     const r = Array.from(rates || []).filter(Number.isFinite).sort((a, b) => a - b);
     return r.length ? (r.find(v => v >= want) || r[r.length - 1]) : want;
   };
-  return {
+  return { GAME_EVERY,
     TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
