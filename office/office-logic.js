@@ -1124,8 +1124,20 @@
     if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
     out.updated_at = time(o.updated_at) != null ? str(o.updated_at) : '';
     const s = o.screens && typeof o.screens === 'object' && !Array.isArray(o.screens) ? o.screens : {};
-    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true }; }
+    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true }; }
     return out;
+  }
+  /* Tim (Nov 17): a bot drawn napping while it is actually working. OFFICE_STATUS rows only ever go working -> idle, so an idle or
+     empty status is promoted to working when there is live proof right now: its mirrored desk screen is fresh (SCREEN_FRESH_MIN)
+     and shows its live-work terminal open (busy), or one of its routines is running. Alerts, blocked, needs_tim etc. are untouched. */
+  function liveStatus(bot, botId, screens, auto, now) {
+    const b = bot || {}, st = str(b.status).toLowerCase();
+    if (st && st !== 'idle') return b;
+    const e = botId && screens && screens.screens && screens.screens[botId];
+    const screenLive = !!(e && e.busy && !e.paused && time(e.at) != null && now - time(e.at) <= SCREEN_FRESH_MIN * MIN && time(e.at) <= now + MIN);
+    const routineLive = !!(((auto && auto.rows) || []).some(r => r && r.running && r.ai === b.bot));
+    if (!screenLive && !routineLive) return b;
+    return Object.assign({}, b, { status: 'working', live: screenLive ? 'screen' : 'routine' });
   }
   /* -> { show: 'image' | 'fallback', why } */
   function screenState(index, botId, now) {
@@ -1523,7 +1535,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, separateWalkers, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
+    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,

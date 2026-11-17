@@ -167,7 +167,7 @@ function queuePickup(p) {
   else if (!c.pickups.some(x => x.itemId === p.itemId)) c.pickups.push(p);
 }
 const pendingPickups = [];
-function bots() { return S.parsed ? S.parsed.bots : []; }
+function bots() { if (!S.parsed) return []; const now = Date.now(); return S.parsed.bots.map(b => L.liveStatus(b, idFor(b.bot, b.bot_id), S.screens, S.auto, now)); } /* idle rows with live proof of work show as working (Tim, Nov 17) */
 /* checksheet items + every bot's work cards, with live PR state applied */
 function items() {
   if (!S.parsed) return [];
