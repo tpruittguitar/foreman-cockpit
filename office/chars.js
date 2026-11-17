@@ -164,7 +164,7 @@ function limb(radius, len, m, key) {
 /* Studio "puffy" body: ONE smooth inflated skin per bot (no extrusion, no slab faces, no stacked lobes).
    The avatar silhouette is the equator (radius r(theta)); each latitude ring shrinks it like a sphere, so the front and back are
    domes and the sides are round. Front-to-back thickness = THICK x the width of the face view (studio samples are ~1:1, never more). */
-export const BOT_THICK = 0.9;
+export const BOT_THICK = 0.765; // Tim (Nov 17): bodies about 15% less bulbous (was 0.9)
 function radialProfile(pts, n) {
   const r = new Float32Array(n);
   for (let k = 0; k < n; k++) {
@@ -183,7 +183,7 @@ function radialProfile(pts, n) {
 /* Claude's starburst, built in the studio language: a smooth-union SDF of a round core and exactly 6 round-capped rays (valleys fused into the
    core by the smooth-min), meshed by marching along rays from the centre (the shape is star-shaped, so each ray hits the skin once). */
 function starSDF(rot) {
-  const CORE = 0.23, R0 = 0.175, R1 = 0.115, LEN = 0.335, K = 0.07, ZS = 1.35, tips = [];
+  const CORE = 0.23, R0 = 0.175, R1 = 0.115, LEN = 0.335, K = 0.07, ZS = 1.15, tips = [];
   for (let i = 0; i < 6; i++) { const t = Math.PI / 2 + rot + i * Math.PI / 3; tips.push([Math.cos(t) * LEN, Math.sin(t) * LEN]); }
   const smin = (p, q) => { const h = Math.max(K - Math.abs(p - q), 0) / K; return Math.min(p, q) - h * h * K * 0.25; };
   return (x, y, z0) => {
