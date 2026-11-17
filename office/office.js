@@ -43,7 +43,7 @@ const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
   pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
   readings: [], readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '',
-  glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null
+  glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null, invite: null, hrFree: false
 };
 // Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
 let buildInfo, onBuildInfo = null; // buildInfo === undefined until the fetch settles; the wall plate repaints from it
@@ -922,7 +922,20 @@ function buildWorld() {
     plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh, { training: DEMO ? [] : S.training, needs: S.needsSet }); // item 3 / 9: only a real needs_tim item waves
     const idleNames = list.filter(b => { const c = chars.get(b.bot), p = plan.plans[b.bot]; return c && p && !p.brk && IDLE_PLAN.has(p.act) && L.statusStyle(b.status).behavior !== 'work' && !S.needsSet.has(b.bot) && !c.job && !c.jobs.length; }).map(b => b.bot);
     S.restocker = L.pickRestocker(idleNames, fridgeStock, S.restocker); // item 10: an idle bot restocks when the fridge runs low
+    updateInvite(list, idleNames);
     drawWB(plan.meeting);
+  }
+  /* HR invite (idle activity hr_training): HR walks to 1 or 2 idle bots that are waiting for training, says the invite, then
+     those bots go to the training room and HR leads. No HR (or HR busy) -> the bag skips hr_training. */
+  function updateInvite(list, idleNames) {
+    const hr = chars.get(L.TRAINER), hp = plan.plans[L.TRAINER];
+    S.hrFree = !!(hr && hp && ['visit', 'lead', 'wander'].includes(hp.act) && !plan.meeting && !S.needsSet.has(L.TRAINER) && !hr.job && !hr.jobs.length && !hr.pickups.length);
+    const idleSet = new Set(idleNames), active = list.map(b => chars.get(b.bot)).filter(c => c && c.name !== L.TRAINER && idleSet.has(c.name) && c.idleAct === 'hr_training');
+    const inv = S.invite, cur = L.inviteCurrent(inv);
+    const waiting = active.filter(c => c.invitedUntil !== c.idle.until && !(inv && inv.guests.includes(c.name))).map(c => c.name);
+    const heldFor = hr && cur && hr.goalKey === 'invite:' + cur && hr.arrived ? clock - hr.arrivedAt : -1;
+    S.invite = S.hrFree ? L.inviteStep(inv, { active: active.map(c => c.name), add: waiting, heldFor, now: clock }) : null;
+    if (!S.invite && S.hrFree && waiting.length && !plan.training) S.invite = L.inviteStart(waiting, clock);
   }
   const charPos = n => { const o = chars.get(n); return o ? { x: o.pos.x, z: o.pos.y } : null; };
   const seated = p => ['sit', 'type', 'game', 'meet', 'deskSleep', 'nap', 'lounge', 'bike'].includes(p);
@@ -943,23 +956,53 @@ function buildWorld() {
     if (j.phase === 'work') return { key, spot: d.seat, pose: 'type' };
     return { key, spot: takeSlot(c, ['board']) || BOARD_SLOTS[0], pose: 'board' };
   }
+  /* Group chat: bots whose idle activity is group_chat stand in groups of 2 or 3 around a free spot, each facing the next. */
+  const GROUP_CENTERS = [[7.2, -5.0], [6.4, 1.0], [5.0, -6.6], [6.2, 5.2], [-5.2, 4.9], [1.5, 6.0], [-3, 6.4]];
+  let groupCenters = null;
+  function chatCenters() { // centres whose ring of 3 is clear of furniture (the first one is the original, always kept)
+    if (!groupCenters) groupCenters = GROUP_CENTERS.filter((g, i) => i === 0 || L.groupChatSlots(g[0], g[1], 3, 0.6).every(p => free(...toCell(p.x, p.z))));
+    return groupCenters;
+  }
+  function groupChatGoal(c) {
+    const names = [...chars.values()].filter(o => o.idleAct === 'group_chat' && o.goalNow && o.goalNow.ambient === 'group' || o === c).map(o => o.name), gs = L.chatGroups(names), me = gs[c.name];
+    if (!me) return null;
+    const cs = chatCenters(), ctr = cs[me.group % cs.length], slots = L.groupChatSlots(ctr[0], ctr[1], me.n, me.n === 2 ? 0.45 : 0.6), spot = slots[me.i];
+    book.release(c.name);
+    return { key: 'gc:' + me.group + ':' + me.n + ':' + me.i, spot, pose: 'talk', faceBot: me.n === 2 ? L.groupFace(me.members, c.name) : null, ambient: 'group', members: me.members };
+  }
   /* item 11 / 10 / 13: idle activity -> where the bot goes and what it does */
   function idleGoal(c, d, slotted) {
     if (c.restocked && c.goal && c.goal.pose === 'restock' && clock - c.restockedAt < 2.5) return Object.assign({}, c.goal, { box: false }); // set the box down, then move on
-    const ctx = { restock: S.restocker === c.name ? 'force' : (fridgeStock >= L.FRIDGE_CAP || S.restocker) ? 'no' : 'ok' };
+    const ctx = { restock: S.restocker === c.name ? 'force' : (fridgeStock >= L.FRIDGE_CAP || S.restocker) ? 'no' : 'ok', blocked: c.name === L.TRAINER || !S.hrFree ? ['hr_training'] : [] };
     const act = L.idleTick(c.idle, c.rng, clock, ctx); c.idleAct = act;
     const own = (key, pose) => { book.release(c.name); return { key, spot: d.seat, pose }; };
     switch (act) {
       case 'couch_sleep': return slotted(['nap']) || own('sleep', 'deskSleep');
       case 'desk_nap': return own('sleep', 'deskSleep');
-      case 'hr_training': return Object.assign(slotted(['conf']) || own('seat', 'sit'), { ambient: 'reply' });
+      case 'hr_training': {
+        if (c.invitedUntil === c.idle.until || L.inviteGoesToRoom(S.invite, c.name)) { c.invitedUntil = c.idle.until; return Object.assign(slotted(['conf']) || own('seat', 'sit'), { ambient: 'reply' }); } // invited: go to the training room
+        if (!c.hrWait || c.hrWait.until !== c.idle.until) c.hrWait = { until: c.idle.until, at: clock };
+        if (clock - c.hrWait.at > L.INVITE_WAIT_S) return slotted(['loiter']) || own('seat', 'sit'); // HR never came: do something else quietly
+        book.release(c.name); return { key: 'await-hr', spot: { x: c.pos.x, z: c.pos.y }, pose: ['sit', 'type', 'game', 'deskSleep'].includes(c.pose) ? 'sit' : 'stand' }; // wait here for HR's invite
+      }
       case 'video_game': return own('game', 'game');
       case 'exercise_bike': return slotted(['bike']) || slotted(['sit']) || slotted(['loiter']) || own('seat', 'sit');
-      case 'group_chat': return Object.assign(slotted(['gchat']) || slotted(['loiter']) || own('seat', 'sit'), { ambient: 'group' });
+      case 'group_chat': return groupChatGoal(c) || Object.assign(slotted(['loiter']) || own('seat', 'sit'), { ambient: 'group' });
+      case 'waterfall_view': return slotted(['waterfall']) || slotted(['loiter']) || own('seat', 'sit'); // stand and face the waterfall
+      case 'get_coffee': return slotted(['coffee']) || slotted(['loiter']) || own('seat', 'sit'); // walk to the machine, then hold the cup
+      case 'get_energy_drink': return slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); // fridge, then hold the can
       case 'restock_fridge': { const g = slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); return Object.assign(g, { key: 'restock:' + g.key, pose: g.spot.kind === 'fridge' ? 'restock' : g.pose, box: !c.restocked }); }
       case 'pool': return slotted(['pool']) || slotted(['loiter']) || own('seat', 'sit');
     }
     return slotted(['loiter']) || own('seat', 'sit');
+  }
+  function hrInviteGoal(c) {
+    const cur = L.inviteCurrent(S.invite), g = cur && chars.get(cur);
+    if (!g) return { key: 'lead', spot: TRAINER_SPOT, pose: 'talk', ambient: 'train' };
+    const gd = deskOf(cur), atDesk = ['sit', 'type', 'game', 'deskSleep'].includes(g.pose);
+    let spot = atDesk && gd ? gd.visit : null;
+    if (!spot) { const dx = c.pos.x - g.pos.x, dz = c.pos.y - g.pos.y, d = Math.hypot(dx, dz) || 1; spot = { x: g.pos.x + dx / d * 0.85, z: g.pos.y + dz / d * 0.85 }; }
+    return { key: 'invite:' + cur, spot, pose: 'talk', faceBot: cur, ambient: 'invite', say: L.inviteText(cur) };
   }
   function decide(c, b, convo) {
     const st0 = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name), needsTim = S.needsSet.has(c.name);
@@ -977,6 +1020,7 @@ function buildWorld() {
     if (c.job || c.jobs.length) { const jg = jobGoal(c, d); if (jg) return jg; } // item 12: walk to the board for the job, work at the desk, walk back to log it
     if (c.carry) { if (c.goalKey === 'carry' && c.arrived) { c.carry = false; d.card.visible = true; } else return { key: 'carry', spot: d.seat, pose: 'sit' }; }
     if (convo && deskOf(convo.to)) { book.release(c.name); const dd = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: dd.visit, pose: 'talk', faceBot: convo.to }; }
+    if (c.name === L.TRAINER && S.invite) { book.release(c.name); return hrInviteGoal(c); }
     const p = plan.plans[c.name] || { act: S.fresh[c.name] && S.fresh[c.name].stale ? 'stale' : st0.behavior === 'work' ? 'work' : 'wander' };
     const POSE_OF = { waterfall: 'stand', loiter: 'stand', sit: 'lounge', conf: 'meet', gchat: 'talk' };
     const slotted = kinds => { const s = takeSlot(c, kinds); return s ? { key: 'slot:' + s.id, spot: s, pose: POSE_OF[s.kind] || s.kind, lie: s.lie, can: p.can } : null; };
@@ -1101,7 +1145,7 @@ function buildWorld() {
         c.bubKey = bk;
         c.bub.innerHTML = lines.length ? lines.map(l => `<div class="bubble${l.text ? '' : ' who'}">${esc(L.bubbleText(l))}</div>`).join('')
           : rp ? `<div class="bubble recent"><span class="amb">recent · ${rp.min}m ago</span> ${esc(L.truncate(rp.text, 40))}</div>`
-          : amb ? `<div class="bubble ambient"><span class="amb">ambient</span> ${esc(L.truncate(amb, 40))}</div>` : '';
+          : amb ? `<div class="bubble ambient${c.goalNow && ['group', 'invite'].includes(c.goalNow.ambient) ? ' speech' : ''}"><span class="amb">ambient</span> ${esc(L.truncate(amb, L.BUBBLE_MAX))}</div>` : '';
       }
       const show = lines.length || amb || rp;
       c.bub.hidden = !show || !vis;
@@ -1114,7 +1158,8 @@ function buildWorld() {
     const tick = Math.floor(clock / 4);
     if (g.pose === 'meet') return tick % 3 === 1 && g.ambient === 'reply' ? L.ambientLine('reply', c.name, tick) : '';
     if (g.ambient === 'train') return L.ambientLine('train', c.name, tick);
-    if (g.ambient === 'group') return (tick + L.hash(c.name)) % 3 === 0 ? L.ambientLine('chat', c.name, tick) : ''; // item 11: standing group, one speaks at a time
+    if (g.ambient === 'invite') return g.say || ''; // HR at the guest: the invite
+    if (g.ambient === 'group') return g.members && g.members.length > 1 && L.groupSpeaker(g.members, tick) === c.name ? L.ambientLine('group', g.members.join('|'), tick) : ''; // standing group of 2-3: one speaks at a time, the line follows the turn
     const other = g.faceBot && chars.get(g.faceBot);
     if (other && !other.arrived) return '';
     const pair = (g.pair || c.name).split('|'), speaker = pair[tick % 2];
@@ -1175,7 +1220,7 @@ function buildWorld() {
     const now = Date.now(), lod = L.lodFor(camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2)));
     const sc = mirrorFor(d, b, now), image = sc.show === 'image' && d.img;
     const mine = L.sortItems(items().filter(i => i.owner === d.name && L.columnFor(i) !== 'done'));
-    const act = (plan.plans[d.name] || {}).act || '', mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
+    const oc = chars.get(d.name), act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (plan.plans[d.name] || {}).act || '', mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
     const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + Math.floor(now / (mode === 'game' && lod !== 'far' ? 120 : 30000));
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;

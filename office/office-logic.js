@@ -375,8 +375,15 @@
     chat: ['Ready for the next task!', 'Anyone need a hand?', 'All caught up here.', 'Ping me if something comes in.', 'Nice work on the last one.', 'The coffee is fresh.', 'Queue looks quiet today.', 'I could take another card.'],
     visit: ['How is it going?', 'Want to try a new skill?', 'Any blockers I can help with?', 'Great work this week!', 'Got a minute for a quick tip?'],
     reply: ['Doing great, thanks!', 'Sure, show me.', 'All good here.', 'Happy to learn more.', 'Ready when you are.'],
-    train: ['Today: new skills!', 'Step one: read the task twice.', 'Small PRs, green checks.', 'Questions so far?', 'Let us try it together.']
+    train: ['Today: new skills!', 'Step one: read the task twice.', 'Small PRs, green checks.', 'Questions so far?', 'Let us try it together.'],
+    group: ['Did you see the board today?', 'That last PR was clean.', 'Who is on the next card?', 'Need a second pair of eyes?', 'The waterfall is nice today.', 'Lunch plans, anyone?', 'Tests are green at last!', 'I heard HR has a new skill.', 'Same here, all quiet.', 'Nice, count me in.']
   };
+  /* HR invites an idle bot to training with a short bubble. */
+  const INVITE_LINES = ['Training in 5? Room B', 'Join training? Room B', 'Got a minute? Room B', 'Training soon, Room B?'];
+  const inviteText = seed => INVITE_LINES[hash('inv:' + seed) % INVITE_LINES.length];
+  /* Video games: each bot plays one of three original lookalike styles, fixed per bot (no real brand art or names). */
+  const GAME_STYLES = ['corridor', 'squad', 'dungeon'];
+  const gameStyleFor = seed => GAME_STYLES[hash('game:' + str(seed)) % GAME_STYLES.length];
   function ambientLine(kind, seed, tick) { const a = AMBIENT[kind] || AMBIENT.chat; return a[(hash(seed) + Math.max(0, tick | 0)) % a.length]; }
   /* What the desk monitor draws. President keeps the Forge checksheet (never chat text); Usage the usage chart. */
   /* What the desk monitor draws. A running routine wins; President is a split view (chat feed | mirrored screen);
@@ -1324,7 +1331,7 @@
   }
   /* Items 10 / 11: idle activity rotation. A shuffled "bag" so every activity comes round before one repeats; never the
      same activity twice in a row; 60-150 s each (randomized); restock only when the fridge is not full, forced when low. */
-  const IDLE_ACTIVITIES = ['couch_sleep', 'desk_nap', 'hr_training', 'video_game', 'exercise_bike', 'group_chat', 'restock_fridge', 'pool'];
+  const IDLE_ACTIVITIES = ['couch_sleep', 'desk_nap', 'hr_training', 'video_game', 'exercise_bike', 'group_chat', 'restock_fridge', 'pool', 'waterfall_view', 'get_coffee', 'get_energy_drink'];
   const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 14, FRIDGE_MIN = 12, FRIDGE_REFILL_S = 20; // low = 70% (call a restocker), floor = 60% (never shown lower)
   function createIdleState() { return { act: null, until: 0, bag: [], last: null }; }
   function fridgeLow(stock, cap) { return stock <= FRIDGE_LOW * ((cap || FRIDGE_CAP) / FRIDGE_CAP); }
@@ -1349,6 +1356,43 @@
     state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S);
     return state.act;
   }
+  /* Group chat: the bots chatting right now split into groups of 2 or 3 (never a lone pair split into 1+1, never 4+).
+     Returns {name: {group, i, n, members}} with a stable order (by hash) so a group does not reshuffle every frame. */
+  function chatGroups(names) {
+    const sorted = (names || []).slice().sort((a, b) => hash('cg:' + a) - hash('cg:' + b) || (a < b ? -1 : 1)), out = {};
+    let rest = sorted, g = 0;
+    while (rest.length) {
+      const n = rest.length > 4 || rest.length === 3 ? 3 : rest.length === 4 ? 2 : rest.length, members = rest.slice(0, n);
+      members.forEach((m, i) => { out[m] = { group: g, i, n, members }; }); rest = rest.slice(n); g++;
+    }
+    return out;
+  }
+  /* The speaker in a standing group changes every tick; the others listen (one bubble at a time per group). */
+  function groupSpeaker(members, tick) { return members.length ? members[Math.max(0, tick | 0) % members.length] : null; }
+  /* The next bot in the ring: each member faces it, so a 2 or 3 stand facing each other. */
+  function groupFace(members, name) { const i = members.indexOf(name); return i < 0 || members.length < 2 ? null : members[(i + 1) % members.length]; }
+
+  /* HR invite: HR walks to 1 or 2 idle bots (those whose idle activity is hr_training), says the invite, and those bots then
+     go to the training room while HR leads. state = { guests, done, phase: 'invite' | 'train', since }. */
+  const INVITE_MAX = 2, INVITE_SAY_S = 3, INVITE_WAIT_S = 45, INVITE_MAX_S = 240;
+  function inviteStart(waiting, now) { const g = (waiting || []).slice(0, INVITE_MAX); return g.length ? { guests: g, done: [], phase: 'invite', since: now || 0 } : null; }
+  function inviteCurrent(inv) { return inv && inv.phase === 'invite' ? inv.guests.find(g => !inv.done.includes(g)) || null : null; }
+  /* ctx: { active: names still in hr_training, add: more waiting names, heldFor: seconds HR has stood at the current guest (-1 = not there), now } */
+  function inviteStep(inv, ctx) {
+    if (!inv) return null;
+    const c = ctx || {}, act = new Set(c.active || []);
+    const guests = inv.guests.filter(g => act.has(g)), done = inv.done.filter(g => guests.includes(g));
+    if (inv.phase === 'invite') for (const n of c.add || []) if (guests.length < INVITE_MAX && !guests.includes(n) && act.has(n)) guests.push(n);
+    if (!guests.length || (c.now != null && c.now - inv.since > INVITE_MAX_S)) return null;
+    const next = Object.assign({}, inv, { guests, done });
+    const cur = inviteCurrent(next);
+    if (cur && c.heldFor != null && c.heldFor >= INVITE_SAY_S) next.done = done.concat(cur);
+    if (next.phase === 'invite' && !inviteCurrent(next)) next.phase = 'train';
+    return next;
+  }
+  /* A guest goes to the training room once it has been invited (phase train or its name is in done). */
+  const inviteGoesToRoom = (inv, name) => !!inv && inv.guests.includes(name) && inv.done.includes(name);
+
   /* Standing group around (cx, cz): n slots on a ring, each facing the middle. */
   function groupChatSlots(cx, cz, n, radius) {
     const r = radius || 0.75, out = [];
@@ -1471,7 +1515,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, fridgeLow, idleTick,
+    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, BLINK_DUR, createBlinker, blinkAmount
   };
