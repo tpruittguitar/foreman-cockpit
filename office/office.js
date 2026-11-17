@@ -828,7 +828,7 @@ function buildWorld() {
   let wbKey = '';
   let skillList = null; // real skills from office/skills.json; null => the old fallback lines
   let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
-  fetch('skills.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(j => { skillList = L.parseSkills(j); wbKey = ''; drawWB(plan.meeting); });
+  fetch(new URL('skills.json', import.meta.url), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(j => { skillList = L.parseSkills(j); wbKey = ''; drawWB(plan.meeting); }); // skills.json sits next to this module (office/), not next to the page
   function drawWB(meeting) {
     const live = meeting ? null : L.trainingSlide(plan.training, skillList), skill = live || (meeting ? null : L.skillSlide(skillList, Date.now()));
     const k = meeting ? meeting.id + meeting.title + meeting.seated.join() : live ? 'live' + plan.training.id + live.title : skill ? 'skill' + skill.index + '/' + skillList.length : 'skills';

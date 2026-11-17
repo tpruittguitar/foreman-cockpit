@@ -47,3 +47,9 @@ test('skill slide draws title, bullets and counter; a meeting still wins', () =>
   const m = rec(); D.drawWhiteboard(m.ctx, 512, 256, { meeting: { title: 'Standup', seated: ['QA'] }, skill: sl });
   assert.equal(m.t[0], 'Standup'); assert.ok(!m.t.includes(sl.counter));
 });
+
+test('office.js loads skills.json next to itself, not relative to the page (/office -> /skills.json was a 404)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
+  assert.match(src, /fetch\(new URL\('skills\.json', import\.meta\.url\)/);
+  assert.doesNotMatch(src, /fetch\('skills\.json'/);
+});
