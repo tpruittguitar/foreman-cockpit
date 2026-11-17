@@ -67,9 +67,9 @@ function run(seed, steps, ctxFn) {
   for (let i = 0; i < steps; i++) { const a = L.idleTick(st, rng, t, ctxFn ? ctxFn(i) : { restock: 'ok' }); if (seq[seq.length - 1] !== a) seq.push(a); t = st.until + 0.1; }
   return seq;
 }
-test('idle rotation: covers all 8 activities, never repeats back to back, randomized by seed, repeatable for a seed', () => {
+test('idle rotation: covers all 11 activities, never repeats back to back, randomized by seed, repeatable for a seed', () => {
   const s1 = run(7, 24);
-  assert.deepEqual(new Set(s1.slice(0, 8)).size, 8, 'a full bag visits every activity once');
+  assert.deepEqual(new Set(s1.slice(0, 11)).size, 11, 'a full bag visits every activity once');
   for (let i = 1; i < s1.length; i++) assert.notEqual(s1[i], s1[i - 1]);
   assert.deepEqual(run(7, 24), s1);
   assert.notDeepEqual(run(8, 24), s1);

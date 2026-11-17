@@ -55,6 +55,7 @@ a { color: var(--info); }
 .bubble { max-width: 120px; background: #f3f4f6; color: #111; border-radius: 8px; padding: 2px 6px; font-size: 10px; line-height: 1.25; display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; transition: opacity .6s; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 .bubble.who { font-style: italic; }
 .bubble.ambient { background: #dfe2e8; color: #333; font-style: italic; }
+.bubble.ambient.speech { background: #fff; color: #111; font-style: normal; }
 .bubble .amb { font-style: normal; font-size: .72em; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #6a6f78; border: 1px solid #9aa0a8; border-radius: 3px; padding: 0 3px; margin-right: 2px; }
 .needlink { display: flex; gap: .7em; flex: 1; text-decoration: none; color: inherit; }
 a.needlink .kind { color: var(--info); font-weight: 700; white-space: nowrap; }
