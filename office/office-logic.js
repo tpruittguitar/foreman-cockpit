@@ -1354,7 +1354,16 @@
     return { index: i, title: 'Skill: ' + s.title, bullets: s.bullets, counter: (i + 1) + '/' + skills.length };
   }
 
+  /* Wall dimmer: brightness level 0.25 (dim) .. 1.6 (bright); 1.0 is the original look. Knob position t is 0 (bottom) .. 1 (top). */
+  const DIM_MIN = 0.25, DIM_MAX = 1.6, DIM_DEFAULT = 1, DIM_STEP = 0.1, DIM_KEY = 'office.dimmer.level';
+  const clampDim = v => { const n = v === null || (typeof v === 'string' && v.trim() === '') ? NaN : Number(v); return Number.isFinite(n) ? Math.min(DIM_MAX, Math.max(DIM_MIN, n)) : DIM_DEFAULT; };
+  const dimFromKnob = t => clampDim(DIM_MIN + Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0)) * (DIM_MAX - DIM_MIN));
+  const knobFromDim = level => (clampDim(level) - DIM_MIN) / (DIM_MAX - DIM_MIN);
+  const dimStep = (level, dir) => clampDim(Math.round((clampDim(level) + (dir < 0 ? -DIM_STEP : DIM_STEP)) * 100) / 100);
+  const dimScale = (base, level) => base * clampDim(level);
+  const dimSmooth = (cur, target, dt) => { const k = 1 - Math.exp(-8 * Math.max(0, dt || 0)), n = cur + (target - cur) * k; return Math.abs(target - n) < 0.002 ? target : n; };
   return {
+    DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, LOD, COLORS,
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle,

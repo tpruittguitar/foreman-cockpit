@@ -562,6 +562,14 @@ function buildWorld() {
     add(box(w, 0.03, d), MAT.ledW, x, RH - 0.12, z);       // white cove LED under the ceiling
   }
   add(box(1.3, 2.3, 0.06), MAT.metal, 0.3, 1.15, RD / 2 - 0.03); add(box(1.5, 0.05, 0.1), MAT.cyan, 0.3, 2.35, RD / 2 - 0.05);
+  // Tim: wall dimmer beside the door (switch height): a faceplate with a vertical slot and a draggable knob; level 0.25-1.6 scales the lights
+  const DIM_SLOT = 0.36, dimPlate = new THREE.Group(); dimPlate.position.set(1.55, 1.3, RD / 2 - 0.06); dimPlate.rotation.y = Math.PI; scene.add(dimPlate);
+  add(box(0.2, 0.52, 0.025), new THREE.MeshStandardMaterial({ color: 0xe9edf2, roughness: 0.5 }), 0, 0, 0.0125, dimPlate);
+  add(box(0.05, DIM_SLOT + 0.06, 0.012), new THREE.MeshStandardMaterial({ color: 0x14171c, roughness: 0.8 }), 0, 0, 0.026, dimPlate);
+  for (const k of [0, 0.5, 1]) add(box(k === 0.5 ? 0.03 : 0.045, 0.008, 0.004), new THREE.MeshStandardMaterial({ color: 0x59606b }), -0.07, (k - 0.5) * DIM_SLOT, 0.028, dimPlate);
+  const dimKnob = add(box(0.1, 0.06, 0.035), new THREE.MeshStandardMaterial({ color: 0x2f3744, roughness: 0.35, emissive: 0x37e0ff, emissiveIntensity: 0.12 }), 0, 0, 0.045, dimPlate);
+  add(box(0.08, 0.008, 0.004), MAT.cyan, 0, 0, 0.064, dimKnob);
+  dimPlate.traverse(o => { o.userData.dim = true; });
   // Tim item 5: the window looks out on a small town whose sky, sun / moon and lit windows follow America/New_York time (L.skyState)
   const town = canvasTex(640, 360);
   add(box(0.12, 2.0, 3.2), MAT.trim, -RW / 2 + 0.05, 2.2, -2.2);
@@ -1175,10 +1183,25 @@ function buildWorld() {
     d.shadeMat.color.set(ask ? 0xff3030 : 0xd8dde4);
     d.bulbMat.emissive.set(ask ? 0xff2020 : 0xffe6b8);
   }
+  /* ---------- wall dimmer: one level (0.25-1.6, 1 = the original look) scales every scene light and the ceiling / sconce emissives ---------- */
+  const dimLights = scene.children.filter(o => o.isLight && !alertLights.includes(o)); dimLights.forEach(l => { l.userData.base = l.intensity; });
+  const dimMats = [MAT.panel, MAT.sconce, MAT.ledW].map(m => ({ m, base: m.emissiveIntensity }));
+  const loadDim = () => { try { return L.clampDim(localStorage.getItem(L.DIM_KEY)); } catch (e) { return L.DIM_DEFAULT; } };
+  let dimTarget = loadDim(), dimCur = dimTarget, dimDrag = false;
+  function applyDim() { for (const l of dimLights) l.intensity = L.dimScale(l.userData.base, dimCur); for (const d of dimMats) d.m.emissiveIntensity = L.dimScale(d.base, dimCur); dimKnob.position.y = (L.knobFromDim(dimTarget) - 0.5) * DIM_SLOT; }
+  function setDim(v, save) { dimTarget = L.clampDim(v); dimKnob.position.y = (L.knobFromDim(dimTarget) - 0.5) * DIM_SLOT; if (save) { try { localStorage.setItem(L.DIM_KEY, String(+dimTarget.toFixed(3))); } catch (e) { /* private mode */ } } }
+  const dimPlane = new THREE.Plane(), dimHit = new THREE.Vector3();
+  function dimDragTo(cx, cy) { // ray -> faceplate plane -> knob height along the slot
+    ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+    dimPlane.setFromNormalAndCoplanarPoint(dimPlate.getWorldDirection(tmpV.set(0, 0, 1)).clone(), dimPlate.position);
+    if (!ray.ray.intersectPlane(dimPlane, dimHit)) return;
+    setDim(L.dimFromKnob(dimPlate.worldToLocal(dimHit).y / DIM_SLOT + 0.5), false);
+  }
   function applyDaylight() {
     const sky = L.skyState(Date.now());
     drawTown(town.ctx, 640, 360, sky); town.t.needsUpdate = true;
     sun.intensity = 1.3 * sky.daylight; windowGlow.intensity = 5 * sky.daylight + 0.6 * sky.stars; windowGlow.color.set(sky.warm > 0.4 ? 0xffc890 : 0xdbe9ff);
+    sun.userData.base = sun.intensity; windowGlow.userData.base = windowGlow.intensity; applyDim();
     T.sky = { hour: +sky.hour.toFixed(2), daylight: +sky.daylight.toFixed(2), night: sky.isNight };
   }
   applyDaylight();
@@ -1237,6 +1260,16 @@ function buildWorld() {
   const look = new THREE.Euler(0, 0, 0, 'YXZ');
   function turn(dx, dy) { look.setFromQuaternion(camera.quaternion); look.y -= dx; look.x = Math.max(-1.4, Math.min(1.4, look.x - dy)); camera.quaternion.setFromEuler(look); }
   let down = null;
+  canvas.addEventListener('pointerdown', e => { // dimmer first: a grab on the plate drags the knob and never starts a look-drag
+    if (e.pointerType === 'touch' || e.button !== 0 || panelOpen) return;
+    ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera);
+    const h = ray.intersectObject(dimPlate, true)[0], other = ray.intersectObjects(pickables(), true)[0];
+    if (!h || (other && other.distance < h.distance)) return;
+    dimDrag = true; down = null; glide = null; tour = null; lastInput = performance.now(); $('start').hidden = true; try { canvas.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+    canvas.style.cursor = 'ns-resize'; dimDragTo(e.clientX, e.clientY); e.stopImmediatePropagation();
+  });
+  addEventListener('pointermove', e => { if (dimDrag) dimDragTo(e.clientX, e.clientY); });
+  addEventListener('pointerup', () => { if (!dimDrag) return; dimDrag = false; canvas.style.cursor = ''; setDim(dimTarget, true); });
   canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, drag: false }; $('start').hidden = true; });
   addEventListener('pointermove', e => {
     if (e.pointerType === 'touch') return;
@@ -1318,6 +1351,7 @@ function buildWorld() {
       else if (TV && !typing && (e.key === 'ArrowUp' || e.key === 'ArrowLeft')) { e.preventDefault(); overlayNav(-1); }
       return;
     }
+    if ((e.key === '[' || e.key === ']') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); setDim(L.dimStep(dimTarget, e.key === ']' ? 1 : -1), true); return; }
     if (TV) {
       const a = L.tvKeyAction(e.key, hop); if (!a) return; e.preventDefault();
       if (a === 'toggle_hop') { hop = !hop; showHint(); if (hop) hopTo(hopPos || { row: 0, col: 1 }); else { focusTarget(null); } return; }
@@ -1399,6 +1433,7 @@ function buildWorld() {
     if (boardDirty) drawBoards();
     if (now - deskTick > 120) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
     if (now - dayTick > 60000) { dayTick = now; applyDaylight(); }
+    if (dimCur !== dimTarget) { dimCur = L.dimSmooth(dimCur, dimTarget, dt); applyDim(); }
     wf.t.offset.y = L.waterfallOffset(wf.t.offset.y, dt, reducedMQ.matches); // waterfall: one scrolling texture, flowing DOWN (item 2)
     let ai = 0; const p = L.pulse(clock, reducedMQ.matches);
     for (const d of desks) { const b = botByName(d.name); if (b && S.needsSet.has(d.name) && S.state !== 'failed') { d.bulbMat.emissiveIntensity = 0.6 + 1.6 * p; if (ai < alertLights.length) { const l = alertLights[ai++]; l.position.set(d.x + 0.63, 1.3, d.z - 0.1); l.intensity = 2.5 * p + 0.6; } } else d.bulbMat.emissiveIntensity = 1.5; }
@@ -1430,6 +1465,8 @@ function buildWorld() {
     activity: name => (plan.plans[name] || {}).act || '',
     screenPoint(name, dx = 0, dy = 0) { const d = deskOf(name); if (!d) return null; camera.updateMatrixWorld(); const v = d.mon.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(dx, dy, 0)).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     botPoint(name) { const c = chars.get(name); if (!c) return null; camera.updateMatrixWorld(); const v = c.root.position.clone().setY(c.top * 0.55 + c.rig.position.y).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
+    dimLevel: () => ({ target: dimTarget, shown: dimCur }), setDim: v => setDim(v, true),
+    dimKnobPoint() { camera.updateMatrixWorld(); const v = dimKnob.getWorldPosition(new THREE.Vector3()).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     view(p, l) { tour = null; glideTo([p, l], 1); },
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
@@ -1459,6 +1496,7 @@ addEventListener('error', e => T.errors.push(String(e.message)));
 T.info = () => (world ? world.info() : null);
 T.poll = () => poll(); // test hook: poll now (demo: next example step; the example meeting toggles each poll)
 T.screenPoint = (n, dx, dy) => (world ? world.screenPoint(n, dx, dy) : null);
+T.dimLevel = () => (world ? world.dimLevel() : null); T.setDim = v => world && world.setDim(v); T.dimKnobPoint = () => (world ? world.dimKnobPoint() : null); // tests / screenshots
 T.view = (p, l) => world && world.view(p, l);
 T.pickAt = (x, y) => (world ? world.pickAt(x, y) : null);
 T.botPoint = n => (world ? world.botPoint(n) : null);
