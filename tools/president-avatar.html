@@ -24,7 +24,7 @@ scene.add(c.root);
 for (let i = 0; i < 30; i++) animate(c, 'stand', 0, 0.1, { reduced: true });
 c.updateFace(0.1, 0);
 const cam = new THREE.PerspectiveCamera(28, W / H, 0.1, 50);
-const tx = +q.get('ty') || 0.7, d = 4.4 / zoom;
+const tx = +q.get("ty") || 0.7, d = 4.4 / zoom;
 cam.position.set(Math.sin(az) * Math.cos(el) * d, tx + Math.sin(el) * d, Math.cos(az) * Math.cos(el) * d); cam.lookAt(0, tx, 0);
 r.render(scene, cam); document.title = 'ready';
 </script>

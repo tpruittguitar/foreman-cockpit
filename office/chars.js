@@ -240,32 +240,32 @@ function makePresident(hi) {
   const trim = mat('shirtTrim3', () => new THREE.MeshStandardMaterial({ color: 0x252528, roughness: 0.7 }));
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
-  const HIP = 0.38; body.position.y = HIP;
+  const HIP = 0.5; body.position.y = HIP;
   // legs: straight black trousers (pivot at the hip) and rounded black shoes
   const leg = () => { const p = new THREE.Group();
-    const m = new THREE.Mesh(geo('pLeg3', () => { const g = new THREE.CapsuleGeometry(0.074, 0.2, 8, 24); g.scale(1, 1, 0.95); return g; }), pants); m.position.y = -0.185; p.add(m);
-    const shoe = new THREE.Mesh(geo('pShoe3', () => { const g = new THREE.SphereGeometry(0.085, 28, 18); g.scale(1.0, 0.62, 1.55); return g; }), shoeM); shoe.position.set(0, -0.335, 0.045); p.add(shoe); return p; };
-  const legR = leg(), legL = leg(); legR.position.set(-0.098, HIP, 0); legL.position.set(0.098, HIP, 0); rig.add(legR, legL);
+    const m = new THREE.Mesh(geo('pLeg3', () => { const g = new THREE.CapsuleGeometry(0.066, 0.32, 8, 24); g.scale(1, 1, 0.98); return g; }), pants); m.position.y = -0.235; p.add(m);
+    const shoe = new THREE.Mesh(geo('pShoe3', () => { const g = new THREE.SphereGeometry(0.083, 28, 18); g.scale(0.98, 0.62, 1.55); return g; }), shoeM); shoe.position.set(0, -0.46, 0.04); p.add(shoe); return p; };
+  const legR = leg(), legL = leg(); legR.position.set(-0.092, HIP, 0); legL.position.set(0.092, HIP, 0); rig.add(legR, legL);
   // torso: boxy-round shirt body, flared untucked hem; shoulders sloping to the collar
-  const TN = 2.7, rows = [[-0.075, 0.236, 0.162], [-0.066, 0.243, 0.168], [-0.05, 0.236, 0.163], [0.0, 0.226, 0.156], [0.12, 0.218, 0.15], [0.26, 0.216, 0.148], [0.37, 0.212, 0.143], [0.42, 0.186, 0.128], [0.452, 0.135, 0.1], [0.468, 0.08, 0.07]];
+  const TN = 2.7, rows = [[-0.075, 0.226, 0.142], [-0.066, 0.233, 0.146], [-0.05, 0.224, 0.141], [0.0, 0.21, 0.133], [0.12, 0.2, 0.128], [0.26, 0.205, 0.13], [0.35, 0.205, 0.128], [0.4, 0.178, 0.114], [0.43, 0.12, 0.09], [0.445, 0.07, 0.064]];
   const torso = new THREE.Mesh(geo('pTorso3', () => superTube(rows, TN, seg)), shirt); body.add(torso);
   const frontZ = y => { let r0 = rows[0]; for (let i = 0; i < rows.length - 1; i++) if (y >= rows[i][0] && y <= rows[i + 1][0]) { const t = (y - rows[i][0]) / (rows[i + 1][0] - rows[i][0]); return [rows[i][1] + (rows[i + 1][1] - rows[i][1]) * t, rows[i][2] + (rows[i + 1][2] - rows[i][2]) * t]; } return [rows[rows.length - 1][1], rows[rows.length - 1][2]]; };
   const fz = (x, y) => { const [rx, rz] = frontZ(y); return rz * Math.pow(Math.max(0.0001, 1 - Math.pow(Math.abs(x) / rx, TN)), 1 / TN); };
   // hem band: a soft rolled edge so the shirt reads as untucked over the trousers
   const ringCurve = (rx, rz, n, y, a0, a1, steps) => { const pts = []; for (let i = 0; i <= steps; i++) { const a = a0 + (a1 - a0) * i / steps, c = Math.cos(a), sn = Math.sin(a), e = 2 / n; pts.push(new THREE.Vector3(Math.sign(c) * Math.pow(Math.abs(c), e) * rx, y, Math.sign(sn) * Math.pow(Math.abs(sn), e) * rz)); } return pts; };
-  const hem = new THREE.Mesh(geo('pHem3', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.243, 0.168, TN, -0.066, 0, Math.PI * 2, 120).slice(0, -1), true), 160, 0.011, 10, true)), shirt); body.add(hem);
+  const hem = new THREE.Mesh(geo('pHem3', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.233, 0.146, TN, -0.066, 0, Math.PI * 2, 120).slice(0, -1), true), 160, 0.011, 10, true)), shirt); body.add(hem);
   // placket + buttons down the centre front, plus a chest print ("Tim" and the round badge)
   const plkG = geo('pPlk3', () => { const g = new THREE.BoxGeometry(0.034, 0.5, 0.008, 1, 20, 1); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const y = p.getY(i) * 0.98 + 0.2; p.setY(i, y); p.setZ(i, p.getZ(i) + fz(0, y) + 0.002); } g.computeVertexNormals(); return g; });
   const placket = new THREE.Mesh(plkG, trim); placket.position.y = 0.0; body.add(placket);
   const btnM = mat('btn3', () => new THREE.MeshStandardMaterial({ color: 0x3a3b40, roughness: 0.45, metalness: 0.25 }));
   for (let k = 0; k < 5; k++) { const y = 0.05 + k * 0.07, b = new THREE.Mesh(geo('pBtn3', () => new THREE.SphereGeometry(0.0095, 12, 8)), btnM); b.scale.z = 0.5; b.position.set(0, y, fz(0, y) + 0.008); body.add(b); }
-  const printG = geo('pPrint3', () => { const w = 0.42, h = 0.21, g = new THREE.PlaneGeometry(w, h, 24, 1), p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = 0.27 + p.getY(i); p.setZ(i, fz(x, y) + 0.004); p.setY(i, y); } g.computeVertexNormals(); return g; });
+  const printG = geo('pPrint3', () => { const w = 0.4, h = 0.2, g = new THREE.PlaneGeometry(w, h, 64, 1), p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = 0.275 + p.getY(i); p.setZ(i, fz(x, y) + 0.010); p.setY(i, y); } g.computeVertexNormals(); return g; });
   const print = new THREE.Mesh(printG, shirtTexture()); body.add(print);
   // collar: a stand band round the neck and two pointed flaps lying open on the shoulders
-  const band = new THREE.Mesh(geo('pBand3', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.088, 0.075, 2, 0.462, Math.PI * 0.12, Math.PI * 0.88 + Math.PI, 40).map(v => v.clone())), 60, 0.016, 10, false)), shirt); body.add(band);
+  const band = new THREE.Mesh(geo('pBand3', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ringCurve(0.078, 0.066, 2, 0.44, Math.PI * 0.12, Math.PI * 0.88 + Math.PI, 40).map(v => v.clone())), 60, 0.016, 10, false)), shirt); body.add(band);
   const flap = geo('pFlap3', () => { const sh = new THREE.Shape(); sh.moveTo(0, 0.0); sh.quadraticCurveTo(0.06, 0.035, 0.115, 0.012); sh.quadraticCurveTo(0.09, -0.04, 0.03, -0.105); sh.quadraticCurveTo(0.005, -0.06, 0, 0); return new THREE.ExtrudeGeometry(sh, { depth: 0.016, bevelEnabled: true, bevelSize: 0.008, bevelThickness: 0.006, bevelSegments: 3, curveSegments: 10 }); });
-  for (const sx of [-1, 1]) { const f = new THREE.Mesh(flap, shirt); f.scale.x = sx; f.position.set(sx * 0.014, 0.466, 0.088); f.rotation.set(-0.62, -sx * 0.22, sx * 0.1); body.add(f); }
-  const neck = new THREE.Mesh(geo('pNeck3', () => new THREE.CylinderGeometry(0.062, 0.07, 0.09, 24)), skin); neck.position.y = 0.475; body.add(neck);
+  for (const sx of [-1, 1]) { const f = new THREE.Mesh(flap, shirt); f.scale.x = sx; f.position.set(sx * 0.014, 0.445, 0.076); f.rotation.set(-0.62, -sx * 0.22, sx * 0.1); body.add(f); }
+  const neck = new THREE.Mesh(geo('pNeck3', () => new THREE.CylinderGeometry(0.052, 0.06, 0.09, 24)), skin); neck.position.y = 0.455; body.add(neck);
   // arms: short black sleeves with a folded cuff, bare peach forearms, mitten hands with four fingers and a thumb
   const hand = () => { const h = new THREE.Group();
     const palm = new THREE.Mesh(geo('pPalm3', () => { const g = new THREE.SphereGeometry(1, 24, 16); g.scale(0.042, 0.052, 0.026); return g; }), skin); h.add(palm);
@@ -275,28 +275,30 @@ function makePresident(hi) {
     const th = new THREE.Mesh(fg, skin); th.scale.set(1.1, 0.95, 1.1); th.position.set(0.046, -0.002, 0.008); th.rotation.set(-0.1, 0, 0.9); h.add(th);
     return h; };
   const arm = side => { const p = new THREE.Group();
-    const sleeve = new THREE.Mesh(geo('pSleeve3', () => { const g = new THREE.CapsuleGeometry(0.058, 0.08, 8, 24); return g; }), shirt); sleeve.position.y = -0.085; p.add(sleeve);
-    const cuff = new THREE.Mesh(geo('pCuff3', () => new THREE.TorusGeometry(0.058, 0.01, 10, 32)), shirt); cuff.rotation.x = Math.PI / 2; cuff.position.y = -0.165; p.add(cuff);
-    const fore = new THREE.Mesh(geo('pFore3', () => new THREE.CapsuleGeometry(0.041, 0.1, 8, 20)), skin); fore.position.y = -0.235; p.add(fore);
-    const h = hand(); h.position.set(0, -0.37, 0); h.rotation.y = side * -(Math.PI / 2 - 0.3); h.scale.set(side * 1.3, 1.3, 1.3); p.add(h);
-    p.userData.len = 0.4; p.position.set(side * 0.245, 0.4, 0); p.rotation.z = side * 0.3; return p; };
+    const sleeve = new THREE.Mesh(geo('pSleeve3', () => { const g = new THREE.CapsuleGeometry(0.055, 0.07, 8, 24); return g; }), shirt); sleeve.position.y = -0.075; p.add(sleeve);
+    const cuff = new THREE.Mesh(geo('pCuff3', () => new THREE.TorusGeometry(0.055, 0.009, 10, 32)), shirt); cuff.rotation.x = Math.PI / 2; cuff.position.y = -0.14; p.add(cuff);
+    const fore = new THREE.Mesh(geo('pFore3', () => new THREE.CapsuleGeometry(0.037, 0.16, 8, 20)), skin); fore.position.y = -0.255; p.add(fore);
+    const h = hand(); h.position.set(0, -0.435, 0); h.rotation.y = side * -(Math.PI / 2 - 0.3); h.scale.set(side * 1.35, 1.35, 1.35); p.add(h);
+    p.userData.len = 0.47; p.position.set(side * 0.238, 0.385, 0); p.rotation.z = side * 0.3; return p; };
   const armR = arm(-1), armL = arm(1); body.add(armR, armL);
 
   /* ---- head ---- */
-  const HA = 0.272, HB = 0.245, HC = 0.255, HN = 3.0;                      // half-extents (x, y, z) and squareness exponent
+  const HA = 0.262, HB = 0.236, HC = 0.248, HN = 2.35;                      // half-extents (x, y, z) and squareness exponent
   const deform = (dx, dy, dz, grow) => {                                    // unit direction -> point on the rounded-square head (full jaw and cheeks)
     const r = 1 / Math.pow(Math.pow(Math.abs(dx), HN) + Math.pow(Math.abs(dy), HN) + Math.pow(Math.abs(dz), HN), 1 / HN);
     let x = dx * r * HA, y = dy * r * HB, z = dz * r * HC;
     const jaw = y < 0 ? Math.min(1, -y / HB) : 0, cheek = Math.exp(-Math.pow((y + 0.07) / 0.11, 2));
-    x *= 1 + 0.05 * jaw * (1 - 0.3 * jaw) + 0.045 * cheek; z *= 1 + 0.025 * cheek;
-    if (jaw > 0) { z *= 1 - 0.1 * Math.pow(jaw, 2.2) * (dz < 0 ? 1 : 0.4); }                // chin tucks in a little
+    x *= 1 + 0.03 * cheek; z *= 1 + 0.015 * cheek;
+    if (y < 0) { y *= 0.9; x *= 1 + 0.03 * Math.sin(Math.min(1, jaw * 1.4) * Math.PI); }           // flatter, wider lower face
+    if (dz > 0.2) z += 0.018 * Math.exp(-Math.pow((y + 0.2) / 0.06, 2)) * dz;                    // slight chin
+    if (y > 0) { x *= 1 - 0.02 * y / HB; }                                                       // smooth dome crown
     if (grow) { const l = Math.hypot(x / HA, y / HB, z / HC) || 1; x += x / HA / l * grow; y += y / HB / l * grow; z += z / HC / l * grow; }
     return [x, y, z];
   };
   const headShape = (g, grow) => { const p = g.attributes.position, v = new THREE.Vector3(); for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).normalize(); const [x, y, z] = deform(v.x, v.y, v.z, grow); p.setXYZ(i, x, y, z); } g.computeVertexNormals(); return g; };
-  const head = new THREE.Group(); head.position.y = 0.685; head.scale.setScalar(1.0); body.add(head);
+  const head = new THREE.Group(); head.position.y = 0.655; head.scale.setScalar(1.0); body.add(head);
   const skull = new THREE.Mesh(geo('pHead5', () => headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75)), 0)), skin); head.add(skull);
-  for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar3', () => new THREE.SphereGeometry(0.056, 28, 18)), skin); ear.scale.set(0.55, 1.25, 0.95); ear.position.set(sx * 0.3, -0.07, -0.02); ear.rotation.z = sx * 0.12; head.add(ear); }
+  for (const sx of [-1, 1]) { const ear = new THREE.Mesh(geo('pEar3', () => new THREE.SphereGeometry(0.056, 28, 18)), skin); ear.scale.set(0.55, 1.25, 0.95); ear.position.set(sx * 0.282, -0.01, -0.01); ear.rotation.z = sx * 0.12; head.add(ear); }
   // hair: matte near-black, a base cap plus many layered leaf locks
   const hairM = [0x1b1b1c, 0x252527, 0x2f2f32, 0x38383b].map((c, i) => mat('hairM' + i, () => new THREE.MeshStandardMaterial({ color: c, roughness: 0.88, metalness: 0, side: THREE.DoubleSide })));
   const hairLine = (x, z) => { const az = Math.atan2(x, z), u = Math.cos(az); return u > 0 ? -0.0 + (0.115 - 0.0) * Math.pow(u, 1.3) : -0.0 + (-0.17 - 0.0) * -u; };
@@ -327,7 +329,7 @@ function makePresident(hi) {
   };
   let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   // scales: staggered rows over the crown, sides and back; locks shorten towards the hairline so the sides stay short above the ears
-  const rowEl = [80, 68, 56, 44, 32, 20, 8, -4, -16, -28, -38];
+  const rowEl = [80, 68, 56, 44, 32, 20, 8, -4, -16];
   rowEl.forEach((eld, ri) => {
     const el = eld * Math.PI / 180, n = Math.max(5, Math.round(Math.PI * 2 * Math.cos(el) * 0.27 / 0.088)), off = (ri % 2) * 0.5;
     for (let k = 0; k < n; k++) {
@@ -346,7 +348,7 @@ function makePresident(hi) {
     .forEach(([azd, eld, len, w, ang, l, o]) => lock(azd, eld, len, w, ang, l, Object.assign({ bend: 1.2, lift: 0.006 }, o)));
   for (let a = -64; a <= 64; a += 9) lock(a + (rnd() - 0.5) * 3, 34 + 10 * Math.cos(a * Math.PI / 130) + (rnd() - 0.5) * 3, 0.15 + 0.05 * rnd() + 0.03 * Math.cos(a * Math.PI / 128), 0.05, -0.38 - a / 260 + (rnd() - 0.5) * 0.3, 2, { bend: 1.0, lift: 0.003 });
   // face: small MATTE vertical black oval eyes, wide apart and low; soft pink blush; no mouth, no nose
-  const eyeX = 0.118, eyeY = -0.065, eyeZ = deform(eyeX / HA * 0.9, eyeY / HB, 0.97, 0)[2];
+  const eyeX = 0.132, eyeY = -0.085, eyeZ = deform(eyeX / HA * 0.9, eyeY / HB, 0.97, 0)[2];
   const frontPt = (x, y) => { // surface z at head-local (x, y): march along +z until outside the deformed head
     let z = 0.0; for (let s = 0; s < 40; s++) { const d = Math.hypot(x, y, z + 0.0001); const [px, py, pz] = deform(x / d, y / d, (z + 0.0001) / d, 0); if (Math.hypot(px, py, pz) <= d + 1e-6) break; z += 0.01; }
     let lo = Math.max(0, z - 0.01), hi = z; for (let s = 0; s < 24; s++) { const m = (lo + hi) / 2, d = Math.hypot(x, y, m + 0.0001); const [px, py, pz] = deform(x / d, y / d, (m + 0.0001) / d, 0); if (Math.hypot(px, py, pz) <= d) hi = m; else lo = m; }
@@ -354,13 +356,13 @@ function makePresident(hi) {
   const face = makeFace(0, 0.95, false, true, 0); head.add(face);
   const matteEye = mat('eyeMatte3', () => new THREE.MeshStandardMaterial({ color: 0x080808, roughness: 1, metalness: 0 }));
   face.userData.eyes.forEach((e, i) => { const sx = i ? 1 : -1, z = frontPt(sx * eyeX, eyeY); e.material = matteEye; e.position.set(sx * eyeX, eyeY, z - 0.002);
-    e.scale.set(0.019, 0.044, 0.012); e.userData.sy = 0.044; e.rotation.set(0, 0, 0);
+    e.scale.set(0.019, 0.05, 0.012); e.userData.sy = 0.05; e.rotation.set(0, 0, 0);
     const n = new THREE.Vector3(sx * eyeX / (HA * HA), eyeY / (HB * HB), z / (HC * HC)).normalize(); e.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); face.userData.shines[i].scale.set(0, 0, 0); });
   face.userData.brows.forEach((b, i) => { b.position.set((i ? 1 : -1) * eyeX, 0.1, frontPt((i ? 1 : -1) * eyeX, 0.1) + 0.004); });
-  const blushM = mat('blush5', () => new THREE.MeshStandardMaterial({ color: 0xe3917f, roughness: 0.95, transparent: true, opacity: 0.62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
-  for (const sx of [-1, 1]) { const bx = sx * 0.15, by = -0.13, z = frontPt(bx, by), b = new THREE.Mesh(geo('blush5', () => new THREE.SphereGeometry(0.036, 28, 18)), blushM);
-    b.scale.set(1.25, 1.0, 0.12); const n = new THREE.Vector3(bx / (HA * HA), by / (HB * HB), z / (HC * HC)).normalize(); b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); b.position.set(bx, by, z - 0.001); head.add(b); }
-  return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.36, sitLift: 0.1, kind: 'president', head });
+  const blushM = mat('blush5', () => new THREE.MeshStandardMaterial({ color: 0xe3917f, roughness: 0.95, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  for (const sx of [-1, 1]) { const bx = sx * 0.155, by = -0.16, z = frontPt(bx, by), b = new THREE.Mesh(geo('blush5', () => new THREE.SphereGeometry(0.027, 28, 18)), blushM);
+    b.scale.set(1.25, 0.9, 0.12); const n = new THREE.Vector3(bx / (HA * HA), by / (HB * HB), z / (HC * HC)).normalize(); b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); b.position.set(bx, by, z - 0.001); head.add(b); }
+  return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.46, sitLift: -0.02, kind: 'president', head });
 }
 
 function finish(c) {
