@@ -900,6 +900,17 @@
     }
     return pts;
   }
+  /* Stuck detection for a walking bot. Call it every frame with the distance to the current waypoint (state null on the first call
+     for a waypoint). Gaining under PROGRESS_M toward it within STUCK_S seconds returns action 'reroute' (re-plan from where the bot stands;
+     the caller restarts the measure with best: Infinity, keeping tries). After MAX_REROUTES failed re-routes the next stall returns 'giveup'.
+     The caller clears the state (null) when the bot reaches a waypoint. Pure: returns a new state. */
+  const PROGRESS_M = 0.15, STUCK_S = 1.5, MAX_REROUTES = 2;
+  function walkProgress(st, dist, now) {
+    if (!st) return { best: dist, since: now, tries: 0, action: 'ok' };
+    if (st.best - dist >= PROGRESS_M) return { best: dist, since: now, tries: st.tries, action: 'ok' };
+    if (now - st.since < STUCK_S) return { best: st.best, since: st.since, tries: st.tries, action: 'ok' };
+    return { best: dist, since: now, tries: st.tries + 1, action: st.tries >= MAX_REROUTES ? 'giveup' : 'reroute' };
+  }
   /* Walking cap: never more than a third of the bots walking at once. */
   function walkCap(total) { return Math.max(1, Math.floor(total / 3)); }
   function admitWalkers(requests, walkingNow, total) {
@@ -923,6 +934,7 @@
         if (!b) for (const ob of obstacles || []) if (!ob.viewerOnly && x > ob.x0 - INF && x < ob.x1 + INF && z > ob.z0 - INF && z < ob.z1 + INF) { b = true; break; }
         grid[j * GX + i] = b ? 1 : 0;
       }
+      real = (obstacles || []).filter(ob => !ob.viewerOnly);
     }
     const free = (i, j) => i >= 0 && j >= 0 && i < GX && j < GZ && !grid[j * GX + i];
     function nearestFree(i, j) {
@@ -935,8 +947,43 @@
       for (let k = 1; k < n; k++) { const [i, j] = toCell(ax + (bx - ax) * k / n, az + (bz - az) * k / n); if (!free(i, j)) return false; }
       return true;
     }
+    /* Real (uninflated, non-viewerOnly) boxes. A point inside one (a sofa seat, the bike saddle) may start or end a leg in it. */
+    let real = [];
+    const inBox = (ob, x, z) => x > ob.x0 && x < ob.x1 && z > ob.z0 && z < ob.z1;
+    function segHitsBox(ob, ax, az, bx, bz) {
+      let t0 = 0, t1 = 1; const dx = bx - ax, dz = bz - az;
+      for (const [p, q, lo, hi] of [[dx, ax, ob.x0, ob.x1], [dz, az, ob.z0, ob.z1]]) {
+        if (Math.abs(p) < 1e-9) { if (q <= lo || q >= hi) return false; continue; }
+        let u = (lo - q) / p, v = (hi - q) / p; if (u > v) { const w = u; u = v; v = w; }
+        t0 = Math.max(t0, u); t1 = Math.min(t1, v); if (t0 >= t1 - 1e-9) return false;
+      }
+      return true;
+    }
+    /* True when the straight leg a->b crosses no real box other than the ones holding an endpoint. */
+    function legClear(ax, az, bx, bz) {
+      for (const ob of real) if (!inBox(ob, ax, az) && !inBox(ob, bx, bz) && segHitsBox(ob, ax, az, bx, bz)) return false;
+      return true;
+    }
+    /* The free cell a leg should join: the point's own cell when that is free and the point is outside every real box,
+       else the nearest free cell (preferring the side the spot faces) whose straight leg to the exact point crosses no real box. */
+    function approachCell(x, z, face) {
+      const [ci, cj] = toCell(x, z), inside = real.some(ob => inBox(ob, x, z));
+      if (!inside && free(ci, cj)) return [ci, cj];
+      const fx = face == null ? 0 : Math.sin(face), fz = face == null ? 0 : Math.cos(face);
+      let best = null, bs = Infinity;
+      for (let r = 0; r <= 24; r++) {
+        if (best && r * CELL > bs + 0.5) break;
+        for (let di = -r; di <= r; di++) for (let dj = -r; dj <= r; dj++) {
+          if (Math.max(Math.abs(di), Math.abs(dj)) !== r || !free(ci + di, cj + dj)) continue;
+          const [cx, cz] = cellC(ci + di, cj + dj), d = Math.hypot(cx - x, cz - z);
+          const sc = d - (d > 1e-6 ? 0.4 * Math.max(0, ((cx - x) * fx + (cz - z) * fz) / d) : 0);
+          if (sc < bs && legClear(x, z, cx, cz)) { bs = sc; best = [ci + di, cj + dj]; }
+        }
+      }
+      return best || nearestFree(ci, cj);
+    }
     function route(from, to) {
-      const [si, sj] = nearestFree(...toCell(from.x, from.z)), [ti, tj] = nearestFree(...toCell(to.x, to.z));
+      const [si, sj] = approachCell(from.x, from.z, null), [ti, tj] = approachCell(to.x, to.z, to.face);
       const N = GX * GZ, gS = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
       const open = [[0, si, sj]]; gS[sj * GX + si] = 0;
       const h = (i, j) => Math.hypot(i - ti, j - tj);
@@ -955,16 +1002,17 @@
       }
       const raw = [];
       if (found) { let id = tj * GX + ti; while (id !== -1) { raw.push(cellC(id % GX, Math.floor(id / GX))); id = came[id]; } raw.reverse(); }
+      if (!found) return { points: [], found };
       raw.push([to.x, to.z]);
       const out = []; let ax = from.x, az = from.z, k = 0;
       while (k < raw.length) {
-        let far = k; for (let m = raw.length - 1; m > k; m--) if (los(ax, az, raw[m][0], raw[m][1])) { far = m; break; }
+        let far = k; for (let m = raw.length - 1; m > k; m--) if (los(ax, az, raw[m][0], raw[m][1]) && legClear(ax, az, raw[m][0], raw[m][1])) { far = m; break; }
         out.push({ x: raw[far][0], z: raw[far][1] }); ax = raw[far][0]; az = raw[far][1]; k = far + 1;
       }
       return { points: out, found };
     }
     build(o.obstacles);
-    return { build, free, toCell, cellC, nearestFree, los, route: (a, b) => route(a, b).points, search: route, GX, GZ };
+    return { build, free, legClear, toCell, cellC, nearestFree, los, route: (a, b) => route(a, b).points, search: route, GX, GZ };
   }
   /* Idle trips. Each bot has its own cycle (3-5 min, staggered by hash). At the start of a cycle it may get up for TRIP_AWAY_S
      seconds (walk out, ~60 s of idle animation at the spot, walk back and sit). A trip is admitted only if fewer than `cap` bots
@@ -1521,7 +1569,7 @@
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
-    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, separateWalkers, walkCap, admitWalkers,
+    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,

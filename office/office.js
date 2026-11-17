@@ -1082,18 +1082,29 @@ function buildWorld() {
       return;
     }
     const convo = activeConvos.get(c.name);
-    const g = decide(c, b, convo);
+    let g = decide(c, b, convo);
+    const dk = deskOf(c.name);
+    if (c.gaveUp && dk && (c.gaveUp.key === g.key && clock < c.gaveUp.until)) g = { key: 'home', spot: dk.seat, pose: 'sit' }; // could not get there: back to the desk until the idle rotation picks something else
     if (g.key !== c.goalKey) {
       // walking cap: at most a third of the bots on the move; others wait where they are (alerts never wait)
       const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
       if (far && !needs && walkingNow >= L.walkCap(chars.size)) { if (!c.wantSince) c.wantSince = clock; }
-      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) c.restocked = false; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); if (far) walkingNow++; }
+      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) c.restocked = false; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
     }
     const goal = c.goalKey === g.key ? g : (c.goal || g);
     let pose = goal.pose;
     if (c.path.length) {
+      c.prog = L.walkProgress(c.prog, Math.hypot(c.path[0].x - c.pos.x, c.path[0].y - c.pos.y), clock);
+      if (c.prog.action === 'reroute') { c.path = route({ x: c.pos.x, z: c.pos.y }, goal.spot); c.prog = { best: Infinity, since: clock, tries: c.prog.tries, action: 'ok' }; }
+      else if (c.prog.action === 'giveup') {
+        c.path = []; c.prog = null;
+        if (goal.key === 'home') { c.pos.set(goal.spot.x, goal.spot.z); c.root.position.set(c.pos.x, 0, c.pos.y); }
+        else { c.gaveUp = { key: goal.key, until: clock + 30 }; c.idle.until = 0; c.goalKey = ''; }
+      }
+    }
+    if (c.path.length) {
       const tgt = c.path[0], dx = tgt.x - c.pos.x, dz = tgt.y - c.pos.y, dist = Math.hypot(dx, dz), step = 1.35 * dt;
-      if (dist <= step) { c.pos.copy(tgt); c.path.shift(); } else { c.pos.x += dx / dist * step; c.pos.y += dz / dist * step; }
+      if (dist <= step) { c.pos.copy(tgt); c.path.shift(); c.prog = null; } else { c.pos.x += dx / dist * step; c.pos.y += dz / dist * step; }
       if (dist > 0.01) c.root.rotation.y = angLerp(c.root.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 10));
       pose = 'walk';
       c.root.position.set(c.pos.x, 0, c.pos.y);
@@ -1625,6 +1636,9 @@ function buildWorld() {
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
     refresh() { syncDesks(); ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
+    layout: () => ({ RW, RD, CELL: 0.2, inflate: 0.22, obstacles: obstacles.map(o => ({ x0: +o.x0.toFixed(3), x1: +o.x1.toFixed(3), z0: +o.z0.toFixed(3), z1: +o.z1.toFixed(3), viewerOnly: !!o.viewerOnly, tag: o.tag || '' })),
+  desks: desks.map(d => ({ name: d.name, seat: d.seat, stand: d.stand, visit: d.visit })),
+  slots: SLOTS.concat(BOARD_SLOTS).map(s => ({ id: s.id, kind: s.kind, x: +s.x.toFixed(3), z: +s.z.toFixed(3), face: s.face })), trainer: TRAINER_SPOT }),
     info: () => ({ camY: +camera.position.y.toFixed(3), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
       poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
       lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
@@ -1648,6 +1662,7 @@ document.fonts && document.fonts.load("700 20px 'Inter PE'").catch(() => {});
 });
 addEventListener('error', e => T.errors.push(String(e.message)));
 T.info = () => (world ? world.info() : null);
+T.layout = () => (world ? world.layout() : null); // test hook: tools/office-collision-check.cjs dump saves this for the walk tests
 T.poll = () => poll(); // test hook: poll now (demo: next example step; the example meeting toggles each poll)
 T.screenPoint = (n, dx, dy) => (world ? world.screenPoint(n, dx, dy) : null);
 T.dimLevel = () => (world ? world.dimLevel() : null); T.setDim = v => world && world.setDim(v); T.dimKnobPoint = () => (world ? world.dimKnobPoint() : null); // tests / screenshots
