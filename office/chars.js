@@ -248,8 +248,17 @@ export function makeBot(name, hiQuality, botId, override) {
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   { const eyeM = mat('eyeClay', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 1, metalness: 0 }));
-    face.userData.eyes.forEach((e, i) => { e.material = eyeM; const ex = (i ? 1 : -1) * 0.1, ey = -0.02 + 0.02; e.position.set(ex, -0.02, Math.min(0, bodyG.userData.zAt(ex, ey) - bb.max.z) + 0.004); e.scale.set(0.034, 0.0408, 0.012); e.userData.sy = 0.0408; face.userData.shines[i].scale.set(0, 0, 0); });
-    face.rotation.z = a.rot || 0; }
+    const rot = a.rot || 0, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004;
+    face.userData.eyes.forEach((e, i) => { e.material = eyeM; const ex = (i ? 1 : -1) * 0.1, ey = -0.02;
+      /* sit each eye ON the curved skin: sample the surface where the eye really lands (the face is rotated by rot and lifted 0.02), then
+         tilt it to the surface normal so neither end sinks into the body (Tim, Nov 17: Usage's eyes vanished into its slope) */
+      const bx = ex * cr - ey * sr, by = ex * sr + ey * cr + 0.02, z = zAt(bx, by);
+      const gx = (zAt(bx + H, by) - zAt(bx - H, by)) / (2 * H), gy = (zAt(bx, by + H) - zAt(bx, by - H)) / (2 * H);
+      const nb = new THREE.Vector3(-gx, -gy, 1).normalize(), n = new THREE.Vector3(nb.x * cr + nb.y * sr, -nb.x * sr + nb.y * cr, nb.z);
+      e.position.set(ex, ey, z - fz).addScaledVector(n, 0.006); e.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+      e.scale.set(0.034, 0.0408, 0.014); e.userData.sy = 0.0408; face.userData.shines[i].scale.set(0, 0, 0); });
+    face.userData.brows.forEach((br, i) => { const ex = (i ? 1 : -1) * 0.085, ey = 0.15, bx = ex * cr - ey * sr, by = ex * sr + ey * cr + 0.02; br.position.z = zAt(bx, by) - fz + 0.008; });
+    face.rotation.z = rot; }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
   armR.position.set(-ax, -0.06, 0.02); armL.position.set(ax, -0.06, 0.02);
