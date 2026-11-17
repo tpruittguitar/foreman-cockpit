@@ -82,7 +82,7 @@ export function makeZzz() {
   return g;
 }
 export function floatZzz(zzz, t, x0, y0, z0) {
-  zzz.children.forEach(z => { const p = (t * 0.3 + z.userData.phase) % 1; z.position.set(x0 + p * 0.22 + Math.sin(p * 6.28) * 0.03, y0 + p * 0.55, z0); z.scale.setScalar(0.45 + p * 0.8); z.material.opacity = p < 0.15 ? p / 0.15 : 1 - (p - 0.15) / 0.85; });
+  zzz.children.forEach(z => { const p = (t * 0.2 + z.userData.phase) % 1; z.position.set(x0 + p * 0.3 + Math.sin(p * 6.28) * 0.04, y0 + p * 1.4, z0); z.scale.setScalar(0.45 + p * 0.9); z.material.opacity = p < 0.1 ? p / 0.1 : p < 0.6 ? 1 : 1 - (p - 0.6) / 0.4; // rise ~1.4 units, stay solid until 60% of the way up, then fade });
 }
 function makeCup() {
   const g = new THREE.Group();
