@@ -84,9 +84,9 @@ test('trainer in a meeting or waiting on Tim: no session this tick', () => {
   const m = plan(bots('HR', 'Claude'), [sess({ trainees: ['Claude'] })], T0 + 5 * MIN, {}, [{ id: 'm', title: 'X', members: ['HR'] }]);
   assert.equal(m.training, null);
 });
-test('before started_at and after until, ambient behaviour returns', () => {
+test('before started_at, and after until outside the replay window, ambient behaviour returns', () => {
   const list = bots('HR', 'Claude', 'QA');
-  for (const now of [T0 - MIN, T0 + 10 * MIN, T0 + 30 * MIN]) {
+  for (const now of [T0 - MIN, T0 + 15 * MIN, T0 + 35 * MIN]) {
     const p = plan(list, [sess()], now);
     assert.equal(!p.training || !p.training.real, true);
     assert.deepEqual(p.plans, L.planOffice(list, [], now, 'live').plans);
@@ -104,4 +104,62 @@ test('whiteboard override shows the session skill and "Training: <skill>"', () =
   assert.equal(L.trainingSlide(null, skills), null);
   assert.equal(L.trainingSlide(L.planOffice(bots('HR', 'Claude'), [], T0, 'live').training, skills), null);
   assert.ok(L.TRAINING_PATH.endsWith('OFFICE_TRAINING.json'));
+});
+
+/* Tim (Nov 18, 2:29 AM ET): trainees take the skill off the board and wear a learned tag; past real sessions replay, labeled Replay. */
+const skills = [{ slug: 'pr-hygiene', title: 'PR hygiene', bullets: ['a'] }];
+test('live session: trainees pick the skill up in turn, then wear it; non-trainees get no tag; HR names the skill', () => {
+  const list = bots('HR', 'Claude', 'QA', 'Root'), s = parse([sess()]).sessions;
+  const p = plan(list, [sess()], T0 + 2 * L.INVITE_S * 1000);
+  const at = p.training.sessionAt;
+  assert.equal(p.training.replay, false);
+  assert.equal(at, T0 + 2 * L.INVITE_S * 1000);
+  assert.deepEqual(L.skillTags(p.training, s, at - 1, skills), {});
+  const t1 = L.skillTags(p.training, s, at + L.PICK_MS / 2, skills);
+  assert.deepEqual(t1, { Claude: { skill: 'PR hygiene', t: 0.5, replay: false } });
+  const t2 = L.skillTags(p.training, s, at + L.PICK_MS + L.PICK_MS / 4, skills);
+  assert.deepEqual(t2.Claude, { skill: 'PR hygiene', t: null, replay: false });
+  assert.equal(t2.QA.t, 0.25);
+  const t3 = L.skillTags(p.training, s, at + 2 * L.PICK_MS, skills);
+  assert.deepEqual(Object.keys(t3).sort(), ['Claude', 'QA']);
+  assert.equal(t3.Root, undefined); assert.equal(t3.HR, undefined);
+  const line = L.trainLine(p.training, skills, 0);
+  assert.match(line, /PR hygiene/); assert.doesNotMatch(line, /Replay|new skills/);
+  assert.equal(L.trainingSlide(p.training, skills).counter, 'LIVE');
+});
+test('replay only: an ended real session replays labeled Replay at the start of each bucket, idle trainees only', () => {
+  const list = bots('HR', 'Claude', 'QA', 'Root'), past = [sess({ id: 'old' })];
+  const b0 = Math.ceil((T0 + 10 * MIN) / L.REPLAY_CYCLE_MS) * L.REPLAY_CYCLE_MS;
+  const p = plan(list, past, b0 + 2 * L.INVITE_S * 1000);
+  assert.equal(p.training.replay, true);
+  assert.equal(p.training.id, 'old');
+  assert.equal(p.plans.HR.act, 'lead');
+  assert.deepEqual([p.plans.Claude.act, p.plans.QA.act], ['train', 'train']);
+  assert.notEqual(p.plans.Root.act, 'train');
+  const sl = L.trainingSlide(p.training, skills);
+  assert.equal(sl.counter, 'REPLAY'); assert.match(sl.title, /^Replay: PR hygiene/);
+  assert.equal(L.trainLine(p.training, skills, 1), 'Replay: Take PR hygiene from the board');
+  const tg = L.skillTags(p.training, parse(past).sessions, p.training.sessionAt + L.PICK_MS / 2, skills);
+  assert.equal(tg.Claude.replay, true); assert.equal(tg.Claude.t, 0.5);
+  assert.equal(plan(list, past, b0 + L.REPLAY_MS).training, null);
+  const busy = L.planOffice(list, [], b0 + 1, 'live', { Claude: { stale: false } }, { training: parse(past).sessions });
+  assert.deepEqual(busy.training.trainees, ['QA']);
+  assert.equal(L.planOffice(list, [], b0 + 1, 'live', { HR: { stale: false } }, { training: parse(past).sessions }).training, null);
+  const live = plan(list, [sess({ id: 'old' }), sess({ id: 'now', started_at: iso(b0), until: iso(b0 + 10 * MIN) })], b0 + 1);
+  assert.equal(live.training.id, 'now'); assert.equal(live.training.replay, false);
+});
+test('no sessions: no training, nobody invited, no tags', () => {
+  const list = bots('HR', 'Claude', 'QA');
+  for (const now of [T0, T0 + 1000, T0 + 3 * MIN]) {
+    const p = plan(list, [], now);
+    assert.equal(p.training, null);
+    assert.equal(Object.values(p.plans).some(x => x.act === 'train' || x.act === 'lead'), false);
+    assert.deepEqual(L.skillTags(p.training, [], now, skills), {});
+    assert.equal(L.trainLine(null, skills, 0), '');
+  }
+});
+test('learned tag stays on real trainees for a day after the session ends', () => {
+  const s = parse([sess()]).sessions, end = T0 + 10 * MIN;
+  assert.deepEqual(L.skillTags(null, s, end + MIN, skills), { Claude: { skill: 'PR hygiene', t: null, replay: false }, QA: { skill: 'PR hygiene', t: null, replay: false } });
+  assert.deepEqual(L.skillTags(null, s, end + L.LEARNED_TAG_MS, skills), {});
 });

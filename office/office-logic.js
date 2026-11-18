@@ -319,14 +319,47 @@
     let phase;
     if (k < trainees.length) { phase = 'invite'; out[session.trainer] = { act: 'visit', partner: trainees[k] }; out[trainees[k]] = { act: 'listen', partner: session.trainer }; }
     else { phase = 'session'; out[session.trainer] = { act: 'lead' }; trainees.forEach((n, i) => { out[n] = { act: 'train', seat: (seatBase || 0) + i }; }); }
-    return { plans: out, training: { id: session.id, skill: session.skill, trainer: session.trainer, trainees, phase, invited: Math.min(k, trainees.length), real: true } };
+    return { plans: out, training: { id: session.id, skill: session.skill, trainer: session.trainer, trainees, phase, invited: Math.min(k, trainees.length), real: true, replay: !!session.replay, sessionAt: session.startMs + per * trainees.length, untilMs: session.untilMs } };
+  }
+  /* Tim (Nov 18, 2:29 AM ET): with no live session HR replays a past real one, labeled Replay. Ended sessions take turns by
+     REPLAY_CYCLE_MS bucket; each replay runs REPLAY_MS at the start of its bucket. No ended session -> null (no training). */
+  const REPLAY_CYCLE_MS = 10 * 60000, REPLAY_MS = 4 * 60000, PICK_MS = 4000, LEARNED_TAG_MS = 24 * 3600000;
+  function replayTraining(sessions, now) {
+    const list = Array.isArray(sessions) ? sessions : sessions && Array.isArray(sessions.sessions) ? sessions.sessions : [];
+    const past = list.filter(x => x && x.untilMs <= now).sort((a, b) => a.startMs - b.startMs || (a.id < b.id ? -1 : 1));
+    const bucket = Math.floor(now / REPLAY_CYCLE_MS), startMs = bucket * REPLAY_CYCLE_MS;
+    if (!past.length || now - startMs >= REPLAY_MS) return null;
+    return Object.assign({}, past[bucket % past.length], { startMs, untilMs: startMs + REPLAY_MS, replay: true });
+  }
+  function skillTitle(skill, skills) {
+    const key = str(skill).trim().toLowerCase(), hit = (skills || []).find(s => s.slug.toLowerCase() === key || s.title.toLowerCase() === key);
+    return hit ? hit.title : str(skill);
+  }
+  /* Who carries which skill: in the session phase trainee i takes the skill off the board during [sessionAt + i*PICK_MS, +PICK_MS)
+     ({ t: 0..1 }), then wears it ({ t: null }). Trainees of real sessions that ended within LEARNED_TAG_MS keep wearing it.
+     Non-trainees get nothing. name -> { skill, t, replay } */
+  function skillTags(training, sessions, now, skills) {
+    const out = {}, list = Array.isArray(sessions) ? sessions : [];
+    for (const x of list.filter(x => x && x.untilMs <= now && now - x.untilMs < LEARNED_TAG_MS).sort((a, b) => a.untilMs - b.untilMs))
+      for (const n of x.trainees) out[n] = { skill: skillTitle(x.skill, skills), t: null, replay: false };
+    if (training && training.phase === 'session') training.trainees.forEach((n, i) => {
+      const at = training.sessionAt + i * PICK_MS;
+      if (now >= at) out[n] = { skill: skillTitle(training.skill, skills), t: now < at + PICK_MS ? (now - at) / PICK_MS : null, replay: !!training.replay };
+    });
+    return out;
+  }
+  /* HR's bubble while leading: the real skill, prefixed Replay for a replay. */
+  function trainLine(training, skills, tick) {
+    if (!training) return '';
+    const name = skillTitle(training.skill, skills), pre = training.replay ? 'Replay: ' : '';
+    const lines = ['Skill: ' + name, 'Take ' + name + ' from the board', 'Questions on ' + name + '?'];
+    return pre + lines[Math.max(0, tick | 0) % lines.length];
   }
   /* Whiteboard text override while a real session runs: the skill name (its title from skills.json when the slug matches) plus "Training: <skill>". */
   function trainingSlide(training, skills) {
     if (!training || !training.real) return null;
-    const key = str(training.skill).trim().toLowerCase(), hit = (skills || []).find(s => s.slug.toLowerCase() === key || s.title.toLowerCase() === key);
-    const name = hit ? hit.title : training.skill;
-    return { index: -1, title: 'Skill: ' + name, bullets: ['Training: ' + name, 'Led by ' + training.trainer, training.trainees.length + ' in the room'], counter: 'LIVE', training: true };
+    const name = skillTitle(training.skill, skills);
+    return { index: -1, title: (training.replay ? 'Replay: ' : 'Skill: ') + name, bullets: ['Training: ' + name, 'Led by ' + training.trainer, training.trainees.length + ' in the room'], counter: training.replay ? 'REPLAY' : 'LIVE', training: true };
   }
 
   /* ---------- What each bot is doing on the floor (ambient behaviour, never data) ----------
@@ -346,7 +379,6 @@
     for (const b of list) if (statusStyle(b.status).alert) plans[b.bot] = { act: 'wave' };
     /* Tim (Nov 17, 9:48 PM, final): a bot looks working ONLY with a fresh real activity signal (freshness(), newest signal within
        BOT_STALE_MIN). Status or an assigned card alone does not count: no fresh signal means idle life, fresh means work. */
-    const busy = b => (fresh ? !!(fresh[b.bot] && !fresh[b.bot].stale) : ['working', 'blocked'].includes(normStatus(b.status)));
     let seat = 0;
     for (const m of meetings || []) {
       const seated = [];
@@ -356,7 +388,11 @@
       }
       if (seated.length && !meeting) meeting = Object.assign({}, m, { seated });
     }
-    const live = trainingPlan(activeTraining(opts && opts.training, now), list, plans, now, opts && opts.needs, seat);
+    const busy = b => (fresh ? !!(fresh[b.bot] && !fresh[b.bot].stale) : ['working', 'blocked'].includes(normStatus(b.status)));
+    const rp = activeTraining(opts && opts.training, now) ? null : replayTraining(opts && opts.training, now);
+    const idleIn = n => list.some(b => b.bot === n && !busy(b));
+    const sess = rp ? (idleIn(rp.trainer) ? Object.assign(rp, { trainees: rp.trainees.filter(idleIn) }) : null) : activeTraining(opts && opts.training, now);
+    const live = trainingPlan(sess, list, plans, now, opts && opts.needs, seat);
     if (live) { Object.assign(plans, live.plans); training = live.training; }
     const others = n => list.map(b => b.bot).filter(x => x !== n);
     const partnerFor = (n, salt) => { const o = others(n); return o.length ? o[hash(n + ':' + salt) % o.length] : null; };
@@ -396,7 +432,6 @@
     chat: ['Ready for the next task!', 'Anyone need a hand?', 'All caught up here.', 'Ping me if something comes in.', 'Nice work on the last one.', 'The coffee is fresh.', 'Queue looks quiet today.', 'I could take another card.'],
     visit: ['How is it going?', 'Want to try a new skill?', 'Any blockers I can help with?', 'Great work this week!', 'Got a minute for a quick tip?'],
     reply: ['Doing great, thanks!', 'Sure, show me.', 'All good here.', 'Happy to learn more.', 'Ready when you are.'],
-    train: ['Today: new skills!', 'Step one: read the task twice.', 'Small PRs, green checks.', 'Questions so far?', 'Let us try it together.'],
     group: ['Did you see the board today?', 'That last PR was clean.', 'Who is on the next card?', 'Need a second pair of eyes?', 'The waterfall is nice today.', 'Lunch plans, anyone?', 'Tests are green at last!', 'I heard HR has a new skill.', 'Same here, all quiet.', 'Nice, count me in.']
   };
   /* HR invites an idle bot to training with a short bubble. */
@@ -2104,7 +2139,7 @@
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
-    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
+    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
 });

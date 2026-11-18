@@ -145,6 +145,8 @@ html.tv .hint { bottom: calc(var(--safe) + 3.2em); }
 .msg.me { background: #13303a; }
 .why { color: #ffd23f; }
 .chip.recent { background: #173a4a; color: #9fe8f5; margin-left: 6px; }
+.chip.learned { background: #1f4a2a; color: #b6f5c4; margin-left: 6px; font-weight: 700; }
+.tag.fly { background: none; pointer-events: none; }
 .bubble.recent { border-color: #37e0ff; }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
 .tab { background: #1a1d22; color: #c6c9cf; border: 1px solid #30343a; border-radius: 8px; padding: 6px 10px; cursor: pointer; font: 600 14px system-ui, sans-serif; }
