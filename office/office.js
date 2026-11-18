@@ -535,7 +535,7 @@ function buildWorld() {
   renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor'); // WebXR: inert until a VR session starts (desktop render path is unchanged)
   $('stage').appendChild(renderer.domElement);
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 60);
+  const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.05, 80); // 80 m: the warehouse far wall is ~60 m from the office's left wall
   const fitFov = () => { const asp = innerWidth / innerHeight; camera.fov = asp >= 1 ? 62 : Math.min(100, 2 * Math.atan(Math.tan(0.62) / asp) * 180 / Math.PI); camera.updateProjectionMatrix(); };
   fitFov();
   camera.layers.enable(1);
@@ -577,8 +577,31 @@ function buildWorld() {
   add(box(RW, RH, 0.2), MAT.wall, 0, RH / 2, -RD / 2 - 0.1);
   add(box(RW, RH, 0.2), MAT.wall, 0, RH / 2, RD / 2 + 0.1);
   add(box(0.2, RH, RD), MAT.wall, -RW / 2 - 0.1, RH / 2, 0);
-  add(box(0.2, RH, RD), MAT.wall, RW / 2 + 0.1, RH / 2, 0);
-  for (const [w, d, x, z] of [[RW, 0.04, 0, -RD / 2 + 0.02], [RW, 0.04, 0, RD / 2 - 0.02], [0.04, RD, -RW / 2 + 0.02, 0], [0.04, RD, RW / 2 - 0.02, 0]]) {
+  /* Tim Nov 17: large double glass doors in the right wall (the free stretch where the waterfall was) into an empty warehouse shell
+     ~4x the office floor (36 x 54 m), dock doors on the far wall. Phase 2 contents are parked. Boxes only, no extra lights. */
+  const DOOR = { z: 1.6, w: 3.0, h: 3.0 }, D0 = DOOR.z - DOOR.w / 2, D1 = DOOR.z + DOOR.w / 2;
+  const WH = { x0: RW / 2, x1: RW / 2 + 36, z0: -27, z1: 27, h: 8 };
+  const zSeg = (a, b, h, y0, mat) => add(box(0.2, h, b - a), mat, RW / 2 + 0.1, y0 + h / 2, (a + b) / 2);
+  zSeg(-RD / 2, D0, RH, 0, MAT.wall); zSeg(D1, RD / 2, RH, 0, MAT.wall); zSeg(D0, D1, RH - DOOR.h, DOOR.h, MAT.wall); // office right wall around the doorway
+  for (const [a, b] of [[WH.z0, -RD / 2], [RD / 2, WH.z1]]) zSeg(a, b, WH.h, 0, MAT.wall); zSeg(-RD / 2, RD / 2, WH.h - RH, RH, MAT.wall); // warehouse near wall
+  const WX = (WH.x0 + WH.x1) / 2, WD = WH.z1 - WH.z0, WL = WH.x1 - WH.x0;
+  add(box(WL, 0.1, WD), std(0x5d6064, 0.9), WX, -0.05, 0); add(box(WL, 0.1, WD), MAT.ceil, WX, WH.h + 0.05, 0);
+  add(box(WL, WH.h, 0.2), MAT.wall, WX, WH.h / 2, WH.z0 - 0.1); add(box(WL, WH.h, 0.2), MAT.wall, WX, WH.h / 2, WH.z1 + 0.1);
+  add(box(0.2, WH.h, WD), MAT.wall, WH.x1 + 0.1, WH.h / 2, 0);
+  for (const x of [WH.x0 + 9, WH.x0 + 18, WH.x0 + 27]) add(box(0.4, 0.05, WD - 6), MAT.ledW, x, WH.h - 0.03, 0); // ceiling light strips
+  const dockMat = std(0x8a9099, 0.55, { metalness: 0.5 }), DOCKS = 6;
+  for (let k = 0; k < DOCKS; k++) { const z = WH.z0 + WD * (k + 0.5) / DOCKS;
+    add(box(0.12, 4.2, 3.6), dockMat, WH.x1 - 0.06, 2.1, z); add(box(0.14, 0.12, 3.8), MAT.trim, WH.x1 - 0.07, 4.26, z); // roll-up door + header
+    for (const dz of [-1.5, 1.5]) add(box(0.25, 0.45, 0.3), MAT.dark, WH.x1 - 0.13, 0.9, z + dz); // dock bumpers
+    add(box(3.2, 0.012, 0.12), MAT.cyan, WH.x1 - 2, 0.006, z); }
+  const doorLeaves = [-1, 1].map(sd => { const g = new THREE.Group(); g.position.set(RW / 2 + 0.1, 0, DOOR.z + sd * DOOR.w / 4); scene.add(g);
+    const lw = DOOR.w / 2; add(box(0.03, DOOR.h - 0.08, lw - 0.08), MAT.glass, 0, DOOR.h / 2, 0, g);
+    for (const y of [0.04, DOOR.h - 0.04]) add(box(0.06, 0.08, lw), MAT.metal, 0, y, 0, g);
+    for (const dz of [-lw / 2 + 0.04, lw / 2 - 0.04]) add(box(0.06, DOOR.h, 0.08), MAT.metal, 0, DOOR.h / 2, dz, g);
+    add(box(0.26, 1.1, 0.04), MAT.metal, 0, 1.1, -sd * (lw / 2 - 0.2), g); // pull bar
+    g.userData.home = g.position.z; g.userData.sd = sd; return g; });
+  add(box(0.1, 0.05, DOOR.w + 0.2), MAT.cyan, RW / 2 - 0.05, DOOR.h + 0.05, DOOR.z);
+  for (const [w, d, x, z] of [[RW, 0.04, 0, -RD / 2 + 0.02], [RW, 0.04, 0, RD / 2 - 0.02], [0.04, RD, -RW / 2 + 0.02, 0], [0.04, D0 + RD / 2, RW / 2 - 0.02, (D0 - RD / 2) / 2], [0.04, RD / 2 - D1, RW / 2 - 0.02, (D1 + RD / 2) / 2]]) {
     add(box(w, 0.1, d), MAT.trim, x, 0.05, z);
     add(box(w, 0.025, d), MAT.cyan, x, 0.11, z);           // thin cyan floor LED
     add(box(w, 0.03, d), MAT.ledW, x, RH - 0.12, z);       // white cove LED under the ceiling
@@ -1463,10 +1486,12 @@ function buildWorld() {
   addEventListener('keyup', e => { keys.delete(e.code); if (TV) { const a = L.tvKeyAction(e.key, false); if (a) keys.delete(a); } });
   addEventListener('blur', () => keys.clear());
 
+  const WH_JAMBS = [{ x0: RW / 2, x1: RW / 2 + 0.2, z0: WH.z0, z1: D0 }, { x0: RW / 2, x1: RW / 2 + 0.2, z0: D1, z1: WH.z1 }]; // shared wall either side of the doors (viewer only; bots stay in the office)
   function collide(p) {
     const r = 0.3;
-    p.x = Math.max(-RW / 2 + WALL, Math.min(RW / 2 - WALL, p.x)); p.z = Math.max(-RD / 2 + WALL, Math.min(RD / 2 - WALL, p.z));
-    for (const o of obstacles) {
+    p.x = Math.max(-RW / 2 + WALL, Math.min(WH.x1 - WALL, p.x)); // the walk extends through the glass doors into the warehouse
+    if (p.x < RW / 2) p.z = Math.max(-RD / 2 + WALL, Math.min(RD / 2 - WALL, p.z)); else p.z = Math.max(WH.z0 + WALL, Math.min(WH.z1 - WALL, p.z));
+    for (const o of obstacles.concat(WH_JAMBS)) {
       const cx = Math.max(o.x0, Math.min(o.x1, p.x)), cz = Math.max(o.z0, Math.min(o.z1, p.z)), dx = p.x - cx, dz = p.z - cz, d = Math.hypot(dx, dz);
       if (d < r) {
         if (d > 1e-4) { p.x = cx + dx / d * r; p.z = cz + dz / d * r; }
@@ -1530,6 +1555,8 @@ function buildWorld() {
       if (k >= 1) glide = null;
     }
     if (!XR && !panelOpen && !pipe.browsing) move(dt);
+    { const near = Math.hypot(camera.position.x - RW / 2, camera.position.z - DOOR.z) < 3.5; // glass doors slide into the wall pocket as you approach
+      for (const g of doorLeaves) { const to = g.userData.home + (near ? g.userData.sd * (DOOR.w / 2 - 0.1) : 0); g.position.z += (to - g.position.z) * Math.min(1, dt * 4); } }
     if (TV && !panelOpen && !tour && now - lastInput > L.TOUR_IDLE_MS) tour = { list: L.tourOrder(targets, bots()), i: -1, until: 0 };
     if (tour && now > tour.until && tour.list.length) {
       tour.i = (tour.i + 1) % tour.list.length; const s = tour.list[tour.i];
