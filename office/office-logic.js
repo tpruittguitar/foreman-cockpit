@@ -29,7 +29,8 @@
   const MAX_PER_COLUMN = 5;
   const GLIDE_MS = 800;          // TV desk-to-desk glide (must stay under 1 s)
   const TOUR_IDLE_MS = 60000;
-  const LOD = { near: 3.2, mid: 8 }; // metres from the monitor
+  const LOD = { near: 32, mid: 40 }; // metres from the monitor: near covers the whole 24 x 20 x 4.4 m room, so every desk screen shows its content from anywhere (Tim, Nov 17)
+  const GAME_SLOW_M = 8; // game screens farther than this redraw at 400 ms instead of 120 ms
   const COLORS = { working: '#3ddc84', idle: '#8b9099', alert: '#ff4b4b', stale: '#ffd23f', info: '#4aa3ff', focus: '#c58cff' };
   const FALLBACK_LINK = 'grokbot://app/v1/agent?id=';
 
@@ -1863,7 +1864,7 @@
     TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, VR_STICK_DEAD, VR_MOVE_SPEED, VR_SNAP_DEG, VR_SNAP_ON, VR_SNAP_OFF, stickAxes, stickMove, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
-    GLIDE_MS, TOUR_IDLE_MS, LOD, COLORS,
+    GLIDE_MS, TOUR_IDLE_MS, LOD, GAME_SLOW_M, COLORS,
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
