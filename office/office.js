@@ -129,9 +129,13 @@ function loadConstraint(now) {
 function constraintView(now) {
   const c = S.cons, CR = window.PipelineControlRoom;
   if (DEMO) return { sum: L.demoConstraint(), age: L.constraintAge(new Date(now - 4 * 60000).toISOString(), now), demo: true };
-  if (!c.health || !CR) return { sum: null, err: c.err, age: null };
+  /* P3 (GUI findings 3, 9): when the feed is stale or unreadable the wall keeps the last good numbers, labeled, instead of going blank or all Unknown. */
+  const lastGood = err => c.lastGood ? { sum: c.lastGood, age: { text: 'feed stale', stale: true }, lastGood: true, err } : { sum: null, err, age: null };
+  if (!c.health || !CR) return lastGood(c.err);
   let sum = null;
-  try { sum = CR.summary(CR.model({ health: c.health, activity: c.activity, activityError: c.activityErr, now }), {}); } catch (e) { return { sum: null, err: e.message, age: null }; }
+  try { sum = CR.summary(CR.model({ health: c.health, activity: c.activity, activityError: c.activityErr, now }), {}); } catch (e) { return lastGood(e.message); }
+  if (!L.constraintHasNumbers(sum)) return lastGood(c.err);
+  c.lastGood = sum;
   const flow = c.health.processFlow;
   return { sum, age: L.constraintAge(flow && flow.at, now, !!c.err || now - c.at > 2 * SLOW_MS), err: c.err };
 }
