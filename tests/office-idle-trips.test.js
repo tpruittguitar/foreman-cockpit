@@ -36,16 +36,15 @@ test('not everyone leaves at once: bots start their trips at staggered times', (
   assert.ok(new Set(offsets).size >= 10, 'start offsets differ: ' + offsets.join());
   assert.ok(starts.size >= 1);
 });
-test('planOffice sends working bots on trips and brings them back to work', () => {
+test('planOffice never sends a fresh working bot on an idle trip (QA #407)', () => {
   const bots = NAMES.map(n => ({ bot: n, status: 'working' })), fresh = Object.fromEntries(NAMES.map(n => [n, { stale: false }]));
-  let trips = 0, home = 0;
+  let home = 0;
   for (let s = 0; s < 1800; s += 3) {
-    const p = L.planOffice(bots, [], T0 + s * 1000, 'live', fresh).plans, away = NAMES.filter(n => p[n].act === 'trip');
-    trips += away.length; home += NAMES.filter(n => p[n].act === 'work').length;
-    assert.equal(new Set(away.map(n => p[n].spot)).size, away.length, 'one bot per spot');
-    assert.ok(away.length <= L.walkCap(NAMES.length));
+    const p = L.planOffice(bots, [], T0 + s * 1000, 'live', fresh).plans;
+    for (const n of NAMES) assert.notEqual(p[n].act, 'trip', n);
+    home += NAMES.filter(n => p[n].act === 'work').length;
   }
-  assert.ok(trips > 0 && home > trips, 'trips happen and bots are mostly at their desks');
+  assert.ok(home > 0.8 * NAMES.length * 600, 'bots are at their desks');
 });
 test('stale (quiet) bots live the idle rotation instead of sitting (games3); waving bots never trip', () => {
   const bots = NAMES.map(n => ({ bot: n, status: n === 'Root' ? 'needs_tim' : 'working' })), fresh = Object.fromEntries(NAMES.map(n => [n, { stale: n === 'QA' }]));

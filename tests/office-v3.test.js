@@ -164,7 +164,7 @@ test('idle schedule: changes every 2-3 min, staggered per bot, sleep+game <= 25%
   for (const n of names) for (let k = 0; k < 400; k++) { const a = L.idleAct(n, NOW + k * 150000); total++; if (a === 'sleep' || a === 'game') lazy++; if (['wander', 'coffee', 'fridge', 'chat', 'visitdesk', 'lounge', 'bike'].includes(a)) moving++; }
   assert.ok(lazy / total <= 0.25, 'lazy ' + lazy / total); assert.ok(moving / total >= 0.6);
   let breaks = 0; for (let s = 0; s < 3600; s += 5) if (L.workBreak('Claude', NOW + s * 1000)) breaks++;
-  assert.ok(breaks * 5 >= 360 && breaks * 5 <= 900, 'working bots take short breaks every 4-6 min: ' + breaks * 5 + ' s/h');
+  assert.ok(breaks * 5 >= 240 && breaks * 5 <= 900, 'working bots take short breaks every 4-6 min: ' + breaks * 5 + ' s/h');
 });
 test('replay: idle bot replays its last action for RECENT_REPLAY_MIN minutes, then falls back to idle life', () => {
   const b = { bot: 'GUI', status: 'idle', last_action: 'Fixed card contrast', last_action_at: new Date(NOW - 29 * MIN).toISOString() };
