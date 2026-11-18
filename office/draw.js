@@ -346,7 +346,7 @@ export function drawUsage(ctx, W, H, o) {
     ctx.fillStyle = u.stale ? C.stale : '#a9aeb6'; ctx.font = `600 ${22 * s}px ${SANS}`;
     ctx.fillText(fit(ctx, u.measured + ' · ' + u.next, 600 * s), 34 * s, y + 112 * s);
     ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${16 * s}px ${SANS}`;
-    const pool = [L.creditLine(u), L.resetsLine(u)].filter(Boolean);
+    const pool = [L.fiveHourLine(u, o.now), L.creditLine(u), L.resetsLine(u)].filter(Boolean);
     pool.forEach((t, j) => ctx.fillText(fit(ctx, t, 600 * s), 34 * s, y + (134 + j * 20) * s));
     ctx.textAlign = 'right'; ctx.fillStyle = col; ctx.font = `800 ${92 * s}px ${SANS}`;
     ctx.fillText(u.pct_used == null ? '—' : Math.round(u.pct_used) + '%', W - 120 * s, y + 100 * s);
