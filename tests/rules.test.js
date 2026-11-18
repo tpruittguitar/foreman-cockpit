@@ -142,6 +142,15 @@ ok(defense.outcome === 'REVIEW' && defense.basis === 'REVIEW_NEEDED' && defense.
 const nj = sc({ TITLE: 'Director of Manufacturing', LOCATION: 'Newark, NJ', REMOTE_HYBRID: 'On-site' });
 ok(nj.outcome === 'EXCLUDE' && nj.ruleId === 'NC-013' && nj.confidence === 'HIGH' && nj.code === 'NEVER_CONSIDER', 'an NJ onsite role is EXCLUDE under NC-013');
 ok(sc({ TITLE: 'Director of Manufacturing', LOCATION: 'Newark, NJ', REMOTE_HYBRID: 'Remote' }).outcome === 'ALLOW', 'a remote NJ role passes');
+// NC-013 keeps the state (card a9c0469): a (MA) suffix, a trailing ZIP and a LinkedIn metro name with no state (Metasys V2I-514B069A723C, LOCATION 'Greater Boston').
+['Boston (MA)', 'Greater Boston (MA)', 'Boston (Massachusetts) (On-site)', 'Warren, MA 01083', 'Nashua, NH 03064-2813', 'Greater Boston', 'Greater Philadelphia', 'New York City Metropolitan Area', 'Greater Pittsburgh Region'].forEach(loc => {
+  const hit = sc({ COMPANY: 'Metasys Technologies', TITLE: 'General Manager', LOCATION: loc, REMOTE_HYBRID: 'On-site' });
+  ok(hit.outcome === 'EXCLUDE' && hit.ruleId === 'NC-013' && hit.code === 'NEVER_CONSIDER', loc + ' onsite keeps its state and is EXCLUDE under NC-013');
+});
+ok(sc({ TITLE: 'General Manager', LOCATION: 'Greater Boston', REMOTE_HYBRID: 'Remote' }).outcome === 'ALLOW', 'a remote Greater Boston role passes');
+['Atlanta Metropolitan Area', 'Tampa, FL 33607', 'Greater Boston Area, Virginia', 'Austin (TX)', 'Plant (HQ)'].forEach(loc => {
+  ok(sc({ TITLE: 'General Manager', LOCATION: loc, REMOTE_HYBRID: 'On-site' }).outcome === 'ALLOW', loc + ' is not a Northeast location');
+});
 const missing = sc({ TITLE: 'Director of Manufacturing', LOCATION: '', REMOTE_HYBRID: 'On-site' });
 ok(missing.outcome === 'ALLOW' && !missing.ruleId && !missing.basis, 'missing location under a location rule passes with no flag');
 ok(sc({ TITLE: 'Director of Manufacturing', LOCATION: 'Chicago, IL' }).ruleId === 'NC-023', 'Chicago onsite is northern Illinois under NC-023');
