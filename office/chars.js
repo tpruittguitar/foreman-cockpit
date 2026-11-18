@@ -377,11 +377,13 @@ function superTube(rows, n, seg) {
   cap(R - 1, true); cap(0, false);
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
 }
+const PRES_SHAPE = {}; /* shape/colour knobs, scored against the 6 reference turnaround views (docs/pr-assets/president-ref-v2); the avatar harness can override them with ?p={...} */
 function makePresident(hi) {
+  const P = Object.assign({ tx: 0.85, ty: 0.95, tz: 1.0, head: 0.83, headY: 0.56, armT: 0.92, armL: 0.84, armX: 1.1, armY: 1.01, armZ: 0.66, legT: 1.06, legL: 0.95, legX: 1.16, shoe: 1.2, hx: 0.88, hy: 1.06, hz: 0.88, hairY: 0.04, skinC: 0xffbc8e, shirtC: 0x232730, pantsC: 0x242427, tipC: 0x5e5e5e, hb: 1, ringMin: 0, tipK: 0.8 }, PRES_SHAPE, typeof window !== 'undefined' && window.__PRES || {});
   const seg = hi ? 144 : 72; /* one model only, so no polygon cap worth keeping (brief_office7 item 2); keys carry seg so hi and lo never share a mesh */
-  const skin = new THREE.MeshStandardMaterial({ color: 0xf6c49e, roughness: 0.55, emissive: 0x4a2a16, emissiveIntensity: 0.3 });
-  const shirt = new THREE.MeshStandardMaterial({ color: 0x25262a, roughness: 0.72 });
-  const pants = new THREE.MeshStandardMaterial({ color: 0x18181a, roughness: 0.78 });
+  const skin = new THREE.MeshStandardMaterial({ color: P.skinC, roughness: 0.55, emissive: 0x4a2a16, emissiveIntensity: 0.3 });
+  const shirt = new THREE.MeshStandardMaterial({ color: P.shirtC, roughness: 0.72 });
+  const pants = new THREE.MeshStandardMaterial({ color: P.pantsC, roughness: 0.78 });
   const shoeM = mat('shoe7', () => new THREE.MeshStandardMaterial({ color: 0x151516, roughness: 0.92 }));
   const trim = mat('shirtTrim4', () => new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.7 }));
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
@@ -446,8 +448,8 @@ function makePresident(hi) {
   // hair: matte near-black. A solid smooth cap (clean sides and back) under a few large soft-edged clumps of varied size, plus a side-swept fringe of hooked locks from a visible parting
   const hairM = [0x1c1c1e, 0x232326, 0x2a2a2e].map((c, i) => mat('hairV' + i, () => new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.82, metalness: 0 })));
   const hairCap = mat('hairCap7', () => new THREE.MeshStandardMaterial({ color: 0x232326, roughness: 0.9, metalness: 0 }));
-  const hairBase = [new THREE.Color(0x28282c), new THREE.Color(0x2f2f33), new THREE.Color(0x36363a)], hairTip = new THREE.Color(0x5c5c63);
-  const hairLine = (x, z) => { const u = Math.cos(Math.atan2(x, z)); return u >= 0 ? 0.02 + 0.08 * Math.min(1, u / 0.5) : Math.max(-0.19, 0.02 - 0.32 * Math.pow(-u, 0.6)); };
+  const hairBase = [new THREE.Color(0x28282c), new THREE.Color(0x2f2f33), new THREE.Color(0x36363a)], hairTip = new THREE.Color(P.tipC);
+  const hairLine = (x, z) => { const u = Math.cos(Math.atan2(x, z)); return u >= 0 ? 0.02 + 0.08 * Math.min(1, u / 0.5) : Math.max(-0.19, 0.02 - 0.32 * P.hb * Math.pow(-u, 0.6)); };
   const capG = grow => { const g = headShape(new THREE.SphereGeometry(1, seg, Math.round(seg * 0.75), 0, Math.PI * 2, 0, Math.PI * 0.76), grow), p = g.attributes.position;
     for (let i = 0; i < p.count; i++) { const lo = hairLine(p.getX(i), p.getZ(i)); if (p.getY(i) < lo) p.setY(i, lo); } g.computeVertexNormals(); return g; };
   head.add(new THREE.Mesh(geo('pCap7:' + seg, () => capG(0.045)), hairCap));
@@ -471,7 +473,7 @@ function makePresident(hi) {
     m.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(Z.clone(), ang));
     m.position.set(px, py, pz).addScaledVector(Z, o.lift == null ? 0.012 : o.lift); m.updateMatrix();
     const g = m.geometry.clone().applyMatrix4(m.matrix), cp = g.attributes.color;
-    for (let i = 0; i < cp.count; i++) { const t = cp.getX(i), c = hairBase[layer].clone().lerp(hairTip, Math.pow(1 - t, 1.6) * 0.8); cp.setXYZ(i, c.r, c.g, c.b); }
+    for (let i = 0; i < cp.count; i++) { const t = cp.getX(i), c = hairBase[layer].clone().lerp(hairTip, Math.pow(1 - t, 1.6) * P.tipK); cp.setXYZ(i, c.r, c.g, c.b); }
     batches[layer].push(g);
   };
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
@@ -482,6 +484,7 @@ function makePresident(hi) {
       const azd = ((k + off) / n * 360 + 540) % 360 - 180 + (rnd() - 0.5) * 8, aa = Math.abs(azd);
       if (aa < 62 && eld < 56) continue;
       if (aa < 105 && eld < 30) continue;
+      if (eld < P.ringMin) continue;
       const sz = 0.82 + rnd() * 0.4, len = base * sz, w = 0.14 * sz;
       lock(azd, eld + (rnd() - 0.5) * 4, len, w, (rnd() - 0.5) * 0.35 + 0.15 * Math.sin(azd * Math.PI / 180) - 0.1, (ri + k) % 3, { lift: 0.008 + ri * 0.004, sharp: 0.8 + rnd() * 0.2 });
     }
@@ -509,7 +512,13 @@ function makePresident(hi) {
   const blushM = mat('blush6', () => new THREE.MeshStandardMaterial({ color: 0xe3917f, roughness: 0.95, transparent: true, opacity: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
   for (const sx of [-1, 1]) { const bx = sx * 0.15, by = -0.13, z = frontPt(bx, by), b = new THREE.Mesh(geo('blush6', () => new THREE.SphereGeometry(0.03, 28, 18)), blushM);
     b.scale.set(1.25, 0.85, 0.12); const n = new THREE.Vector3(bx / (HA * HA), by / (HB * HB), z / (HC * HC)).normalize(); b.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n); b.position.set(bx, by, z - 0.001); head.add(b); }
-  return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.45, sitLift: -0.07, radius: 0.27, halfW: 0.27, halfD: 0.2, kind: 'president', head });
+  {
+    const trunk = new THREE.Group(); body.children.slice().forEach(o => { if (o !== head && o !== armR && o !== armL) trunk.add(o); }); trunk.scale.set(P.tx, P.ty, P.tz); body.add(trunk);
+    for (const [a, sd] of [[armR, -1], [armL, 1]]) { a.position.set(sd * 0.225 * P.armX * P.tx, 0.275 * P.armY * P.ty, 0); a.scale.set(P.armT, P.armL, P.armT); a.rotation.z = sd * P.armZ; a.userData.len = 0.52 * P.armL; a.userData.tip = 0.503 * P.armL; }
+    for (const [l, sd] of [[legR, -1], [legL, 1]]) { l.position.set(sd * 0.092 * P.legX, HIP * P.legL, 0); l.scale.set(P.legT, P.legL, P.legT); l.children.forEach(k => k.children.forEach(m => { if (m.material === shoeM) m.scale.set(P.shoe / P.legT, 1 / P.legL, P.shoe / P.legT); })); }
+    body.position.y = HIP * P.legL; head.position.y = P.headY * P.ty; head.scale.setScalar(P.head);
+    const hairG = new THREE.Group(); head.children.slice().forEach(o => { if (o.material === hairCap || hairM.includes(o.material)) hairG.add(o); }); hairG.scale.set(P.hx, P.hy, P.hz); hairG.position.y = P.hairY; head.add(hairG); }
+  return finish({ name: 'President', root, rig, body, armR, armL, legR, legL, face, mats: [shirt, skin], colors: [shirt.color.clone(), skin.color.clone()], top: 1.4, sitLift: -0.07, radius: 0.27, halfW: 0.27, halfD: 0.2, kind: 'president', head });
 }
 
 function finish(c) {
@@ -658,4 +667,21 @@ export function animate(c, pose, t, dt, opts) {
   c.rig.position.y = lerp(c.rig.position.y, lift + bob + lieY, k);
   c.rig.rotation.z = lerp(c.rig.rotation.z, lieZ, Math.min(1, dt * 4));
   c.rig.rotation.x = 0;
+  if (pose === 'type' && c.kind === 'president' && c.armR.userData.tip) typeHands(c, still ? 0 : 0.012 * Math.sin(t * 15 + ph) * (Math.sin(t * 1.3 + ph) > -0.45 ? 1 : 0));
+}
+/* Straight-arm reach for the President at the desk: each fingertip lands ON the keyboard top (desk seat: keys 0.525..0.675 m ahead of the root,
+   top 0.7975 m), whatever the arm length; the typing tap slides the fingertip along the keys instead of lifting it off (QA #430). */
+export const KEYS = { top: 0.7975, near: 0.535, far: 0.665, x: 0.1 };
+const _sv = new THREE.Vector3(), _tv = new THREE.Vector3();
+function typeHands(c, tap) {
+  c.root.updateMatrixWorld(true);
+  const shoulder = a => c.root.worldToLocal(a.parent.localToWorld(_sv.copy(a.position)));
+  const sh = shoulder(c.armR), L = c.armR.userData.tip, dy = KEYS.top - sh.y, dx = KEYS.x - Math.abs(sh.x), reach = Math.sqrt(Math.max(0, L * L - dx * dx - dy * dy));
+  if (sh.z + reach < KEYS.near) { c.body.position.z += KEYS.near - sh.z - reach; c.root.updateMatrixWorld(true); }
+  for (const [a, sx] of [[c.armR, -1], [c.armL, 1]]) {
+    const s = shoulder(a), h = L * L - (sx * KEYS.x - s.x) ** 2 - (KEYS.top - s.y) ** 2;
+    const z = Math.min(KEYS.far, Math.max(KEYS.near, s.z + Math.sqrt(Math.max(0, h)))) + sx * tap;
+    a.parent.worldToLocal(c.root.localToWorld(_tv.set(sx * KEYS.x, KEYS.top, z))).sub(a.position).normalize();
+    a.rotation.set(Math.atan2(-_tv.z, -_tv.y), 0, Math.asin(Math.max(-1, Math.min(1, _tv.x))));
+  }
 }

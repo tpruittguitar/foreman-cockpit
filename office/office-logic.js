@@ -923,7 +923,7 @@
   }
   const MIN_SEP = 0.8;          // metres between any two standing / walking bots
   /* Walk camera: floor level, eye height = 1.3 x the President's head height (hip 0.52 + head centre 0.63 + face offset, chars.js makePresident). */
-  const PRESIDENT_HEAD_Y = 1.12, EYE_HEIGHT = +(PRESIDENT_HEAD_Y * 1.3).toFixed(3); // Tim: eye height raised ~30% (was exactly the head height, 1.07)
+  const PRESIDENT_HEAD_Y = 1.03, EYE_HEIGHT = +(PRESIDENT_HEAD_Y * 1.3).toFixed(3); // Tim: eye height raised ~30% (was exactly the head height, 1.07)
   /* Desktop Space-to-jump: a ballistic arc from the floor (eye) height. jumpStep is pure; state = {y, vy, air}. */
   const JUMP_V = 3.2, GRAVITY = 9.8, SETTLE_RATE = 8;
   function jumpStep(state, dt, wantJump, floorY) {
