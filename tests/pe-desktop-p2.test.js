@@ -72,3 +72,9 @@ test('closing the drawer with ✕ pops its own entry once', () => {
   assert.equal(s.idx(), 0); assert.equal(s.cls.has('on'), false);
   s.d.classList.add('on'); assert.equal(s.idx(), 1);   // reopen pushes again
 });
+
+test('GUI 12: Writer off also gates phone decide buttons, undo and the decision fields', () => {
+  for (const s of ['#undo-decision', '#edit-state', '#edit-reason', '#edit-dup', '#edit-note', '[data-m-do]', '[data-m-retry]']) assert.ok(W.SELECTOR.includes(s), s);
+  const m = fs.readFileSync(path.join(__dirname, '..', 'pipeline-mobile.js'), 'utf8');
+  assert.match(m, /wo\.apply\(el, !!\(b && b\.health && b\.health\(\)\.writer === false\)\)/);
+});
