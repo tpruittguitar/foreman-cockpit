@@ -2,6 +2,20 @@
 
 Tim's rule (2026-10-11): collect Explorer and Writer changes here and ship them together as batched releases. Newest batch first. Each entry names what changed, why, what did not change, and how it was verified.
 
+
+## Batch 2026-11-18: page loads import the Writer master only for a stale snapshot (card aaee4a1)
+
+Trigger: GUI found 3 automatic `import-from-writer` POSTs on every Pipeline Explorer load. Each POST reads the whole Writer master (Root, card dc273ca).
+
+### Changed (`pipeline.html`)
+
+1. The background import after a load runs only when the snapshot's `writerFetchedAt` is missing or more than 15 min old (`structuredStale_`).
+2. The import POST is sent once, with no retry. It used to go through `fetchJsonRetry_`'s two retries.
+3. After a background import, the page no longer rereads every `/api/structured/jobs` page. The next load or refresh shows the new snapshot.
+
+### Not changed
+
+The Writer, schedules, the empty or missing snapshot imports, the after-save rebuild gate (REV-152), and the Settings import button.
 ## Batch 2026-10-28: three weekly AI usage meters
 
 Trigger: Tim 2026-10-28: "Remove Grok Bot and Hourly usage from each AI report. Keep the others. So only 3 (weekly usage status) results needed for each run."
@@ -165,7 +179,7 @@ Writer / Apps Script, canonical master, receipts, scoring, Track M UI, KV bindin
 
 ### Residual risk
 
-The import (`/admin/import-from-writer`) still parses the Writer master JSON and serializes 1,872 jobs in one invocation; it can itself exceed the CPU limit as the population grows. It is called after loads and writes; a failure there leaves the previous snapshot in place and the Explorer falls back to the Writer. Rollback to the previous build makes the old code find no v1 blob, so it imports a fresh one rather than serving stale data.
+The import (`/admin/import-from-writer`) still parses the Writer master JSON and serializes 1,872 jobs in one invocation; it can itself exceed the CPU limit as the population grows. It is called after loads and writes; a failure there leaves the previous snapshot in place, and the Explorer keeps serving that last snapshot; it does not fall back to the Writer. Rollback to the previous build makes the old code find no v1 blob, so it imports a fresh one rather than serving stale data.
 
 ## Batch 2026-10-17-E — receipt index to GitHub (REV-010, cutover pending)
 

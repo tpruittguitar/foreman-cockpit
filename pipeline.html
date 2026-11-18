@@ -853,7 +853,9 @@ function setText_(id,text){var e=$(id);if(e)e.textContent=text}
  * spends some, so one device rebuilds it at most once a minute. The first rebuild after a quiet minute runs at once (one
  * ruling, or one 3-s batch, reloads exactly as before). Saves inside that minute share one rebuild at the end of the minute;
  * their rulings already show on screen from S.rulings, and the reload (which verifies them) follows that rebuild. */
-var STRUCT_SYNC_={MS:60000,last:0,running:null,trail:null};
+var STRUCT_SYNC_={MS:60000,STALE_MS:15*60000,last:0,running:null,trail:null};
+/* Card aaee4a1: a page load imports the Writer master only when the shared snapshot is missing a Writer read time or that read is over 15 min old. */
+function structuredStale_(meta,now){var t=Date.parse(meta&&meta.writerFetchedAt||'');return !Number.isFinite(t)||(now||Date.now())-t>STRUCT_SYNC_.STALE_MS}
 function structuredSyncWait_(){return Math.max(0,STRUCT_SYNC_.MS-(Date.now()-STRUCT_SYNC_.last))}
 function structuredSyncDeferred_(){return !!(STRUCT_SYNC_.running||STRUCT_SYNC_.trail||structuredSyncWait_()>0)}
 function structuredSync_(base){
@@ -868,7 +870,8 @@ function structuredSync_(base){
 function reloadAfterWrite_(){if(S.structuredBase&&S.cfg.key){if(structuredSyncDeferred_())try{render()}catch(e){}return structuredSync_(S.structuredBase).then(function(){S.structuredSyncedAt=Date.now();return load()},function(){return load()})}return load()}
 function importStructuredFromWriter_(base){
   if(!S.rows||!S.rows.length)readout('<b>seeding structured runtime.</b> importing current Writer master');
-  return fetchJsonRetry_(base+'/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}}).then(function(x){var r=x.r,j=x.j;if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('structured import HTTP '+r.status));return j});
+  // One POST, never retried: every attempt reads the whole Writer master (attempt 2 is fetchJsonRetry_'s last).
+  return fetchJsonRetry_(base+'/admin/import-from-writer',{method:'POST',cache:'no-store',headers:{'x-writer-key':S.cfg.key||''}},2).then(function(x){var r=x.r,j=x.j;if(!r.ok||!j.ok)throw new Error((j&&j.detail)||(j&&j.error)||('structured import HTTP '+r.status));return j});
 }
 
 /* REV-075: a Cloudflare platform error (503 "Worker exceeded resource limits", 502, 522) is an HTML page.
@@ -936,7 +939,8 @@ function loadStructuredRuntime_(q){
     MASTER_CACHE_.write({text:j.text,meta:meta});
     if(typeof operationsUI_!=='undefined'&&operationsUI_)operationsUI_.masterChanged();
     S.structuredBase=base;
-    if(S.cfg.key&&!S.structuredSyncing&&!structuredSyncDeferred_()&&Date.now()-(S.structuredSyncedAt||0)>60000){S.structuredSyncing=true;structuredSync_(base).then(function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now();if(seq===S.loadSeq)load()},function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now()})}
+    /* Background import only for a stale snapshot; after it, no second full jobs-page read (the next load or refresh shows it). */
+    if(S.cfg.key&&structuredStale_(j.structuredMeta)&&!S.structuredSyncing&&!structuredSyncDeferred_()&&Date.now()-(S.structuredSyncedAt||0)>60000){S.structuredSyncing=true;structuredSync_(base).then(function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now()},function(){S.structuredSyncing=false;S.structuredSyncedAt=Date.now()})}
     return S.load;
   }).catch(function(e){
     if(seq!==S.loadSeq)return null;
