@@ -444,6 +444,7 @@ header #search{flex:0 1 230px;min-width:110px;height:28px;padding:0 9px;backgrou
 <script src="pipeline-decision-labels.js"></script>
 <script src="pipeline-pay-format.js"></script>
 <script src="pipeline-act-now.js"></script>
+<script src="pipeline-writer-off.js"></script>
 <script src="pipeline-list-select.js"></script>
 <script src="pipeline-data-age.js"></script>
 <script src="pipeline-operations-ui.js"></script>
@@ -699,9 +700,10 @@ function renderWriterStatus_(){
   html+='<div class="build-actions"><button id="writer-refresh" type="button">Refresh now</button><button id="build-check" type="button">Check latest build</button></div>';
   var count=hh.critical+hh.warning;
   b.innerHTML='<span class="sys-dot '+esc(top)+'"></span><small>Writer</small><b>'+(lvl==='off'?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-1px;margin-right:4px"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>':'')+esc(String(label).toLowerCase())+(count?' · '+count:'')+'</b>';if(lvl==='off')b.title='Writer not connected on this device: decisions are not sent until a Writer connection is saved in Settings';renderHeaderStatus_();var rd=$('rail-dot');if(rd)rd.className='sys-dot '+esc(top);
-  b.className='build-badge writer-badge '+lvl;b.title='Health: '+hh.state+(count?' · '+count+' active incident'+(count===1?'':'s'):'');
+  b.className='build-badge writer-badge '+lvl;b.title=lvl==='off'?'Writer not connected on this device: decisions are not sent until a Writer connection is saved in Settings':'Health: '+hh.state+(count?' · '+count+' active incident'+(count===1?'':'s'):'');
   p.innerHTML=html;var hi=$('open-incident-history');if(hi)hi.onclick=function(){p.hidden=true;switchTab('incident-history')};if(S.tab==='incident-history')renderIncidentHistory_();p.querySelectorAll('[data-ack]').forEach(function(x){x.onclick=function(e){e.stopPropagation();ackIncident_(x.getAttribute('data-ack'))}});var aa=$('inc-ack-all');if(aa)aa.onclick=function(e){e.stopPropagation();if(!confirm('Record acknowledgement of every active queue incident? All unresolved consequences remain active until verified recovery.'))return;hv.active.filter(function(i){return i.kind==='event'}).forEach(function(i){PipelineIncidents.acknowledge(S.incidents,i.id,'TIM',Date.now())});LS.set('incidents',S.incidents);syncStateUp();renderWriterStatus_()};var rf=$('writer-refresh');if(rf)rf.onclick=function(e){e.stopPropagation();loadWriterStatus_(true)};var bc=$('build-check');if(bc)bc.onclick=function(e){e.stopPropagation();checkLatestBuild_(true)};var sx=$('sys-close');if(sx)sx.onclick=function(e){e.stopPropagation();p.hidden=true;b.setAttribute('aria-expanded','false')};
-  if(al){if(strip){al.className='on '+(strip.level==='FAULT'?'fault':'degraded');al.innerHTML=stripHtml_(strip,false);bindDismiss_(al);}else{al.className='';al.innerHTML='';}}
+  if(al){if(strip){al.className='on '+(strip.level==='FAULT'?'fault':'degraded');al.innerHTML=stripHtml_(strip,false);bindDismiss_(al);}else if(lvl==='off'&&typeof PipelineWriterOff!=='undefined'){al.className='on writer-off';al.innerHTML=PipelineWriterOff.bannerHtml();}else{al.className='';al.innerHTML='';}}
+  writerGate_();
 }
 var writerRefreshTimer_=null,writerRefreshPromise_=null,writerNextRefreshAt_=0;
 function scheduleWriterRefresh_(){
@@ -739,7 +741,8 @@ var TargetCompanies=PipelineTargetCompanies.create({$: $,esc:esc,gsGet:gsGet,gsP
 
 /* ---------- data source adapters (read-only; manual refresh only; no polling) ---------- */
 function hasWriter(){return !!(S.cfg.url&&S.cfg.key)}   // configured: reads work (the built-in defaults count)
-function canSend(){return hasWriter()&&S.cfg.deliberate!==false}   // writes: only a connection set on purpose (see the cfg migration above)
+function canSend(){return hasWriter()&&S.cfg.deliberate!==false}
+function writerGate_(){if(typeof PipelineWriterOff!=='undefined')PipelineWriterOff.apply(document,!canSend())}   /* P2: Writer off disables every decision button (desktop and drawer) */   // writes: only a connection set on purpose (see the cfg migration above)
 function requestProgress_(promise,action,writing){
   if(action==='state'||action==='request_result'||action==='writer_status')return promise;
   var labels={master:'Reading current master',canonical_rules:'Reading governing rules',scoring:'Reading shared scoring',documents:'Reading document library',document_text:'Reading document',archive:'Reading archived rows',operations:'Reading work evidence',schedules:'Reading schedules',ping:'Testing Writer connection'};
@@ -1669,7 +1672,7 @@ function renderWorkspaceHead_(r){var dh=document.querySelector('#drawer .dh');if
   $('d-title').textContent=r.TITLE;$('d-title').title=r.COMPANY+' — '+r.TITLE;
   $('d-close').onclick=$('d-back').onclick=function(){var was=S.focus;$('drawer').classList.remove('on');S.focus=null;S.openDelta=null;renderLight_([was]);pushHash()};
   $('ws-prev').onclick=function(){stepFocus_(-1)};$('ws-next').onclick=function(){stepFocus_(1)};
-  dh.querySelectorAll('[data-decide-key]').forEach(function(b){b.onclick=function(){prepareDecision_(b.dataset.decideKey)}});
+  dh.querySelectorAll('[data-decide-key]').forEach(function(b){b.onclick=function(){prepareDecision_(b.dataset.decideKey)}});writerGate_();
 }
 function renderPosting_(r){var p=r.payload||{},ls=PipelinePolicy.links(r),u=ls.preferred,host=hostOf_(u),embeddable=!!u&&EMBED_HOSTS.test(host),snap=p.JD_TEXT||p.POSTING_TEXT||p.POSTING_SNAPSHOT||p.DESCRIPTION||'';
   var h='<div class="detail-grid"><div class="detail-card full"><h3>Source links</h3>'+(ls.all.length?ls.all.map(function(x){return '<p>'+linkify(x)+(x===ls.initiating?' <span class="faint">initiating</span>':'')+(x===p.COMPANY_SOURCE_URL?' <span class="faint">company source</span>':'')+'</p>'}).join(''):'<p class="bad">No usable http(s) link recorded on this row · recover source provenance in Fit &amp; Score › Research gaps.</p>')+'<p class="tip">'+(ls.companyConfirmed?'Company source confirmed':'Company / ATS source unconfirmed · initiating links remain usable')+'</p>'+(PipelinePolicy.validUrl(p.CLAUDE_REVIEW_EVIDENCE_URL)?'<p>'+linkify(p.CLAUDE_REVIEW_EVIDENCE_URL)+' <span class="faint">Claude review evidence</span></p>':'')+'</div>';
@@ -1765,14 +1768,14 @@ function fitHtml_(r){
   return h+'</div>';
 }
 function bindDetail_(r){
-  $('d-body').querySelectorAll('[data-decide-key]').forEach(function(b){b.onclick=function(){prepareDecision_(b.dataset.decideKey)}});
+  $('d-body').querySelectorAll('[data-decide-key]').forEach(function(b){b.onclick=function(){prepareDecision_(b.dataset.decideKey)}});writerGate_();
   $('d-body').querySelectorAll('[data-dtab-go]').forEach(function(b){b.onclick=function(){S.detailTab=b.getAttribute('data-dtab-go');renderDetail(r)}});
   var dd=$('decision-details');if(dd)dd.ontoggle=function(){S.decisionCollapsed=!dd.open;S.decisionOpen=dd.open?r.id:null};
   if($('compare-role'))$('compare-role').onclick=function(){toggleCompare(r.id);renderDetail(r)};
   var rel=$('row-evidence-load');if(rel)rel.onclick=function(){loadRowEvidence_(r)};
   if($('pin-row'))$('pin-row').onclick=function(){S.pins[r.id]=!S.pins[r.id];LS.set('pins',S.pins);render();renderDetail(r)};
   if($('edit-state'))$('edit-state').onchange=function(){var rejected=this.value==='REJECTED_BY_EMPLOYER';$('d-body').querySelectorAll('.rejection-field').forEach(function(el){el.hidden=!rejected})};
-  if($('save-decision'))$('save-decision').onclick=function(){saveTimDecision(r)};
+  if($('save-decision'))$('save-decision').onclick=function(){saveTimDecision(r)};writerGate_();
   if($('enrich-save'))$('enrich-save').onclick=function(){saveEnrichment_(r)}
   if($('enrich-salary-kind'))$('enrich-salary-kind').onchange=function(){var n=$('enrich-note');if(this.value==='ESTIMATED'&&n&&!n.value.trim())n.value=estBasisDefault_(r.payload)};
   if($('enrich-request'))$('enrich-request').onclick=function(){requestResearch_(r)};
@@ -1934,6 +1937,8 @@ function bindActNow_(){var root=$('act-now');if(!root)return;
   root.querySelectorAll('[data-an-reason]').forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-an-reason'),x=PipelineActNow.DECLINE_REASONS.filter(function(y){return y.k===k})[0];actDecide_(b.getAttribute('data-an-for'),'DECLINE',x?x.code:'')}});
   root.querySelectorAll('[data-an-later]').forEach(function(b){b.onclick=function(){S.anSnooze[b.getAttribute('data-an-later')]=Date.now();LS.set('anSnooze',S.anSnooze);render()}});
   root.querySelectorAll('[data-an-retry]').forEach(function(b){b.onclick=function(){var id=b.getAttribute('data-an-retry'),r=rowById(id),ru=r&&ruling(r);if(!r||!ru)return;if(!hasWriter()){actNowSay_(id,'Writer not connected on this device.');return}postRuling_(r,ru,function(t){actNowSay_(id,t)})}});
+  root.querySelectorAll('[data-an-open]').forEach(function(t){function go(){var id=t.getAttribute('data-an-open');if(!rowById(id))return;if(S.tab!=='pipeline')switchTab('pipeline');openRow(id)}t.onclick=go;t.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();go()}}});   /* P2: one click on the title opens the job drawer */
+  writerGate_();
   var tg=root.querySelector('[data-an-toggle]');if(tg)tg.onclick=function(){S.anCollapsed=!S.anCollapsed;LS.set('anCollapsed',S.anCollapsed);render()};
   root.querySelectorAll('[data-an-more]').forEach(function(b){b.onclick=function(){S.chartFilter=null;S.search='';S.preset=b.getAttribute('data-an-more');switchTab('pipeline')}})}
 function saveTimDecision(r){
@@ -3323,8 +3328,10 @@ var bell=$('bell');if(bell){bell.setAttribute('aria-label','Needs you: everythin
 document.addEventListener('click',function(e){var p=$('qv-panel');if(p&&!p.hidden&&!p.contains(e.target))toggleView_(false);var rl=$('rail');if(rl&&rl.classList.contains('open')&&!rl.contains(e.target)&&e.target!==mbtn&&!(mbtn&&mbtn.contains(e.target))){rl.classList.remove('open');if(mbtn)mbtn.setAttribute('aria-expanded','false')}var mc=$('job-map-card');if(mc&&mc.classList.contains('layers-open')&&!e.target.closest('#mapfilters,#map-layers'))mc.classList.remove('layers-open')});
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv-panel');if(p&&!p.hidden)toggleView_(false);document.body.classList.remove('search-open')}});$('search').oninput=function(){S.search=this.value;if(S.tab!=='pipeline')switchTab('pipeline');render()};
 /* REV-083 (Tim 22:58 ET, option A): on the phone an open job is a full-screen sheet. Opening it adds one history entry, so
-   the phone Back button closes the sheet; "‹ Queue" / close go back through that same entry. Desktop is untouched. */
-(function sheet_(){var d=$('drawer'),bb=$('bottombar'),open=false;
+   the phone Back button closes the sheet; "‹ Queue" / close go back through that same entry. */
+(function sheet_(){var d=$('drawer'),bb=$('bottombar'),open=false,inHist=false;
+  /* P2: phone and desktop share one history entry per open drawer, so browser Back closes the drawer and stays in the app */
+  function hist(w){if(w===inHist)return;inHist=w;try{if(w){if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}else if(history.state&&history.state.peSheet)history.back()}catch(e){}}
   var fitted=false;   /* REV-088 (perf): the bottom nav is measured once and again on resize, not on every open (each read forced a layout) */
   /* REV-089: what the device reports at each sheet open, shown in System -> Job sheet (for the iPhone home-screen app check) */
   function diag(){try{var p=document.createElement('div');p.style.cssText='position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top);visibility:hidden;pointer-events:none';document.body.appendChild(p);var env=Math.round(p.getBoundingClientRect().height);p.remove();
@@ -3332,7 +3339,7 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv
     S.sheetDiag={at:new Date().toLocaleTimeString(),standalone:!!navigator.standalone||matchMedia('(display-mode: standalone)').matches,env:env,sheetTop:Math.round(r.top),headTop:hr?Math.round(hr.top):null,scrollTop:Math.round(d.scrollTop),winY:Math.round(window.scrollY),
       ih:innerHeight,vvH:vv?Math.round(vv.height):null,vvTop:vv?Math.round(vv.offsetTop):null,bottom:getComputedStyle(document.body).getPropertyValue('--pe-sheet-bottom').trim()};if(typeof renderSystemSheetDiag_==='function')renderSystemSheetDiag_()}catch(e){}}
   function fit(){fitted=true;var b=bb&&bb.offsetParent!==null?bb.getBoundingClientRect():null;document.body.style.setProperty('--pe-sheet-bottom',(b?Math.max(0,Math.round(innerHeight-b.top)):0)+'px')}
-  function sync(){var want=phoneLayout()&&d.classList.contains('on')&&!d.dataset.auto;   /* the load-time preview of the top job (data-auto) stays in the page */
+  function sync(){var on=d.classList.contains('on')&&!d.dataset.auto;hist(on);var want=phoneLayout()&&on;   /* the load-time preview of the top job (data-auto) stays in the page */
     if(want===open)return;   /* REV-088: class changes inside the open sheet no longer re-measure the bottom nav (resize does) */open=want;d.classList.toggle('pe-sheet',want);   /* REV-088 (perf): on the drawer, so the switch restyles the sheet only (a body class restyled the whole 890-row page) */
     var de=document.documentElement;de.style.overflow=want?'hidden':'';document.body.style.overflow=want?'hidden':'';   /* REV-089: the page cannot scroll under the sheet */
     /* REV-097 (Tim 02:59 ET, iPhone: top still hidden, pull shows it, springs back). The sheet's parent #view-pipeline is a
@@ -3340,10 +3347,9 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=$('qv
        it, so the sheet's top sat outside the clip. While the sheet is open no ancestor clips it. Inline styles, so only these
        elements restyle (REV-088 perf). */
     for(var an=d.parentElement;an&&an!==document.body;an=an.parentElement){if(want){if(an.dataset.peOv==null)an.dataset.peOv=an.style.getPropertyValue('overflow')+'|'+an.style.getPropertyPriority('overflow');an.style.setProperty('overflow','visible','important')}else if(an.dataset.peOv!=null){var pv=an.dataset.peOv.split('|');if(pv[0])an.style.setProperty('overflow',pv[0],pv[1]);else an.style.removeProperty('overflow');delete an.dataset.peOv}}
-    if(want){if(!fitted)fit();requestAnimationFrame(function(){if(d.scrollTop)d.scrollTop=0;if(window.scrollY)window.scrollTo(0,0);requestAnimationFrame(diag)});try{if(!(history.state&&history.state.peSheet))history.pushState({peSheet:1},'',location.href)}catch(e){}}
-    else{try{if(history.state&&history.state.peSheet)history.back()}catch(e){}}}
+    if(want){if(!fitted)fit();requestAnimationFrame(function(){if(d.scrollTop)d.scrollTop=0;if(window.scrollY)window.scrollTo(0,0);requestAnimationFrame(diag)})}}
   new MutationObserver(sync).observe(d,{attributes:true,attributeFilter:['class','data-auto']});window.addEventListener('resize',function(){fitted=false;sync();if(open)fit()});
-  window.addEventListener('popstate',function(){if(open&&!(history.state&&history.state.peSheet)){var c=$('d-close');if(c)c.click();else d.classList.remove('on')}});sync();})();
+  window.addEventListener('popstate',function(){if(inHist&&!(history.state&&history.state.peSheet)){inHist=false;var c=$('d-close');if(c)c.click();else d.classList.remove('on')}});sync();})();
 function pushHash(){var o={t:S.tab,p:S.preset,s:S.sort,f:S.filters};if(S.focus)o.j=S.focus;if(S.mapFull)o.m=1;renderCrumb_();try{history.replaceState(history.state,'','#'+encodeURIComponent(JSON.stringify(o)))}catch(e){}}   /* REV-094: keep the sheet's history entry (Back closes the sheet) */
 function readHash(){try{if(location.hash.length>1){var o=JSON.parse(decodeURIComponent(location.hash.slice(1)));if(o.t&&$('view-'+o.t))S.tab=o.t;if(o.p&&PRESETS[o.p])S.preset=o.p;if(o.s)S.sort=o.s;if(o.f)S.filters=o.f;if(o.j&&!phoneLayout())S.pendingFocus=String(o.j);   /* REV-094: the phone always starts on the pipeline list */
   if(o.m)S.pendingMap=true}}catch(e){}}

@@ -121,7 +121,7 @@
       : ru.back === 'CHANGED' ? '<span class="an-chip warn" title="' + esc(ru.changes.map(function (c) { return c.field + ': ' + c.before + ' → ' + c.after; }).join('; ')) + '">Changed since your decision: ' + esc(ru.changes.map(function (c) { return c.field + ' ' + c.before + ' → ' + c.after; }).join(' · ')) + '</span>' : '';
     var pending = ru.d && ru.d.state === 'PENDING';
     return '<article class="an-card' + (shield(r) ? ' an-pin' : '') + '" data-an-id="' + esc(r.id) + '">' +
-      '<div class="an-top"><b class="an-title">' + esc(r.TITLE) + '</b><span class="an-score" title="Score">' + (it.score == null ? '—' : Math.round(it.score)) + '</span></div>' +
+      '<div class="an-top"><b class="an-title" role="button" tabindex="0" data-an-open="' + esc(r.id) + '" title="Open job details">' + esc(r.TITLE) + '</b><span class="an-score" title="Score">' + (it.score == null ? '—' : Math.round(it.score)) + '</span></div>' +
       '<div class="an-sub">' + esc(r.COMPANY) + ' · ' + esc(r.LOCATION || 'Location not stated') + ' · <span class="an-pay">' + esc(payText(r, ctx)) + '</span></div>' +
       (why ? '<div class="an-why">' + esc(why) + '</div>' : '') + chip +
       (ru.decided && ru.back === 'CHANGED' ? '<div class="an-was">Your decision: ' + esc(LABEL[ru.d.kind] || ru.d.kind) + (ru.d.at ? ', ' + esc(day(ru.d.at)) : '') + '</div>' : '') +
@@ -146,7 +146,7 @@
     '.an-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:var(--pe-gap);margin-top:var(--pe-gap)}' +
     '.an-card{border:var(--pe-border);border-radius:var(--pe-radius);padding:var(--pe-gap);background:var(--pe-hull);display:flex;flex-direction:column;gap:6px;min-width:0}' +
     '.an-card.an-pin{border-left:var(--pe-bar-card) solid var(--pe-cyan)}.an-top{display:flex;gap:var(--pe-gap);justify-content:space-between;align-items:baseline}' +
-    '.an-title{font-size:var(--pe-fs-body);overflow-wrap:anywhere}.an-score{font-variant-numeric:tabular-nums;font-weight:700;min-width:2.2em;text-align:right;font-size:var(--pe-fs-body)}' +
+    '.an-title{font-size:var(--pe-fs-body);overflow-wrap:anywhere}.an-title[data-an-open]{cursor:pointer}.an-title[data-an-open]:hover{text-decoration:underline}.an-score{font-variant-numeric:tabular-nums;font-weight:700;min-width:2.2em;text-align:right;font-size:var(--pe-fs-body)}' +
     '.an-sub,.an-why,.an-was{font-size:var(--pe-fs-small);color:var(--pe-text-secondary);overflow-wrap:anywhere}' +
     '.an-act,.an-reasons{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}.an-act .an-decline{margin-left:auto}.an-sec{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}.an-sec-btn{min-height:var(--pe-target-min);padding:0 10px;border:0;background:none;color:var(--pe-text-primary);font:inherit;font-size:var(--pe-fs-small);cursor:pointer}' +
     '.an-btn{min-height:var(--pe-target-min);min-width:var(--pe-target-min);padding:0 14px;border-radius:var(--pe-radius);border:var(--pe-border);background:var(--pe-raised);color:var(--pe-text-primary);font:inherit;font-size:var(--pe-fs-small);display:inline-flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;text-transform:uppercase;letter-spacing:var(--pe-pill-tracking)}' +
