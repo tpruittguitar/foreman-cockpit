@@ -338,7 +338,9 @@
     let meeting = null, training = null;
     if (state === 'failed') return { plans, meeting, training };
     for (const b of list) if (statusStyle(b.status).alert) plans[b.bot] = { act: 'wave' };
-    for (const b of list) if (!plans[b.bot] && fresh && fresh[b.bot] && fresh[b.bot].stale) plans[b.bot] = { act: 'stale' };
+    /* Tim (Nov 17, 9:48 PM, final): a bot looks working ONLY with a fresh real activity signal (freshness(), newest signal within
+       BOT_STALE_MIN). Status or an assigned card alone does not count: no fresh signal means idle life, fresh means work. */
+    const busy = b => (fresh ? !!(fresh[b.bot] && !fresh[b.bot].stale) : ['working', 'blocked'].includes(normStatus(b.status)));
     let seat = 0;
     for (const m of meetings || []) {
       const seated = [];
@@ -353,13 +355,13 @@
     const others = n => list.map(b => b.bot).filter(x => x !== n);
     const partnerFor = (n, salt) => { const o = others(n); return o.length ? o[hash(n + ':' + salt) % o.length] : null; };
     // working (and blocked) bots type at their desk, with a short staggered break every 4-6 minutes
-    for (const b of list) if (!plans[b.bot] && ['working', 'blocked'].includes(normStatus(b.status))) {
+    for (const b of list) if (!plans[b.bot] && b.bot !== TRAINER) { const r = replayFor(b, now); if (r) plans[b.bot] = { act: r.act, replay: r }; }
+    for (const b of list) if (!plans[b.bot] && busy(b)) {
       const br = workBreak(b.bot, now);
       plans[b.bot] = br ? { act: br, brk: true } : { act: 'work' };
       if (br === 'visitdesk') plans[b.bot].partner = partnerFor(b.bot, Math.floor(now / 60000));
     }
     const trainer = training ? null : list.find(b => b.bot === TRAINER && !plans[b.bot]);
-    for (const b of list) if (!plans[b.bot] && b.bot !== TRAINER) { const r = replayFor(b, now); if (r) plans[b.bot] = { act: r.act, replay: r }; }
     const idle = list.filter(b => !plans[b.bot] && b.bot !== TRAINER).map(b => b.bot).sort();
     idle.forEach(n => { const a = idleAct(n, now); plans[n] = { act: a }; if (a === 'visitdesk') plans[n].partner = partnerFor(n, idleSlot(n, now).idx); });
     if (trainer) {
@@ -1363,7 +1365,7 @@
   }
   function offlineSinceLabel(iso) {
     const t = time(iso);
-    return t == null ? 'screen offline' : 'screen offline since ' + etClock(t);
+    return t == null ? 'screen offline' : 'screen offline since ' + etClock(t) + ' ET';
   }
   /* -> { show: 'image' | 'fallback', why, offline? } */
   function screenState(index, botId, now) {

@@ -47,10 +47,10 @@ test('planOffice sends working bots on trips and brings them back to work', () =
   }
   assert.ok(trips > 0 && home > trips, 'trips happen and bots are mostly at their desks');
 });
-test('stale (quiet) bots also take trips, flagged on the plan; waving / meeting bots never do', () => {
+test('stale (quiet) bots live the idle rotation instead of sitting (games3); waving bots never trip', () => {
   const bots = NAMES.map(n => ({ bot: n, status: n === 'Root' ? 'needs_tim' : 'working' })), fresh = Object.fromEntries(NAMES.map(n => [n, { stale: n === 'QA' }]));
   let qa = 0;
-  for (let s = 0; s < 3600; s += 3) { const p = L.planOffice(bots, [], T0 + s * 1000, 'live', fresh).plans; if (p.QA.act === 'stale' && p.QA.trip) qa++; assert.notEqual(p.Root.act, 'trip'); assert.ok(!p.Root.trip); }
+  for (let s = 0; s < 3600; s += 3) { const p = L.planOffice(bots, [], T0 + s * 1000, 'live', fresh).plans; if (L.IDLE_ACTS.includes(p.QA.act) && !p.QA.brk) qa++; assert.notEqual(p.Root.act, 'trip'); assert.ok(!p.Root.trip); }
   assert.ok(qa > 0);
 });
 
