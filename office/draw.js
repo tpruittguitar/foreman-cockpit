@@ -242,7 +242,6 @@ function miniUsage(ctx, W, H, s, rows, now) {
     ctx.fillStyle = col; ctx.fillRect(x, 314 * s, 180 * s * (u.pct_used || 0) / 100, 10 * s);
     ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${16 * s}px ${SANS}`;
     ctx.fillStyle = u.stale ? C.stale : '#a9aeb6'; ctx.fillText(fit(ctx, (u.stale ? '? stale · ' : '') + u.measured.replace('Measured ', ''), 190 * s), x, 348 * s);
-    ctx.fillStyle = '#a9aeb6'; ctx.fillText(fit(ctx, u.next.replace('Next check in ', 'next '), 190 * s), x, 372 * s);
   });
 }
 function resetText(iso, now) {
@@ -344,16 +343,22 @@ export function drawUsage(ctx, W, H, o) {
     ctx.fillStyle = '#2b2e33'; ctx.fillRect(34 * s, y + 64 * s, 560 * s, 18 * s);
     ctx.fillStyle = col; ctx.fillRect(34 * s, y + 64 * s, 560 * s * (u.pct_used || 0) / 100, 18 * s);
     ctx.fillStyle = u.stale ? C.stale : '#a9aeb6'; ctx.font = `600 ${22 * s}px ${SANS}`;
-    ctx.fillText(fit(ctx, u.measured + ' · ' + u.next, 600 * s), 34 * s, y + 112 * s);
+    ctx.fillText(fit(ctx, u.measured, 600 * s), 34 * s, y + 112 * s);
     ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${16 * s}px ${SANS}`;
     const pool = [L.fiveHourLine(u, o.now), L.creditLine(u), L.resetsLine(u)].filter(Boolean);
     pool.forEach((t, j) => ctx.fillText(fit(ctx, t, 600 * s), 34 * s, y + (134 + j * 20) * s));
     ctx.textAlign = 'right'; ctx.fillStyle = col; ctx.font = `800 ${92 * s}px ${SANS}`;
-    ctx.fillText(u.pct_used == null ? '—' : Math.round(u.pct_used) + '%', W - 120 * s, y + 100 * s);
-    ctx.font = `700 ${24 * s}px ${SANS}`; ctx.fillText('used', W - 34 * s, y + 70 * s);
-    const pr = o.pred && o.pred[String(u.name).toUpperCase()]; /* card 7077752: same verdict and time as the flat view */
-    if (pr && pr.text) { ctx.fillStyle = pr.bad ? '#ff6b6b' : '#a9aeb6'; ctx.font = `700 ${22 * s}px ${SANS}`; ctx.fillText(fit(ctx, pr.text, 330 * s), W - 34 * s, y + 134 * s); }
+    /* Tim (Nov 18, 10:46 AM ET, card bd3ecea): 'used' sits small under the %, and the prediction takes the column right of the %. Sizes unchanged. */
+    const px = W - 200 * s;
+    ctx.fillText(u.pct_used == null ? '—' : Math.round(u.pct_used) + '%', px, y + 100 * s);
+    ctx.font = `700 ${24 * s}px ${SANS}`; ctx.fillText('used', px, y + 130 * s);
+    const pr = o.pred && o.pred[String(u.name).toUpperCase()]; /* same verdict and time as the flat view */
     ctx.textAlign = 'left';
+    if (pr && pr.text) {
+      ctx.fillStyle = pr.bad ? '#ff6b6b' : '#a9aeb6'; ctx.font = `700 ${22 * s}px ${SANS}`;
+      const i = pr.text.indexOf(' ~'), lines = i > 0 ? [pr.text.slice(0, i), pr.text.slice(i + 1)] : pr.text.split(/ (?=reset$)/);
+      lines.forEach((t, j) => ctx.fillText(fit(ctx, t, W - px - 40 * s), px + 18 * s, y + (62 + j * 28) * s));
+    }
   });
 }
 

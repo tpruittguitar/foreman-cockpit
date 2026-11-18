@@ -22,3 +22,11 @@ test('3D usage screen reuses the flat view projection, not a copy', () => {
   assert.match(read('office/draw.js'), /o\.pred && o\.pred\[String\(u\.name\)\.toUpperCase\(\)\]/);
   assert.doesNotMatch(read('pipeline.html'), /every 3 h at :05/);
 });
+
+test('AI USAGE row: used under the %, prediction right of it, no next-check line (card bd3ecea)', () => {
+  const d = read('office/draw.js');
+  assert.match(d, /ctx\.fillText\('used', px, y \+ 130 \* s\)/);
+  assert.match(d, /px \+ 18 \* s, y \+ \(62 \+ j \* 28\) \* s/);
+  assert.doesNotMatch(d, /u\.next/);
+  assert.doesNotMatch(read('office/office.js'), /r\.next\)|USAGE_CHECK_SCHEDULE_ET\.join/);
+});
