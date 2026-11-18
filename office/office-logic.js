@@ -1142,6 +1142,58 @@
   const RECENT_REPLAY_MIN = 30;
   const IDLE_ACTS = ['wander', 'coffee', 'chat', 'fridge', 'lounge', 'chat', 'wander', 'bike', 'sleep', 'visitdesk', 'chat', 'game']; // sleep+game = 2/12
   const WORK_BREAK_MAX_S = 45, WORK_BREAK_S = 30, WALK_MPS = 1.35, BREAK_SPOT_MAX_M = 3;
+  const WALK_DT_STEP = 1 / 30, WALK_DT_MAX = 1;
+  /* Walk uses real elapsed time. A 0.1 s cap made 1 fps pages crawl at 0.135 m/s. Substeps keep a long frame from jumping through walls. */
+  function frameWalkDt(raw) { return Math.max(0, Math.min(WALK_DT_MAX, Number(raw) || 0)); }
+  function walkAlong(pos, path, dt, speed) {
+    const spd = speed == null || speed <= 0 ? WALK_MPS : speed;
+    let left = Math.max(0, dt || 0);
+    while (left > 1e-9 && path && path.length) {
+      const tgt = path[0], tz = tgt.z != null ? tgt.z : tgt.y;
+      const dx = tgt.x - pos.x, dz = tz - pos.z, dist = Math.hypot(dx, dz);
+      if (dist <= 1e-9) { path.shift(); continue; }
+      const sub = Math.min(WALK_DT_STEP, left);
+      const step = spd * sub;
+      if (dist <= step) { pos.x = tgt.x; pos.z = tz; path.shift(); left -= dist / spd; }
+      else { pos.x += dx / dist * step; pos.z += dz / dist * step; left -= sub; }
+    }
+    return pos;
+  }
+  function nearestSlot(from, slots) {
+    let best = null, bd = Infinity;
+    const x = from && from.x, z = from && (from.z != null ? from.z : from.y);
+    for (const s of slots || []) {
+      const d = Math.hypot(s.x - x, s.z - z);
+      if (d < bd) { best = s; bd = d; }
+    }
+    return best;
+  }
+  function cardFetchRoundTripS(from, slots, speed, holdS, pathM) {
+    const s = nearestSlot(from, slots);
+    if (!s) return Infinity;
+    const spd = speed == null || speed <= 0 ? WALK_MPS : speed;
+    const dist = pathM != null ? pathM : Math.hypot(s.x - from.x, s.z - (from.z != null ? from.z : from.y));
+    return 2 * dist / spd + (holdS == null ? JOB_HOLD_S : holdS);
+  }
+  /* Plan text is the 3D action. A scheduled fridge break that stretches or types at the desk must not still say fridge. */
+  function actionLabel(goal, pose, scheduled) {
+    const p = pose || (goal && goal.pose) || '';
+    const key = goal && goal.key ? String(goal.key) : '';
+    const dest = goal && goal.pose ? goal.pose : '';
+    const shown = p === 'walk' ? dest || p : p;
+    if (key.startsWith('job:') || key.startsWith('pick:') || key === 'carry') {
+      if (key.indexOf(':deliver') >= 0 || key === 'carry' || shown === 'sit' || shown === 'type') return 'work';
+      return 'board';
+    }
+    if (shown === 'type' || (shown === 'sit' && (key.startsWith('seat') || key === 'home' || !key))) return 'work';
+    if (shown === 'stretch') return 'stretch';
+    if (shown === 'board') return 'board';
+    if (shown === 'deskSleep' || shown === 'nap') return 'sleep';
+    if (shown === 'meet') return key.startsWith('train') || (goal && goal.ambient === 'reply') ? 'train' : 'meeting';
+    if (shown === 'game') return 'game';
+    if (shown) return shown;
+    return scheduled || '';
+  }
   /* QA #409: a fresh bot's break counts its walk. The plan window (WORK_BREAK_S) covers the walk out and the stay; the walk back
      comes after it, so a spot fits only if WORK_BREAK_S + dist / speed <= WORK_BREAK_MAX_S, and never beyond BREAK_SPOT_MAX_M.
      speed is the bot's real walk speed in m/s (it drops when the page renders slowly). */
@@ -2024,7 +2076,7 @@
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
