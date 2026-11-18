@@ -223,7 +223,7 @@ test('checks, PR readiness, usage words, phone detection and dimmer touch routin
 test('demo data shows every status and both pickup and conversation behaviours', () => {
   const d = L.parseStatus(L.demoStatus(NOW));
   for (const s of L.STATUSES) assert.ok(d.bots.some(b => b.status === s), s);
-  assert.equal(d.bots.length, 14);
+  assert.equal(d.bots.length, 15);
   assert.ok(L.recentConversations(d.conversations, NOW).length > 0);
   const n = L.parseStatus(L.demoNextStatus(L.demoStatus(NOW), NOW + 5000));
   assert.ok(L.diffItems(d.items, n.items).length >= 2);
@@ -368,32 +368,37 @@ test('demo v2: screens, a meeting that ends on the next poll, PR-linked, chat-li
   assert.notEqual(L.planOffice(p.bots, [], cyc + 1000, 'live').plans['HR'].act, 'lead', 'no ambient training without a real session');
 });
 
-/* ---------- item 17: 14-bot roster matches the sidebar ---------- */
-test('item 17: roster is the 14 sidebar bots, in sidebar order, short names, exact ids', async () => {
+/* ---------- item 17: roster matches the sidebar (14 bots + Hermes, card cs-d390e7b5) ---------- */
+test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exact ids', async () => {
   const want = [['President', '431e8cf1-f077-4548-82b7-46c1959dc4c9'], ['QA', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc'], ['HR', '372936ae-81e1-4013-b0d0-9ee47d97a3c4'],
     ['Cursor', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f'], ['Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841'], ['ChatGPT', '7bcb0d85-ec55-4e17-907f-3e71688e8799'],
     ['Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'], ['Usage', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'], ['Edgar', '811cc842-4bef-47c2-98d2-0f4bb78f7169'],
     ['Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a'], ['Gauge', '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6'], ['Sniffer', '321469c4-1299-43e7-bd32-1704f58777be'],
-    ['GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a'], ['Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d']];
-  assert.equal(L.ROSTER.length, 14);
+    ['GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a'], ['Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d'], ['Hermes', '15ab4cfb-2d51-4809-9ae3-f1285ebd829f']];
+  assert.equal(L.ROSTER.length, 15);
   assert.deepEqual(L.ROSTER.map(r => [r.name, r.id]), want);
   const demo = L.parseStatus(L.demoStatus(NOW)).bots;
-  assert.equal(demo.length, 14);
+  assert.equal(demo.length, 15);
   assert.deepEqual(demo.map(b => [b.bot, b.bot_id]), want);
   // a shuffled feed still lands in sidebar order; old names resolve by id
   const shuffled = want.slice().reverse().map(([bot, bot_id]) => ({ bot: bot === 'Cursor' ? 'Software' : bot, bot_id }));
   assert.deepEqual(L.parseStatus({ bots: shuffled }).bots.map(b => b.bot), want.map(w => w[0]));
   // desks, one per bot, no overlap; Cursor keeps the old Software desk
   const names = demo.map(b => b.bot), d = L.deskLayout(names.length, names);
-  assert.equal(new Set(d.map(p => p.x + ',' + p.z)).size, 14);
+  assert.equal(new Set(d.map(p => p.x + ',' + p.z)).size, 15);
   assert.deepEqual([d[names.indexOf('Cursor')].x, d[names.indexOf('Cursor')].z], [-5.4, -4]);
+  // Hermes takes the last free grid spot (back row, 5th column); every desk keeps the 1.6 m / 1.85 m aisles
+  assert.deepEqual([d[names.indexOf('Hermes')].x, d[names.indexOf('Hermes')].z], [4.2, -4]);
+  for (let i = 0; i < d.length; i++) for (let j = i + 1; j < d.length; j++) assert.ok(Math.abs(d[i].x - d[j].x) >= 3.19 || Math.abs(d[i].z - d[j].z) >= 3.39, names[i] + ' / ' + names[j]);
+  assert.equal(L.canonicalBot('anything', '15ab4cfb-2d51-4809-9ae3-f1285ebd829f'), 'Hermes', 'Hermes resolves by bot_id');
   // avatars: each bot has its own sidebar-matched body
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['starburst', '#a8733f'],
     ChatGPT: ['wedge', '#f79a1d'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['cloud', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
     Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'] };
-  for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
+  /* Hermes's custom avatar lands in its own PR */
+  for (const [n, id] of want.filter(([n]) => shapeColor[n])) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
   assert.equal(Object.keys(A.AVATARS).length, 14);
   assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');
 });

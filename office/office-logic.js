@@ -183,13 +183,15 @@
   /* Older OFFICE_STATUS names mapped to the exact Grok Bot sidebar names. */
   const BOT_ALIASES = { 'Usage Ctrl': 'Usage', 'Usage Ctr': 'Usage', 'Usage Budget': 'Usage', 'dr eggbot': 'HR', 'HR - Bot Trainer': 'HR', 'QA bot': 'QA', 'Software': 'Cursor',
     'Archive \u00b7 Application State Tracker': 'Archive' };
-  /* Item 17 (Tim, Nov 16 5:38 PM): the 3D office roster is exactly the 14-bot sidebar, in sidebar order, with the short names. */
+  /* Item 17 (Tim, Nov 16 5:38 PM): the 3D office roster is exactly the sidebar, in sidebar order, with the short names.
+     Card cs-d390e7b5 (Nov 18): Hermes joins as the 15th bot; it passes requests through to Tim's local Hermes agent on TIMMAY. */
   const ROSTER = [
     ['President', '431e8cf1-f077-4548-82b7-46c1959dc4c9'], ['QA', '338fc1b1-fecc-475d-ba9e-acd49bcadcfc'], ['HR', '372936ae-81e1-4013-b0d0-9ee47d97a3c4'],
     ['Cursor', 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f'], ['Claude', 'd4118f0c-1b06-4e9a-982f-f5314451c841'], ['ChatGPT', '7bcb0d85-ec55-4e17-907f-3e71688e8799'],
     ['Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'], ['Usage', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'], ['Edgar', '811cc842-4bef-47c2-98d2-0f4bb78f7169'],
     ['Comp', '424e5611-fb8f-4ae1-a360-051e61e63e8a'], ['Gauge', '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6'], ['Sniffer', '321469c4-1299-43e7-bd32-1704f58777be'],
-    ['GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a'], ['Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d']].map(([name, id]) => ({ name, id }));
+    ['GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a'], ['Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d'],
+    ['Hermes', '15ab4cfb-2d51-4809-9ae3-f1285ebd829f']].map(([name, id]) => ({ name, id }));
   /* Renamed bots matched by bot_id first, so the label follows the sidebar whatever name the file carries. */
   const BOT_ID_NAMES = Object.fromEntries(ROSTER.map(r => [r.id, r.name]));
   function canonicalBot(name, botId) { const id = str(botId).trim(), n = str(name).trim(); return BOT_ID_NAMES[id] || BOT_ALIASES[n] || n; }
@@ -704,7 +706,8 @@
           work: [{ id: 'ex-g1', title: 'EXAMPLE: 8 old asks waiting on Tim', status: 'open', at: ago(8), link: 'https://example.com/EXAMPLE/checksheet/1' }] }),
         B('Sniffer', '321469c4-1299-43e7-bd32-1704f58777be', 'waiting', '', 'Finished the search-filter sweep', 30),
         B('GUI', 'a8b4a0b2-acfd-4485-8444-7ab27007df4a', 'idle', '', 'Adjusted card contrast', 9, '', SCR('card-preview', ['Card contrast: 7.1:1 ✓', 'Badge sizes: 19 / 24 px', 'Waiting for review'])),
-        B('Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d', 'idle', '', 'Archived stale asks', 75)
+        B('Archive', 'c95408dd-c07f-460e-aaa0-9d515fe5be7d', 'idle', '', 'Archived stale asks', 75),
+        B('Hermes', '15ab4cfb-2d51-4809-9ae3-f1285ebd829f', 'idle', '', 'EXAMPLE: passed a request to the TIMMAY agent', 14)
       ],
       _demoWork: [{ id: 'ex-r1', title: 'EXAMPLE: coordinator publish stalled', status: 'open', at: ago(0), link: 'https://example.com/EXAMPLE/issue/9' }],
       items: [
@@ -948,7 +951,9 @@
      Tim (Nov 17): every desk on the carpet (x -10.7..6.3, z -6.1..4.5) in an even 5 x 3 grid, centred on the carpet: 3.2 m column pitch
      (1.6 m aisle between desks), 3.4 m row pitch (1.85 m aisle behind each chair). Pinned names keep their [col, row]; everyone else fills
      the free spots in roster order (first 4 columns, then the 5th column front-to-back, matching the old overflow order; the back-row
-     5th spot is used last so the back row keeps only its four bots); >15 bots overflow to a front row. */
+     5th spot is used last so the back row keeps only its four bots); >15 bots overflow to a front row.
+     Hermes (15th, card cs-d390e7b5) takes that last back-row spot (x 4.2, z -4): 1.6 m aisle to GUI, 1.85 m behind its chair to
+     Sniffer's desk, clear of the group-chat ring (x >= 6.4) and the lo2 loiter spot behind it. */
   const DESK_X = [-8.6, -5.4, -2.2, 1, 4.2], DESK_Z = [-4, -0.6, 2.8];
   const DESK_PINS = { Claude: [0, 0], Cursor: [1, 0], Comp: [2, 0], GUI: [3, 0], President: [1, 1] }; // [col, row] in the grid
   const DESK_OVERFLOW = [[1, 6.2], [-2.2, 6.2], [4.2, 6.2]];
