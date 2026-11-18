@@ -569,6 +569,7 @@ export function animate(c, pose, t, dt, opts) {
   let lean = 0, turnY = 0;
   // eager to work: an occasional quick glance (towards the desk / monitor) while standing about
   const glance = still ? 0 : Math.max(0, Math.sin(t * 0.7 + ph * 3) - 0.85) / 0.15;
+  if (c.body) c.body.position.z = 0; // President typing leans in (z 0.23); every other pose resets
   switch (pose) {
     case 'walk': {
       const s = Math.sin(t * 9 + ph); legX = s * 0.6; armR.x = -s * 0.5; armL.x = s * 0.5; bob = Math.abs(Math.cos(t * 9 + ph)) * 0.03; if (opts.box) { armR.x = armL.x = -1.25; armR.z = c.rest.armR.z * 0.3; armL.z = c.rest.armL.z * 0.3; } break;
@@ -580,7 +581,7 @@ export function animate(c, pose, t, dt, opts) {
     }
     case 'lounge': { lift = c.sitLift - 0.04; legX = -1.4; armR.x = -0.5; armL.x = -0.4; lean = -0.12; if (!still) bob = 0.006 * Math.sin(t * 1.2 + ph); turnY = 0.4 * glance; break; }
     case 'sit': case 'type': case 'game': case 'meet': {
-      lift = c.sitLift; legX = -1.45; c.body.position.z = 0;
+      lift = c.sitLift; legX = -1.45;
       if (perched) { lift = SEAT_TOP; legX = 0; }
       if (pose === 'type' && !still) {
         // typing bursts with short pauses to read the monitor; leaning in
@@ -592,7 +593,7 @@ export function animate(c, pose, t, dt, opts) {
         armR.x = -1.2 + 0.12 * Math.sin(t * 22 + ph); armL.x = -1.2 + 0.12 * Math.sin(t * 19 + ph); lean = 0.2; bob = 0.01 * Math.sin(t * 7);
         turnY = 0.06 * Math.sin(t * 2.2 + ph);
       } else if (pose === 'meet' && !still) { armR.x = -0.9 + 0.25 * Math.max(0, Math.sin(t * 2 + ph)); armL.x = -1.0; lean = 0.1; turnY = 0.35 * Math.sin(t * 0.4 + ph); }
-      else { armR.x = -1.0; armL.x = -1.0; if (pose === 'type') c.body.position.z = 0; lean = pose === 'type' ? 0.12 : 0.06; }
+      else { armR.x = -1.0; armL.x = -1.0; lean = pose === 'type' ? 0.12 : 0.06; }
       if (pose === 'type' && c.kind === 'president') { // humanoid typing: arms angled up so the hands rest above the desk top (Tim 11:00 PM); the jelly bots keep their arms
         const tap = still ? 0 : 0.05 * Math.sin(t * 15 + ph) * (Math.sin(t * 1.3 + ph) > -0.45 ? 1 : 0);
         c.body.position.z = 0.23; armR.x = -1.9 + tap; armL.x = -1.9 - tap; armR.z = c.rest.armR.z; armL.z = c.rest.armL.z; lean = Math.min(lean, 0.06);
