@@ -10,6 +10,7 @@
    evidence rows (44 px, 3 px state bar, glyph, 11 px word), materials after the drawer body (44 px, >= 11 px). 390 / 402.
    Run: node tests/phone-drawer.browser.js */
 require('./helpers/block-production-writer.cjs'); // no request to the production Writer
+require('./legacy-phone-layout.cjs');   // phone contexts check the old phone layout (touch tablets); see the helper
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
 const repo=path.resolve(__dirname,'..');
@@ -58,9 +59,9 @@ const JOB='V2X-A4CCD49EE686';
       const under=root=>{const out=[];if(!root)return out;root.querySelectorAll('*').forEach(e=>{if(!e.offsetParent)return;const own=[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim());if(own&&parseFloat(cs(e).fontSize)<11)out.push(e.tagName+' '+cs(e).fontSize)});return out};
       const ring=q('.ws-ring'),dec=q('.wh-decide'),ev=q('.ck-checks'),acts=q('.wh-actions'),body=q('#d-body');
       return {ring:{w:bx(ring).width,svg:!!ring.querySelector('svg'),fs:cs(ring.querySelector('b')).fontSize,info:bx(q('.ws-score-info')).left>bx(ring).right-1},
-        dec:{pos:cs(dec).position,bottom:cs(dec).bottom,btn:[...dec.querySelectorAll('button')].filter(b=>b.offsetParent).map(b=>({t:b.innerText.trim(),h:bx(b).height,fs:cs(b).fontSize})),sub:[...dec.querySelectorAll('sub')].some(s=>s.offsetParent),fits:bx(dec).right<=bx(d).right+0.5},
+        dec:{pos:cs(dec).position,bottom:cs(dec).bottom,btn:[...dec.querySelectorAll('button:not(.wh-applied-link)')].filter(b=>b.offsetParent).map(b=>({t:b.innerText.trim(),h:bx(b).height,fs:cs(b).fontSize})),sub:[...dec.querySelectorAll('sub')].some(s=>s.offsetParent),fits:bx(dec).right<=bx(d).right+0.5},
         ev:[...ev.querySelectorAll('li')].map(li=>({c:li.className,h:bx(li).height,bar:cs(li).borderLeftWidth,glyph:getComputedStyle(li,'::before').content,sfs:li.querySelector('small')?cs(li.querySelector('small')).fontSize:null})),
-        acts:{pos:cs(acts).position,after:bx(acts).top>=bx(body).bottom-1,btn:[...acts.querySelectorAll('button')].map(b=>({h:bx(b).height,fs:cs(b).fontSize}))},
+        acts:{pos:cs(acts).position,after:[...body.children].filter(e=>e!==acts&&e!==dec&&e.getClientRects().length).every(e=>bx(acts).top>=bx(e).bottom-1),btn:[...acts.querySelectorAll('button')].map(b=>({h:bx(b).height,fs:cs(b).fontSize}))},
         under:[].concat(under(q('.ws-score')),under(dec),under(ev),under(acts),under(q('.d-head')),under(q('.wh-top'))),
         hd:{h:bx(q('.d-head')).height,back:q('#d-back')&&q('#d-back').offsetParent?q('#d-back').innerText.trim():null,backH:bx(q('#d-back')).height,label:q('.d-label').innerText,lfs:cs(q('.d-label')).fontSize,
           lines:Math.round(bx(q('.d-label')).height/parseFloat(cs(q('.d-label')).lineHeight)),title:cs(q('#d-title')).fontSize,meta:{fs:cs(q('#d-meta')).fontSize,h:bx(q('#d-meta')).height,t:q('#d-meta').innerText},chips:!!q('.wh-chips').offsetParent},
