@@ -1508,6 +1508,8 @@
     if (!isFinite(t)) return { text: 'measured time unknown', stale: true };
     return { text: 'measured ' + etClock(t) + ' ET', stale: !!failed || now < t || now - t > CONSTRAINT_STALE_MIN * MIN };
   }
+  /* A constraint summary worth showing: at least one stage has a measured rate. All-Unknown means the feed is stale, so the wall keeps its last good one. */
+  function constraintHasNumbers(sum) { return !!(sum && Array.isArray(sum.stages) && sum.stages.some(st => !st.manual && st.perHour != null)); }
   function demoConstraint() {
     return { hours: 36, stages: [{ name: 'Discovery', unit: 'candidates/hr', perHour: 9.1, partial: true, constraint: false }, { name: 'Intake', unit: 'jobs/hr', perHour: 4.1, partial: true, constraint: false },
       { name: 'Enrichment', unit: 'jobs/hr', perHour: 0, partial: true, constraint: true }, { name: 'Your decisions', manual: true, constraint: false }],
@@ -2184,7 +2186,7 @@
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
-    RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
+    RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,

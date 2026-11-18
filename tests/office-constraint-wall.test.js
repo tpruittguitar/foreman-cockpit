@@ -50,3 +50,17 @@ test('without ratesAsOf a stale reading still shows STALE measured', () => {
   const texts = c.texts.map(x => x.t);
   assert.ok(texts.some(t => t === '? STALE · measured 12:03 AM ET'), 'stale measured label: ' + JSON.stringify(texts.filter(t => /as of|STALE|measured/.test(String(t)))));
 });
+
+test('stale feed keeps the last good numbers, labeled (P3 constraint wall)', () => {
+  assert.equal(L.constraintHasNumbers(L.demoConstraint()), true);
+  assert.equal(L.constraintHasNumbers(CR.summary(CR.model({}), {})), false);
+  assert.equal(L.constraintHasNumbers(null), false);
+  const sum = Object.assign({}, L.demoConstraint(), { ratesAsOf: '2026-11-18T05:03:00Z' });
+  const c = fakeCtx();
+  D.drawConstraintWall(c, 1024, 512, { sum, age: { text: 'feed stale', stale: true }, lastGood: true, err: 'HTTP 503' });
+  const texts = c.texts.map(x => String(x.t));
+  assert.ok(texts.includes('? STALE · last good measure · as of 12:03 AM ET'), JSON.stringify(texts.filter(t => /STALE|as of/.test(t))));
+  assert.ok(texts.some(t => /^9\.1$/.test(t) || /9\.1/.test(t)), 'numbers still drawn');
+  const js = require('fs').readFileSync(require('path').join(__dirname, '..', 'office', 'office.js'), 'utf8');
+  assert.match(js, /if \(!L\.constraintHasNumbers\(sum\)\) return lastGood\(c\.err\);\n  c\.lastGood = sum;/);
+});

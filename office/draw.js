@@ -370,8 +370,10 @@ export function drawConstraintWall(ctx, W, H, o) {
   if (o.demo) exampleTag(ctx, 470 * s, 50 * s, 20 * s);
   const age = o.age || { text: 'no data yet', stale: true };
   const asOf = sum && sum.ratesAsOf, asOfOk = Number.isFinite(Date.parse(asOf || ''));
-  const ageText = asOfOk ? '· as of ' + L.etClock(Date.parse(asOf)) + ' ET' : (age.stale ? '? STALE · ' : '') + age.text;
-  ctx.textAlign = 'right'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = asOfOk ? '#c9ccd2' : (age.stale ? C.stale : '#c9ccd2');
+  /* P3: one as-of tied to the numbers shown; a stale feed always says so, and kept numbers say they are the last good measure. */
+  const asOfText = asOfOk ? 'as of ' + L.etClock(Date.parse(asOf)) + ' ET' : '';
+  const ageText = o.lastGood ? '? STALE · last good measure' + (asOfText ? ' · ' + asOfText : '') : asOfOk ? '· ' + asOfText : (age.stale ? '? STALE · ' : '') + age.text;
+  ctx.textAlign = 'right'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = o.lastGood || (!asOfOk && age.stale) ? C.stale : '#c9ccd2';
   ctx.fillText(ageText, W - 24 * s, 54 * s); ctx.textAlign = 'left';
   if (!sum) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${32 * s}px ${SANS}`; ctx.fillText(fit(ctx, o.err ? 'Pipeline feed unavailable: ' + o.err : 'Waiting for the pipeline feed…', W - 48 * s), 24 * s, 160 * s); return; }
   const cw = 176 * s, qw = 94 * s, y0 = 80 * s, ch = 380 * s, x0 = 14 * s, num = n => n.toLocaleString('en-US');
