@@ -508,7 +508,7 @@
     const a0 = Math.min(NAP_RIG_X, NAP_RIG_X - top), a1 = Math.max(NAP_RIG_X, NAP_RIG_X - top);
     return { bottom, lieY: napLieY(halfW), onCushion: bottom >= CUSHION_TOP - 1e-9, inside: halfD <= depth / 2 + 1e-9 && a0 >= -len / 2 - 1e-9 && a1 <= len / 2 + 1e-9 };
   }
-  const BUBBLE_MAX = 90; // wider 2-3 line bubbles; typical sentences fit with no ellipsis
+  const BUBBLE_MAX = 130; // wrap up to about 3 lines; typical and recent sentences fit with no ellipsis
   function bubbleText(c) { return c.text ? truncate(c.text, BUBBLE_MAX) : 'talking with ' + c.to; }
 
   /* Open PRs from the GitHub API -> rows for the Needs Tim board. checks: passing|failing|pending|none */
