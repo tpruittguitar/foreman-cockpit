@@ -1000,7 +1000,8 @@ function buildWorld() {
     if (cur && kinds.includes(cur.kind)) return cur;
     const list = SLOTS.concat(BOARD_SLOTS).filter(s => kinds.includes(s.kind) && !book.holder(s.id));
     if (!list.length) return null;
-    const s = list[L.hash(c.name + kinds.join()) % list.length]; return book.take(s.id, c.name) ? s : null; // never two bots on one spot
+    const s = kinds.includes('board') ? L.nearestSlot({ x: c.pos.x, z: c.pos.y }, list) : list[L.hash(c.name + kinds.join()) % list.length];
+    return book.take(s.id, c.name) ? s : null;
   }
   const slotById = id => SLOTS.concat(BOARD_SLOTS).find(s => s.id === id);
 
@@ -1199,12 +1200,17 @@ function buildWorld() {
       }
     }
     if (c.path.length) {
-      const tgt = c.path[0], dx = tgt.x - c.pos.x, dz = tgt.y - c.pos.y, dist = Math.hypot(dx, dz), step = L.WALK_MPS * dt;
-      if (dist <= step) { c.pos.copy(tgt); c.path.shift(); c.prog = null; } else { c.pos.x += dx / dist * step; c.pos.y += dz / dist * step; }
-      if (dist > 0.01) c.root.rotation.y = angLerp(c.root.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 10));
-      pose = 'walk';
+      const p = { x: c.pos.x, z: c.pos.y };
+      L.walkAlong(p, c.path, dt, L.WALK_MPS);
+      c.pos.set(p.x, p.z);
       c.root.position.set(c.pos.x, 0, c.pos.y);
-    } else {
+      if (c.path.length) {
+        const tgt = c.path[0], dx = tgt.x - c.pos.x, dz = tgt.y - c.pos.y;
+        if (Math.hypot(dx, dz) > 0.01) c.root.rotation.y = angLerp(c.root.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 10));
+        pose = 'walk';
+      } else c.prog = null;
+    }
+    if (!c.path.length) {
       if (!c.arrived) { c.arrived = true; c.arrivedAt = clock; }
       if (c.goalKey !== g.key) pose = seated(c.pose) ? c.pose : 'stand';
       let face = goal.spot.face;
@@ -1383,7 +1389,7 @@ function buildWorld() {
     const now = Date.now(), dist = camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2)), lod = L.lodFor(dist);
     const sc = mirrorFor(d, b, now), image = sc.show === 'image' && L.mirrorAt(dist) && d.img;
     const mine = L.sortItems(items().filter(i => i.owner === d.name && L.columnFor(i) !== 'done'));
-    const oc = chars.get(d.name), act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (plan.plans[d.name] || {}).act || '', mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
+    const oc = chars.get(d.name), sched = (plan.plans[d.name] || {}).act || '', act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (oc ? L.actionLabel(oc.goalNow, oc.pose, sched) : sched), mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
     const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + (sc.offline ? 'off' : '') + sc.why + Math.floor(now / (mode === 'game' ? (dist > L.GAME_SLOW_M ? 400 : 120) : 30000));
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;
@@ -1654,7 +1660,7 @@ function buildWorld() {
     if (!XR) nextFrame();
     if (!XR && minFrame && now - lastFrame < minFrame) return;
     lastFrame = now;
-    const raw = (now - last) / 1000, dt = Math.max(0, Math.min(0.1, raw)); if (raw > 0) realRate += (dt / raw - realRate) * 0.05; last = now; // rAF time can precede the setup time: never negative
+    const raw = (now - last) / 1000, dt = L.frameWalkDt(raw); if (raw > 0) realRate += (dt / raw - realRate) * 0.05; last = now; // rAF time can precede the setup time: never negative
     clock += dt; // (v2 bug: this sat inside the comment above, so every animation clock stood still)
     if (XR) { glide = null; tour = null; vrFrame(dt, now); }
     if (glide) {
@@ -1807,7 +1813,7 @@ function buildWorld() {
 
   return {
     goToBot, dirty: () => { boardDirty = true; },
-    activity: name => (plan.plans[name] || {}).act || '',
+    activity: name => { const c = chars.get(name), sched = (plan.plans[name] || {}).act || ''; return c ? L.actionLabel(c.goalNow, c.pose, sched) : sched; },
     screenPoint(name, dx = 0, dy = 0) { const d = deskOf(name); if (!d) return null; camera.updateMatrixWorld(); const v = d.mon.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(dx, dy, 0)).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     botPoint(name) { const c = chars.get(name); if (!c) return null; camera.updateMatrixWorld(); const v = c.root.position.clone().setY(c.top * 0.55 + c.rig.position.y).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     dimLevel: () => ({ target: dimTarget, shown: dimCur }), setDim: v => setDim(v, true),
@@ -1822,7 +1828,7 @@ function buildWorld() {
   desks: desks.map(d => ({ name: d.name, seat: d.seat, stand: d.stand, visit: d.visit })),
   slots: SLOTS.concat(BOARD_SLOTS).map(s => ({ id: s.id, kind: s.kind, x: +s.x.toFixed(3), z: +s.z.toFixed(3), face: s.face })), trainer: TRAINER_SPOT }),
     info: () => ({ camY: +camera.position.y.toFixed(3), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
-      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, activity: Object.fromEntries(Object.entries(S.fresh).map(([n, f]) => [n, { plan: (plan.plans[n] || {}).act || '', working: f.working, source: f.source || 'none', ageMin: f.ageMin }])), meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
+      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: Object.fromEntries(Object.keys(plan.plans || {}).map(n => { const c = chars.get(n), src = plan.plans[n] || {}, act = c ? L.actionLabel(c.goalNow, c.pose, src.act || '') : (src.act || ''); return [n, Object.assign({}, src, { act })]; })), activity: Object.fromEntries(Object.entries(S.fresh).map(([n, f]) => { const c = chars.get(n), sched = (plan.plans[n] || {}).act || ''; return [n, { plan: c ? L.actionLabel(c.goalNow, c.pose, sched) : sched, working: f.working, source: f.source || 'none', ageMin: f.ageMin }]; })), meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
       lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose, +(c.radius || 0.3).toFixed(2)]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
       generic: [...chars.values()].filter(c => c.generic).map(c => c.name), idle: [...chars.values()].map(c => c.name + ':' + (c.idleAct || '')), fridge: fridgeStock, restocker: S.restocker, needs: [...S.needsSet],
       jobs: [...chars.values()].filter(c => c.job).map(c => c.name + ':' + c.job.phase), pipeline: { live: pipe.live, embed: !!pipe.css, browsing: pipe.browsing }, conf: CONF })
