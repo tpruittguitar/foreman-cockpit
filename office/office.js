@@ -1175,7 +1175,7 @@ function buildWorld() {
     if (g.key !== c.goalKey) {
       // walking cap: at most a third of the bots on the move; others wait where they are (alerts never wait)
       const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
-      if (far && !needs && walkingNow >= L.walkCap(chars.size)) { if (!c.wantSince) c.wantSince = clock; }
+      if (!L.mayStartWalk(far, needs || c.forceNap, walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
       else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) c.restocked = false; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
     }
     const goal = c.goalKey === g.key ? g : (c.goal || g);
