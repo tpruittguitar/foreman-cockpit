@@ -89,3 +89,10 @@
   #grid td{font-size:13.5px}
   #drawer .wh-title h2,#drawer #d-title{font-size:32px!important}
 }
+
+/* Job drawer body fills leftover height; the four decision buttons stay pinned at the bottom. */
+@media(min-width:981px),(min-width:761px) and (pointer:fine){
+  #drawer{min-height:0;overflow:hidden;flex-direction:column}
+  #drawer #d-body{flex:1 1 auto;min-height:0;overflow:auto}
+  #drawer #d-body>.wh-decide{position:sticky;bottom:0;z-index:3;flex:none;background:var(--pe-hull,#050707);padding:8px 0 4px;box-shadow:0 -1px 0 var(--pe-seam,var(--forge-line,#333))}
+}
