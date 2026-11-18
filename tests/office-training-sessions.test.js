@@ -154,7 +154,7 @@ test('replay only: an ended real session replays labeled Replay at the start of 
   assert.deepEqual([p.plans.Claude.act, p.plans.QA.act], ['train', 'train']);
   assert.notEqual(p.plans.Root.act, 'train');
   const sl = L.trainingSlide(p.training, skills);
-  assert.equal(sl.counter, 'REPLAY'); assert.match(sl.title, /^Replay: PR hygiene/);
+  assert.equal(sl.counter, ''); assert.equal(sl.title, 'Replay: ' + p.training.skill); assert.match(sl.bullets[0], /PR hygiene/); /* GUI office review Nov 18 #3: short title, no duplicate REPLAY */
   assert.equal(L.trainLine(p.training, skills, 1), 'Replay: Take PR hygiene from the board');
   const tg = L.skillTags(p.training, parse(past).sessions, p.training.sessionAt + L.PICK_MS / 2, skills);
   assert.equal(tg.Claude.replay, true); assert.equal(tg.Claude.t, 0.5);

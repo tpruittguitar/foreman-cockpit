@@ -367,7 +367,7 @@
   function trainingSlide(training, skills) {
     if (!training || !training.real) return null;
     const name = skillTitle(training.skill, skills);
-    return { index: -1, title: (training.replay ? 'Replay: ' : 'Skill: ') + name, bullets: ['Training: ' + name, 'Led by ' + training.trainer, training.trainees.length + ' in the room'], counter: training.replay ? 'REPLAY' : 'LIVE', training: true };
+    return { index: -1, title: training.replay ? 'Replay: ' + (str(training.skill).trim() || name) : 'Skill: ' + name, bullets: ['Training: ' + name, 'Led by ' + training.trainer, training.trainees.length + ' in the room'], counter: training.replay ? '' : 'LIVE', training: true }; /* GUI office review Nov 18 #3: replay title is the short skill id and the title already says Replay */
   }
   /* The trainer of a live or replayed session is leading, not idle: their name tag drops the screen-idle / offline / stale chip. */
   function activityChip(fresh, training, name) {
