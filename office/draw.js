@@ -493,7 +493,7 @@ export function drawAutomations(ctx, W, H, o) {
   if (!a || !a.rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'Waiting for AUTOMATIONS_STATUS.json', 28 * s, 130 * s); return; }
   /* one row per automation (brief_office7 item 3): name, OK / FAIL / SKIPPED, last ran (ET), live countdown; the 3-day timeline is in the click panel */
   const rows = L.automationBoardRows(a, o.now), cx = [28 * s, W * 0.47, W * 0.61, W * 0.79], top = 104 * s, foot = 34 * s;
-  const rowH = Math.max(34 * s, Math.min(64 * s, (H - top - foot) / Math.max(1, rows.length))), shown = Math.min(rows.length, Math.floor((H - top - foot) / rowH));
+  const avail = H - top - foot, rowH = Math.min(64 * s, avail / Math.max(1, rows.length)), shown = rows.length;
   const fs = Math.min(26 * s, rowH * 0.48);
   ctx.fillStyle = '#7d838b'; ctx.font = `700 ${18 * s}px ${SANS}`;
   ['Automation', 'Result', 'Last ran', 'Next run'].forEach((t, k) => ctx.fillText(t, cx[k], 92 * s));
