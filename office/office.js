@@ -1282,7 +1282,9 @@ function buildWorld() {
       const rp = c.goalNow && c.goalNow.recent;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
       const fr = !frozen && !needs ? L.activityChip(S.fresh[c.name], plan.training, c.name) : '';
-      const sk = skills[c.name], learned = sk && sk.t == null ? `<span class="chip learned">${sk.replay ? 'Replay · ' : ''}✓ ${esc(sk.skill)}</span>` : '';
+      /* GUI office review Nov 18 #1: the floor tag shows the bot's current card (its task file line) while it works; training chips stay on the training board. */
+      const sc = S.screens && S.screens.screens && S.screens.screens[idFor(c.name, c.botId)], task = !fr && !needs && sc && sc.busy && sc.task ? sc.task : '';
+      const learned = task ? `<span class="chip job" title="${esc(task)}">${esc(task.length > 40 ? task.slice(0, 39) + '…' : task)}</span>` : '';
       const key = c.name + st.status + needs + frozen + S.state + (hoverBot === c.name) + (rp ? rp.min : '') + why + fr + learned;
       if (key !== c.tagKey) {
         c.tagKey = key;
