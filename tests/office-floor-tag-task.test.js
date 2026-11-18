@@ -11,11 +11,19 @@ test('screens index carries the task line without the "Task:" prefix', () => {
   assert.equal(s.b2.task, '');
 });
 
-test('floor tag shows the card chip only while working and never a training chip', () => {
-  assert.match(src, /task = !fr && !needs && sc && sc\.busy && sc\.task \? sc\.task : ''/);
-  assert.match(src, /<span class="chip job" title="\$\{esc\(task\)\}">/);
-  const tag = src.slice(src.indexOf('function updateLabels'), src.indexOf('c.tagBox = null'));
-  assert.doesNotMatch(tag, /chip learned/);
+test('floor tags carry no chips: name plus neutral card title or a plain word (card 653d851)', () => {
+  const tag = src.slice(src.indexOf('function updateLabels'), src.indexOf('const ys = L.nudgeLabels'));
+  assert.doesNotMatch(tag, /class="chip/);
+  assert.match(tag, /needs \? 'NEEDS TIM' : task \?/);
+  assert.match(tag, /<span class="tsub\$\{needs \? ' alert' : ''\}">/);
+  assert.doesNotMatch(src, /flyEl|\bfly\.sk\b/);
+});
+
+test('labelOverlaps hides any tag still overlapping after the nudge; the first listed wins', () => {
+  const box = (x, y) => ({ x, y, w: 70, h: 24 });
+  assert.deepEqual(L.labelOverlaps([box(100, 200), box(300, 200)], [200, 200]), [false, false]);
+  assert.deepEqual(L.labelOverlaps([box(100, 200), box(110, 200), box(120, 200)], [200, 200, 173]), [false, true, false]);
+  assert.match(src, /shown\.sort\(\(a, b\) => b\.needs - a\.needs\);\n    const ys = L\.nudgeLabels\(shown\);/);
 });
 
 test('training whiteboard is dark and the constraint waiting figure fits its gutter', () => {
