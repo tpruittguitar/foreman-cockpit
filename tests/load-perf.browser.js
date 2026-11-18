@@ -1,6 +1,7 @@
-/* REV-093 (perf, Grok 00:26 ET: cut the live load): an unchanged structured re-read after the background Writer re-import does
-   not rebuild the table; a changed one is applied; parallel geocode results all persist (none asked again on the next visit);
-   geocoder misses are remembered for 7 days. Run: node tests/load-perf.browser.js */
+/* After #418: a page load with a fresh snapshot makes 0 import POSTs and reads the structured
+   runtime once. A stale snapshot still imports once, with no second /jobs read on that load.
+   Parallel geocode results all persist (none asked again on the next visit); geocoder misses
+   are remembered for 7 days. Run: node tests/load-perf.browser.js */
 require('./helpers/block-production-writer.cjs'); // no request to the production Writer
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
 const fs=require('fs'),assert=require('assert'),path=require('path');
@@ -12,7 +13,7 @@ const JOB='V2X-A4CCD49EE686';
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
   const browser=await chromium.launch({executablePath:process.env.PIPELINE_CHROMIUM||undefined,args:['--no-sandbox']});
   const lines=fixture.split('\n'),srcLines=lines.filter(l=>/^\d+ \| V2X-[0-9A-F]+ \|/.test(l));
-  async function open(opts){
+  async function open(opts){if(!opts)opts={};if(opts.writerFetchedAt===undefined)opts.writerFetchedAt=new Date().toISOString();
     const ctx=await browser.newContext({viewport:{width:2560,height:1440},deviceScaleFactor:1});const page=await ctx.newPage(),errors=[],N={geo:0,geoNames:new Set(),jobs:0,imports:0};
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>{localStorage.setItem('px.cfg',JSON.stringify({url:location.origin+'/writer',key:'test-only'}))});
@@ -21,7 +22,7 @@ const JOB='V2X-A4CCD49EE686';
     await page.route('**/geocoding-api.open-meteo.com/**',async r=>{const name=new URL(r.request().url()).searchParams.get('name');N.geo++;N.geoNames.add(name);
       await new Promise(x=>setTimeout(x,40+Math.random()*200));r.fulfill({json:{results:[{name,latitude:35+Math.random(),longitude:-90+Math.random(),admin1:'Tennessee'}]}})});
     await page.route('**/api/structured/jobs*',r=>{const u=new URL(r.request().url()),lim=+u.searchParams.get('limit')||250,off=+u.searchParams.get('offset')||0;N.jobs++;
-      r.fulfill({json:{ok:true,total:srcLines.length,meta:{generatedAt:'2026-10-20T05:00:00Z'},jobs:srcLines.slice(off,off+lim).map(l=>({SOURCE_LINE:l}))}})});
+      r.fulfill({json:{ok:true,total:srcLines.length,meta:{generatedAt:'2026-10-20T05:00:00Z',writerFetchedAt:opts.writerFetchedAt},jobs:srcLines.slice(off,off+lim).map(l=>({SOURCE_LINE:l}))}})});
     await page.route('**/api/structured/admin/import-from-writer',async r=>{N.imports++;await new Promise(x=>setTimeout(x,300));r.fulfill({json:{ok:true,imported:srcLines.length}})});
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');
       r.fulfill({json:a==='scoring'?{ok:true,exists:true,model:{publishedRevision:26,modelVersion:'test'}}:a==='state'?{ok:true,state:{seen:{},reviewed:{}}}:{ok:true}})});
@@ -29,19 +30,20 @@ const JOB='V2X-A4CCD49EE686';
     return {ctx,page,errors,N};
   }
   const pages=Math.ceil(srcLines.length/250);
-  const reread=(page,N)=>page.waitForFunction(()=>true).then(async()=>{for(let k=0;k<150&&!(N.imports>=1&&N.jobs>=2*pages);k++)await page.waitForTimeout(100);await page.waitForTimeout(1500)});
-  // 1. the background Writer re-import reads the runtime again; unchanged rows give the same text, so the table is not rebuilt
+  const settle=async(page,N)=>{for(let k=0;k<150&&N.jobs<pages;k++)await page.waitForTimeout(100);await page.waitForTimeout(2000)};
+  // 1. a fresh snapshot: no import POST, and the runtime is read once
   {const {ctx,page,errors,N}=await open({});await page.evaluate(()=>{document.querySelectorAll('#grid tbody tr[data-id]').forEach(tr=>tr.__keep=1)});
-    await reread(page,N);
+    await settle(page,N);
     const k=await page.evaluate(()=>{const trs=[...document.querySelectorAll('#grid tbody tr[data-id]')];return {n:trs.length,kept:trs.filter(t=>t.__keep).length}});
-    assert.equal(N.imports,1,'one background re-import');assert.equal(N.jobs,2*pages,'the runtime was read twice: '+N.jobs+' pages');
-    assert(k.n>0&&k.kept===k.n,'identical re-read keeps every row node (no full rebuild): '+k.kept+'/'+k.n);
+    assert.equal(N.imports,0,'fresh snapshot: no import POST');assert.equal(N.jobs,pages,'the runtime was read once: '+N.jobs+' pages');
+    assert(k.n>0&&k.kept===k.n,'a single read keeps every row node: '+k.kept+'/'+k.n);
     assert.deepEqual(errors,[]);await ctx.close()}
-  // 2. a changed runtime on the re-read is still applied (the table is rebuilt)
-  {const {ctx,page,errors,N}=await open({});await page.evaluate(()=>{document.querySelectorAll('#grid tbody tr[data-id]').forEach(tr=>tr.__keep=1)});
-    const gone=srcLines.shift();await reread(page,N);srcLines.unshift(gone);
+  // 2. a stale snapshot still imports once, and does not reread the runtime on this load
+  {const {ctx,page,errors,N}=await open({writerFetchedAt:new Date(Date.now()-16*60000).toISOString()});await page.evaluate(()=>{document.querySelectorAll('#grid tbody tr[data-id]').forEach(tr=>tr.__keep=1)});
+    await settle(page,N);
     const k=await page.evaluate(()=>{const trs=[...document.querySelectorAll('#grid tbody tr[data-id]')];return {n:trs.length,kept:trs.filter(t=>t.__keep).length}});
-    assert(k.n>0&&k.kept===0,'changed re-read rebuilds the table: '+k.kept+'/'+k.n);
+    assert.equal(N.imports,1,'stale snapshot: one background import');assert.equal(N.jobs,pages,'stale snapshot still reads the runtime once: '+N.jobs+' pages');
+    assert(k.n>0&&k.kept===k.n,'no second read, so row nodes stay: '+k.kept+'/'+k.n);
     assert.deepEqual(errors,[]);await ctx.close()}
   // 3. geocode results from parallel lookups all persist, so a second visit asks the geocoder for nothing already found
   {const {ctx,page,errors,N}=await open({});await page.waitForFunction(()=>{const s=document.getElementById('map-loc-status');return s&&!/LOCATING/.test(s.textContent)},null,{timeout:20000});await page.waitForTimeout(1500);
