@@ -127,6 +127,11 @@
      user back to the top. Returns true when the pane was repainted (its handlers must be bound again). */
   var FOCUS_KEYS = ['data-m-do', 'data-id', 'data-m-open', 'data-m-menu', 'data-m-filter', 'data-m-jf', 'data-m-retry', 'data-m-retry-queue', 'data-m-field', 'id'];
   function setHtml(el, html) {
+    var ch = setHtml_(el, html), b = B(), wo = root.PipelineWriterOff;
+    if (wo) wo.apply(el, !!(b && b.health && b.health().writer === false));   // GUI 12: Writer off disables phone decide buttons like desktop
+    return ch;
+  }
+  function setHtml_(el, html) {
     if (el._mHtml === html) return false;
     var a = document.activeElement, sel = '';
     if (a && el.contains(a)) sel = FOCUS_KEYS.filter(function (k) { return a.hasAttribute(k); }).map(function (k) { return '[' + k + '="' + String(a.getAttribute(k)).replace(/"/g, '\\"') + '"]'; }).join('') || (a.hasAttribute('data-m-browse') ? '[data-m-browse]' : '');

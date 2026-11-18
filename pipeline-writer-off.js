@@ -1,11 +1,11 @@
 /* Pipeline Explorer Writer-off gate (Card P2, desktop parity with the phone banner).
-   While the Writer is off on this device, show the phone's banner text and disable every decision button
+   While the Writer is off on this device, show the phone's banner text and disable every decision button and field
    (disabled + aria-disabled + a title saying why). Buttons come back exactly as they were when the Writer is back. */
 (function (root) {
   'use strict';
   var BANNER = 'Writer not connected · decisions can’t be sent from this device. Save a connection in Settings.';
   var TITLE = 'Writer off: decisions can’t be sent from this device. Save a Writer connection in Settings.';
-  var SELECTOR = '[data-an-pursue],[data-an-research],[data-an-decline],[data-an-applied],[data-an-reason],[data-an-retry],[data-decide-key],#save-decision';
+  var SELECTOR = '[data-an-pursue],[data-an-research],[data-an-decline],[data-an-applied],[data-an-reason],[data-an-retry],[data-decide-key],#save-decision,#undo-decision,#edit-state,#edit-reason,#edit-dup,#edit-note,[data-m-do],[data-m-retry]';
   var MARK = 'data-writer-off-title';
   function gate(buttons, off) {
     var n = 0;
