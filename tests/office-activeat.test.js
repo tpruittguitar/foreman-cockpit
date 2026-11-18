@@ -7,12 +7,12 @@ const ROOT = { bot: 'Root', bot_id: '70f0889b-ecd4-457b-a69c-304cd2aff540', stat
 const screens = entry => ({ screens: L.parseScreensIndex({ updated_at: ago(1), screens: { [ROOT.bot_id]: Object.assign({ at: ago(1), paused: false, busy: false }, entry) } }) });
 
 test('activeAt present: the screen signal is activeAt, not the capture time', () => {
-  const ctx = screens({ activeAt: ago(300) });
+  const ctx = screens({ activeAt: ago(300), busy: true });
   assert.deepEqual(L.botSignals(ROOT, ctx), [ago(300)]);
   const f = L.freshness(ROOT, NOW, L.botSignals(ROOT, ctx));
   assert.equal(f.stale, true, 'a fresh capture alone no longer makes Root look active'); assert.equal(f.label, 'stale · last seen 5 h ago');
-  assert.equal(L.freshness(ROOT, NOW, L.botSignals(ROOT, screens({ activeAt: ago(10) }))).ageMin, 10);
-  assert.deepEqual(L.botSignals(ROOT, screens({ activeAt: null })), [''], 'activeAt written as null: no screen activity at all');
+  assert.equal(L.freshness(ROOT, NOW, L.botSignals(ROOT, screens({ activeAt: ago(10), busy: true }))).ageMin, 10);
+  assert.deepEqual(L.botSignals(ROOT, screens({ activeAt: null, busy: true })), [''], 'activeAt written as null: no screen activity at all');
 });
 test('activeAt absent (until Claude ships it): falls back to the capture time, as before', () => {
   assert.deepEqual(L.botSignals(ROOT, screens({})), [ago(1)]);
@@ -27,4 +27,10 @@ test('"no activity feed" for seeded or never-written rows with no other signal; 
   assert.equal(L.freshness(ROOT, NOW).label, 'stale · last seen 2 d ago', 'a real last action keeps the stale age');
   assert.equal(L.freshness(seeded, NOW, [ago(400)]).label, 'stale · last seen 6 h ago', 'any other signal is a feed');
   assert.deepEqual([L.freshness(seeded, NOW, [ago(30)]).stale, L.freshness(seeded, NOW, [ago(30)]).label], [false, '']);
+});
+test('idle-flagged screen (busy false) with a fresh activeAt: no screen signal, bot goes to the idle rotation; busy true stays at its desk', () => {
+  const idle = screens({ activeAt: ago(1), busy: false }), busy = screens({ activeAt: ago(1), busy: true });
+  assert.deepEqual(L.botSignals(ROOT, idle), []);
+  assert.equal(L.botActivity(ROOT, NOW, idle).working, false);
+  assert.equal(L.botActivity(ROOT, NOW, busy).working, true);
 });
