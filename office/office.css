@@ -146,8 +146,9 @@ html.tv .hint { bottom: calc(var(--safe) + 3.2em); }
 .why { color: #ffd23f; }
 .chip.recent { background: #173a4a; color: #9fe8f5; margin-left: 6px; }
 .chip.learned { background: #1f4a2a; color: #b6f5c4; margin-left: 6px; font-weight: 700; }
-.tag .chip.job { background: #1f4a2a; color: #b6f5c4; margin-left: 6px; font-weight: 700; }
-.tag.far .chip.job { display: none; }
+.tag .tsub { color: #aeb4bd; font-weight: 500; margin-left: 6px; }   /* card 653d851: neutral text, no chips */
+.tag .tsub.alert { color: #ff6b6b; font-weight: 800; }
+.tag.far .tsub:not(.alert) { display: none; }
 .tag.fly { background: none; pointer-events: none; }
 .bubble.recent { border-color: #37e0ff; }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }

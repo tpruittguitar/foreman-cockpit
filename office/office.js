@@ -1273,27 +1273,26 @@ function buildWorld() {
     convoLines = S.state === 'failed' ? [] : L.recentConversations(S.parsed ? S.parsed.conversations : [], Date.now());
     for (const c of convoLines) activeConvos.set(c.from, c);
   }
-  let flyEl = null;
   function updateLabels() {
     const w = innerWidth, h = innerHeight, max = TV ? 40 : 22, now = Date.now(), shown = [];
-    const skills = L.skillTags(plan.training, DEMO ? [] : S.training, now, skillList); let fly = null;
     for (const c of chars.values()) {
       const b = botByName(c.name), st = L.statusStyle(b ? b.status : 'idle'), frozen = S.state === 'failed', needs = S.needsSet.has(c.name) && !frozen;
       const rp = c.goalNow && c.goalNow.recent;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
       const fr = !frozen && !needs ? L.activityChip(S.fresh[c.name], plan.training, c.name) : '';
-      /* GUI office review Nov 18 #1: the floor tag shows the bot's current card (its task file line) while it works; training chips stay on the training board. */
+      /* Tim (Nov 18, 8:49 AM ET, card 653d851): no chips on floor tags. A tag is the name plus one plain word or the card title:
+         NEEDS TIM (red, a state word), the bot's task-file card while it works, else idle / offline. Ages stay in the hover title. */
       const sc = S.screens && S.screens.screens && S.screens.screens[idFor(c.name, c.botId)], task = !fr && !needs && sc && sc.busy && sc.task ? sc.task : '';
-      const learned = task ? `<span class="chip job" title="${esc(task)}">${esc(task.length > 40 ? task.slice(0, 39) + '…' : task)}</span>` : '';
-      const key = c.name + st.status + needs + frozen + S.state + (hoverBot === c.name) + (rp ? rp.min : '') + why + fr + learned;
+      const sub = frozen ? '' : needs ? 'NEEDS TIM' : task ? (task.length > 40 ? task.slice(0, 39) + '…' : task) : /^offline/.test(fr) ? 'offline' : fr ? 'idle' : S.fresh[c.name] && S.fresh[c.name].working ? 'working' : 'idle';
+      const tip = [task, fr, why ? '? ' + why : ''].filter(Boolean).join(' · ');
+      const key = c.name + needs + frozen + (hoverBot === c.name) + sub + tip;
       if (key !== c.tagKey) {
         c.tagKey = key;
         c.tag.className = 'tag' + (frozen ? ' frozen' : '') + (hoverBot === c.name ? ' hl' : '');
-        const chip = needs ? '<span class="chip">⚠ NEEDS TIM</span>' : ''; // no bare "?" chip: only a real needs_tim item is flagged
-        const recent = fr ? `<span class="chip stale">${esc(fr)}</span>` : rp && !needs ? `<span class="chip recent">recent · ${rp.min}m ago</span>` : '';
-        c.tag.innerHTML = chip + esc(c.name) + recent + learned; c.tag.title = why ? '? ' + why : '';
+        const tail = sub ? `<span class="tsub${needs ? ' alert' : ''}">${esc(sub)}</span>` : '';
+        c.tag.innerHTML = esc(c.name) + tail; c.tag.title = tip;
         const short = shortTag(c.name, c.botId);
-        if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = chip + esc(short) + recent + learned; c.tag.title = c.name + (why ? ' · ? ' + why : ''); }
+        if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = esc(short) + tail; c.tag.title = c.name + (tip ? ' · ' + tip : ''); }
         c.tagBox = null;
       }
       tmpV.set(c.root.position.x, c.top + (needs ? 0.75 : 0.18) + c.rig.position.y, c.root.position.z).project(camera);
@@ -1302,8 +1301,7 @@ function buildWorld() {
       c.tag.style.display = vis ? '' : 'none'; c.tag.classList.toggle('far', L.tagFar(dist));
       if (L.tagFar(dist) !== c.tagFarNow) { c.tagFarNow = L.tagFar(dist); c.tagBox = null; }
       const sx = (tmpV.x * 0.5 + 0.5) * w, sy = (-tmpV.y * 0.5 + 0.5) * h;
-      if (sk && sk.t != null) fly = { sk, x: sx, y: sy };
-      if (vis) { if (!c.tagBox) c.tagBox = { w: c.tag.offsetWidth, h: c.tag.offsetHeight }; shown.push({ c, x: sx, y: sy, w: c.tagBox.w, h: c.tagBox.h }); }
+      if (vis) { if (!c.tagBox) c.tagBox = { w: c.tag.offsetWidth, h: c.tag.offsetHeight }; shown.push({ c, x: sx, y: sy, w: c.tagBox.w, h: c.tagBox.h, needs }); }
       const lines = convoLines.filter(l => l.from === c.name).slice(-1), amb = lines.length ? '' : rp ? '' : ambientText(c);
       const bk = lines.length ? lines.map(l => l.at + l.text).join('|') : rp ? 'rp' + rp.text : amb;
       if (bk !== c.bubKey) {
@@ -1317,17 +1315,10 @@ function buildWorld() {
       c.bub.style.pointerEvents = lines.length ? '' : 'none';
       if (show && vis) c.bub.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy - (TV ? 46 : 26)}px)`;
     }
-    /* the skill chip flies from the whiteboard to the trainee taking it */
-    if (!flyEl) { flyEl = document.createElement('div'); flyEl.className = 'tag fly'; $('labels').appendChild(flyEl); }
-    flyEl.style.display = fly ? '' : 'none';
-    if (fly) {
-      tmpV.copy(whiteboard.g.position).project(camera);
-      const bx = (tmpV.x * 0.5 + 0.5) * w, by = (-tmpV.y * 0.5 + 0.5) * h, t = fly.sk.t;
-      flyEl.innerHTML = `<span class="chip learned">${fly.sk.replay ? 'Replay · ' : ''}${esc(fly.sk.skill)}</span>`;
-      flyEl.style.transform = `translate(-50%,-100%) translate(${bx + (fly.x - bx) * t}px,${by + (fly.y - by) * t}px)`;
-    }
+    shown.sort((a, b) => b.needs - a.needs);
     const ys = L.nudgeLabels(shown); /* card 544b368: a label that would overlap an earlier one moves up a label height */
     shown.forEach((t, i) => { t.c.tag.style.transform = `translate(-50%,-100%) translate(${t.x}px,${ys[i]}px)`; });
+    L.labelOverlaps(shown, ys).forEach((o, i) => { if (o) shown[i].c.tag.style.display = 'none'; }); /* card 653d851: a tag still overlapping after the nudge cap hides; needs-Tim tags are placed first */
   }
   function ambientText(c) {
     const g = c.goalNow; if (!g || !g.ambient || !c.arrived || S.state === 'failed') return '';
