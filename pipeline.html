@@ -662,7 +662,7 @@ function renderIncidentHistory_(){
   refresh();
 }
 function ackIncident_(id){if(PipelineIncidents.acknowledge(S.incidents,id,'TIM',Date.now())){LS.set('incidents',S.incidents);syncStateUp();renderWriterStatus_()}}
-function aiUsageStamp_(){var r=S.aiUsage||[],n=0;r.forEach(function(x){var t=Date.parse(x&&x.at);if(t>n)n=t});return '<div class="dim" style="margin-top:4px">'+(S.aiUsageAt?'Readings file checked '+esc(new Date(S.aiUsageAt).toLocaleTimeString())+' (opening this panel or Refresh now re-checks; otherwise every 2 min)':'')+(n?' · newest reading '+esc(new Date(n).toLocaleString())+'. New readings arrive every 3 h at :05 ET.':'')+'</div>'}
+function aiUsageStamp_(){var r=S.aiUsage||[],n=0;r.forEach(function(x){var t=Date.parse(x&&x.at);if(t>n)n=t});return '<div class="dim" style="margin-top:4px">'+(S.aiUsageAt?'Readings file checked '+esc(new Date(S.aiUsageAt).toLocaleTimeString())+' (opening this panel or Refresh now re-checks; otherwise every 2 min)':'')+(n?' · newest reading '+esc(new Date(n).toLocaleString())+'. New readings arrive as bots work their cards (Grok every 5 to 30 min).':'')+'</div>'}
 function renderWriterStatus_(){
   var b=$('writer-badge'),p=$('writer-panel'),al=$('writer-alert');if(!b||!p)return;
   var w=S.writerStatus,lvl='',label,html='',dis=dismissed_();
