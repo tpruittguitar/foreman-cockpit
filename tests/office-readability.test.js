@@ -80,6 +80,28 @@ test('farLayout fits everything inside the face, labels within the size ratio', 
   assert.deepEqual(u.runs.filter(r => r.role === 'word').map(r => r.text), ['HIGH', 'OK', 'OK']);
 });
 
+test('farLayout lines: one line per AI, label | count | word, counts aligned, inside the face', () => {
+  const rows = L.usageFar([{ name: 'Claude', pct_used: 9 }, { name: 'ChatGPT', pct_used: 92 }, { name: 'Grok', pct_used: 8 }]);
+  for (const [W, H] of [[512, 269], [768, 403], [1024, 538]]) {
+    const lay = L.farLayout(rows, W, H, measure, { lines: true });
+    assert.equal(lay.arrangement, 'lines');
+    assert.ok(lay.labelSize >= 0.5625 * lay.valueSize - 1, 'labels >= 18/32 of the count size');
+    const lines = [0, 1, 2].map(i => lay.runs.filter(r => r.entry === i));
+    assert.deepEqual(lines.map(l => l.map(r => r.text).join(' ')), ['Claude 9% OK', 'ChatGPT 92% HIGH', 'Grok 8% OK']);
+    for (const l of lines) assert.equal(new Set(l.map(r => r.y)).size, 1, 'one line (one baseline) per AI');
+    const ends = lines.map(l => { const c = l.find(r => r.role === 'count'); return c.x + c.maxW; });
+    assert.ok(Math.max(...ends) - Math.min(...ends) < 1, 'counts right-aligned');
+    assert.ok(lay.scaleX >= 0.8 && lay.scaleX <= 1, 'condensed no further than 80 %');
+    for (const r of lay.runs) {
+      assert.ok(r.x >= 0 && r.x + measure(r.text, r.size) * r.scaleX <= W + 1, `${r.text} fits across (${W}x${H})`);
+      assert.ok(Math.abs(r.maxW - measure(r.text, r.size) * r.scaleX) < 1, 'drawn at its condensed width');
+      assert.ok(r.y - r.size * 0.76 >= -1 && r.y + r.size * 0.2 <= H + 1, `${r.text} fits down (${W}x${H})`);
+    }
+    assert.ok(lines[1][0].y - lines[0][0].y >= lay.valueSize * 0.94, 'lines do not touch (cap + descender < pitch)');
+  }
+  assert.deepEqual(L.farLayout(L.usageFar([]), 512, 269, measure, { lines: true }).runs.map(r => r.text), ['AI usage', 'NO DATA']);
+});
+
 test('paging removed: a column window only moves when scrolled', () => {
   const cards = Array.from({ length: 27 }, (_, i) => ({ id: 'ip-' + i }));
   const ids = w => w.items.map(i => i.id);

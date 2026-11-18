@@ -2239,6 +2239,7 @@
      { role: 'count' | 'value' | 'label' | 'word', text, x, y (baseline), size, entry }, outline boxes, and the value size. */
   function farLayout(entries, W, H, measure, opts) {
     const list = entries || [], n = Math.max(1, list.length), o = Object.assign({}, FAR_DESKTOP, opts || {});
+    if (o.lines) return farLines(list, W, H, measure, o);
     if (n === 1) o.kMax = Math.max(o.kMax, 0.85); // one word on the board (Constraint, Writer): its label can be nearly as big
     const pad = Math.round(Math.min(W, H) * 0.04), gap = pad / 2, w1 = (t, role) => (t ? measure(String(t), 100, role) / 100 : 0);
     const m = list.map(e => ({ L: w1(e.label, 'label'), V: w1(e.value, isCount(e.value) ? 'count' : 'value'), Wd: w1(e.word, 'word') }));
@@ -2281,6 +2282,30 @@
       }
     });
     return { arrangement: rows ? 'rows' : 'cols', valueSize: v, labelSize: l, runs, boxes };
+  }
+
+  /* One big line per entry ("ChatGPT 92% HIGH"): label | count | word in three aligned columns (counts right-aligned so the % line
+     up), label and word at FAR_LINE_RATIO x the count size (>= 18 px when counts are >= 32 px), as large as W x H allows. When the
+     height allows bigger text than the width, the line condenses horizontally down to FAR_LINE_CONDENSE (scaleX; cap height, which
+     is what reads at distance, is unchanged). */
+  const FAR_LINE_RATIO = 0.58, FAR_LINE_GAP = 0.22, FAR_LINE_PITCH = 0.95, FAR_LINE_CONDENSE = 0.8, CAP = 0.73;
+  function farLines(list, W, H, measure, o) {
+    const n = Math.max(1, list.length), r = o.lineRatio || FAR_LINE_RATIO, padX = Math.round(W * 0.012), padY = Math.round(H * 0.01);
+    const w1 = (t, role) => (t ? measure(String(t), 100, role) / 100 : 0), role = e => (isCount(e.value) ? 'count' : 'value');
+    const m = list.map(e => ({ L: w1(e.label, 'label'), V: w1(e.value, role(e)), Wd: w1(e.word, 'word') }));
+    const colL = Math.max(0, ...m.map(x => x.L)) * r, colV = Math.max(0, ...m.map(x => x.V)), colW = Math.max(0, ...m.map(x => x.Wd)) * r;
+    const em = colL + FAR_LINE_GAP + colV + (colW ? FAR_LINE_GAP + colW : 0); // line width per px of count size
+    const pitch = (H - 2 * padY) / n, v = Math.floor(Math.min((W - 2 * padX) / (em * FAR_LINE_CONDENSE), pitch / FAR_LINE_PITCH)), l = Math.floor(v * r);
+    const k = Math.min(1, (W - 2 * padX) / (em * v)); // horizontal scale
+    const runs = [];
+    list.forEach((e, i) => {
+      const x = m[i], base = padY + i * pitch + (pitch + CAP * v) / 2 - 0.06 * v;
+      const push = (rl, text, rx, size, nat) => runs.push({ role: rl, text: String(text), x: rx, y: base, size, entry: i, scaleX: k, maxW: nat * size * k });
+      push('label', e.label, padX, l, x.L);
+      const vx = padX + (colL + FAR_LINE_GAP) * v * k; push(role(e), e.value, vx + (colV - x.V) * v * k, v, x.V);
+      if (x.Wd) push('word', e.word, vx + (colV + FAR_LINE_GAP) * v * k, l, x.Wd);
+    });
+    return { arrangement: 'lines', valueSize: v, labelSize: l, scaleX: +k.toFixed(3), runs, boxes: [] };
   }
 
   /* Checksheet columns without auto-paging (finding 2): a column shows `rows` cards from `offset`; it only moves when someone

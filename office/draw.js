@@ -285,7 +285,7 @@ export function drawBoard(ctx, W, H, o) {
   const top = ty + th + 14 * s, span = W - 72 * s, SHARE = [0.4, 0.27, 0.21, 0.12], headH = 54 * s, bottom = H - 30 * s;
   const colX = SHARE.map((f, i) => 36 * s + SHARE.slice(0, i).reduce((a, b) => a + b, 0) * span);
   const measureAt = font => t => { ctx.font = font; return ctx.measureText(t).width; };
-  const overlays = [];
+  const overlays = [], colInfo = [];
   o.cols.forEach((c, ci) => {
     const cx = colX[ci], cw = SHARE[ci] * span - 18 * s, y0 = top + headH, nt = c.id === 'needs_tim';
     ctx.fillStyle = nt ? C.alert : c.id === 'done' ? '#9aa0a8' : '#d4d7dc'; ctx.font = `800 ${36 * s}px ${SANS}`;
@@ -327,9 +327,13 @@ export function drawBoard(ctx, W, H, o) {
       return;
     }
     // other columns: one line per card, scrolled only by hand
-    const rows = Math.max(1, Math.floor((bottom - y0 - ROW) / ROW)), win = L.columnWindow(c.cards, c.cards.length > rows + 1 ? rows : rows + 1, (o.scroll || {})[c.id]);
+    // rows stretch so rows + the "more" line fill the column to its bottom (Tim 1:35 AM: no empty card row under the last card)
+    // a column that shows all its cards stretches them (up to 1.25x) rather than leave an empty row under the last one
+    const rows = Math.max(1, Math.floor((bottom - y0 - ROW) / ROW)), all = c.cards.length <= rows + 1;
+    const RH = all && c.cards.length ? Math.min((bottom - y0) / c.cards.length, 1.25 * (bottom - y0) / (rows + 1)) : (bottom - y0) / (rows + 1), win = L.columnWindow(c.cards, c.cards.length > rows + 1 ? rows : rows + 1, (o.scroll || {})[c.id]);
+    colInfo.push({ id: c.id, total: c.total, shown: win.items.length, rowH: RH / H, used: (y0 + (win.items.length + (win.below > 0 || win.above > 0 ? 1 : 0)) * RH) / H, bottom: bottom / H });
     win.items.forEach((it, k) => {
-      const y = y0 + k * ROW, hl = o.highlight && o.highlight.has(it.id), glow = o.glow && o.glow.has(it.id), focus = o.focusId === it.id;
+      const ROW = RH, y = y0 + k * ROW, hl = o.highlight && o.highlight.has(it.id), glow = o.glow && o.glow.has(it.id), focus = o.focusId === it.id;
       ctx.fillStyle = glow ? '#2a2140' : k % 2 ? '#15181c' : '#1a1d22'; rr(ctx, cx, y + 3 * s, cw, ROW - 6 * s, 7 * s); ctx.fill();
       if (focus || hl || glow) { ctx.lineWidth = (focus ? 5 : 4) * s; ctx.strokeStyle = C.focus; rr(ctx, cx, y + 3 * s, cw, ROW - 6 * s, 7 * s); ctx.stroke(); }
       const w = L.statusWord(it); ctx.font = `800 ${30 * s}px ${SANS}`; ctx.fillStyle = TONE[w.tone] || '#ccc'; text('glyph', w.glyph, cx + 10 * s, y + ROW * 0.68);
@@ -338,7 +342,7 @@ export function drawBoard(ctx, W, H, o) {
       if ((o.hoverId === it.id || focus) && shown !== L.cardTitle(it)) overlays.push({ full: L.cardTitle(it), cx, cw, y: y + ROW });
       hits.push({ x: cx / W, y: y / H, w: cw / W, h: ROW / H, id: it.id, col: c.id });
     });
-    if (win.below > 0 || win.above > 0) overlays.push({ more: c.id, cx, cw, y: y0 + win.items.length * ROW, below: win.below, above: win.above, at: win.offset + 1, to: win.offset + win.items.length, total: c.total });
+    if (win.below > 0 || win.above > 0) overlays.push({ more: c.id, cx, cw, rowH: RH, y: y0 + win.items.length * RH, below: win.below, above: win.above, at: win.offset + 1, to: win.offset + win.items.length, total: c.total });
   });
   for (const ov of overlays) { // scroll lines and hover / focus titles go on top of the cards
     if (ov.full) {
@@ -346,15 +350,15 @@ export function drawBoard(ctx, W, H, o) {
       const y = Math.min(ov.y, bottom - h); ctx.fillStyle = '#262033'; rr(ctx, ov.cx, y, ov.cw, h, 8 * s); ctx.fill(); ctx.lineWidth = 4 * s; ctx.strokeStyle = C.focus; ctx.stroke();
       ctx.fillStyle = '#ffffff'; ls.forEach((t, k) => text('title', t, ov.cx + 14 * s, y + 12 * s + TITLE * 0.9 + k * LINE));
     } else if (ov.more) {
-      const y = Math.min(ov.y + 4 * s, bottom); ctx.fillStyle = '#0f1114'; ctx.fillRect(ov.cx, y, ov.cw, ROW - 8 * s);
+      const mh = (ov.rowH || ROW) - 8 * s, y = Math.min(ov.y + 4 * s, bottom - mh); ctx.fillStyle = '#0f1114'; ctx.fillRect(ov.cx, y, ov.cw, mh);
       ctx.fillStyle = '#c3c7cd'; ctx.font = `700 ${30 * s}px ${SANS}`;
       text('meta', ov.total != null ? `${ov.at}–${ov.to} of ${ov.total} · ${ov.below > 0 ? '▼ ' + ov.below + ' more' : '▲ back to top'}` : '▼ more Needs Tim cards', ov.cx + 8 * s, y + 40 * s, ov.cw - 16 * s);
-      hits.push({ x: ov.cx / W, y: y / H, w: ov.cw / W, h: (ROW - 8 * s) / H, scroll: ov.more });
+      hits.push({ x: ov.cx / W, y: y / H, w: ov.cw / W, h: mh / H, scroll: ov.more });
     } else if (ov.up) {
       ctx.fillStyle = '#c3c7cd'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.textAlign = 'right'; text('meta', '▲ ' + ov.n + ' above', ov.cx + ov.cw, top + 38 * s); ctx.textAlign = 'left';
     }
   }
-  hits.runs = runs;
+  hits.runs = runs; hits.cols = colInfo; // cols: per one-line column, cards shown and how far down the column they reach (0..1 of H)
   return hits;
 }
 /* ---------- Far layout (any board): headline counts, each with a word (finding 4). Returns the layout runs with roles. ---------- */
@@ -368,7 +372,8 @@ export function drawFar(ctx, W, H, entries, opts) {
     const e = entries[r.entry], tone = FAR_TONE[e.tone] || '#f1f2f4';
     ctx.font = `${weight[r.role]} ${r.size}px ${SANS}`;
     ctx.fillStyle = r.role === 'label' ? (e.tone === 'alert' && e.outline ? tone : '#d4d7dc') : r.role === 'word' ? tone : e.tone === 'alert' || e.tone === 'stale' ? tone : '#f6f7f9';
-    ctx.fillText(r.text, r.x, r.y); r.font = ctx.font; r.color = ctx.fillStyle;
+    if (r.scaleX < 1) ctx.fillText(r.text, r.x, r.y, r.maxW); else ctx.fillText(r.text, r.x, r.y); // maxWidth: the browser condenses the run to fit
+    r.font = ctx.font; r.color = ctx.fillStyle;
   }
   return lay;
 }
