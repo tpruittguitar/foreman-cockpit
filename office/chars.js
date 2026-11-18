@@ -332,11 +332,33 @@ export function makeBot(name, hiQuality, botId, override) {
   const legR = limb(0.055, 0.07, limbM, 'leg'), legL = limb(0.055, 0.07, limbM, 'leg');
   legR.position.set(-0.11, legLen - 0.01, 0); legL.position.set(0.11, legLen - 0.01, 0);
   rig.add(legR, legL);
-  // props: Gauge wears a dial needle on its face-plate top; Edgar (writer) holds a quill
+  // props: Gauge wears a dial needle on its face-plate top; Edgar (writer) holds a quill; Hermes wears wings (below)
   if (a.prop === 'gauge') {
     const ring = new THREE.Mesh(geo('gRing', () => new THREE.TorusGeometry(0.2, 0.012, 8, 40, Math.PI)), white()); ring.position.set(0, 0.12, bb.max.z - 0.01); body.add(ring);
     const needle = new THREE.Mesh(geo('gNeedle', () => new THREE.BoxGeometry(0.012, 0.17, 0.01)), mat('needle', () => new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0x6a5200 })));
     needle.position.set(0.05, 0.19, bb.max.z); needle.rotation.z = -0.6; body.add(needle);
+  }
+  // Hermes (messenger): a gold winged-helmet cap on the crown and small white wings at the heels; the face and eyes stay clear
+  if (a.prop === 'wings') {
+    const gold = mat('hermesGold', () => new THREE.MeshStandardMaterial({ color: 0xf2c12e, roughness: 0.35, metalness: 0.35 }));
+    const wingG = geo('hermesWing', () => {
+      const s = new THREE.Shape(); s.moveTo(0, 0);
+      s.quadraticCurveTo(0.01, 0.1, 0.09, 0.13); s.quadraticCurveTo(0.08, 0.09, 0.13, 0.085); // top feather, then middle feather
+      s.quadraticCurveTo(0.09, 0.05, 0.12, 0.03); s.quadraticCurveTo(0.06, 0.005, 0, 0);       // low feather, back to the root
+      const g = new THREE.ExtrudeGeometry(s, { depth: 0.01, bevelEnabled: true, bevelSize: 0.006, bevelThickness: 0.006, bevelSegments: 2, curveSegments: 8 });
+      g.translate(0, 0, -0.005); return g;
+    });
+    /* a wing points outward (+x, mirrored for the other side), tilts up and sweeps back, so it reads from the front and the side */
+    const wing = (sx, size) => { const w = new THREE.Mesh(wingG, white()); w.scale.set(sx * size, size, size); w.rotation.set(0, sx * 0.6, sx * 0.35); return w; };
+    /* winged helmet: an ellipsoid cap fitted just outside the crown (scaled to clear every body vertex in the cap zone), with a gold rim */
+    const CAP = Math.PI * 0.22, zMax = bb.max.z, pos = bodyG.attributes.position, yCut = halfH * Math.cos(CAP) * 0.9;
+    let k = 1; for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i); if (y > yCut) k = Math.max(k, Math.hypot(x / halfW, y / halfH, z / zMax)); }
+    const sx0 = halfW * k * 1.025, sy0 = halfH * k * 1.02, sz0 = zMax * k * 1.025, helmet = new THREE.Group(); body.add(helmet);
+    const cap = new THREE.Mesh(geo('hermesCap', () => new THREE.SphereGeometry(1, 40, 12, 0, Math.PI * 2, 0, CAP)), gold); cap.scale.set(sx0, sy0, sz0); helmet.add(cap);
+    const rim = new THREE.Mesh(geo('hermesRim', () => new THREE.TorusGeometry(1, 0.03, 8, 48)), gold); rim.rotation.x = Math.PI / 2;
+    rim.scale.set(sx0 * Math.sin(CAP), sz0 * Math.sin(CAP), 0.6); rim.position.y = sy0 * Math.cos(CAP); helmet.add(rim);
+    for (const sx of [-1, 1]) { const w = wing(sx, 1); w.position.set(sx * sx0 * Math.sin(CAP * 0.85), sy0 * Math.cos(CAP * 0.85), -0.03); helmet.add(w); }
+    for (const [lg, sx] of [[legR, -1], [legL, 1]]) { const w = wing(sx, 0.6); w.position.set(sx * 0.05, -0.13, -0.02); lg.add(w); } // heel wings (winged sandals)
   }
   const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(0xffffff), new THREE.Color(a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic });
   if (a.prop === 'quill') {
