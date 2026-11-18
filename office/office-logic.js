@@ -1244,7 +1244,7 @@
     if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
     out.updated_at = time(o.updated_at) != null ? str(o.updated_at) : '';
     const s = o.screens && typeof o.screens === 'object' && !Array.isArray(o.screens) ? o.screens : {};
-    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true }; }
+    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true, offline: e.offline === true, lastSeen: time(e.lastSeen) != null ? str(e.lastSeen) : '' }; }
     return out;
   }
   /* Tim (Nov 17): a bot drawn napping while it is actually working. OFFICE_STATUS rows only ever go working -> idle, so an idle or
@@ -1254,15 +1254,20 @@
     const b = bot || {}, st = str(b.status).toLowerCase();
     if (st && st !== 'idle') return b;
     const e = botId && screens && screens.screens && screens.screens[botId];
-    const screenLive = !!(e && e.busy && !e.paused && time(e.at) != null && now - time(e.at) <= SCREEN_FRESH_MIN * MIN && time(e.at) <= now + MIN);
+    const screenLive = !!(e && e.busy && !e.paused && !e.offline && time(e.at) != null && now - time(e.at) <= SCREEN_FRESH_MIN * MIN && time(e.at) <= now + MIN);
     const routineLive = !!(((auto && auto.rows) || []).some(r => r && r.running && r.ai === b.bot));
     if (!screenLive && !routineLive) return b;
     return Object.assign({}, b, { status: 'working', live: screenLive ? 'screen' : 'routine' });
   }
-  /* -> { show: 'image' | 'fallback', why } */
+  function offlineSinceLabel(iso) {
+    const t = time(iso);
+    return t == null ? 'screen offline' : 'screen offline since ' + etClock(t);
+  }
+  /* -> { show: 'image' | 'fallback', why, offline? } */
   function screenState(index, botId, now) {
     const e = index && index.screens && index.screens[botId];
     if (!e) return { show: 'fallback', why: 'Screen offline' };
+    if (e.offline) return { show: 'image', offline: true, at: e.at, why: offlineSinceLabel(e.lastSeen || e.at) };
     if (e.paused) return { show: 'fallback', why: 'Screen paused' };
     if (now - time(e.at) > SCREEN_FRESH_MIN * MIN) return { show: 'fallback', why: 'Screen offline (last ' + etClock(time(e.at)) + ' ET)' };
     return { show: 'image', at: e.at, why: 'Screen as of ' + etClock(time(e.at)) + ' ET' };
@@ -1803,7 +1808,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, screenState,
+    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
