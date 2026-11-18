@@ -371,14 +371,9 @@
     const idle = list.filter(b => !plans[b.bot] && b.bot !== TRAINER).map(b => b.bot).sort();
     idle.forEach(n => { const a = idleAct(n, now); plans[n] = { act: a }; if (a === 'visitdesk') plans[n].partner = partnerFor(n, idleSlot(n, now).idx); });
     if (trainer) {
-      const sec = Math.floor(now / 1000), cycle = Math.floor(sec / TRAIN_CYCLE_S);
-      if (!meeting && sec % TRAIN_CYCLE_S < TRAIN_S && idle.length) {
-        const pref = ['wander', 'lounge', 'sleep', 'game', 'coffee', 'fridge', 'bike', 'visitdesk', 'chat'], pool = idle.slice().sort((a, b) => pref.indexOf(plans[a].act) - pref.indexOf(plans[b].act));
-        const span = Math.min(pool.length, 3), trainees = [];
-        for (let i = 0; i < Math.min(2, pool.length); i++) trainees.push(pool[(cycle + i) % span]);
-        trainees.forEach((n, i) => { plans[n] = { act: 'train', seat: i }; });
-        plans[TRAINER] = { act: 'lead' }; training = { trainer: TRAINER, trainees };
-      } else if (idle.length) {
+      const sec = Math.floor(now / 1000);
+      /* Tim (Nov 18, 2:29 AM ET): no training scene without a real OFFICE_TRAINING.json session, so idle HR visits or wanders. */
+      if (idle.length) {
         const target = idle[Math.floor(sec / VISIT_S) % idle.length];
         plans[TRAINER] = { act: 'visit', partner: target }; plans[target] = { act: 'listen', partner: TRAINER };
       } else plans[TRAINER] = { act: 'wander' };

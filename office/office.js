@@ -1089,7 +1089,7 @@ function buildWorld() {
   /* item 11 / 10 / 13: idle activity -> where the bot goes and what it does */
   function idleGoal(c, d, slotted) {
     if (c.restocked && c.goal && c.goal.pose === 'restock' && clock - c.restockedAt < 2.5) return Object.assign({}, c.goal, { box: false }); // set the box down, then move on
-    const ctx = { restock: S.restocker === c.name ? 'force' : (fridgeStock >= L.FRIDGE_CAP || S.restocker) ? 'no' : 'ok', blocked: c.name === L.TRAINER || !S.hrFree ? ['hr_training'] : [] };
+    const ctx = { restock: S.restocker === c.name ? 'force' : (fridgeStock >= L.FRIDGE_CAP || S.restocker) ? 'no' : 'ok', blocked: c.name === L.TRAINER || !S.hrFree || !(plan.training && plan.training.real) ? ['hr_training'] : [] }; // hr_training only during a real session (Tim, Nov 18, 2:29 AM ET)
     const act = L.idleTick(c.idle, c.rng, clock, ctx); c.idleAct = act;
     const own = (key, pose) => { book.release(c.name); return { key, spot: d.seat, pose }; };
     switch (act) {

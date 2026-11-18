@@ -329,12 +329,13 @@ test('floor plan: only a needs-Tim bot with a question waves; meetings beat work
   if (chat.length) { assert.equal(chat[0][1].partner, chat[1][0]); assert.notEqual(chat[0][1].host, chat[1][1].host); }
   assert.deepEqual(L.planOffice(bots, [], NOW, 'failed').plans, {});
 })
-test('floor plan: HR visits idle bots, and trains two at the table only when no meeting holds it', () => {
+test('floor plan: HR visits idle bots and never trains without a real OFFICE_TRAINING.json session (Tim, Nov 18, 2:29 AM ET)', () => {
   const bots = [{ bot: 'HR', status: 'idle' }, { bot: 'Comp', status: 'idle' }, { bot: 'GUI', status: 'idle' }, { bot: 'Claude', status: 'working' }];
   const base = Math.floor(NOW / 1000 / L.TRAIN_CYCLE_S) * L.TRAIN_CYCLE_S * 1000;
   const train = L.planOffice(bots, [], base + 5000, 'live');
-  assert.equal(train.plans['HR'].act, 'lead');
-  assert.deepEqual(train.training.trainees.slice().sort(), ['Comp', 'GUI']);
+  assert.equal(train.plans['HR'].act, 'visit', 'no ambient training scene');
+  assert.equal(train.training, null);
+  assert.ok(!Object.values(train.plans).some(x => x.act === 'train' || x.act === 'lead'));
   assert.ok(['work', 'stretch', 'coffee', 'fridge', 'visitdesk', 'trip'].includes(train.plans.Claude.act));
   const visit = L.planOffice(bots, [], base + (L.TRAIN_S + 1) * 1000, 'live');
   const v = visit.plans['HR'];
@@ -364,7 +365,7 @@ test('demo v2: screens, a meeting that ends on the next poll, PR-linked, chat-li
   const cyc = Math.floor(NOW / 1000 / L.TRAIN_CYCLE_S) * L.TRAIN_CYCLE_S * 1000, seen = new Set();
   for (let t = 0; t < 3600; t += 37) Object.values(L.planOffice(p.bots, [], cyc + 3600000 + t * 1000, 'live').plans).forEach(v => seen.add(v.act));
   assert.ok(['chat', 'wander', 'coffee', 'fridge', 'lounge', 'visit', 'listen', 'wave'].every(a => seen.has(a)), [...seen].join());
-  assert.equal(L.planOffice(p.bots, [], cyc + 1000, 'live').plans['HR'].act, 'lead');
+  assert.notEqual(L.planOffice(p.bots, [], cyc + 1000, 'live').plans['HR'].act, 'lead', 'no ambient training without a real session');
 });
 
 /* ---------- item 17: 14-bot roster matches the sidebar ---------- */
