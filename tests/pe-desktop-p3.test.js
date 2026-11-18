@@ -60,7 +60,11 @@ test('desktop header: one refresh control (countdown chip) and shrinkable middle
   assert.match(css, /header #refresh,#rail \.rail-foot button#rail-refresh\{display:none!important\}/);
   assert.match(css, /header \.brand,header \.writer-identity,header \.hstat,header #crumb\{flex:0 1 auto;min-width:0;overflow:hidden\}/);
   assert.match(css, /header #bell,header #settings,header \.menu-btn\{flex:none\}/);
-  assert.match(html, /data-writer-countdown data-refresh-now role="button" tabindex="0" aria-label="Refresh now"/);
+  assert.match(html, /<button type="button" class="writer-countdown" data-writer-countdown data-refresh-now>/);
+  assert.match(css, /header #search\{flex-shrink:50\}/);
+  assert.match(css, /@media\(min-width:1400px\)\{header \.brand,header \.writer-identity,header \.hstat,header \[data-refresh-now\]\{flex:none\}\}/);
+  assert.match(html, /openRow\(id\);ntNavSync_\(\)/);
+  assert.match(fs.readFileSync(path.join(__dirname, '..', 'pipeline-mobile.js'), 'utf8'), /\$\('m-search'\)\.onclick = function \(\) \{ jobsFilter = 'all';/);
   assert.match(html, /querySelector\('header \[data-refresh-now\]'\);if\(!c\)return;function go\(\)\{load\(\);loadWriterStatus_\(true\)\}/);
 });
 

@@ -39,7 +39,7 @@ test('desktop wiring: banner in #writer-alert, gate after every decision render'
 test('Act Now title is a one-click opener for the job drawer', () => {
   const card = A.html({ items: [{ r: { id: 'J1', TITLE: 'Director of Quality', COMPANY: 'Acme', LOCATION: 'Austin, TX', payload: {} }, rule: { back: '', changes: [] }, score: 80 }], counts: { everythingElse: 0, unscored: 0, decided: 0 } }, { posting: () => '', collapsed: false });
   assert.match(card, /<b class="an-title" role="button" tabindex="0" data-an-open="J1"/);
-  assert.match(html, /querySelectorAll\('\[data-an-open\]'\)\.forEach\(function\(t\)\{function go\(\)\{var id=t\.getAttribute\('data-an-open'\);if\(!rowById\(id\)\)return;if\(S\.tab!=='pipeline'\)switchTab\('pipeline'\);openRow\(id\)\}/);
+  assert.match(html, /querySelectorAll\('\[data-an-open\]'\)\.forEach\(function\(t\)\{function go\(\)\{var id=t\.getAttribute\('data-an-open'\);if\(!rowById\(id\)\)return;if\(S\.tab!=='pipeline'\)switchTab\('pipeline'\);openRow\(id\);ntNavSync_\(\)\}/);
 });
 
 function runSheet(phone) {
