@@ -185,3 +185,8 @@ canvas { cursor: grab; }
 /* Revision badge: tiny, bottom-right, never intercepts input. */
 #build-badge { position: fixed; z-index: 11; right: var(--safe); bottom: calc(var(--safe) * .6); font: 10px/1.2 ui-monospace, Menlo, monospace; color: rgba(220,226,236,.6); background: rgba(10,10,12,.45); padding: 1px 6px; border-radius: 4px; user-select: none; white-space: nowrap; }
 .flat { z-index: 8; }
+
+/* Phone 3D (GUI review 2026-11-18, finding 6): the HUD steps aside while walking and comes back after 2 s still. */
+.hud, .hint, #build-badge { transition: opacity .25s; }
+body.hud-moving .hud, body.hud-moving .hint, body.hud-moving #build-badge { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .hud, .hint, #build-badge { transition: none; } }

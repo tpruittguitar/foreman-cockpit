@@ -2177,7 +2177,200 @@
     const c = Math.cos(yaw), s = Math.sin(yaw);
     return { x: x * c + y * s, z: -x * s + y * c };
   };
+
+  /* ---------- Readable boards (GUI review 2026-11-18, findings 2 / 4 / 6 / 7) ----------
+     Every wall board has two layouts: Far (headline counts, each with a word) past BOARD_FAR_M from the board, Detail at or
+     inside it; phones only ever show Far. Sizes on screen are cap heights in CSS px; tests/office-readability.capture.cjs
+     measures them from the Door, Standing (6.7 m) and Walk-up (3 m) spots. */
+  const BOARD_FAR_M = 8, BOARD_FADE_S = 0.35, LOS_DEG = 30, LOS_DIM = 0.3, HUD_STILL_MS = 2000;
+  const FAR_DESKTOP = { kMin: 0.5, kMax: 0.62 }, FAR_PHONE = { kMin: 0.3, kMax: 0.5 };
+  function boardLayout(distM, phone) { return phone || !(distM <= BOARD_FAR_M) ? 'far' : 'detail'; }
+  /* 0 = Detail, 1 = Far; steps toward the target over BOARD_FADE_S, at once under prefers-reduced-motion */
+  function fadeStep(cur, target, dt, reduced) {
+    if (reduced || !(dt > 0)) return reduced ? target : cur;
+    const k = dt / BOARD_FADE_S; return cur < target ? Math.min(target, cur + k) : Math.max(target, cur - k);
+  }
+  /* camera position in the board's local frame (x right, y up, z out of the face) -> metres to the nearest point of the w x h face */
+  function boardDistance(lx, ly, lz, w, h) {
+    const cx = Math.max(-w / 2, Math.min(w / 2, lx)), cy = Math.max(-h / 2, Math.min(h / 2, ly));
+    return Math.hypot(lx - cx, ly - cy, lz);
+  }
+  /* the camera faces a board: the board centre within LOS_DEG of the view direction and the board within BOARD_FAR_M */
+  function facesBoard(fwd, toCentre, distM) {
+    const a = Math.hypot(fwd.x, fwd.y, fwd.z), b = Math.hypot(toCentre.x, toCentre.y, toCentre.z);
+    if (!a || !b || !(distM <= BOARD_FAR_M)) return false;
+    return (fwd.x * toCentre.x + fwd.y * toCentre.y + fwd.z * toCentre.z) / (a * b) >= Math.cos(LOS_DEG * Math.PI / 180);
+  }
+  const rectsOverlap = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+
+  /* Far-layout entries per board: { label, value, word?, tone, outline?, valueFirst? }. State is always a word, never colour alone. */
+  function checksheetFar(cols) {
+    const n = id => ((cols || []).find(c => c.id === id) || { total: 0 }).total;
+    return [{ label: 'Needs Tim', value: String(n('needs_tim')), tone: 'alert', outline: true },
+      { label: 'In progress', value: String(n('in_progress')), tone: 'working' }, { label: 'Queued', value: String(n('queued')), tone: 'idle' }];
+  }
+  function usageFar(rows) {
+    if (!rows || !rows.length) return [{ label: 'AI usage', value: 'NO DATA', tone: 'stale' }];
+    return rows.slice(0, 4).map(u => { const w = usageWord(u.pct_used);
+      return { label: u.name, value: u.pct_used == null ? '—' : Math.round(u.pct_used) + '%', word: u.stale ? 'STALE' : w.word, tone: u.stale ? 'stale' : w.tone }; });
+  }
+  function constraintFar(view) {
+    const sum = view && view.sum, stale = !sum || !!(view.age && view.age.stale);
+    const names = sum ? (sum.stages || []).filter(s => s.constraint).map(s => s.name) : [];
+    return [{ label: 'Constraint', value: stale ? 'STALE' : names.length ? names.join(' / ') : 'None', tone: stale ? 'stale' : names.length ? 'alert' : 'info' }];
+  }
+  function automationsFar(a) {
+    const rows = (a && a.rows) || [];
+    if (!rows.length) return [{ label: 'Automations', value: 'NO DATA', tone: 'stale' }];
+    const ran = rows.filter(r => time(r.last_run_at) != null), failing = ran.filter(r => r.result === 'FAIL' || r.result === 'STALE').length;
+    const last = ran.reduce((m, r) => Math.max(m, time(r.last_run_at)), -Infinity);
+    return [{ label: 'failing', value: String(failing), tone: failing ? 'alert' : 'working', valueFirst: true },
+      { label: 'never ran', value: String(rows.length - ran.length), tone: rows.length - ran.length ? 'stale' : 'working', valueFirst: true },
+      { label: 'last run', value: Number.isFinite(last) ? etClock(last) : 'never', tone: 'idle' }];
+  }
+  /* Writer: OK while the heartbeat (last good write) is green, else STALE */
+  function writerFar(a, now) {
+    const beat = writerRows(a, now)[0], ok = beat && beat.status === 'green';
+    return [{ label: 'Writer', value: ok ? 'OK' : 'STALE', tone: ok ? 'working' : 'stale' }];
+  }
+  const isCount = v => /^[\d,.]+%?$/.test(String(v));
+  /* Fit the entries into W x H (canvas px) as large as they go: rows (label left, value right) or columns (label over value).
+     measure(text, sizePx, role) -> width px (labels and words may use a lighter, narrower weight than counts). Label size stays within [kMin, kMax] x value size. Returns runs to draw, in canvas px:
+     { role: 'count' | 'value' | 'label' | 'word', text, x, y (baseline), size, entry }, outline boxes, and the value size. */
+  function farLayout(entries, W, H, measure, opts) {
+    const list = entries || [], n = Math.max(1, list.length), o = Object.assign({}, FAR_DESKTOP, opts || {});
+    if (o.lines) return farLines(list, W, H, measure, o);
+    if (n === 1) o.kMax = Math.max(o.kMax, 0.85); // one word on the board (Constraint, Writer): its label can be nearly as big
+    const pad = Math.round(Math.min(W, H) * 0.04), gap = pad / 2, w1 = (t, role) => (t ? measure(String(t), 100, role) / 100 : 0);
+    const m = list.map(e => ({ L: w1(e.label, 'label'), V: w1(e.value, isCount(e.value) ? 'count' : 'value'), Wd: w1(e.word, 'word') }));
+    const fitRows = v => {
+      const rh = (H - 2 * pad - (n - 1) * gap) / n; let l = o.kMax * v;
+      for (const x of m) { const gx = 0.25 * v * (x.Wd ? 2 : 1); l = Math.min(l, (W - 2 * pad - gx - x.V * v) / ((x.L + x.Wd) || 1)); }
+      return l >= o.kMin * v && 0.78 * v + 0.24 * l <= rh * 0.94 && 0.97 * l <= rh * 0.94 ? l : -1;
+    };
+    // columns: label over value, each column as wide as its own text needs (slack shared out), the block at the top of the face
+    const padX = Math.round(W * 0.01), colGap = Math.max(gap, Math.round(W * 0.018));
+    const need = (x, v, l) => Math.max(x.L * l, x.V * v + (x.Wd ? 0.25 * v + x.Wd * l : 0)), room = W - 2 * padX - (n - 1) * colGap;
+    const fitCols = v => {
+      const ok = l => m.reduce((a, x) => a + need(x, v, l), 0) <= room;
+      if (!ok(o.kMin * v) || 1.17 * o.kMin * v + 0.78 * v > H - 2 * pad) return -1;
+      let lo = o.kMin * v, hi = o.kMax * v; for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (ok(mid) && 1.17 * mid + 0.78 * v <= H - 2 * pad) lo = mid; else hi = mid; }
+      return lo;
+    };
+    const best = fit => { let lo = 1, hi = H; for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (fit(mid) >= 0) lo = mid; else hi = mid; } return fit(lo) >= 0 ? { v: lo, l: fit(lo) } : { v: 0, l: 0 }; };
+    // columns win unless rows are clearly bigger: they keep the counts in the top of the board, above the desks and bots
+    const r = best(fitRows), c = best(fitCols), rows = r.v > c.v * 1.04, v = Math.floor(rows ? r.v : c.v), l = Math.floor(rows ? r.l : c.l);
+    const widths = m.map(x => need(x, v, l)), slack = Math.max(0, room - widths.reduce((a, b) => a + b, 0)) / n;
+    const runs = [], boxes = [], role = e => (isCount(e.value) ? 'count' : 'value');
+    list.forEach((e, i) => {
+      const x = m[i], push = (rl, text, rx, ry, size) => runs.push({ role: rl, text: String(text), x: rx, y: ry, size, entry: i });
+      if (rows) {
+        const rh = (H - 2 * pad - (n - 1) * gap) / n, top = pad + i * (rh + gap), base = top + (rh + 0.76 * Math.max(v, l) - 0.22 * l) / 2;
+        if (e.valueFirst) { push(role(e), e.value, pad, base, v); push('label', e.label, pad + x.V * v + 0.25 * v, base, l); }
+        else {
+          push('label', e.label, pad, base, l);
+          const gw = x.V * v + (x.Wd ? 0.25 * v + x.Wd * l : 0), vx = W - pad - gw;
+          push(role(e), e.value, vx, base, v); if (x.Wd) push('word', e.word, vx + x.V * v + 0.25 * v, base, l);
+        }
+        if (e.outline) boxes.push({ x: pad / 2, y: top - gap / 2, w: W - pad, h: rh + gap, tone: e.tone, entry: i });
+      } else {
+        const cw = widths[i] + slack, left = padX + slack / 2 + widths.slice(0, i).reduce((a, b) => a + b + slack + colGap, 0), top = pad + 0.04 * v;
+        push('label', e.label, left, top + 0.76 * l, l);
+        const vb = top + 1.17 * l + 0.76 * v; push(role(e), e.value, left, vb, v);
+        if (x.Wd) push('word', e.word, left + x.V * v + 0.25 * v, vb, l);
+        if (e.outline) boxes.push({ x: left - colGap / 2, y: pad / 2, w: widths[i] + colGap, h: 1.21 * l + 0.82 * v + pad, tone: e.tone, entry: i });
+      }
+    });
+    return { arrangement: rows ? 'rows' : 'cols', valueSize: v, labelSize: l, runs, boxes };
+  }
+
+  /* One big line per entry ("ChatGPT 92% HIGH"): label | count | word in three aligned columns (counts right-aligned so the % line
+     up), label and word at FAR_LINE_RATIO x the count size (>= 18 px when counts are >= 32 px), as large as W x H allows. When the
+     height allows bigger text than the width, the line condenses horizontally down to FAR_LINE_CONDENSE (scaleX; cap height, which
+     is what reads at distance, is unchanged). */
+  const FAR_LINE_RATIO = 0.58, FAR_LINE_GAP = 0.22, FAR_LINE_PITCH = 0.95, FAR_LINE_CONDENSE = 0.8, CAP = 0.73;
+  function farLines(list, W, H, measure, o) {
+    const n = Math.max(1, list.length), r = o.lineRatio || FAR_LINE_RATIO, padX = Math.round(W * 0.012), padY = Math.round(H * 0.01);
+    const w1 = (t, role) => (t ? measure(String(t), 100, role) / 100 : 0), role = e => (isCount(e.value) ? 'count' : 'value');
+    const m = list.map(e => ({ L: w1(e.label, 'label'), V: w1(e.value, role(e)), Wd: w1(e.word, 'word') }));
+    const colL = Math.max(0, ...m.map(x => x.L)) * r, colV = Math.max(0, ...m.map(x => x.V)), colW = Math.max(0, ...m.map(x => x.Wd)) * r;
+    const em = colL + FAR_LINE_GAP + colV + (colW ? FAR_LINE_GAP + colW : 0); // line width per px of count size
+    const pitch = (H - 2 * padY) / n, v = Math.floor(Math.min((W - 2 * padX) / (em * FAR_LINE_CONDENSE), pitch / FAR_LINE_PITCH)), l = Math.floor(v * r);
+    const k = Math.min(1, (W - 2 * padX) / (em * v)); // horizontal scale
+    const runs = [];
+    list.forEach((e, i) => {
+      const x = m[i], base = padY + i * pitch + (pitch + CAP * v) / 2 - 0.06 * v;
+      const push = (rl, text, rx, size, nat) => runs.push({ role: rl, text: String(text), x: rx, y: base, size, entry: i, scaleX: k, maxW: nat * size * k });
+      push('label', e.label, padX, l, x.L);
+      const vx = padX + (colL + FAR_LINE_GAP) * v * k; push(role(e), e.value, vx + (colV - x.V) * v * k, v, x.V);
+      if (x.Wd) push('word', e.word, vx + (colV + FAR_LINE_GAP) * v * k, l, x.Wd);
+    });
+    return { arrangement: 'lines', valueSize: v, labelSize: l, scaleX: +k.toFixed(3), runs, boxes: [] };
+  }
+
+  /* Checksheet columns without auto-paging (finding 2): a column shows `rows` cards from `offset`; it only moves when someone
+     scrolls it (wheel on hover, or a click / tap on its "more" line). */
+  function columnWindow(cards, rows, offset) {
+    const list = Array.isArray(cards) ? cards : [], per = Math.max(1, Math.floor(rows) || 1);
+    const off = Math.max(0, Math.min(Math.max(0, list.length - per), Math.floor(Number(offset)) || 0));
+    const items = list.slice(off, off + per);
+    return { items, offset: off, above: off, below: list.length - off - items.length };
+  }
+  function scrollColumn(offset, delta, total, rows) { return Math.max(0, Math.min(Math.max(0, total - rows), (Math.floor(offset) || 0) + delta)); }
+  function nextColumnPage(offset, total, rows) { return offset + rows >= total ? 0 : Math.min(offset + rows, Math.max(0, total - rows)); }
+  /* Greedy word wrap. measure(text) -> px. Past maxLines: ellipsis on the last line when `ellipsis`, else every line is kept. */
+  function wrapText(text, maxW, measure, maxLines, ellipsis) {
+    const words = str(text).replace(/\s+/g, ' ').trim().split(' ').filter(Boolean), lines = [];
+    let line = '';
+    for (const w0 of words) {
+      let w = w0;
+      while (measure(w) > maxW && w.length > 1) { // a word wider than the line breaks by characters
+        let k = w.length - 1; while (k > 1 && measure((line ? line + ' ' : '') + w.slice(0, k)) > maxW) k--;
+        if (line && measure(line + ' ' + w.slice(0, k)) > maxW) { lines.push(line); line = ''; continue; }
+        lines.push((line ? line + ' ' : '') + w.slice(0, k)); line = ''; w = w.slice(k);
+      }
+      const t = line ? line + ' ' + w : w;
+      if (line && measure(t) > maxW) { lines.push(line); line = w; } else line = t;
+    }
+    if (line) lines.push(line);
+    if (!(maxLines > 0) || lines.length <= maxLines || !ellipsis) return { lines, truncated: false };
+    const out = lines.slice(0, maxLines); let last = out[maxLines - 1] + ' ' + lines.slice(maxLines).join(' ');
+    while (last.length > 1 && measure(last + '…') > maxW) last = last.slice(0, -1);
+    out[maxLines - 1] = last.trimEnd() + '…';
+    return { lines: out, truncated: true };
+  }
+
+  /* Phone name labels (finding 6): never overlapping; on a collision the lower-priority label hides. boxes: { x: centre, y: bottom,
+     w, h, prio } in screen px (higher prio wins, then earlier). Returns a visible flag per box. */
+  function labelVisibility(boxes, pad) {
+    const p = pad == null ? LABEL_PAD_PX : pad, list = boxes || [], kept = [], vis = list.map(() => false);
+    const order = list.map((b, i) => i).sort((a, b) => (list[b].prio || 0) - (list[a].prio || 0) || a - b);
+    for (const i of order) {
+      const b = list[i], r = { x0: b.x - b.w / 2 - p, x1: b.x + b.w / 2 + p, y0: b.y - b.h - p, y1: b.y + p };
+      if (kept.some(k => rectsOverlap(k, r))) continue;
+      kept.push({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, y0: b.y - b.h, y1: b.y }); vis[i] = true;
+    }
+    return vis;
+  }
+  const labelPrio = (needs, status) => (needs ? 3 : status === 'waiting_tim' ? 2 : status === 'working' ? 1 : 0);
+  /* Phone HUD hides while the camera moves and returns after HUD_STILL_MS still */
+  function hudHidden(lastMoveAt, now) { return lastMoveAt != null && now - lastMoveAt < HUD_STILL_MS; }
+
+  /* WCAG 2.x contrast (finding 7: >= 4.5:1 under 24 px cap height, >= 3:1 from 24 px) */
+  function parseColor(c) {
+    const s = str(c).trim(); let m = /^#([0-9a-f]{3})$/i.exec(s);
+    if (m) return m[1].split('').map(h => parseInt(h + h, 16));
+    if ((m = /^#([0-9a-f]{6})/i.exec(s))) return [0, 2, 4].map(k => parseInt(m[1].slice(k, k + 2), 16));
+    if ((m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(s))) return [+m[1], +m[2], +m[3]];
+    return null;
+  }
+  function luminance(c) { const v = Array.isArray(c) ? c : parseColor(c); if (!v) return null; const f = x => { x /= 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(v[0]) + 0.7152 * f(v[1]) + 0.0722 * f(v[2]); }
+  function contrastRatio(a, b) { const x = luminance(a), y = luminance(b); if (x == null || y == null) return null; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+  const minContrast = capPx => (capPx >= 24 ? 3 : 4.5);
+
   return { GAME_EVERY,
+    BOARD_FAR_M, BOARD_FADE_S, LOS_DEG, LOS_DIM, HUD_STILL_MS, FAR_DESKTOP, FAR_PHONE, boardLayout, fadeStep, boardDistance, facesBoard, rectsOverlap, checksheetFar, usageFar, constraintFar,
+    automationsFar, writerFar, farLayout, columnWindow, scrollColumn, nextColumnPage, wrapText, labelVisibility, labelPrio, hudHidden, parseColor, luminance, contrastRatio, minContrast,
     TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, VR_STICK_DEAD, VR_MOVE_SPEED, VR_SNAP_DEG, VR_SNAP_ON, VR_SNAP_OFF, stickAxes, stickMove, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,

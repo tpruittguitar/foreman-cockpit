@@ -255,10 +255,15 @@ function resetText(iso, now) {
   return d + (days >= 0 ? ' · in ' + days + (days === 1 ? ' day' : ' days') : ' · passed');
 }
 
-/* ---------- Forge checksheet board: project tabs, Needs Tim | In progress | Queued | Done (collapsed), paged columns ---------- */
+/* ---------- Forge checksheet board, Detail layout: project tabs, Needs Tim | In progress | Queued | Done (collapsed) ----------
+   GUI review 2026-11-18 (finding 2): no auto-paging. Needs Tim cards show in full at the top of their column (title up to 2 lines,
+   never cut); other columns are one line per card and scroll only when someone scrolls them (o.scroll[colId], wheel / "more"
+   line). An ellipsised title shows in full while its card is hovered or focused. Sizes: titles 44 px and notes 36 px on the
+   2048 px face read >= 16 / 13 px cap height from 6.7 m. Returns hits (+ hits.runs: every text run with its role, for tests). */
 export function drawBoard(ctx, W, H, o) {
-  // o: { cols: L.boardView(...), tabs, tab, page, state, ageText, demo, highlight, glow, focusId }
-  const s = W / 2048, hits = [];
+  // o: { cols: L.boardView(...), tabs, tab, scroll: { colId: offset }, state, ageText, demo, highlight, glow, focusId, hoverId }
+  const s = W / 2048, hits = [], runs = [];
+  const text = (role, t, x, y, maxW) => { const v = maxW == null ? t : fitText(ctx, t, maxW); ctx.fillText(v, x, y); runs.push({ role, text: v, full: t, x, y, font: ctx.font }); return v; };
   ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${50 * s}px ${SANS}`; ctx.textBaseline = 'alphabetic';
   ctx.fillText('FORGE CHECKSHEET', 36 * s, 64 * s);
@@ -275,47 +280,102 @@ export function drawBoard(ctx, W, H, o) {
     ctx.fillStyle = on ? '#dffaff' : '#b6bac1'; ctx.fillText(t, tx + 17 * s, ty + 32 * s);
     hits.push({ x: tx / W, y: ty / H, w: tw / W, h: th / H, tab: t }); tx += tw + 12 * s;
   }
-  const top = ty + th + 18 * s, colW = (W - 72 * s) / 4, headH = 48 * s, cardH = 92 * s, gap = 10 * s;
-  const fit = Math.max(1, Math.floor((H - top - headH - 44 * s) / (cardH + gap)));
-  // Each column pages on its own cycle (L.columnPage); hits.pages = the longest cycle, so the caller knows to keep ticking.
-  let pages = 1;
+  const TITLE = 44 * s, NOTE = 35 * s, META = 28 * s, LINE = 52 * s, NLINE = 42 * s, ROW = 60 * s, PADC = 12 * s;
+  // Needs Tim gets the widest column so its titles fit in 2 lines; Done is a collapsed count
+  const top = ty + th + 14 * s, span = W - 72 * s, SHARE = [0.4, 0.27, 0.21, 0.12], headH = 54 * s, bottom = H - 30 * s;
+  const colX = SHARE.map((f, i) => 36 * s + SHARE.slice(0, i).reduce((a, b) => a + b, 0) * span);
+  const measureAt = font => t => { ctx.font = font; return ctx.measureText(t).width; };
+  const overlays = [], colInfo = [];
   o.cols.forEach((c, ci) => {
-    const cx = 36 * s + ci * colW, cw = colW - 18 * s;
-    const pg = c.collapsed ? { items: [], page: 0, pages: 1 } : L.columnPage(c.cards, fit, o.page || 0);
-    pages = Math.max(pages, pg.pages);
-    ctx.fillStyle = c.id === 'needs_tim' ? C.alert : c.id === 'done' ? '#8b9099' : '#c6c9cf'; ctx.font = `800 ${30 * s}px ${SANS}`;
-    ctx.fillText(fitText(ctx, (c.id === 'needs_tim' ? '⚠ ' : c.id === 'done' ? '✓ ' : '') + c.label + ' (' + c.total + ')', cw - (pg.pages > 1 ? 80 * s : 0)), cx + 4 * s, top + 32 * s);
-    if (pg.pages > 1) { ctx.textAlign = 'right'; ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${20 * s}px ${SANS}`; ctx.fillText('p ' + (pg.page + 1) + '/' + pg.pages, cx + cw, top + 30 * s); ctx.textAlign = 'left'; }
+    const cx = colX[ci], cw = SHARE[ci] * span - 18 * s, y0 = top + headH, nt = c.id === 'needs_tim';
+    ctx.fillStyle = nt ? C.alert : c.id === 'done' ? '#9aa0a8' : '#d4d7dc'; ctx.font = `800 ${36 * s}px ${SANS}`;
+    text('head', (nt ? '⚠ ' : c.id === 'done' ? '✓ ' : '') + c.label + ' (' + c.total + ')', cx + 4 * s, top + 38 * s, cw);
     if (ci) { ctx.fillStyle = '#22262b'; ctx.fillRect(cx - 10 * s, top, 2 * s, H - top - 30 * s); }
-    const y0 = top + headH;
     if (c.collapsed) {
-      ctx.fillStyle = '#1a1d22'; rr(ctx, cx, y0, cw, 70 * s, 10 * s); ctx.fill(); ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${24 * s}px ${SANS}`;
-      ctx.fillText(c.total ? c.total + ' done · tap to expand' : 'nothing done yet', cx + 16 * s, y0 + 44 * s);
-      hits.push({ x: cx / W, y: y0 / H, w: cw / W, h: 70 * s / H, done: true }); return;
+      ctx.fillStyle = '#1a1d22'; rr(ctx, cx, y0, cw, 84 * s, 10 * s); ctx.fill(); ctx.fillStyle = '#b6bac1'; ctx.font = `700 ${30 * s}px ${SANS}`;
+      text('meta', c.total ? c.total + ' done' : 'none yet', cx + 16 * s, y0 + 52 * s, cw - 32 * s);
+      hits.push({ x: cx / W, y: y0 / H, w: cw / W, h: 84 * s / H, done: true }); return;
     }
-    const slice = pg.items;
-    if (!c.total && c.id === 'needs_tim') { ctx.fillStyle = '#7fd9a0'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillText('Nothing needs Tim ✓', cx + 8 * s, y0 + 40 * s); }
-    slice.forEach((it, k) => {
-      const y = y0 + k * (cardH + gap), hl = o.highlight && o.highlight.has(it.id), glow = o.glow && o.glow.has(it.id), focus = o.focusId === it.id, nt = c.id === 'needs_tim';
-      ctx.save(); if (nt || glow) { ctx.shadowColor = glow ? C.focus : C.alert; ctx.shadowBlur = (glow ? 30 : 16) * s; }
-      ctx.fillStyle = nt ? '#2a1013' : glow ? '#2a2140' : '#1a1d22'; rr(ctx, cx, y, cw, cardH, 9 * s); ctx.fill(); ctx.restore();
-      ctx.lineWidth = (focus ? 6 : hl || glow ? 4 : 1.5) * s; ctx.strokeStyle = focus || hl || glow ? C.focus : nt ? C.alert : '#30343a'; rr(ctx, cx, y, cw, cardH, 9 * s); ctx.stroke();
-      const pb = L.priorityBadge(it.priority); ctx.font = `800 ${18 * s}px ${SANS}`; const bw = ctx.measureText(pb.text).width + 12 * s;
-      ctx.fillStyle = pb.loud ? '#b3161c' : 'transparent'; rr(ctx, cx + 10 * s, y + 9 * s, bw, 24 * s, 4 * s); ctx.fill(); ctx.strokeStyle = pb.loud ? '#ff6b6b' : '#7f858d'; ctx.lineWidth = 1.5 * s; ctx.stroke();
-      ctx.fillStyle = '#fff'; ctx.fillText(pb.text, cx + 16 * s, y + 27 * s);
-      ctx.font = `700 ${23 * s}px ${SANS}`; ctx.fillStyle = '#eef0f3'; ctx.fillText(fitText(ctx, L.cardTitle(it), cw - bw - 30 * s), cx + bw + 20 * s, y + 28 * s);
-      if (it.note) { ctx.font = `500 ${18 * s}px ${SANS}`; ctx.fillStyle = '#8f96a0'; ctx.fillText(fitText(ctx, it.note, cw - 24 * s), cx + 12 * s, y + 54 * s); }
-      drawAvatar(ctx, it.owner, cx + 22 * s, y + 75 * s, 22 * s);
-      ctx.font = `600 ${19 * s}px ${SANS}`; ctx.fillStyle = '#b6bac1'; ctx.fillText(fitText(ctx, it.owner || '(no owner)', cw * 0.4), cx + 40 * s, y + 82 * s);
-      const w = L.statusWord(it); ctx.textAlign = 'right'; ctx.font = `800 ${17 * s}px ${SANS}`; ctx.fillStyle = TONE[w.tone] || '#ccc';
-      ctx.fillText(fitText(ctx, w.glyph + ' ' + w.word, cw * 0.55), cx + cw - 10 * s, y + 82 * s); ctx.textAlign = 'left';
-      hits.push({ x: cx / W, y: y / H, w: cw / W, h: cardH / H, id: it.id });
+    if (!c.total && nt) { ctx.fillStyle = '#7fd9a0'; ctx.font = `700 ${META}px ${SANS}`; text('meta', 'Nothing needs Tim ✓', cx + 8 * s, y0 + 44 * s, cw); }
+    if (nt) { // every Needs Tim card in full: title wraps (2 lines, more only if it would otherwise be cut), note wraps, owner line
+      let y = y0; const fonts = { t: `700 ${TITLE}px ${SANS}`, n: `500 ${NOTE}px ${SANS}` }, inner = cw - 2 * PADC;
+      const off = Math.max(0, Math.min(c.cards.length - 1, Math.floor((o.scroll || {})[c.id] || 0)));
+      c.cards.slice(off).forEach(it => {
+        const pb = L.priorityBadge(it.priority); ctx.font = `800 ${24 * s}px ${SANS}`; const bw = ctx.measureText(pb.text).width + 14 * s;
+        let tl = L.wrapText(L.cardTitle(it), inner, measureAt(fonts.t), 2, false).lines;
+        const nl = it.note || it.question ? L.wrapText(it.note || it.question, inner, measureAt(fonts.n), 0, false).lines : [];
+        const ch = PADC + 34 * s + tl.length * LINE + nl.length * NLINE + PADC;
+        if (y === Infinity) return;
+        if (y + ch > bottom && y > y0) { overlays.push({ more: c.id, cx, cw, y }); y = Infinity; return; }
+        const hl = o.highlight && o.highlight.has(it.id), glow = o.glow && o.glow.has(it.id), focus = o.focusId === it.id;
+        ctx.save(); ctx.shadowColor = glow ? C.focus : C.alert; ctx.shadowBlur = (glow ? 30 : 16) * s;
+        ctx.fillStyle = glow ? '#2a2140' : '#2a1013'; rr(ctx, cx, y, cw, ch, 9 * s); ctx.fill(); ctx.restore();
+        ctx.lineWidth = (focus ? 6 : hl || glow ? 5 : 3) * s; ctx.strokeStyle = focus || hl || glow ? C.focus : C.alert; rr(ctx, cx, y, cw, ch, 9 * s); ctx.stroke();
+        ctx.fillStyle = '#b3161c'; rr(ctx, cx + PADC, y + PADC, bw, 30 * s, 4 * s); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = `800 ${24 * s}px ${SANS}`;
+        text('badge', pb.text, cx + PADC + 7 * s, y + PADC + 24 * s);
+        const w = L.statusWord(it); ctx.font = `800 ${24 * s}px ${SANS}`; ctx.fillStyle = '#ff8a8a'; const sw = w.glyph + ' ' + w.word; text('meta', sw, cx + PADC + bw + 12 * s, y + PADC + 24 * s);
+        const ox = cx + PADC + bw + 24 * s + ctx.measureText(sw).width; drawAvatar(ctx, it.owner, ox + 14 * s, y + PADC + 15 * s, 24 * s);
+        ctx.font = `600 ${META}px ${SANS}`; ctx.fillStyle = '#e3c4c6'; text('meta', it.owner || '(no owner)', ox + 34 * s, y + PADC + 25 * s, cx + cw - PADC - ox - 34 * s);
+        let ly = y + PADC + 34 * s + TITLE * 0.9; ctx.fillStyle = '#ffffff'; ctx.font = fonts.t;
+        tl.forEach(t => { text('title', t, cx + PADC, ly); ly += LINE; });
+        ctx.fillStyle = '#d9b3b6'; ctx.font = fonts.n; ly += (NOTE - TITLE) * 0.9 + 2 * s;
+        nl.forEach(t => { text('note', t, cx + PADC, ly); ly += NLINE; });
+        hits.push({ x: cx / W, y: y / H, w: cw / W, h: ch / H, id: it.id, col: c.id });
+        y += ch + 10 * s;
+      });
+      if (off > 0) overlays.push({ up: c.id, cx, cw, n: off });
+      return;
+    }
+    // other columns: one line per card, scrolled only by hand
+    // rows stretch so rows + the "more" line fill the column to its bottom (Tim 1:35 AM: no empty card row under the last card)
+    // a column that shows all its cards stretches them (up to 1.25x) rather than leave an empty row under the last one
+    const rows = Math.max(1, Math.floor((bottom - y0 - ROW) / ROW)), all = c.cards.length <= rows + 1;
+    const RH = all && c.cards.length ? Math.min((bottom - y0) / c.cards.length, 1.25 * (bottom - y0) / (rows + 1)) : (bottom - y0) / (rows + 1), win = L.columnWindow(c.cards, c.cards.length > rows + 1 ? rows : rows + 1, (o.scroll || {})[c.id]);
+    colInfo.push({ id: c.id, total: c.total, shown: win.items.length, rowH: RH / H, used: (y0 + (win.items.length + (win.below > 0 || win.above > 0 ? 1 : 0)) * RH) / H, bottom: bottom / H });
+    win.items.forEach((it, k) => {
+      const ROW = RH, y = y0 + k * ROW, hl = o.highlight && o.highlight.has(it.id), glow = o.glow && o.glow.has(it.id), focus = o.focusId === it.id;
+      ctx.fillStyle = glow ? '#2a2140' : k % 2 ? '#15181c' : '#1a1d22'; rr(ctx, cx, y + 3 * s, cw, ROW - 6 * s, 7 * s); ctx.fill();
+      if (focus || hl || glow) { ctx.lineWidth = (focus ? 5 : 4) * s; ctx.strokeStyle = C.focus; rr(ctx, cx, y + 3 * s, cw, ROW - 6 * s, 7 * s); ctx.stroke(); }
+      const w = L.statusWord(it); ctx.font = `800 ${30 * s}px ${SANS}`; ctx.fillStyle = TONE[w.tone] || '#ccc'; text('glyph', w.glyph, cx + 10 * s, y + ROW * 0.68);
+      ctx.font = `700 ${TITLE}px ${SANS}`; ctx.fillStyle = '#eef0f3';
+      const shown = text('title', L.cardTitle(it), cx + 46 * s, y + ROW * 0.72, cw - 56 * s);
+      if ((o.hoverId === it.id || focus) && shown !== L.cardTitle(it)) overlays.push({ full: L.cardTitle(it), cx, cw, y: y + ROW });
+      hits.push({ x: cx / W, y: y / H, w: cw / W, h: ROW / H, id: it.id, col: c.id });
     });
-    const rest = c.more; // cards beyond the cap; everything in c.cards is reachable by paging
-    if (rest > 0) { const y = y0 + fit * (cardH + gap) + 18 * s; ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${22 * s}px ${SANS}`; ctx.fillText('+' + rest + ' more · open the board', cx + 8 * s, y); hits.push({ x: cx / W, y: (y - 22 * s) / H, w: cw / W, h: 30 * s / H, more: c.id }); }
+    if (win.below > 0 || win.above > 0) overlays.push({ more: c.id, cx, cw, rowH: RH, y: y0 + win.items.length * RH, below: win.below, above: win.above, at: win.offset + 1, to: win.offset + win.items.length, total: c.total });
   });
-  hits.pages = pages;
+  for (const ov of overlays) { // scroll lines and hover / focus titles go on top of the cards
+    if (ov.full) {
+      ctx.font = `700 ${TITLE}px ${SANS}`; const ls = L.wrapText(ov.full, ov.cw - 28 * s, measureAt(ctx.font), 0, false).lines, h = ls.length * LINE + 24 * s;
+      const y = Math.min(ov.y, bottom - h); ctx.fillStyle = '#262033'; rr(ctx, ov.cx, y, ov.cw, h, 8 * s); ctx.fill(); ctx.lineWidth = 4 * s; ctx.strokeStyle = C.focus; ctx.stroke();
+      ctx.fillStyle = '#ffffff'; ls.forEach((t, k) => text('title', t, ov.cx + 14 * s, y + 12 * s + TITLE * 0.9 + k * LINE));
+    } else if (ov.more) {
+      const mh = (ov.rowH || ROW) - 8 * s, y = Math.min(ov.y + 4 * s, bottom - mh); ctx.fillStyle = '#0f1114'; ctx.fillRect(ov.cx, y, ov.cw, mh);
+      ctx.fillStyle = '#c3c7cd'; ctx.font = `700 ${30 * s}px ${SANS}`;
+      text('meta', ov.total != null ? `${ov.at}–${ov.to} of ${ov.total} · ${ov.below > 0 ? '▼ ' + ov.below + ' more' : '▲ back to top'}` : '▼ more Needs Tim cards', ov.cx + 8 * s, y + 40 * s, ov.cw - 16 * s);
+      hits.push({ x: ov.cx / W, y: y / H, w: ov.cw / W, h: mh / H, scroll: ov.more });
+    } else if (ov.up) {
+      ctx.fillStyle = '#c3c7cd'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.textAlign = 'right'; text('meta', '▲ ' + ov.n + ' above', ov.cx + ov.cw, top + 38 * s); ctx.textAlign = 'left';
+    }
+  }
+  hits.runs = runs; hits.cols = colInfo; // cols: per one-line column, cards shown and how far down the column they reach (0..1 of H)
   return hits;
+}
+/* ---------- Far layout (any board): headline counts, each with a word (finding 4). Returns the layout runs with roles. ---------- */
+const FAR_TONE = { alert: '#ff6b6b', working: '#3ddc84', idle: '#c9ccd2', info: '#6cb6ff', stale: '#ffd23f' };
+export function drawFar(ctx, W, H, entries, opts) {
+  ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const weight = { count: 800, value: 800, label: 600, word: 800 }; // labels at 600: narrower, so they fit larger in their column
+  const lay = L.farLayout(entries, W, H, (t, size, role) => { ctx.font = `${weight[role] || 800} ${size}px ${SANS}`; return ctx.measureText(t).width; }, opts);
+  for (const b of lay.boxes) { ctx.lineWidth = Math.max(3, lay.valueSize * 0.05); ctx.strokeStyle = FAR_TONE[b.tone] || '#ccc'; rr(ctx, b.x, b.y, b.w, b.h, lay.valueSize * 0.12); ctx.stroke(); }
+  for (const r of lay.runs) {
+    const e = entries[r.entry], tone = FAR_TONE[e.tone] || '#f1f2f4';
+    ctx.font = `${weight[r.role]} ${r.size}px ${SANS}`;
+    ctx.fillStyle = r.role === 'label' ? (e.tone === 'alert' && e.outline ? tone : '#d4d7dc') : r.role === 'word' ? tone : e.tone === 'alert' || e.tone === 'stale' ? tone : '#f6f7f9';
+    if (r.scaleX < 1) ctx.fillText(r.text, r.x, r.y, r.maxW); else ctx.fillText(r.text, r.x, r.y); // maxWidth: the browser condenses the run to fit
+    r.font = ctx.font; r.color = ctx.fillStyle;
+  }
+  return lay;
 }
 const fitText = (ctx, t, w) => fit(ctx, t, w);
 function wrap(ctx, text, x, y, maxW, lh) {
@@ -349,9 +409,9 @@ export function drawUsage(ctx, W, H, o) {
     ctx.fillStyle = u.stale ? C.stale : '#a9aeb6'; ctx.font = `600 ${22 * s}px ${SANS}`;
     /* card 94dfd7f489 (Tim, Nov 18): each plan shows its reset day and time again. */
     ctx.fillText(fit(ctx, u.measured + (u.resets_at ? ' · resets ' + resetClock(u.resets_at) : ''), 600 * s), 34 * s, y + 112 * s);
-    ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${16 * s}px ${SANS}`;
+    ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${19 * s}px ${SANS}`; // 19 px: >= 14 px cap height from 3 m (GUI review 2026-11-18)
     const pool = [L.fiveHourLine(u, o.now), L.creditLine(u), L.resetsLine(u)].filter(Boolean);
-    pool.forEach((t, j) => ctx.fillText(fit(ctx, t, 600 * s), 34 * s, y + (134 + j * 20) * s));
+    pool.forEach((t, j) => ctx.fillText(fit(ctx, t, 600 * s), 34 * s, y + (132 + j * 21) * s));
     ctx.textAlign = 'right'; ctx.fillStyle = col; ctx.font = `800 ${92 * s}px ${SANS}`;
     /* Tim (Nov 18, 10:46 AM ET, card bd3ecea): 'used' sits small under the %, and the prediction takes the column right of the %. Sizes unchanged. */
     const px = W - 200 * s;
@@ -510,17 +570,17 @@ export function drawAutomations(ctx, W, H, o) {
   const rows = L.automationBoardRows(a, o.now), cx = [28 * s, W * 0.47, W * 0.61, W * 0.79], top = 104 * s, foot = 34 * s;
   const avail = H - top - foot, rowH = Math.min(64 * s, avail / Math.max(1, rows.length)), shown = rows.length;
   const fs = Math.min(26 * s, rowH * 0.48);
-  ctx.fillStyle = '#7d838b'; ctx.font = `700 ${18 * s}px ${SANS}`;
+  ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${26 * s}px ${SANS}`;
   ['Automation', 'Result', 'Last ran', 'Next run'].forEach((t, k) => ctx.fillText(t, cx[k], 92 * s));
   rows.slice(0, shown).forEach((r, i) => { const y = top + i * rowH, base = y + rowH * 0.66;
     if (i % 2) { ctx.fillStyle = '#15181c'; ctx.fillRect(16 * s, y, W - 32 * s, rowH); }
     ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.label, cx[1] - cx[0] - 16 * s), cx[0], base);
     const col = RES_COL[r.result === 'SKIPPED' ? 'SKIP' : r.result], cw = 0.12 * W, ch = rowH * 0.64;
     ctx.fillStyle = col; ctx.fillRect(cx[1], y + (rowH - ch) / 2, cw, ch);
-    ctx.fillStyle = r.result === 'FAIL' ? '#ffffff' : '#0f1114'; ctx.font = `800 ${fs * 0.86}px ${SANS}`; ctx.textAlign = 'center'; ctx.fillText(r.result, cx[1] + cw / 2, base); ctx.textAlign = 'left';
+    ctx.fillStyle = '#0f1114'; ctx.font = `800 ${fs}px ${SANS}`; ctx.textAlign = 'center'; ctx.fillText(r.result, cx[1] + cw / 2, base); ctx.textAlign = 'left';
     ctx.fillStyle = '#c9ccd2'; ctx.font = `600 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.last, cx[3] - cx[2] - 12 * s), cx[2], base);
     ctx.fillStyle = r.running ? '#37e0ff' : r.next === 'overdue' ? '#ffd23f' : '#c9ccd2'; ctx.fillText(fit(ctx, r.next, W - cx[3] - 20 * s), cx[3], base); });
-  ctx.fillStyle = '#7d838b'; ctx.font = `600 ${16 * s}px ${SANS}`;
+  ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`;
   ctx.fillText((rows.length > shown ? '+' + (rows.length - shown) + ' more · ' : '') + 'click for the 3-day timeline', 28 * s, H - 12 * s);
 }
 export function drawTrainingSchedule(ctx, W, H, o) {
@@ -561,9 +621,9 @@ export function drawWriterHealth(ctx, W, H, o) {
   if (o.demo) exampleTag(ctx, 330 * s, 46 * s, 18 * s);
   L.writerRows(o.auto, o.now).forEach((r, i) => { const y = (110 + i * 74) * s, st = r.status;
     ctx.fillStyle = st === 'green' ? '#3ddc84' : st === 'amber' ? '#ffd23f' : st === 'red' ? '#ff4b4b' : '#555a62'; ctx.beginPath(); ctx.arc(36 * s, y - 9 * s, 11 * s, 0, 7); ctx.fill();
-    ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillText(r.label, 60 * s, y);
-    ctx.textAlign = 'right'; ctx.fillStyle = r.source ? '#c9ccd2' : '#7d838b'; ctx.font = `600 ${24 * s}px ${SANS}`;
-    ctx.fillText(fit(ctx, r.text, 360 * s), W - 24 * s, y); ctx.textAlign = 'left'; });
+    ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${28 * s}px ${SANS}`; ctx.fillText(r.label, 60 * s, y);
+    ctx.textAlign = 'right'; ctx.fillStyle = r.source ? '#c9ccd2' : '#9aa0a8'; ctx.font = `600 ${28 * s}px ${SANS}`; // 28 px: >= 14 px cap height from 3 m
+    ctx.fillText(fit(ctx, r.text, 380 * s), W - 24 * s, y); ctx.textAlign = 'left'; });
 }
 
 /* Window view (Tim item 5): a simple small town at the edge of the hills. `sky` is L.skyState(now) (America/New_York time of
