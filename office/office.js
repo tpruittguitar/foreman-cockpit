@@ -1462,7 +1462,7 @@ function buildWorld() {
   function turn(dx, dy) { look.setFromQuaternion(camera.quaternion); look.y -= dx; look.x = Math.max(-1.4, Math.min(1.4, look.x - dy)); camera.quaternion.setFromEuler(look); }
   let down = null;
   canvas.addEventListener('pointerdown', e => { // dimmer first: a grab on the plate drags the knob and never starts a look-drag
-    if (e.button !== 0 || panelOpen) return;
+    if (e.pointerType === 'touch' || e.button !== 0 || panelOpen) return; // touch is handled once, in the touch handlers below
     ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera);
     const h = ray.intersectObject(dimPlate, true)[0], other = ray.intersectObjects(pickables(), true)[0];
     if (!L.dimmerTouchHit(h, other)) return;
