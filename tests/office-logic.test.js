@@ -198,7 +198,7 @@ test('idle tour visits Needs Tim desks first and lingers longest there', () => {
   assert.ok(tour[0].dwellMs > tour[1].dwellMs && tour[1].dwellMs > tour[2].dwellMs);
 });
 
-test('checks, PR readiness, usage words and phone detection', () => {
+test('checks, PR readiness, usage words, phone detection and dimmer touch routing', () => {
   assert.equal(L.checkState([]), 'none');
   assert.equal(L.checkState([{ status: 'completed', conclusion: 'success' }, { status: 'in_progress' }]), 'pending');
   assert.equal(L.checkState([{ status: 'completed', conclusion: 'failure' }, { status: 'in_progress' }]), 'failing');
@@ -215,6 +215,9 @@ test('checks, PR readiness, usage words and phone detection', () => {
   assert.equal(L.isPhoneLike({ coarse: false, width: 1920 }), false);
   assert.equal(L.waitingMinutes(ago(24), NOW), 24);
   assert.equal(L.relTime(ago(5), NOW), '5m ago');
+  assert.equal(L.dimmerTouchHit({ distance: 2 }, { distance: 3 }), true);
+  assert.equal(L.dimmerTouchHit({ distance: 2 }, { distance: 1 }), false);
+  assert.equal(L.touchDragTarget({ distance: 2 }, null), true);
 });
 
 test('demo data shows every status and both pickup and conversation behaviours', () => {

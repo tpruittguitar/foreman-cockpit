@@ -603,6 +603,8 @@
   }
 
   function isPhoneLike(env) { return !!(env && (env.coarse || env.width < 760)); }
+  function dimmerTouchHit(hit, other) { return !!hit && (!other || other.distance >= hit.distance); }
+  function touchDragTarget(hit, other) { return dimmerTouchHit(hit, other); }
 
   /* ---------- Demo data (?demo=1): clearly example data, every state and behaviour visible ---------- */
   function demoStatus(now) {
@@ -1970,7 +1972,7 @@
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle, CARD_TEXT_MAX, cardMessage, cardBoxHTML, sendCardDirection,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
-    usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
+    usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
