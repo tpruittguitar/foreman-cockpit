@@ -52,6 +52,8 @@ a { color: var(--info); }
 .tag .chip { background: #b3161c; color: #fff; padding: 0 5px; border-radius: 3px; font-weight: 800; font-size: 11px; }
 .tag .chip.stale { background: var(--stale); color: #111; }
 .tag.frozen { color: var(--dim); }
+.tag.far { font-size: 10px; padding: 1px 5px; opacity: .85; }
+.tag.far .chip.stale, .tag.far .chip.recent { display: none; }
 .tag.hl { outline: 2px solid var(--focus); }
 .bubbles { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); display: flex; flex-direction: column; gap: 4px; align-items: center; pointer-events: auto; cursor: pointer; }
 .bubble { max-width: 240px; background: #fff; color: #111; border-radius: 8px; padding: 4px 8px; font-size: 10px; line-height: 1.25; display: block; white-space: normal; overflow-wrap: break-word; transition: opacity .6s; box-shadow: 0 2px 8px rgba(0,0,0,.4); }

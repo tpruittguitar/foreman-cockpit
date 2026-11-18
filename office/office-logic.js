@@ -493,6 +493,11 @@
     return Math.max(0, Math.sin((h - 6) / 14 * Math.PI));
   }
   function truncate(text, n) { const t = str(text).replace(/\s+/g, ' ').trim(); return t.length <= n ? t : t.slice(0, Math.max(1, n - 1)).trimEnd() + '…'; }
+  /* Mirrored desktops (Root's live screen) are a 640 x 400 grab: past MIRROR_NEAR_M it reads as black glass (Root's desktop is an
+     empty dark wallpaper), so farther away the monitor draws the bot's own name / status / task like the other 12 (QA on #395).
+     Name tags past TAG_FAR_M drop their stale / recent chips and shrink so they stop covering screens. */
+  const MIRROR_NEAR_M = 4, TAG_FAR_M = 8;
+  const mirrorAt = dist => dist <= MIRROR_NEAR_M, tagFar = dist => dist > TAG_FAR_M;
   function lodFor(dist) { return dist <= LOD.near ? 'near' : dist <= LOD.mid ? 'mid' : 'far'; }
 
   /* Pulse brightness 0..1 at about 1 Hz; steady under prefers-reduced-motion. */
@@ -1916,7 +1921,7 @@
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
-    RECENT_REPLAY_MIN, mayStartWalk, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
+    RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, writerRows,
