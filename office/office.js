@@ -189,7 +189,7 @@ function workDiff(parsed) {
 function queuePickup(p) {
   const c = chars.get(p.bot);
   if (!c) { pendingPickups.push(p); return; }
-  if (L.JOB_ASSIGN_REASONS.includes(p.reason)) { if (S.fresh[p.bot] && S.fresh[p.bot].stale) return; /* an assignment alone never makes a bot look working (games3) */ if (!(c.job && c.job.itemId === p.itemId) && !c.jobs.some(x => x.itemId === p.itemId)) c.jobs.push(p); } // item 12: assigned -> board, desk, board
+  if (L.JOB_ASSIGN_REASONS.includes(p.reason)) { /* every bot carries its new card, fresh signal or not: carrying is not working (#408) */ if (!(c.job && c.job.itemId === p.itemId) && !c.jobs.some(x => x.itemId === p.itemId)) c.jobs.push(p); } // item 12: assigned -> board, desk, board
   else if (!c.pickups.some(x => x.itemId === p.itemId)) c.pickups.push(p);
 }
 const pendingPickups = [];
