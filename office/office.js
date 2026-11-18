@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawWriterHealth, WRITER_METRICS, drawTown, drawPipelineWall, drawConstraintWall } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, WRITER_METRICS, drawTown, drawPipelineWall, drawConstraintWall } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -677,9 +677,8 @@ function buildWorld() {
   const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.2, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
   const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
   const autos = makeBoard('autos', 3.6, 2.2, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 391 : 626);
-  const writer = makeBoard('writer', 2.6, 1.7, 0 + 4.2, 2.3, RD / 2 - 0.05, Math.PI, LOW ? 512 : 768, LOW ? 335 : 502);
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
-  const boards = { project, usage, needs, autos, writer, constraint };
+  const boards = { project, usage, needs, autos, constraint }; // Writer health lives in the Automations panel; its wall spot (front wall, x 4.2) now holds the waterfall
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
      Desktop: the live page (https://foreman-cockpit.pages.dev/pipeline) in an iframe on a CSS3D plane that sits behind the WebGL
@@ -750,15 +749,16 @@ function buildWorld() {
   const wf = canvasTex(64, 256); { const g = wf.ctx; g.fillStyle = '#5c8fb0'; g.fillRect(0, 0, 64, 256); for (let k = 0; k < 90; k++) { g.fillStyle = `rgba(230,245,255,${0.15 + (k % 5) * 0.08})`; g.fillRect((k * 23) % 64, (k * 71) % 256, 1 + k % 2, 18 + (k * 13) % 40); } }
   wf.t.wrapS = wf.t.wrapT = THREE.RepeatWrapping; wf.t.repeat.set(2, 1.5); wf.t.needsUpdate = true;
   const waterMat = new THREE.MeshStandardMaterial({ map: wf.t, transparent: true, opacity: 0.8, roughness: 0.1, emissive: 0x16323f, emissiveIntensity: 0.6 });
-  const wfall = new THREE.Group(); wfall.position.set(RW / 2 - 0.12, 0, 1.9); wfall.rotation.y = -Math.PI / 2; scene.add(wfall);
+  const WF_X = 4.2; // Tim: on the front wall where the Writer board used to hang (was the right wall at z 1.9)
+  const wfall = new THREE.Group(); wfall.position.set(WF_X, 0, RD / 2 - 0.12); wfall.rotation.y = Math.PI; scene.add(wfall);
   add(box(2.0, 2.6, 0.18), MAT.stone, 0, 1.3, 0, wfall);
   for (let k = 0; k < 9; k++) add(box(0.3 + (k % 3) * 0.12, 0.16, 0.08), k % 2 ? MAT.stone : MAT.trim, -0.8 + (k * 0.37) % 1.6, 0.3 + (k * 0.29) % 2.1, 0.11, wfall);
   add(new THREE.PlaneGeometry(1.1, 2.2), waterMat, 0, 1.35, 0.13, wfall);
   add(box(2.2, 0.35, 0.7), MAT.stone, 0, 0.175, 0.4, wfall);
   const pool2 = add(new THREE.PlaneGeometry(2.0, 0.55), waterMat, 0, 0.36, 0.42, wfall); pool2.rotation.x = -Math.PI / 2;
   add(box(2.2, 0.02, 0.02), MAT.cyan, 0, 0.36, 0.76, wfall);
-  block(RW / 2 - 0.5, 1.9, 0.5, 1.1);
-  bonsai(RW / 2 - 0.6, 0.36, 0.6, 1.0); bonsai(RW / 2 - 0.6, 0.36, 3.2, 0.9);
+  block(WF_X, RD / 2 - 0.5, 1.1, 0.5);
+  bonsai(WF_X - 1.3, 0.36, RD / 2 - 0.6, 1.0); bonsai(WF_X + 1.3, 0.36, RD / 2 - 0.6, 0.9);
   // pool table (kept), coffee station and drinks fridge
   const pool = new THREE.Group(); pool.position.set(8.9, 0, -1.6); scene.add(pool);
   add(box(1.3, 0.18, 2.4), MAT.wood, 0, 0.72, 0, pool); add(box(1.12, 0.03, 2.22), MAT.felt, 0, 0.82, 0, pool); add(box(1.32, 0.015, 2.42), MAT.cyan, 0, 0.62, 0, pool);
@@ -907,7 +907,7 @@ function buildWorld() {
     { id: 'pool1', kind: 'pool', x: 7.95 - CL, z: -2.0, face: Math.PI / 2 }, { id: 'pool2', kind: 'pool', x: 9.85 + CL, z: -1.1, face: -Math.PI / 2 },
     { id: 'coffee1', kind: 'coffee', x: 10.5 - CL, z: -6.4, face: Math.PI / 2 }, { id: 'coffee2', kind: 'coffee', x: 10.5 - CL, z: -5.4, face: Math.PI / 2 },
     { id: 'fridge1', kind: 'fridge', x: 10.45 - CL, z: -8.2, face: Math.PI / 2 }, { id: 'fridge2', kind: 'fridge', x: 9.6 - CL, z: -8.9, face: Math.PI / 2 },
-    { id: 'wf1', kind: 'waterfall', x: 10.35, z: 1.9, face: Math.PI / 2 },
+    { id: 'wf1', kind: 'waterfall', x: WF_X, z: RD / 2 - 1.65, face: 0 },
     { id: 'lo1', kind: 'loiter', x: 6.4, z: 1.0, face: Math.PI / 2 }, { id: 'lo2', kind: 'loiter', x: 5.0, z: -6.6, face: Math.PI / 2 }, { id: 'lo3', kind: 'loiter', x: 6.2, z: 5.2, face: Math.PI },
     { id: 'lo4', kind: 'loiter', x: -5.2, z: 4.9, face: 0 }, { id: 'lo5', kind: 'loiter', x: 1.5, z: 6.0, face: 0 }, { id: 'lo6', kind: 'loiter', x: -3, z: 6.4, face: 0 }
   ].concat(SIT, CONF_SEATS.map((c, i) => Object.assign({ id: 'conf' + i, kind: 'conf' }, c)), L.groupChatSlots(7.2, -5.0, 4, 0.75).map((c, i) => Object.assign({ id: 'gc' + i, kind: 'gchat' }, c)));
@@ -1241,7 +1241,6 @@ function buildWorld() {
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); u.t.needsUpdate = true;
     const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); n.t.needsUpdate = true;
     const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO }); a.t.needsUpdate = true;
-    const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, err: S.autoErr, demo: DEMO }); wr.t.needsUpdate = true;
     const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); cw.t.needsUpdate = true;
     updateLines();
     for (const [id, ln] of lines) ln.material = hl.has(id) || (hoverBot && ln.userData.owner === hoverBot) ? MAT.lineHi : MAT.lineFaint;
@@ -1306,7 +1305,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, constraint.screen, autos.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, constraint.screen, autos.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1332,7 +1331,7 @@ function buildWorld() {
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
     else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
-    else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
+    else if (p.board === 'autos') openAutomations(p.board);
     else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
   }
