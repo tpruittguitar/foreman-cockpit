@@ -15,10 +15,11 @@ const DEMO = Q.get('demo') === '1', TV = Q.get('tv') === '1';
 const SEED = Q.has('seed') ? Number(Q.get('seed')) >>> 0 : (Math.random() * 4294967296) >>> 0; // seedable idle rotation (?seed=N)
 const OWNER = 'tpruittguitar';
 const STATUS_PATH = 'control/OFFICE_STATUS.json', AUTO_PATH = 'control/AUTOMATIONS_STATUS.json', TRAIN_PATH = L.TRAINING_PATH;
-const API_FILE = p => `https://api.github.com/repos/${OWNER}/forge-coordination/contents/${p}?ref=main`; // chat feed probe only
+const GH_API = '/api/gh/'; // GitHub reads go through the cached Pages function (functions/api/gh), never straight to api.github.com
+const API_FILE = p => `${GH_API}repos/${OWNER}/forge-coordination/contents/${p}?ref=main`; // chat feed probe only
 const RAW_FILE = p => `https://raw.githubusercontent.com/${OWNER}/forge-coordination/main/${p}`;
 const PR_REPOS = ['foreman-cockpit', 'forge-coordination', 'forge-policy'];
-const ASKS_URL = `https://api.github.com/repos/${OWNER}/forge-coordination/contents/asks/open`;
+const ASKS_URL = `${GH_API}repos/${OWNER}/forge-coordination/contents/asks/open`;
 const READINGS_URL = RAW_FILE('usage/AI_USAGE_READINGS.jsonl');
 const CHAT_FEED_URL = RAW_FILE('control/PRESIDENT_CHAT_FEED.jsonl');
 /* Desk screen mirrors: one downscaled JPEG per bot plus index.json. NOTE: the publisher is not live yet, so every
@@ -75,14 +76,14 @@ async function rawText(url) { const r = await fetch(url + (url.includes('?') ? '
 async function loadPulls() {
   const out = [], states = new Map(), times = new Map();
   for (const repo of PR_REPOS) {
-    const list = await api(`https://api.github.com/repos/${OWNER}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=50`);
+    const list = await api(`${GH_API}repos/${OWNER}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=50`);
     L.prStates(OWNER, repo, list).forEach((v, k) => states.set(k, v));
     L.prTimes(OWNER, repo, list).forEach((v, k) => times.set(k, v));
     for (const p of list.filter(p => p.state === 'open')) {
       const sha = p.head && p.head.sha;
       let checks = S.checkCache.get(sha);
       if (!checks && !p.draft) {
-        try { const cr = await api(`https://api.github.com/repos/${OWNER}/${repo}/commits/${sha}/check-runs?per_page=50`); checks = L.checkState(cr.check_runs); }
+        try { const cr = await api(`${GH_API}repos/${OWNER}/${repo}/commits/${sha}/check-runs?per_page=50`); checks = L.checkState(cr.check_runs); }
         catch (e) { checks = 'unknown'; }
         if (checks === 'passing' || checks === 'failing') S.checkCache.set(sha, checks);
       }
