@@ -17,3 +17,11 @@ test('floor tag shows the card chip only while working and never a training chip
   const tag = src.slice(src.indexOf('function updateLabels'), src.indexOf('c.tagBox = null'));
   assert.doesNotMatch(tag, /chip learned/);
 });
+
+test('training whiteboard is dark and the constraint waiting figure fits its gutter', () => {
+  const draw = fs.readFileSync(path.join(__dirname, '..', 'office', 'draw.js'), 'utf8');
+  assert.match(draw, /ctx\.fillStyle = '#16191e'; ctx\.fillRect\(0, 0, W, H\);   \/\* GUI office review Nov 18 #3/);
+  assert.match(draw, /if \(sk && sk\.counter\) \{/);
+  assert.match(draw, /const cw = 176 \* s, qw = 94 \* s/);
+  assert.match(draw, /shrink\(ctx, qt, 800, 34 \* s, qw - 16 \* s\)/);
+});

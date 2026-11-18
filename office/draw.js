@@ -174,16 +174,16 @@ function gameDungeon(ctx, W, H, s, t, top) {
 }
 /* Conference whiteboard: ambient "New skills" doodle, or the meeting title from the data. */
 export function drawWhiteboard(ctx, W, H, o) {
-  ctx.fillStyle = '#f4f5f2'; ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#c9ccc6'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, W - 6, H - 6);
-  const sk = !o.meeting && o.skill;
-  ctx.fillStyle = o.meeting ? '#1f4fb8' : '#1d7a3c'; ctx.font = `800 ${H * (sk ? 0.15 : 0.2)}px ${SANS}`;
-  if (sk) for (let f = 0.15; f > 0.085 && ctx.measureText(sk.title).width > W - 130; f -= 0.01) ctx.font = `800 ${H * f}px ${SANS}`; // long skill names shrink to fit
-  ctx.fillText(fit(ctx, o.meeting ? o.meeting.title : sk ? sk.title : 'New skills', W - (sk ? 130 : 60)), 30, H * 0.3);
-  ctx.font = `600 ${H * (sk ? 0.085 : 0.1)}px ${SANS}`; ctx.fillStyle = '#333';
+  ctx.fillStyle = '#16191e'; ctx.fillRect(0, 0, W, H);   /* GUI office review Nov 18 #3: dark like the boards beside it */
+  ctx.strokeStyle = '#2b2f36'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, W - 6, H - 6);
+  const sk = !o.meeting && o.skill, room = sk && sk.counter ? 130 : 60;
+  ctx.fillStyle = o.meeting ? '#4aa3ff' : '#3ddc84'; ctx.font = `800 ${H * (sk ? 0.15 : 0.2)}px ${SANS}`;
+  if (sk) for (let f = 0.15; f > 0.085 && ctx.measureText(sk.title).width > W - room; f -= 0.01) ctx.font = `800 ${H * f}px ${SANS}`; // long skill names shrink to fit
+  ctx.fillText(fit(ctx, o.meeting ? o.meeting.title : sk ? sk.title : 'New skills', W - room), 30, H * 0.3);
+  ctx.font = `600 ${H * (sk ? 0.085 : 0.1)}px ${SANS}`; ctx.fillStyle = '#d6dae0';
   const lines = o.meeting ? ['Meeting · ' + o.meeting.seated.length + ' at the table', ...o.meeting.seated.slice(0, 3)] : sk ? sk.bullets.map(b => '✓ ' + b) : ['✓ read the task twice', '✓ small PRs, green checks', '✓ ask Tim early'];
   lines.forEach((l, i) => ctx.fillText(fit(ctx, l, W - 50), 36, H * (0.5 + i * 0.14)));
-  if (sk) { ctx.font = `700 ${H * 0.08}px ${SANS}`; ctx.fillStyle = '#6b7280'; ctx.textAlign = 'right'; ctx.fillText(sk.counter, W - 22, H * 0.3); ctx.textAlign = 'left'; }
+  if (sk && sk.counter) { ctx.font = `700 ${H * 0.08}px ${SANS}`; ctx.fillStyle = '#9aa0a8'; ctx.textAlign = 'right'; ctx.fillText(sk.counter, W - 22, H * 0.3); ctx.textAlign = 'left'; }
   if (o.demo && o.meeting) exampleTag(ctx, W - 230, H * 0.92, 22);
 }
 function drawImageFit(ctx, img, x, y, w, h) { const k = Math.min(w / img.width, h / img.height), iw = img.width * k, ih = img.height * k; ctx.fillStyle = '#000'; ctx.fillRect(x, y, w, h); ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); }
@@ -371,7 +371,7 @@ export function drawConstraintWall(ctx, W, H, o) {
   ctx.textAlign = 'right'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = asOfOk ? '#c9ccd2' : (age.stale ? C.stale : '#c9ccd2');
   ctx.fillText(ageText, W - 24 * s, 54 * s); ctx.textAlign = 'left';
   if (!sum) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${32 * s}px ${SANS}`; ctx.fillText(fit(ctx, o.err ? 'Pipeline feed unavailable: ' + o.err : 'Waiting for the pipeline feed…', W - 48 * s), 24 * s, 160 * s); return; }
-  const cw = 184 * s, qw = 84 * s, y0 = 80 * s, ch = 380 * s, x0 = 14 * s, num = n => n.toLocaleString('en-US');
+  const cw = 176 * s, qw = 94 * s, y0 = 80 * s, ch = 380 * s, x0 = 14 * s, num = n => n.toLocaleString('en-US');
   sum.stages.forEach((st, i) => {
     const x = x0 + i * (cw + qw), con = st.constraint;
     ctx.fillStyle = '#16191e'; rr(ctx, x, y0, cw, ch, 8 * s); ctx.fill();
@@ -393,7 +393,7 @@ export function drawConstraintWall(ctx, W, H, o) {
   sum.waiting.forEach((q, i) => {
     const cx = x0 + (i + 1) * cw + i * qw + qw / 2, n = q.count, max = Math.max(1, ...sum.waiting.map(w => w.count || 0));
     ctx.textAlign = 'center'; ctx.fillStyle = '#c9ccd2'; ctx.font = `700 ${22 * s}px ${SANS}`; ctx.fillText(names[i], cx, y0 + 130 * s);
-    ctx.fillStyle = n ? '#f1f2f4' : '#9aa0a8'; ctx.font = `800 ${(n != null && String(n).length > 4 ? 28 : 34) * s}px ${SANS}`; ctx.fillText(n == null ? '—' : (q.partial ? '≥ ' : '') + num(n), cx, y0 + 172 * s);
+    const qt = n == null ? '—' : (q.partial ? '≥ ' : '') + num(n); ctx.fillStyle = n ? '#f1f2f4' : '#9aa0a8'; shrink(ctx, qt, 800, 34 * s, qw - 16 * s); ctx.fillText(qt, cx, y0 + 172 * s);   /* GUI office review Nov 18 #4: the waiting figure fits its own gutter, never touching a stage card */
     const th = 120 * s, tx = cx - 14 * s, ty = y0 + 190 * s; ctx.fillStyle = '#2b2e33'; ctx.fillRect(tx, ty, 28 * s, th);
     if (n) { const fh = Math.max(6 * s, th * n / max); ctx.fillStyle = '#c9aa77'; ctx.fillRect(tx, ty + th - fh, 28 * s, fh); }
     ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`; ctx.fillText(i === 0 ? 'to intake' : i === 1 ? 'to enrich' : 'to you', cx, y0 + 346 * s); ctx.textAlign = 'left';
