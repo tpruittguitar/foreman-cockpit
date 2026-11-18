@@ -28,6 +28,8 @@ a { color: var(--info); }
 .hud { position: fixed; z-index: 5; display: flex; gap: .5em; align-items: center; }
 #hud-tl { top: var(--safe); left: var(--safe); flex-direction: column; align-items: flex-start; }
 #hud-tr { top: var(--safe); right: var(--safe); }
+#refresh-btn.busy .ico { display: inline-block; animation: refresh-spin 0.9s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
 .badge-example { background: var(--stale); color: #111; font-weight: 800; letter-spacing: .06em; padding: .25em .6em; border-radius: 4px; font-size: .9em; }
 .asof { background: rgba(10,10,12,.72); padding: .3em .6em; border-radius: 4px; }
 .asof.stale { color: var(--stale); }
