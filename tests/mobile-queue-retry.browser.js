@@ -39,7 +39,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   await page.goto(base+'/pipeline.html?src=writer');await page.waitForSelector('#m-pane-decide');
   const btn='#m-pane-decide [data-m-retry-queue]',note='#m-pane-decide [data-m-retry-note]';
   const state=()=>page.evaluate(([b,n])=>{const x=document.querySelector(b),y=document.querySelector(n);return {text:x&&x.textContent.trim(),disabled:x&&x.disabled,note:y&&y.textContent.trim(),cards:document.querySelectorAll('#m-pane-decide .m-card').length,
-    unavailable:/Decision queue unavailable/.test(document.querySelector('#m-pane-decide').textContent),stale:/^Showing queue from /.test(((document.querySelector('#m-pane-decide .m-stale')||{}).textContent||'').trim()),
+    unavailable:/decision queue snapshot unavailable/i.test(document.querySelector('#m-pane-decide').textContent),stale:/^Showing queue from /.test(((document.querySelector('#m-pane-decide .m-stale')||{}).textContent||'').trim()),
     banner:((document.querySelector('#m-pane-decide .m-stale')||{}).textContent||'').trim(),sys:document.getElementById('m-sys-word').textContent,sysCls:document.getElementById('m-sys').className,
     count:document.querySelector('#m-pane-decide .m-count b').textContent,chips:[...document.querySelectorAll('#m-pane-decide [data-m-filter]')].map(c=>c.textContent.trim())}},[btn,note]);
   // One retry: the button must show the in-flight state (disabled, "Retrying…"), then settle back to an enabled "Retry".
@@ -56,7 +56,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
   assert.strictEqual(s.sys,'QUEUE DOWN','header says QUEUE DOWN');assert.match(s.sysCls,/\bm-qdown\b/,'orange (attn) style');
   assert.ok(await page.$eval('#m-sys-ic',e=>!!e.querySelector('svg path')),'with the warning glyph');
   await wait(600);   // let the header's colour transition finish before comparing
-  const icons=await page.evaluate(()=>{const c=e=>getComputedStyle(e).color,v=document.querySelector('#m-pane-decide .m-done .m-g'),h=document.querySelector('#m-sys-ic svg');
+  const icons=await page.evaluate(()=>{const c=e=>getComputedStyle(e).color,v=document.querySelector('#m-pane-decide .m-down-note .m-g, #m-pane-decide .m-done .m-g'),h=document.querySelector('#m-sys-ic svg');
     return {view:c(v),head:c(h),same:v.innerHTML===h.innerHTML.replace(/\s+$/,'')||v.innerHTML.replace(/\s/g,'')===h.innerHTML.replace(/\s/g,'')}});
   assert.strictEqual(icons.view,icons.head,'the empty view and the header use the same orange for queue down '+JSON.stringify(icons));
   assert.ok(icons.same,'and the same ⚠ glyph '+JSON.stringify(icons));

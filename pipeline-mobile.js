@@ -156,16 +156,19 @@
     return v.salary.top >= v.need ? 'ok' : 'below';
   }
   function salaryShown(v) {
-    var s = v.salary || {}, t = s.text ? String(s.text).replace(/k/g, 'K') : '';
-    if (!t) return { html: '', name: '', plain: '' };
-    var q = s.low ? '<span class="conf UNKNOWN" aria-hidden="true">?</span> ' : '', tilde = s.approx ? '~' : '';
-    return { html: q + tilde + esc(t), plain: (s.low ? '? ' : '') + tilde + t, name: s.low ? 'low-confidence estimate, ' + t.replace(/\u2013/g, ' to ') : '' };
+    var s = v.salary || {}, F = root.PipelinePayFormat, fig = s.text ? String(s.text) : '', trust = F ? F.trustWord(s) : '';
+    if (!fig || fig === (F && F.UNKNOWN)) {
+      var miss = (F && F.UNKNOWN) || 'Pay not posted';
+      return { html: esc(miss), name: miss, plain: miss };
+    }
+    var plain = trust ? fig + ' ' + trust : fig;
+    return { html: esc(plain), plain: plain, name: trust === 'low-confidence' ? 'low-confidence estimate, ' + fig.replace(/\u2013/g, ' to ') : (trust ? fig + ', ' + trust : fig) };
   }
   function badges(v, opt) {
     var out = [], ps = payState(v), shown = salaryShown(v), st = shown.plain;
     if (ps === 'ok') out.push(['ok', gl('ok') + shown.html, shown.name || ('Salary ' + st + ', meets the pay you need')]);
     else if (ps === 'below') out.push(['fault', gl('down') + shown.html, shown.name || ('Salary ' + st + ', below the pay you need')]);
-    else if (ps === 'missing') out.push(['caution m-i', gl('caution') + '— est. pending', 'Salary estimate pending']);
+    else if (ps === 'missing') out.push(['caution m-i', gl('caution') + ((root.PipelinePayFormat && root.PipelinePayFormat.UNKNOWN) || 'Pay not posted'), 'Pay not posted']);
     else out.push(['', shown.html, shown.name || ('Salary ' + st)]);
     if (v.fit == null) out.push(['caution', gl('caution') + 'Fit unknown', 'Fit not measured']);
     else if (v.fit < FIT_BORDER) out.push(['caution', '~ Fit ' + Math.round(v.fit), 'Fit ' + Math.round(v.fit) + ', borderline']);
@@ -206,8 +209,15 @@
 
 
   var decideFilter = 'all', menuFor = null, swipeX = 0, toastTimer = 0, lastDecision = null, holdTimer = 0;
+  function actNowQueue() {
+    var b = B(), ids = b.actNowIds() || [], rows = b.rows() || [], by = {};
+    rows.forEach(function (r) { by[r.id] = r; });
+    return ids.map(function (id) { return by[id] ? b.view(by[id]) : null; }).filter(Boolean);
+  }
   function queue() {
-    var b = B(), rows = b.decideRows(), ids = decideFilter === 'act' ? b.actNowIds() : null;
+    var b = B();
+    if (queueState().view === 'unavailable') return actNowQueue();
+    var rows = b.decideRows(), ids = decideFilter === 'act' ? b.actNowIds() : null;
     /* Act now keeps the shared Act Now model's order (Shield AI pinned first, then its ranking); re-sorting by score here
        dropped the pin (found by tests/mobile-act-now.browser.js, 2026-11-02). All is sorted by score. */
     if (ids) return rows.filter(function (r) { return ids.indexOf(r.id) >= 0; }).sort(function (a, c) { return ids.indexOf(a.id) - ids.indexOf(c.id); }).map(function (r) { return b.view(r); });
@@ -221,9 +231,9 @@
       '<p class="m-reason ' + rs[0] + '">' + rs[1] + '</p>' + badgeRow(v, { skipAge: rs[2] === 'age' }) +
       (ns ? '<p class="m-alert" role="alert">' + gl('no') + 'Decision not saved <button type="button" class="m-btn m-quiet" data-m-retry="' + esc(v.id) + '">Retry</button></p>' : '') +
       '<div class="m-actions"><button type="button" class="m-btn m-primary" data-m-do="pursue" data-id="' + esc(v.id) + '">' + gl('ok') + 'Pursue</button>' +
-      '<button type="button" class="m-btn m-quiet" data-m-do="hold" data-id="' + esc(v.id) + '">Hold</button>' +
-      '<button type="button" class="m-btn m-quiet m-dots" data-m-menu="' + esc(v.id) + '" aria-haspopup="menu" aria-expanded="' + (menuFor === v.id) + '" aria-label="More actions">⋯</button>' +
+      '<button type="button" class="m-btn m-quiet m-research" data-m-do="research" data-id="' + esc(v.id) + '">Research</button>' +
       '<button type="button" class="m-btn m-danger" data-m-do="decline" data-id="' + esc(v.id) + '">' + gl('no') + 'Decline</button></div>' +
+      '<div class="m-applied"><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></div>' +
       (menuFor === v.id ? menuHtml(v.id) : '') + '<p class="m-say" role="status" data-m-say="' + esc(v.id) + '"></p></article>';
   }
   function menuHtml(id) {
@@ -233,6 +243,12 @@
   }
   function renderDecide(loaded) {
     var p = $('m-pane-decide');
+    var bothFailEarly = queueState().view === 'unavailable' && !loaded;
+    if (bothFailEarly) {
+      var failHtml = '<div class="m-done m-pending m-down" role="alert">' + gl('warn') + '<b>—</b><p>Decision queue snapshot unavailable, and the Act Now list could not be loaded.</p>' + retryBtn('m-btn m-quiet') + '</div>';
+      if (setHtml(p, failHtml)) bindDecide(p);
+      return;
+    }
     if (!loaded) { p.innerHTML = skeleton(); return; }
     var q = queue(), rows = B().decideRows(), all = rows.length, ids = B().actNowIds(), act = rows.filter(function (r) { return ids.indexOf(r.id) >= 0; }).length;
     var qs0 = queueState(), unknown = qs0.view === 'unavailable';   // queue failed to load: the counts are not known, so say "—" (Tim, Stage 5 review)
@@ -242,17 +258,30 @@
       '<button type="button" class="m-chip" data-m-filter="act" aria-pressed="' + (decideFilter === 'act') + '" title="Act Now: up to 10 roles to act on first (Director and up, US, scored)">Act now · ' + act + '</button></div>';
     var h = B().health(), qs = queueState();
     /* Down = orange ⚠ everywhere (header "QUEUE DOWN", this banner, the empty view); loading and stale = yellow "?" (Tim, Stage 5 polish). */
-    if ((qs.view === 'loading' || qs.view === 'unavailable') && q.length) head = '<p class="m-alert ' + (qs.view === 'unavailable' ? 'm-down-note' : 'm-caution-note') + ' m-stale" role="status">' + gl(qs.view === 'unavailable' ? 'warn' : 'caution') + '<span>Decision queue ' + (qs.view === 'loading' ? 'loading' : 'unavailable') + ': showing only jobs marked Needs decision.' + (qs.view === 'unavailable' ? retryNote(qs) + ' ' + retryBtn('m-inline-link') : '') + '</span></p>' + head;
+    if (qs.view === 'loading' && q.length) head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue loading: showing only jobs marked Needs decision.</span></p>' + head;
     /* Stale: "Showing queue from 8:53 AM ET. Refresh failed (server error). Retry" (Tim, Stage 5 review). After a failed
        retry: "... Retry failed at 9:40 AM ET (server error). Retry"; the queue time already says when it last loaded. */
     if (qs.view === 'stale') head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Showing queue from ' + esc(qs.when) + '. ' +
       (queueRetry.failedAt && !queueRetry.busy ? '<span data-m-retry-note>Retry failed at ' + esc(etTime(queueRetry.failedAt)) + ' (' + esc(why(queueRetry.error)) + ').</span>' : 'Refresh failed (' + esc(why(qs.error)) + ').') +
       ' ' + retryBtn('m-inline-link') + '</span></p>' + head;
     if (h.writer === false) head = '<p class="m-alert m-nowriter-note" role="status">' + gl('warn') + '<span>Writer not connected · decisions can’t be sent from this device. Save a connection in <button type="button" class="m-inline-link" data-m-settings>Settings</button>.</span></p>' + head;
-    var changed = setHtml(p, head + (q.length ? '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>' :
-      (qs.view === 'loading' ? '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Decision queue loading</b><p>Jobs that need your decision come from the pipeline evidence, which has not loaded yet. This updates on its own.</p></div>' :
-      qs.view === 'unavailable' ? '<div class="m-done m-pending m-down" role="alert">' + gl('warn') + '<b>Decision queue unavailable</b><p>' + (retryNote(qs) || 'Last loaded: ' + esc(qs.when) + '.' + (qs.error ? ' ' + esc(qs.error) + '.' : '')) + '</p>' + retryBtn('m-btn m-quiet') + ' <button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>' :
-      '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision' + (decideFilter === 'act' ? ' in Act Now' : '') + '. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>')));
+    var bothFail = qs.view === 'unavailable' && !(B().ready && B().ready());
+    if (qs.view === 'unavailable' && !bothFail) {
+      head = '<p class="m-alert m-down-note" role="status">' + gl('warn') + '<span>Showing Act Now list · decision queue snapshot unavailable' + (retryNote(qs) ? retryNote(qs) : '') + ' ' + retryBtn('m-inline-link') + '</span></p>' + head;
+    }
+    var body;
+    if (bothFail) {
+      body = '<div class="m-done m-pending m-down" role="alert">' + gl('warn') + '<b>—</b><p>Decision queue snapshot unavailable, and the Act Now list could not be loaded.</p>' + retryBtn('m-btn m-quiet') + '</div>';
+    } else if (q.length) {
+      body = '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>';
+    } else if (qs.view === 'loading') {
+      body = '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Decision queue loading</b><p>Jobs that need your decision come from the pipeline evidence, which has not loaded yet. This updates on its own.</p></div>';
+    } else if (qs.view === 'unavailable') {
+      body = '';
+    } else {
+      body = '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision' + (decideFilter === 'act' ? ' in Act Now' : '') + '. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>';
+    }
+    var changed = setHtml(p, head + body);
     if (changed) bindDecide(p);
   }
   /* What Decide can honestly say about its queue: ready, loading (first 60 s), unavailable (nothing loaded, failed or
@@ -296,12 +325,16 @@
   function say(id, t) { document.querySelectorAll('[data-m-say="' + id + '"]').forEach(function (e) { e.textContent = t; }); var ts = $('m-toast-say'); if (ts && lastDecision && lastDecision.id === id) ts.textContent = t; }
 
   /* A decision: queued in the existing ruling sender first; only then does the card leave and the Undo toast appear. */
-  var WORD = { pursue: 'Pursue', hold: 'Hold', research: 'Research', decline: 'Decline', applied: 'Applied' };
+  function word(kind) {
+    var L = root.PipelineDecisionLabels;
+    if (L && L.TOAST && L.TOAST[kind]) return L.TOAST[kind];
+    return { pursue: 'Pursue', research: 'Research', decline: 'Decline', applied: 'Mark applied' }[kind] || kind;
+  }
   function decide(id, kind, card) {
     var res = B().decide(id, kind, function (t) { say(id, t); });
     if (!res || !res.ok) { say(id, (res && res.msg) || 'Not saved.'); if (card) { card.classList.remove('m-gone'); card.style.transform = ''; } return false; }
     menuFor = null; lastDecision = { id: id, kind: kind };
-    var done = function () { toast(WORD[kind] + ' queued', id); settle(); };
+    var done = function () { toast(word(kind) + ' queued', id); settle(); };
     if (card && !reduced()) { busy++; card.classList.add('m-gone', kind === 'decline' ? 'm-left' : 'm-right'); setTimeout(done, 200); } else { busy++; done(); }
     if (detailId === id) closeDetail(true);
     return true;
@@ -346,7 +379,7 @@
     p.querySelectorAll('[data-m-menu]').forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-m-menu'); menuFor = menuFor === id ? null : id; refresh(); }; });
     p.querySelectorAll('[data-m-open]').forEach(function (b) { b.onclick = function () { if (holdTimer === -1) { holdTimer = 0; return; } menuFor = null; openDetail(b.getAttribute('data-m-open')); }; });
     p.querySelectorAll('[data-m-retry]').forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-m-retry'), r = B().retry(id, function (t) { say(id, t); }); if (!r.ok) say(id, r.msg); }; });
-    var br = p.querySelector('[data-m-browse]'); if (br) br.onclick = function () { setTab('jobs'); };
+    var br = p.querySelector('[data-m-browse]'); if (br) br.onclick = function () { jobsFilter = 'all'; jobsQuery = ''; jobsShown = 50; setTab('jobs'); };
     var st = p.querySelector('[data-m-settings]'); if (st) st.onclick = function () { openDesktop('settings'); };
     p.querySelectorAll('[data-m-retry-queue]').forEach(function (b) { b.onclick = retryQueue; });
     /* Long-press a card (500ms) for the same menu as ⋯ (Research in two taps or fewer). */
@@ -396,8 +429,8 @@
         kv('Flex', esc(flexBadge(v.flex)[2])) + kv('Recency', a == null ? '? unknown' : a + ' days') + kv('Final score', v.score == null ? 'unscored' : Math.round(v.score))) +
       sec('My application', (v.applied ? kv('Applied', esc(v.applied.date || 'yes')) : '<p class="m-faint">No application recorded.</p><p><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></p>') + (v.ruling ? kv('Decision', esc(v.ruling)) : '')) +
       '<p class="m-say" role="status" data-m-say="' + esc(v.id) + '"></p></div>' +
+      '<div class="m-applied m-dsec"><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></div>' +
       '<div class="m-dbar"><button type="button" class="m-btn m-primary" data-m-do="pursue" data-id="' + esc(v.id) + '">' + gl('ok') + 'Pursue</button>' +
-      '<button type="button" class="m-btn m-quiet" data-m-do="hold" data-id="' + esc(v.id) + '">Hold</button>' +
       '<button type="button" class="m-btn m-quiet m-research" data-m-do="research" data-id="' + esc(v.id) + '">Research</button>' +
       '<button type="button" class="m-btn m-danger" data-m-do="decline" data-id="' + esc(v.id) + '">' + gl('no') + 'Decline</button></div>';
   }
@@ -441,7 +474,7 @@
   function wide() { return root.innerWidth > 700; }
   function jobsList() {
     var b = B(), q = jobsQuery.trim().toLowerCase(), by = SORTS[jobsSort][0];
-    var rows = b.jobsRows(jobsFilter).map(function (r) { return b.view(r); });
+    var rows = b.jobsRows(jobsQuery.trim() ? 'all' : jobsFilter).map(function (r) { return b.view(r); });
     if (q) rows = rows.filter(function (v) { return (v.title + ' ' + v.company + ' ' + v.location).toLowerCase().indexOf(q) >= 0; });
     var key = { score: function (v) { return v.score == null ? -1 : v.score; }, salary: function (v) { return v.salary.top == null ? -1 : v.salary.top; }, fit: function (v) { return v.fit == null ? -1 : v.fit; }, age: function (v) { var a = ageDays(v); return a == null ? -1e9 : -a; } }[by];
     return rows.sort(function (a, c) { return key(c) - key(a) || String(a.id).localeCompare(String(c.id)); });
@@ -484,7 +517,7 @@
   function paintJobs() {
     if (!jobsBuilt) buildJobs();
     var f = fields(), list = jobsList(), shown = list.slice(0, jobsShown), box = $('m-jobs-list');
-    document.querySelectorAll('[data-m-jf]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-m-jf') === jobsFilter)); });
+    document.querySelectorAll('[data-m-jf]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-m-jf') === (jobsQuery.trim() ? 'all' : jobsFilter))); });
     $('m-sort').textContent = SORTS[jobsSort][1]; $('m-sort').setAttribute('aria-label', 'Sort: ' + SORTS[jobsSort][1] + '. Tap for the next sort.');
     $('m-jobcount').textContent = $('m-jobcount-l').textContent = list.length + (list.length === 1 ? ' job' : ' jobs') + (jobsQuery ? ' match' : '');
     if (!list.length) { if (io) { io.disconnect(); io = null; } setHtml(box, '<p class="m-empty-line">No jobs match.</p>'); return; }

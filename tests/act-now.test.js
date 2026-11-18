@@ -58,7 +58,7 @@ test('second decision is blocked with "Already decided: <decision>, <date>"; car
   const r = row('A'), ru = { kind: 'APPLIED', ts: '2026-10-20T12:00:00Z', writeStatus: 'VERIFIED' };
   assert.deepEqual(A.alreadyDecided(r, ru), { kind: 'APPLIED', label: 'Applied', date: '2026-10-20' });
   const h = A.html(A.pick([row('E', { payload: { SALARY_BASIS: 'FORGE-ESTIMATE' } })], ctx({ E: 60 })), { posting: () => 'https://x.example/e' });
-  assert.match(h, /\$200k est\./); assert.match(h, /Open posting/); assert.match(h, /data-an-applied="E"/); assert.match(h, /data-an-later="E"/);
+  assert.match(h, /\$200K low-confidence/); assert.match(h, /Open posting/); assert.match(h, /data-an-applied="E"/); assert.match(h, /data-an-later="E"/); assert.match(h, />Pursue</); assert.match(h, />Mark applied</); assert.doesNotMatch(h, />Applied</); assert.doesNotMatch(h, />Later</);
   assert.match(A.CSS, /min-height:var\(--pe-target-min\)/); assert.doesNotMatch(A.CSS, /#[0-9a-f]{3,6}\b/i, 'tokens only');
 });
 

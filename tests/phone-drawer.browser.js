@@ -6,7 +6,7 @@
    REV-073 (Track M step 7; Grok Bot 20:54 ET, p42 item 5): state card dropped when quiet, compact otherwise; pay right after the place.
    REV-072 (Track M step 6; Grok Bot 20:35 ET, p42 items 1-4): header row, ‹ Queue, title token, one meta line, ring clear of the decision row.
    REV-071 (Track M step 5; Grok Bot 20:21 ET, phone drawer vs v1.5 p42 B): ring (SVG, --pe-ring-phone 88 px, value 26 px,
-   band text right), decision row pinned to the drawer bottom (52 px, no key hints, Pursue · Hold · Research │ Decline),
+   band text right), decision row pinned to the drawer bottom (52 px, no key hints, Pursue · Research · Decline; Mark applied is a secondary control by the posting actions),
    evidence rows (44 px, 3 px state bar, glyph, 11 px word), materials after the drawer body (44 px, >= 11 px). 390 / 402.
    Run: node tests/phone-drawer.browser.js */
 require('./helpers/block-production-writer.cjs'); // no request to the production Writer
@@ -58,7 +58,7 @@ const JOB='V2X-A4CCD49EE686';
       const under=root=>{const out=[];if(!root)return out;root.querySelectorAll('*').forEach(e=>{if(!e.offsetParent)return;const own=[...e.childNodes].some(n=>n.nodeType===3&&n.textContent.trim());if(own&&parseFloat(cs(e).fontSize)<11)out.push(e.tagName+' '+cs(e).fontSize)});return out};
       const ring=q('.ws-ring'),dec=q('.wh-decide'),ev=q('.ck-checks'),acts=q('.wh-actions'),body=q('#d-body');
       return {ring:{w:bx(ring).width,svg:!!ring.querySelector('svg'),fs:cs(ring.querySelector('b')).fontSize,info:bx(q('.ws-score-info')).left>bx(ring).right-1},
-        dec:{pos:cs(dec).position,bottom:cs(dec).bottom,btn:[...dec.querySelectorAll('button')].filter(b=>b.offsetParent).sort((a,b2)=>bx(a).left-bx(b2).left).map(b=>({t:b.innerText.trim(),h:bx(b).height,fs:cs(b).fontSize})),sub:[...dec.querySelectorAll('sub')].some(s=>s.offsetParent),fits:bx(dec).right<=bx(d).right+0.5},
+        dec:{pos:cs(dec).position,bottom:cs(dec).bottom,btn:[...dec.querySelectorAll('button')].filter(b=>b.offsetParent).map(b=>({t:b.innerText.trim(),h:bx(b).height,fs:cs(b).fontSize})),sub:[...dec.querySelectorAll('sub')].some(s=>s.offsetParent),fits:bx(dec).right<=bx(d).right+0.5},
         ev:[...ev.querySelectorAll('li')].map(li=>({c:li.className,h:bx(li).height,bar:cs(li).borderLeftWidth,glyph:getComputedStyle(li,'::before').content,sfs:li.querySelector('small')?cs(li.querySelector('small')).fontSize:null})),
         acts:{pos:cs(acts).position,after:bx(acts).top>=bx(body).bottom-1,btn:[...acts.querySelectorAll('button')].map(b=>({h:bx(b).height,fs:cs(b).fontSize}))},
         under:[].concat(under(q('.ws-score')),under(dec),under(ev),under(acts),under(q('.d-head')),under(q('.wh-top'))),
@@ -68,7 +68,7 @@ const JOB='V2X-A4CCD49EE686';
     const t=w+'x'+h+': ';
     assert.equal(r.ring.w,88,t+'ring 88 px (--pe-ring-phone)');assert(r.ring.svg,t+'SVG ring');assert.equal(r.ring.fs,'26px',t+'ring value 26 px');assert(r.ring.info,t+'band text to the right of the ring');
     assert.equal(r.dec.pos,'sticky',t+'decision row pinned');assert.equal(r.dec.bottom,'0px');assert(r.dec.fits,t+'decision row inside the drawer');
-    assert.deepEqual(r.dec.btn.map(b=>b.t.replace(/\s+/g,' ')),['✓ Pursue','Hold','Research','⊖ Decline'].map(x=>x),t+'decision buttons: '+JSON.stringify(r.dec.btn));
+    assert.deepEqual(r.dec.btn.map(b=>b.t.replace(/\s+/g,' ')),['✓ Pursue','Research','⊖ Decline'],t+'decision buttons: '+JSON.stringify(r.dec.btn));
     r.dec.btn.forEach(b=>assert(b.h>=52,t+'decision target >= 52 px: '+JSON.stringify(b)));assert.equal(r.dec.sub,false,t+'no key hints on the phone');
     assert(r.ev.length===5,'five evidence lines');r.ev.forEach(e=>{assert(e.h>=44,t+'evidence row >= 44 px');assert.equal(e.bar,'3px');assert.match(e.glyph,/^"[✓✕?≈]"$/,t+'state glyph: '+JSON.stringify(r.ev));assert.equal(e.sfs,'11px')});
     // REV-082 (p42 item 14): materials buttons outline style: no fill, 1 px border, mono 11 px capitals; Open posting Cyan; disabled dashed.
@@ -83,7 +83,7 @@ const JOB='V2X-A4CCD49EE686';
     // 22 px title; one 11 px meta line carrying pay; chips row gone; the ring is fully clear of the pinned decision row on first open.
     assert.equal(r.hd.h,44,t+'header row 44 px');assert.equal(r.hd.back,'‹ Queue',t+'back control');assert(r.hd.backH>=44,t+'back target >= 44 px');
     assert.equal(r.hd.lfs,'11px',t+'label 11 px');assert(!/JOB DRAWER|LOCKED ON MAP/.test(r.hd.label),t+'label: '+r.hd.label);assert.match(r.hd.label,/^◉ V2X-[0-9A-F]+ · [A-Z ]+$/,t+'label: '+r.hd.label);
-    assert.equal(r.hd.title,'22px',t+'title --pe-fs-drawer-title-phone');assert.equal(r.hd.meta.fs,'11px');assert(r.hd.meta.h<=16,t+'meta is one line: '+JSON.stringify(r.hd.meta));assert.match(r.hd.meta.t,/\$|Pay unknown/,t+'meta carries pay');
+    assert.equal(r.hd.title,'22px',t+'title --pe-fs-drawer-title-phone');assert.equal(r.hd.meta.fs,'11px');assert(r.hd.meta.h<=16,t+'meta is one line: '+JSON.stringify(r.hd.meta));assert.match(r.hd.meta.t,/\$|Pay not posted|Pay unknown/,t+'meta carries pay');
     assert.equal(r.hd.chips,false,t+'chips row dropped');
     assert(r.clear.ringBottom<=r.clear.decTop,t+'ring clear of the decision row: '+JSON.stringify(r.clear));assert(r.clear.scoreBottom<=r.clear.decTop,t+'score block clear: '+JSON.stringify(r.clear));
     assert(parseFloat(r.qv)>=11,t+'.qh-view >= 11 px: '+r.qv);
@@ -115,7 +115,7 @@ const JOB='V2X-A4CCD49EE686';
     // REV-073 (p42 item 5): with nothing to verify, block or follow up, the state card is gone on the phone; meta has pay right after the place.
     const de=await page.evaluate(()=>{const s=document.querySelector('#drawer .decision-essentials');return {quiet:s.classList.contains('de-quiet'),shown:!!s.offsetParent,meta:document.getElementById('d-meta').innerText}});
     assert.equal(de.quiet,true,t+'first job has a quiet state card');assert.equal(de.shown,false,t+'quiet state card hidden on the phone');
-    assert.match(de.meta,/^[^·]+ · [^·]+ · (~?\$|Pay unknown)/,t+'pay right after the place: '+de.meta);
+    assert.match(de.meta,/^[^·]+ · [^·]+ · (~?\$|Pay not posted|Pay unknown)/,t+'pay right after the place: '+de.meta);
     assert.deepEqual(await under11(page),[],t+'first job: no drawer text under 11 px on any tab');
     if(w===390)await page.screenshot({path:(process.env.PIPELINE_UI_ARTIFACTS||require('os').tmpdir())+'/phone-drawer-390x844.png'});
     await page.locator('#d-back').tap();await page.waitForTimeout(500);assert.equal(await page.evaluate(()=>document.getElementById('drawer').classList.contains('on')),false,t+'‹ Queue closes the drawer');

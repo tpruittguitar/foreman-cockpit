@@ -1,4 +1,4 @@
-/* Desktop job drawer: the body fills leftover height, the four decision buttons stay in the
+/* Desktop job drawer: the body fills leftover height, the three decision buttons stay in the
    viewport, and STATE / REASON / DUPLICATE OF have associated labels (axe label + select-name).
    At 1280x800 and 1440x900 on first open, Open posting, Copy packet and Draft cover letter sit
    fully above the sticky footer, with no axe target-size violation. At 1440x900 the footer is
@@ -32,7 +32,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8');
     const m=await page.evaluate(()=>{
       const body=document.getElementById('d-body');
       const drawer=document.getElementById('drawer');
-      const bs=[...document.querySelectorAll('#drawer .wh-decide button')];
+      const bs=[...document.querySelectorAll('#drawer .wh-decide button:not(.wh-applied-link)')];
       const cs=getComputedStyle(body);
       const inView=bs.map(b=>{const r=b.getBoundingClientRect();return r.width>0&&r.height>0&&r.top>=-1&&r.left>=-1&&r.bottom<=innerHeight+1&&r.right<=innerWidth+1});
       const fields=['edit-state','edit-reason','edit-dup'].map(id=>{
@@ -62,8 +62,8 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8');
     });
     assert(m.bodyH>200,width+'x'+height+' drawer body taller than 200 px, got '+m.bodyH);
     assert(m.bodyCH>200,width+'x'+height+' drawer body clientHeight taller than 200 px, got '+m.bodyCH);
-    assert.equal(m.buttons,4,width+'x'+height+' has four decision buttons');
-    assert.deepEqual(m.inView,[true,true,true,true],width+'x'+height+' all four buttons in the viewport: '+JSON.stringify(m));
+    assert.equal(m.buttons,3,width+'x'+height+' has three decision buttons');
+    assert.deepEqual(m.inView,[true,true,true],width+'x'+height+' all three buttons in the viewport: '+JSON.stringify(m));
     assert.deepEqual(m.labelViolations,[],width+'x'+height+' no critical label violations on the drawer fields: '+JSON.stringify(m.fields));
     assert(m.fields.every(f=>f.labeled),width+'x'+height+' STATE / REASON / DUPLICATE OF are labeled');
     assert(/auto|scroll/.test(m.overflowY),width+'x'+height+' body scrolls: '+m.overflowY);
@@ -72,7 +72,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8');
       const body=document.getElementById('d-body');
       const dec=body.querySelector(':scope > .wh-decide')||body.querySelector('.wh-decide');
       const br=body.getBoundingClientRect(),dr=dec.getBoundingClientRect();
-      const buttons=[...dec.querySelectorAll('button')];
+      const all=[...dec.querySelectorAll('button')];
       const posts=['ws-open','ws-packet','ws-cover'].map(id=>{
         const el=document.getElementById(id),r=el.getBoundingClientRect();
         const overlap=Math.max(0,Math.min(r.bottom,dr.bottom)-Math.max(r.top,dr.top));
@@ -80,9 +80,9 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8');
       });
       return {
         scrollTop:body.scrollTop,
-        sameRow:buttons.length===4&&buttons.every(b=>b.offsetTop===buttons[0].offsetTop),
-        offsetTops:buttons.map(b=>b.offsetTop),
-        sizes:buttons.map(b=>{const r=b.getBoundingClientRect();return {w:r.width,h:r.height};}),
+        sameRow:all.length>=3&&all.every(b=>b.offsetTop===all[0].offsetTop),
+        offsetTops:all.map(b=>b.offsetTop),
+        sizes:all.map(b=>{const r=b.getBoundingClientRect();return {w:r.width,h:r.height};}),
         posts
       };
     });

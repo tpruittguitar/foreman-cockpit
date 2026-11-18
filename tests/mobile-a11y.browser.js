@@ -70,7 +70,7 @@ function audit(scope){
   await page.evaluate(b=>{localStorage.setItem('px.cfg',JSON.stringify({url:b+'/writer',key:'test-only'}))},base);await page.reload();await page.waitForSelector('#m-pane-decide .m-card');await page.waitForTimeout(300);
   take(await page.evaluate(audit,'#m-root'),'Decide');
   await page.click('.m-card.m-top [data-m-menu]');await page.waitForSelector('.m-menu');take(await page.evaluate(audit,'.m-menu'),'Decide menu');await page.keyboard.press('Escape');
-  await page.click('.m-card.m-top [data-m-do="hold"]');await page.waitForSelector('#m-toast:not([hidden])');take(await page.evaluate(audit,'#m-toast'),'Undo toast');await page.click('#m-undo');await page.waitForTimeout(400);
+  await page.click('.m-card.m-top [data-m-do="research"]');await page.waitForSelector('#m-toast:not([hidden])');take(await page.evaluate(audit,'#m-toast'),'Undo toast');await page.click('#m-undo');await page.waitForTimeout(400);
   await page.click('.m-card.m-top [data-m-open]');await page.waitForSelector('#m-detail:not([hidden])');await page.evaluate(()=>document.querySelectorAll('#m-detail details').forEach(d=>d.open=true));
   take(await page.evaluate(audit,'#m-detail'),'Job sheet');await page.keyboard.press('Escape');
   await page.click('#m-tab-jobs');await page.waitForSelector('#m-jobs-list .m-row');take(await page.evaluate(audit,'#m-root'),'Jobs');
@@ -128,7 +128,7 @@ function audit(scope){
   // 5. Reduced motion: no transition or animation anywhere in the shell, in every state that has one.
   ({ctx,page,errors}=await open({reducedMotion:'reduce'}));
   await page.evaluate(b=>{localStorage.setItem('px.cfg',JSON.stringify({url:b+'/writer',key:'test-only'}))},base);await page.reload();await page.waitForSelector('#m-pane-decide .m-card');
-  await page.click('.m-card.m-top [data-m-do="hold"]');await page.waitForSelector('#m-toast:not([hidden])');
+  await page.click('.m-card.m-top [data-m-do="research"]');await page.waitForSelector('#m-toast:not([hidden])');
   await page.click('#m-tab-status');await page.waitForFunction(()=>document.querySelector('#m-pane-status .m-constraint'),null,{timeout:20000});
   await page.evaluate(()=>{const c=document.querySelector('#m-pane-status .m-constraint');c.classList.add('m-flash');document.getElementById('m-hd').classList.add('m-hide')});
   const moving=await page.evaluate(()=>[...document.querySelectorAll('#m-root, #m-root *')].filter(e=>{const cs=getComputedStyle(e);return cs.transitionDuration.split(',').some(x=>parseFloat(x)>0)||cs.animationName!=='none'}).map(e=>e.id||String(e.className.baseVal!==undefined?e.className.baseVal:e.className)));
