@@ -32,7 +32,16 @@ const CURATED = {
   'free-research': ['Source-backed facts from the web', 'Free Groq / OpenRouter models', 'Saves Grok Bot usage'],
   'keep-live-work-terminal-open': ['Keep a live terminal open', 'Maximized while work runs', 'Close only when truly idle'],
   'message-chatgpt-dot': ['Send a link, file or question', "To Tim's ChatGPT dot agent", 'Or open the dot page'],
-  'run-codex-cli-with-chatgpt-login': ['Hand big code tasks to Codex', "Billed to Tim's ChatGPT plan", 'Installs / re-signs-in if needed']
+  'run-codex-cli-with-chatgpt-login': ['Hand big code tasks to Codex', "Billed to Tim's ChatGPT plan", 'Installs / re-signs-in if needed'],
+  'clear-the-board': ['Take the next open card', 'Clearing the board is first', 'Team up if you lack a task'],
+  'usage-routing': ['Check usage before routing', 'Pick the owner with headroom', 'Save Grok, Claude for design'],
+  'qa-live-proof': ['Prove done-when on live data', 'Record PASS or FAIL', 'Close the card only after'],
+  'root-cause-five-whys': ['Ask why 3 to 5 times', 'Break down to first principles', 'Name a fix only after that'],
+  'ask-qa-or-root-for-help': ['After a failed check or retry', 'Ask QA or Root for help', "Don't spend more attempts"],
+  'lean-repo-checkout': ['Download only what the job needs', 'Shallow, sparse, or single file', 'Delete the clone when done'],
+  'office-floor-walk': ['Walk the live 3D office', 'Compare it to what is real', 'Turn mismatches into findings'],
+  'small-hand-pr': ['Small clear changes by hand', 'Exact edits, then syntax-check', 'Skip a coding-agent for this'],
+  'job-materials-canon': ["Load before Tim's job materials", 'His locked rulings, newest wins', 'Resume, letters, replies']
 };
 function wrap(desc) {
   const words = clean(desc).replace(/^use (this )?(when|before|if)\s+/i, '').split(' '), lines = [''];
@@ -42,7 +51,7 @@ function wrap(desc) {
 }
 export function bulletsFrom(desc, slug) { const c = CURATED[slug]; return c && c.every(b => b.length <= MAX) ? c.slice() : wrap(desc); }
 // Names too long for the whiteboard get a short form.
-const SHORT_TITLE = { 'run-codex-cli-with-chatgpt-login': 'Run Codex CLI', 'keep-live-work-terminal-open': 'Keep live terminal open' };
+const SHORT_TITLE = { 'run-codex-cli-with-chatgpt-login': 'Run Codex CLI', 'keep-live-work-terminal-open': 'Keep live terminal open', 'ask-qa-or-root-for-help': 'Ask QA or Root for help', 'qa-live-proof': 'QA live proof', 'root-cause-five-whys': 'Root cause five whys', 'small-hand-pr': 'Small hand PR' };
 export function titleOf(name, slug) { if (SHORT_TITLE[slug]) return SHORT_TITLE[slug]; let t = clean(name) || slug; if (/^[a-z0-9-]+$/.test(t)) t = t.replace(/-/g, ' '); return t.charAt(0).toUpperCase() + t.slice(1); }
 
 export function build(skillsDir) {

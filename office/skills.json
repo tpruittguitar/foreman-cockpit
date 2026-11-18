@@ -1,11 +1,29 @@
 [
   {
+    "slug": "ask-qa-or-root-for-help",
+    "title": "Ask QA or Root for help",
+    "bullets": [
+      "After a failed check or retry",
+      "Ask QA or Root for help",
+      "Don't spend more attempts"
+    ]
+  },
+  {
     "slug": "claude-code-on-the-box",
     "title": "Claude Code on the box",
     "bullets": [
       "Run big tasks in Claude Code",
       "Uses the Claude subscription",
       "Installs / signs in if needed"
+    ]
+  },
+  {
+    "slug": "clear-the-board",
+    "title": "Clear the board",
+    "bullets": [
+      "Take the next open card",
+      "Clearing the board is first",
+      "Team up if you lack a task"
     ]
   },
   {
@@ -27,12 +45,30 @@
     ]
   },
   {
+    "slug": "job-materials-canon",
+    "title": "Job materials canon",
+    "bullets": [
+      "Load before Tim's job materials",
+      "His locked rulings, newest wins",
+      "Resume, letters, replies"
+    ]
+  },
+  {
     "slug": "keep-live-work-terminal-open",
     "title": "Keep live terminal open",
     "bullets": [
       "Keep a live terminal open",
       "Maximized while work runs",
       "Close only when truly idle"
+    ]
+  },
+  {
+    "slug": "lean-repo-checkout",
+    "title": "Lean repo checkout",
+    "bullets": [
+      "Download only what the job needs",
+      "Shallow, sparse, or single file",
+      "Delete the clone when done"
     ]
   },
   {
@@ -45,12 +81,57 @@
     ]
   },
   {
+    "slug": "office-floor-walk",
+    "title": "Office floor walk",
+    "bullets": [
+      "Walk the live 3D office",
+      "Compare it to what is real",
+      "Turn mismatches into findings"
+    ]
+  },
+  {
+    "slug": "qa-live-proof",
+    "title": "QA live proof",
+    "bullets": [
+      "Prove done-when on live data",
+      "Record PASS or FAIL",
+      "Close the card only after"
+    ]
+  },
+  {
+    "slug": "root-cause-five-whys",
+    "title": "Root cause five whys",
+    "bullets": [
+      "Ask why 3 to 5 times",
+      "Break down to first principles",
+      "Name a fix only after that"
+    ]
+  },
+  {
     "slug": "run-codex-cli-with-chatgpt-login",
     "title": "Run Codex CLI",
     "bullets": [
       "Hand big code tasks to Codex",
       "Billed to Tim's ChatGPT plan",
       "Installs / re-signs-in if needed"
+    ]
+  },
+  {
+    "slug": "small-hand-pr",
+    "title": "Small hand PR",
+    "bullets": [
+      "Small clear changes by hand",
+      "Exact edits, then syntax-check",
+      "Skip a coding-agent for this"
+    ]
+  },
+  {
+    "slug": "usage-routing",
+    "title": "Usage routing",
+    "bullets": [
+      "Check usage before routing",
+      "Pick the owner with headroom",
+      "Save Grok, Claude for design"
     ]
   }
 ]
