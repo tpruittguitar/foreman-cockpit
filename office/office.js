@@ -816,7 +816,7 @@ function buildWorld() {
   // Rider spot comes from the bike's own transform (saddle at local z -0.22, facing the handlebars at local +z), so it follows any placement / rotation.
   bike.updateMatrixWorld(true);
   const saddle = new THREE.Vector3(0, 0, -0.22).applyMatrix4(bike.matrixWorld);
-  const ry = bike.rotation.y, fwd = [Math.sin(ry), Math.cos(ry)], bhx = Math.abs(fwd[0]) * 0.5 + Math.abs(fwd[1]) * 0.21, bhz = Math.abs(fwd[1]) * 0.5 + Math.abs(fwd[0]) * 0.21;
+  const ry = bike.rotation.y, fwd = [Math.sin(ry), Math.cos(ry)], bhx = Math.abs(fwd[0]) * 0.5 + Math.abs(fwd[1]) * 0.42, bhz = Math.abs(fwd[1]) * 0.5 + Math.abs(fwd[0]) * 0.42;
   block(bike.position.x, bike.position.z, bhx, bhz); // footprint: base 0.25 x 1.0 plus handlebars, rotated with the bike
   SIT.push({ id: 'bike', kind: 'bike', x: saddle.x, z: saddle.z, face: ry });
   // indoor waterfall: stone wall, a sheet of moving water (scrolling texture, no extra lights) and a basin
@@ -973,7 +973,7 @@ function buildWorld() {
   const deskOf = n => desks.find(d => d.name === n);
 
   /* ---------- nav grid (A*, pure: L.createNav) ---------- */
-  const nav = L.createNav({ RW, RD, CELL: 0.2, inflate: 0.22, obstacles });
+  const nav = L.createNav({ RW, RD, CELL: 0.2, inflate: 0.42, obstacles });
   function buildGrid() { nav.build(obstacles); }
   const toCell = nav.toCell, free = nav.free;
   const route = (from, to) => nav.route(from, to).map(p => new THREE.Vector2(p.x, p.z));
