@@ -152,7 +152,10 @@ test('conversation recency: 15 minute window, latest 3, oldest first', () => {
   assert.deepEqual(L.recentConversations(list.slice(4), NOW), []);
   assert.equal(L.bubbleText({ to: 'Claude', text: '' }), 'talking with Claude');
   const long = L.bubbleText({ to: 'X', text: 'x'.repeat(200) });
-  assert.equal(long.length, 40); assert.ok(long.endsWith('…'));
+  assert.equal(long.length, 90); assert.ok(long.endsWith('…'));
+  const typical = 'Ping me if something comes in.';
+  assert.equal(L.bubbleText({ to: 'X', text: typical }), typical);
+  assert.ok(!typical.includes('…') && !L.bubbleText({ to: 'X', text: typical }).includes('…'));
 });
 
 test('TV key mapping in hop and free-walk modes', () => {

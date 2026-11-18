@@ -1218,7 +1218,7 @@ function buildWorld() {
         c.bubKey = bk;
         c.bub.innerHTML = lines.length ? lines.map(l => `<div class="bubble${l.text ? '' : ' who'}">${esc(L.bubbleText(l))}</div>`).join('')
           : rp ? `<div class="bubble recent"><span class="amb">recent · ${rp.min}m ago</span> ${esc(L.truncate(rp.text, 40))}</div>`
-          : amb ? `<div class="bubble ambient${c.goalNow && ['group', 'invite'].includes(c.goalNow.ambient) ? ' speech' : ''}"><span class="amb">ambient</span> ${esc(L.truncate(amb, L.BUBBLE_MAX))}</div>` : '';
+          : amb ? `<div class="bubble ambient${c.goalNow && ['group', 'invite'].includes(c.goalNow.ambient) ? ' speech' : ''}">${esc(L.truncate(amb, L.BUBBLE_MAX))}</div>` : '';
       }
       const show = lines.length || amb || rp;
       c.bub.hidden = !show || !vis;

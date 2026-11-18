@@ -52,9 +52,9 @@ a { color: var(--info); }
 .tag.frozen { color: var(--dim); }
 .tag.hl { outline: 2px solid var(--focus); }
 .bubbles { position: absolute; left: 0; top: 0; transform: translate(-50%, -100%); display: flex; flex-direction: column; gap: 4px; align-items: center; pointer-events: auto; cursor: pointer; }
-.bubble { max-width: 120px; background: #f3f4f6; color: #111; border-radius: 8px; padding: 2px 6px; font-size: 10px; line-height: 1.25; display: block; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; transition: opacity .6s; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.bubble { max-width: 240px; background: #fff; color: #111; border-radius: 8px; padding: 4px 8px; font-size: 10px; line-height: 1.25; display: block; white-space: normal; overflow-wrap: break-word; transition: opacity .6s; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
 .bubble.who { font-style: italic; }
-.bubble.ambient { background: #dfe2e8; color: #333; font-style: italic; }
+.bubble.ambient { background: #fff; color: #111; font-style: normal; }
 .bubble.ambient.speech { background: #fff; color: #111; font-style: normal; }
 .bubble .amb { font-style: normal; font-size: .72em; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #6a6f78; border: 1px solid #9aa0a8; border-radius: 3px; padding: 0 3px; margin-right: 2px; }
 .needlink { display: flex; gap: .7em; flex: 1; text-decoration: none; color: inherit; }
@@ -115,7 +115,7 @@ a.needlink .kind { color: var(--info); font-weight: 700; white-space: nowrap; }
 html.tv { --fs: clamp(28px, 1.5vw, 84px); --safe: 5vmin; }
 html.tv .tag, html.tv .tag .chip, html.tv .bubble, html.tv .hint, html.tv .badge-example, html.tv .fallback, html.tv .meta, html.tv .pbadge, html.tv .panel h3, html.tv .screenpop pre { font-size: var(--fs); }
 html.tv .tag { padding: .1em .45em; }
-html.tv .bubble { max-width: 10vw; font-size: calc(var(--fs) * .6); }
+html.tv .bubble { max-width: 22vw; font-size: calc(var(--fs) * .6); }
 html.tv #banner { top: calc(var(--safe) + 2.6em); }
 html.tv .panel-card, html.tv .panel.wide .panel-card { width: min(1100px, 80vw); max-height: 80vh; font-size: var(--fs); padding: 1em 1.4em; }
 html.tv :focus-visible, html.tv .tvfocus { outline: 6px solid var(--focus) !important; outline-offset: 4px; }

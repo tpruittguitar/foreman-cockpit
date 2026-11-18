@@ -497,7 +497,7 @@
     return list.filter(c => { const t = time(c.at); return t != null && t <= now + MIN && now - t <= win; })
       .sort((a, b) => time(a.at) - time(b.at)).slice(-max);
   }
-  const BUBBLE_MAX = 40; // small bubbles (Tim 11/16: about a third of the old size, one line, ellipsis; full text in the popup)
+  const BUBBLE_MAX = 90; // wider 2-3 line bubbles; typical sentences fit with no ellipsis
   function bubbleText(c) { return c.text ? truncate(c.text, BUBBLE_MAX) : 'talking with ' + c.to; }
 
   /* Open PRs from the GitHub API -> rows for the Needs Tim board. checks: passing|failing|pending|none */
