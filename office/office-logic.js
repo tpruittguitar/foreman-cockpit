@@ -1395,6 +1395,16 @@
     const runs = (o && Array.isArray(o.runs) ? o.runs : []).filter(r => r && time(r.start) != null).map(r => ({ ai: str(r.ai) || 'Other', name: str(r.name), start: time(r.start), end: time(r.end) != null && time(r.end) > time(r.start) ? time(r.end) : time(r.start) + 10 * MIN, result: r.expected ? 'UPCOMING' : simpleResult(r.result), writer: r.writer === true, expected: r.expected === true }));
     return { generated_at: str(o && o.generated_at), rows, runs, writer: o && o.writer_health && typeof o.writer_health === 'object' ? o.writer_health : null };
   }
+  /* Writer health rows with units (Tim Nov 17: no Last ping / Queue depth / Timeouts). Writer heartbeat = time of the last
+     successful Writer write, i.e. AUTOMATIONS_STATUS.json generated_at minus writer_health.last_write_age_min. Public data only. */
+  const WRITER_ROWS = [['last_write_age_min', 'Last good write', v => v + ' min ago'], ['writes_per_hour', 'Writes per hour', v => String(v)],
+    ['error_rate', 'Error rate', v => +(v * 100).toFixed(1) + ' %'], ['lock_waits', 'Lock waits (24 h)', v => String(v)]];
+  function writerRows(a, now) {
+    const wh = a && a.writer, ok = m => m && m.source && typeof m.value === 'number' && Number.isFinite(m.value);
+    const lw = wh && wh.last_write_age_min, gen = time(a && a.generated_at), at = ok(lw) && gen != null ? gen - lw.value * MIN : null;
+    const beat = { label: 'Writer heartbeat', status: at != null ? lw.status : null, text: at != null ? etClock(at) + ' ET · ' + Math.max(0, Math.round((now - at) / MIN)) + ' min ago' : 'no data', source: at != null ? 'AUTOMATIONS_STATUS.json' : '' };
+    return [beat].concat(WRITER_ROWS.map(([k, label, f]) => { const m = wh && wh[k]; return { label, status: ok(m) ? m.status : null, text: ok(m) ? f(m.value) : 'no data', source: ok(m) ? m.source : '' }; }));
+  }
   /* overlapping writer runs (outlined red) and per-hour concurrency */
   function writerOverlaps(runs) {
     const w = runs.filter(r => r.writer), bad = new Set();
@@ -1791,7 +1801,7 @@
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
-    auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
+    auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,

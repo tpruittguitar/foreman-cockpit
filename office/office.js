@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, WRITER_METRICS, drawTown, drawPipelineWall, drawConstraintWall } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -486,7 +486,7 @@ function openAutomations() {
   showPanel(`<h2 id="panel-title">Automations</h2><p class="fallback">Yesterday · today · tomorrow (ET). Red outline = overlapping Writer runs. Data ${esc(L.dataAge(a.generated_at, now).text)}.</p>
     <div class="timeline"><div class="tl" style="width:${72 * PX + 120}px"><div class="days">${['Yesterday', 'Today', 'Tomorrow'].map((d, k) => `<span style="left:${k * 24 * PX}px">${d}</span>`).join('')}<em class="now" style="left:${X(now)}px"></em></div>${lanes}<div class="lane"><b>runs/h</b><div class="track conc">${conc}</div></div></div></div>
     <table class="autos"><tr><th>AI</th><th>Automation</th><th>Result</th><th>Last run</th><th>Next</th></tr>${a.rows.map(r => `<tr><td>${esc(r.ai)}</td><td>${esc(r.name)}${r.running ? ' <span class="st working">▶ running</span>' : ''}</td><td><span class="res ${r.result}">${r.result}</span></td><td>${r.last_run_at ? L.etClock(Date.parse(r.last_run_at)) + ' ET' : '—'}</td><td>${r.next_run_at ? esc(L.countdown(Date.parse(r.next_run_at), now).replace('Next check in ', 'in ')) : '—'}</td></tr>`).join('')}</table>
-    <h3>Writer health</h3><ul>${WRITER_METRICS.map(([k, label]) => { const m = a.writer && a.writer[k]; return `<li><span class="dot ${m && m.status || 'none'}"></span>${esc(label)}: ${m && m.source && m.value != null ? esc(typeof m.value === 'object' ? JSON.stringify(m.value) : m.value) : 'no data'}${m && m.source ? ' <span class="meta">(' + esc(m.source) + ')</span>' : ''}</li>`; }).join('')}</ul>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
+    <h3>Writer health</h3><ul>${L.writerRows(a, now).map(r => `<li><span class="dot ${r.status || 'none'}"></span>${esc(r.label)}: ${esc(r.text)}${r.source ? ' <span class="meta">(' + esc(r.source) + ')</span>' : ''}</li>`).join('')}</ul>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
   $('panel').classList.add('wide');
 }
 function checksheetHTML() { return '<ul>' + L.sortItems(items().filter(i => L.columnFor(i) !== 'done')).slice(0, 12).map(i => `<li>${esc(L.cardTitle(i))} · ${esc(i.owner)} · ${L.statusWord(i).word}</li>`).join('') + '</ul>'; }
@@ -678,7 +678,8 @@ function buildWorld() {
   const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
   const autos = makeBoard('autos', 3.6, 2.2, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 391 : 626);
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
-  const boards = { project, usage, needs, autos, constraint }; // Writer health lives in the Automations panel; its wall spot (front wall, x 4.2) now holds the waterfall
+  const writer = makeBoard('writer', 2.6, 1.7, -RW / 2 + 0.05, 2.3, -8.3, Math.PI / 2, LOW ? 512 : 768, LOW ? 335 : 502); // Tim Nov 17: empty left wall beside the Constraint wall
+  const boards = { project, usage, needs, autos, writer, constraint };
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
      Desktop: the live page (https://foreman-cockpit.pages.dev/pipeline) in an iframe on a CSS3D plane that sits behind the WebGL
@@ -1241,6 +1242,7 @@ function buildWorld() {
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); u.t.needsUpdate = true;
     const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); n.t.needsUpdate = true;
     const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO }); a.t.needsUpdate = true;
+    const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); wr.t.needsUpdate = true;
     const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); cw.t.needsUpdate = true;
     updateLines();
     for (const [id, ln] of lines) ln.material = hl.has(id) || (hoverBot && ln.userData.owner === hoverBot) ? MAT.lineHi : MAT.lineFaint;
@@ -1305,7 +1307,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, constraint.screen, autos.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, constraint.screen, autos.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1331,7 +1333,7 @@ function buildWorld() {
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
     else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
-    else if (p.board === 'autos') openAutomations(p.board);
+    else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
   }
