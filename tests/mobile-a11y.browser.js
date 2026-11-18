@@ -22,7 +22,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   return c.join(' | ')+'; SCOPE_FIT_RAW='+(55+i*4)+'; FIT_CONF=MED'+(pay?'; SALARY_BASE_LOW='+pay[0]+'; SALARY_BASE_HIGH='+pay[1]+'; SALARY_BASIS=FORGE-ESTIMATE':'');
 }).join('\n');
 function health(){const at=new Date().toISOString();return {ok:true,candidates:400,issues:[],checks:{attention:{ok:true,at},sources:{ok:true,at},boards:{ok:true,at},schedules:{ok:true,at,configured:5,executionVerified:true}},
-  emailRecovery:{at,awaitingIntake:2},processFlow:{at,population:{total:10,reconciled:true},queues:{verification:0,enrichment:10,readyForReview:0,blockedClosed:0},
+  emailRecovery:{at,awaitingIntake:0},processFlow:{at,population:{total:10,reconciled:true},queues:{verification:0,enrichment:10,readyForReview:0,blockedClosed:0},
     completion:{verification:{countsAvailable:true,last24h:0,available:true,perHour:0,count36:0,partial:true,startedAt:at},enrichment:{countsAvailable:true,last24h:0,available:true,perHour:0,count36:0,partial:true,startedAt:at}}}}}
 // Runs in the page: measure contrast of every visible text node's element and every icon inside the shell.
 function audit(scope){
@@ -54,7 +54,7 @@ function audit(scope){
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(c=>{localStorage.setItem('px.cfg',JSON.stringify(c))},cfg||{url:'http://127.0.0.1/writer',key:'test-only'});
     await ctx.route('**/*',r=>{const q=r.request(),u=q.url();
-      if(/\/api\/pipeline-health/.test(u))return r.fulfill({json:health()});if(/\/api\/writer-activity/.test(u))return r.fulfill({json:{ok:true,now:new Date().toISOString(),sources:{},rates36:{intake:{perHour:7}}}});
+      if(/\/api\/pipeline-health/.test(u))return r.fulfill({json:health()});if(/\/api\/writer-activity/.test(u))return r.fulfill({json:{ok:true,now:new Date().toISOString(),today:{writes:21},sources:{},pendingReceipts:0,problemReceipts:0,rates36:{intake:{perHour:7}}}});
       if(/\/writer\?|\/writer$/.test(u)||u.startsWith(base+'/writer'))return /action=master/.test(u)?r.fulfill({json:{ok:true,text:fixture,modifiedTime:new Date().toISOString(),fetchedAt:new Date().toISOString()}}):r.fulfill({json:{ok:true}});
       if(u.startsWith(base))return r.continue();return r.abort()});   // nothing leaves the test, the production Writer included
     await page.goto(base+'/pipeline.html');await page.waitForSelector('#m-pane-decide .m-card');await page.waitForTimeout(300);
@@ -69,7 +69,7 @@ function audit(scope){
   // The cockpit seeds px.cfg relative to the test origin; re-seed with the test origin so reads work.
   await page.evaluate(b=>{localStorage.setItem('px.cfg',JSON.stringify({url:b+'/writer',key:'test-only'}))},base);await page.reload();await page.waitForSelector('#m-pane-decide .m-card');await page.waitForTimeout(300);
   take(await page.evaluate(audit,'#m-root'),'Decide');
-  await page.click('.m-card.m-top [data-m-menu]');await page.waitForSelector('.m-menu');take(await page.evaluate(audit,'.m-menu'),'Decide menu');await page.keyboard.press('Escape');
+  {const bb=await (await page.$('.m-card.m-top .m-reason')).boundingBox();await page.mouse.move(bb.x+10,bb.y+5);await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up()}await page.waitForSelector('.m-menu');take(await page.evaluate(audit,'.m-menu'),'Decide menu');await page.keyboard.press('Escape');
   await page.click('.m-card.m-top [data-m-do="research"]');await page.waitForSelector('#m-toast:not([hidden])');take(await page.evaluate(audit,'#m-toast'),'Undo toast');await page.click('#m-undo');await page.waitForTimeout(400);
   await page.click('.m-card.m-top [data-m-open]');await page.waitForSelector('#m-detail:not([hidden])');await page.evaluate(()=>document.querySelectorAll('#m-detail details').forEach(d=>d.open=true));
   take(await page.evaluate(audit,'#m-detail'),'Job sheet');await page.keyboard.press('Escape');
