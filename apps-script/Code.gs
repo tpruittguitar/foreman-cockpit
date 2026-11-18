@@ -3537,14 +3537,19 @@ function ncWorkMode_(rec) {
   if (/\bremote\b/i.test(hybrid) || /^\s*remote\b/i.test(loc)) return 'remote';
   return '';
 }
+/** LinkedIn metro labels that carry no state (normalized as normLocation leaves them). Card a9c0469: 'Greater Boston' escaped NC-013. */
+var NC_METRO_STATE_ = { 'greater boston': 'ma', 'greater hartford': 'ct', 'greater providence': 'ri', 'new york city': 'ny', 'greater syracuse auburn': 'ny', 'greater philadelphia': 'pa', 'greater pittsburgh': 'pa', 'greater pittsburgh region': 'pa', 'washington dc baltimore': 'dc', 'greater milwaukee': 'wi', 'greater madison': 'wi', 'detroit': 'mi', 'greater grand rapids': 'mi', 'greater lansing': 'mi', 'minneapolis st paul': 'mn', 'greater duluth': 'mn', 'des moines': 'ia' };
+/** State and city for the NC location rules. Keeps a (MA) or (Massachusetts) group and drops a trailing ZIP, so the state survives. */
 function ncPlace_(location) {
   var raw = String(location || '');
   if (!raw.trim() || /not[_\s-]*stated|^-$|^unknown$/i.test(raw.trim())) return { state: '', city: '' };
   var t = raw.toLowerCase().replace(/\bd\.c\./g, 'dc').replace(/\bdistrict of columbia\b/g, 'dc');
-  var s = normLocation(t);
+  t = t.replace(/\(\s*([a-z ]+?)\s*\)/g, function (g, c) { var code = US_STATE_ABBR_[c] || (ncStateCodeOk_(c) ? c : ''); return code ? ' ' + code + ' ' : g; });
+  var s = normLocation(t).replace(/(?:\s+\d{5}(?:\s+\d{4})?)+$/, '');
   if (!s) return { state: '', city: '' };
   var m = s.match(/^(?:(.*)\s+)?([a-z]{2})$/);
   if (m && ncStateCodeOk_(m[2])) return { state: m[2], city: (m[1] || '').trim() };
+  if (NC_METRO_STATE_[s]) return { state: NC_METRO_STATE_[s], city: s };
   return { state: '', city: s };
 }
 function ncBusinessText_(rec) {
