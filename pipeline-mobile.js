@@ -618,7 +618,7 @@
       if (!n) return; e.preventDefault(); var t = TABS[(i + n + TABS.length) % TABS.length][0]; setTab(t); $('m-tab-' + t).focus();
     });
     $('m-sys').onclick = function () { setTab('status'); };
-    $('m-search').onclick = function () { setTab('jobs', true); };
+    $('m-search').onclick = function () { jobsFilter = 'all'; jobsShown = 50; setTab('jobs', true); };   // GUI 8: search opens on All
     $('m-more').onclick = function () { sheet(true); };
     $('m-scrim').onclick = function () { sheet(false); closeFields(); };
     $('m-more-x').onclick = function () { sheet(false); };

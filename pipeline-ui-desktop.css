@@ -20,9 +20,11 @@
   /* P3: one refresh control (the countdown chip) and a header that fits at 1440: middle items shrink, bell and gear stay on screen */
   header #refresh,#rail .rail-foot button#rail-refresh{display:none!important}
   header .brand,header .writer-identity,header .hstat,header #crumb{flex:0 1 auto;min-width:0;overflow:hidden}
+  header #search{flex-shrink:50}   /* GUI 15: the search box gives up width before any header text clips */
+  @media(min-width:1400px){header .brand,header .writer-identity,header .hstat,header [data-refresh-now]{flex:none}}
   header #search{min-width:140px}
   header #bell,header #settings,header .menu-btn{flex:none}
-  header [data-refresh-now]{cursor:pointer}
+  header [data-refresh-now]{cursor:pointer;min-height:24px;border:0;background:transparent;color:inherit;text-transform:none}
 
   /* Rail: 96px, label under each icon; hover or the menu button opens the sub-items */
   #rail{width:96px}#rail .rail-in{width:96px;padding-top:6px;border-right:1px solid var(--forge-line-strong)}
