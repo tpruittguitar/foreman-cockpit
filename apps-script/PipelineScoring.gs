@@ -51,7 +51,7 @@
    * the target scored 37.5 and most of the population landed near zero. */
   function compCurve(net,floor,target,ceil){if(!(target>floor))target=(floor+ceil)/2;if(!(ceil>target))ceil=target+1;if(net<=floor)return 0;if(net>=ceil)return 100;return net<=target?(net-floor)/(target-floor)*50:50+(net-target)/(ceil-target)*50}
   function compensation(r,c){var pw=payWorth(r,c);if(!pw)return{score:null,known:false,basis:'Salary missing'};if(pw.score==null)return{score:null,known:false,basis:'Pay outside the US; no geo map score',mid:pw.mid};
-    return{score:pw.lowConfidence?Math.round(50+0.25*(pw.score-50)):pw.score,rawScore:pw.score,lowConfidence:pw.lowConfidence,known:true,basis:pw.basis+(pw.lowConfidence?' · ranking uses 25% evidence influence around neutral 50':''),mid:pw.mid,need:pw.best.need,geo:pw.best.geo,area:pw.best.area,payWorth:pw,evidenceSource:pw.source||'',legacyEvidence:!!((r&&r.compLegacy)||pw.legacy)}}
+    return{score:pw.score,rawScore:pw.score,lowConfidence:pw.lowConfidence,known:true,basis:pw.basis,mid:pw.mid,need:pw.best.need,geo:pw.best.geo,area:pw.best.area,payWorth:pw,evidenceSource:pw.source||'',legacyEvidence:!!((r&&r.compLegacy)||pw.legacy)}}
   function geoScoreAt(lat,lon,c){var ps=c.geo.controlPoints||[];if(num(lat)==null||num(lon)==null||!ps.length)return{score:null,known:false,basis:'Location not geocoded'};var exact=ps.filter(function(x){return hav(+lat,+lon,+x.lat,+x.lon)<15});if(exact.length)return{score:Math.round(clamp(num(exact[0].score)||0,0,100)),known:true,basis:exact[0].name+(exact[0].hard?' hard override':'')};var power=num(c.geo.power)||2,wSum=0,sSum=0,nearest=null;ps.forEach(function(x){var d=hav(+lat,+lon,+x.lat,+x.lon);if(!isFinite(d))return;if(!nearest||d<nearest.d)nearest={d:d,x:x};var w=1/Math.pow(Math.max(d,1),power);wSum+=w;sSum+=w*clamp(num(x.score)||0,0,100)});return{score:wSum?Math.round(clamp(sSum/wSum,0,100)):null,known:!!wSum,basis:'Distance-weighted interpolation; nearest '+(nearest&&nearest.x.name||'control point')}}
   function geo(r,c){var pt=point(r);if(!pt)return{score:null,known:false,basis:'Location not geocoded'};var out=geoScoreAt(pt.lat,pt.lon,c);if(out.known&&pt.approx)out.basis+=' · state centroid';return out}
   function explicit(r,keys){var p=r.payload||{};for(var i=0;i<keys.length;i++){var s=scoreValue(p[keys[i]]);if(s!=null)return{score:Math.round(s),known:true,basis:'Explicit '+keys[i]};}return{score:50,known:false,basis:'No evidence recorded · neutral placeholder'}}
@@ -77,7 +77,7 @@
    Pay is scored against what the place needs, and Tim's geo map sets the need: NEED = high - (high - low) x geo / 100 with
    low $180k (geo 100) and high $300k (geo 0); geo = the map's own score for the site (geoScoreAt: distance-weighted, exact within
    15 mi of a point). PAY_WORTH = 100 / (1 + e^-((pay / NEED - center) / scale)), center 0.8525, scale 0.085 (ratio 0.7 = 14,
-   0.8 = 35, 0.9 = 64, 1.0 = 85, 1.2 = 98). pay = Evidence.salary midpoint. LOW estimates keep raw diagnostics, use 25% ranking influence, and cannot independently hold/pass. Remote = home.
+   0.8 = 35, 0.9 = 64, 1.0 = 85, 1.2 = 98). pay = Evidence.salary midpoint. An estimate is real pay for scoring, PAY_WORTH and the floor; confidence changes only the label. Remote = home.
    Floor status: PASS at >= 50; BELOW (pay hold) only under 15 with no remote and no relocation upside; else CHECK. Several sites:
    score at the best site; sites that disagree -> CHECK_MULTI_SITE. Outside the US -> CHECK_NON_US. All numbers are settings in the
    scoring model (payWorth {low, high, center, scale, hold, pass}); geo points are edited on the map. An agent FLOOR_STATUS stands. */
@@ -120,9 +120,9 @@
     var cls=function(x){return x.nonUS?'CHECK':x.score>=w.pass?'PASS':x.score<w.hold&&!x.remote&&!reloc?'BELOW':'CHECK'};
     var best=us.slice().sort(function(a,b){return b.score-a.score})[0]||null,classes=res.map(cls),same=classes.every(function(k){return k===classes[0]});
     var lowConfidence=lowConfidencePay(p);
-    var status=!best?'CHECK_NON_US':lowConfidence?'CHECK_PAY_ESTIMATE_LOW_CONFIDENCE':!same?'CHECK_MULTI_SITE':classes[0]+'_PAY_WORTH_'+best.score;
+    var status=!best?'CHECK_NON_US':!same?'CHECK_MULTI_SITE':classes[0]+'_PAY_WORTH_'+best.score;
     var basis=best?'PAY_WORTH '+best.score+' · base 75% point $'+Math.round(scorePoint).toLocaleString('en-US')+' from '+(r&&r.compSource||ev.source)+' vs need $'+Math.round(best.need/1000)+'k at '+best.area+(best.geo!=null?' (geo '+best.geo+')':' (geo map not loaded)')+(reloc?' · relocation upside':'')+(res.length>1?' · '+res.map(function(x,i){return x.site+': '+(x.nonUS?'outside the US':classes[i]+' '+x.score)}).join('; '):''):'outside the US; no geo map score';
-    if(lowConfidence)basis+=' · LOW-confidence estimate; confirm pay before a pay decision';
+    if(lowConfidence)basis+=' · LOW-confidence estimate';
     return{score:best?best.score:null,status:status,lowConfidence:lowConfidence,mid:mid,scorePoint:scorePoint,source:r&&r.compSource||ev.source,legacy:ev.legacy,best:best,sites:res,relocation:reloc,settings:w,basis:basis}}
   function floorStatus(r,c){var p=r&&r.payload||{},agent=String(p.FLOOR_STATUS||'').trim();
     if(agent&&!/^UNKNOWN$/i.test(agent)&&!/^WRITER_DERIVED/i.test(String(p.FLOOR_BASIS||'')))return{status:agent,derived:false,basis:String(p.FLOOR_BASIS||'')};
