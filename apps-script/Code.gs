@@ -2826,11 +2826,12 @@ function classifyNeverConsider(rec, R) {
     }
     return { outcome: 'REVIEW', ruleId: rule.RULE_ID, confidence: conf || 'UNSPECIFIED', reason: reason, basis: 'CONFIDENCE_NOT_HIGH' };
   }
-  // writer-side hint: the employer's stated primary business mentions a category word and does not read as a supplier/vendor to it
+  // writer-side hint: the employer's stated primary business mentions a category word and does not read as a supplier/vendor to it.
+  // The plural counts too: "Tyson Foods in Claremont, NC" must hint NC-003 the same as "food" does (card 5).
   var hint = String(rec.EMPLOYER_DOMAIN_HINT || rec.EMPLOYER_PRIMARY_BUSINESS || '').toLowerCase();
   if (hint && R.status !== 'UNAVAILABLE' && !NEG_HINT_RE.test(hint)) {
     for (var i = 0; i < R.rules.length; i++) { var r = R.rules[i]; if (!r.active || r.spec) continue;
-      var terms = categoryTerms(r.CATEGORY); for (var j = 0; j < terms.length; j++) { if (new RegExp('(^|[^a-z])' + terms[j] + '([^a-z]|$)').test(hint)) return { outcome: 'REVIEW', ruleId: r.RULE_ID, confidence: 'MED', reason: 'employer primary business mentions "' + terms[j] + '"', basis: 'DOMAIN_HINT' }; } }
+      var terms = categoryTerms(r.CATEGORY); for (var j = 0; j < terms.length; j++) { if (new RegExp('(^|[^a-z])' + terms[j] + 's?([^a-z]|$)').test(hint)) return { outcome: 'REVIEW', ruleId: r.RULE_ID, confidence: 'MED', reason: 'employer primary business mentions "' + terms[j] + '"', basis: 'DOMAIN_HINT' }; } }
   }
   return { outcome: 'ALLOW', ruleId: '', confidence: '', reason: '', basis: '' };
 }

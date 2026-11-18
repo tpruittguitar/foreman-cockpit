@@ -55,6 +55,13 @@ ok(added.activeIds.length === 5 && W.classifyNeverConsider({ COMPANY: 'Altria', 
 const bad = W.parseRulesText('');
 ok(bad.status === 'UNAVAILABLE' && W.classifyNeverConsider({ COMPANY: 'Pfizer', NEVER_CONSIDER_RULE_ID: 'NC-001', EXCLUSION_CONFIDENCE: 'HIGH' }, bad).outcome === 'REVIEW', 'unreadable rules file: default ALLOW_INTAKE, nothing excluded, review flagged');
 ok(W.categoryTerms('FOOD_OR_BEVERAGE_MANUFACTURER').join(',') === 'food,beverage', 'category terms derive from the CATEGORY name (no hard-coded category list)');
+// card 5: food/beverage makers whose business text says "Foods"/"Beverages" were admitted with no NC-003 review flag
+[['Tyson Foods', 'Tyson Foods in Claremont, NC. Full-time Mid-Senior level role.'], ['TreeHouse Foods', 'TreeHouse Foods in Faison, NC. Full-time'], ['Liberty Coca-Cola Beverages', 'Liberty Coca-Cola Beverages bottles and distributes beverages']].forEach(function (pair) {
+  const h = W.classifyNeverConsider({ COMPANY: pair[0], TITLE: 'Director of Operations', EMPLOYER_PRIMARY_BUSINESS: pair[1] }, CR);
+  ok(h.outcome === 'REVIEW' && h.ruleId === 'NC-003' && h.basis === 'DOMAIN_HINT', pair[0] + ': plural "foods"/"beverages" in primary business flags NC-003 review (' + JSON.stringify(h) + ')');
+});
+ok(W.classifyNeverConsider({ COMPANY: 'Food Line Automation', EMPLOYER_PRIMARY_BUSINESS: 'automation for foods plants' }, CR).outcome === 'ALLOW', 'plural match still yields to supplier/automation evidence');
+ok(W.classifyNeverConsider({ COMPANY: 'Seafoodery', EMPLOYER_PRIMARY_BUSINESS: 'seafoodery and foodservice equipment' }, CR).outcome === 'ALLOW', 'plural match stays whole-word (no seafood/foodservice substring hit)');
 const employerLines = [
   '- NC-009 ABBVIE: employer=AbbVie; rule=NC-001; source_url=https://investors.abbvie.com/',
   '- NC-010 AMGEN: employer=Amgen; rule=NC-001; source_url=https://www.amgen.com/about',
