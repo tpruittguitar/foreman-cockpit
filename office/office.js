@@ -926,7 +926,7 @@ function buildWorld() {
     for (const b of bots()) {
       if (chars.has(b.bot) || !deskOf(b.bot)) continue;
       const c = makeBot(b.bot, !LOW, b.bot_id, b), d = deskOf(b.bot);
-      c.phase = (L.hash(b.bot) % 600) / 100; c.pickups = []; c.jobs = []; c.job = null; c.idle = L.createIdleState(); c.idle.sinceGame = L.GAME_EVERY - 1 - chars.size % L.GAME_EVERY /* stagger the 1-in-5 game slot: first bot games at once, the next after 1 activity, ... */; c.rng = L.makeRng(SEED ^ L.hash(b.bot)); c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
+      c.phase = (L.hash(b.bot) % 600) / 100; c.pickups = []; c.jobs = []; c.job = null; c.idle = L.createIdleState(); c.idle.sinceGame = L.firstGameSlot(b, [...chars.values()].filter(o => o.gamer).length) /* stagger the 1-in-5 game slot among bots whose monitor can show a game: first one games at once, the next after 1 activity, ... */; c.gamer = L.showsGame(b); c.rng = L.makeRng(SEED ^ L.hash(b.bot)); c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
       c.root.position.set(d.seat.x, 0, d.seat.z); c.root.rotation.y = Math.PI; c.pose = 'sit'; c.wantSince = 0; c.carry = false;
       scene.add(c.root); chars.set(b.bot, c); c.botId = b.bot_id;
       c.tag = document.createElement('div'); c.tag.className = 'tag'; $('labels').appendChild(c.tag);

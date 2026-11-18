@@ -1479,6 +1479,10 @@
   const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 14, FRIDGE_MIN = 12, FRIDGE_REFILL_S = 20; // low = 70% (call a restocker), floor = 60% (never shown lower)
   const GAME_EVERY = 5; // Tim (Nov 17, 2:05 AM): video games are 1 in 5 idle activities (one game after every 4 other activities)
   function createIdleState() { return { act: null, until: 0, bag: [], last: null, sinceGame: 0 }; }
+  /* A desk whose monitor never shows a game (President's checksheet, Usage's chart) must not take a staggered game slot. */
+  const showsGame = bot => monitorMode({ bot: bot && bot.bot, bot_id: bot && bot.bot_id }, 'game', {}) === 'game';
+  /* Starting sinceGame for a new bot; k = gamers created so far. Fixed-monitor bots get the default 0. */
+  function firstGameSlot(bot, k) { return showsGame(bot) ? GAME_EVERY - 1 - (k | 0) % GAME_EVERY : 0; }
   function fridgeLow(stock, cap) { return stock <= FRIDGE_LOW * ((cap || FRIDGE_CAP) / FRIDGE_CAP); }
   /* The fridge stays stocked: a can taken (or drained) never goes below the 60% floor, and with no restocker on the way it
      tops itself up one can at a time (every FRIDGE_REFILL_S) until it is back above the low mark. */
@@ -1793,7 +1797,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, fridgeLow, idleTick,
+    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
