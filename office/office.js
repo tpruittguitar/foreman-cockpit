@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -114,7 +114,7 @@ function slowLoads(now) {
   }
   fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); if (j) S.fetched.screens = Date.now(); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
   /* missing or 404 OFFICE_TRAINING.json = no sessions, not an error */
-  trainSrc.get(now).then(r => { S.training = r.ok ? L.parseTraining(r.data, L.ROSTER.map(x => x.name)).sessions : []; refreshAll(); });
+  trainSrc.get(now).then(r => { S.training = r.ok ? L.parseTraining(r.data, L.ROSTER.map(x => x.name)).sessions : []; if (r.ok) S.fetched.training = Date.now(); refreshAll(); });
   chatSrc.get(now).then(r => { S.chat = r.chat; S.chatErr = r.err; refreshAll(); }); // 404 = not published yet: quiet, slower
   autoSrc.get(now).then(r => { if (r.ok) { S.auto = L.parseAutomations(r.data, Date.now()); S.autoErr = ''; S.fetched.automations = Date.now(); } else S.autoErr = r.status === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : r.error; refreshAll(); });
 }
@@ -486,14 +486,6 @@ function openHref(href, name) {
   if (/^https?:/i.test(href)) window.open(href, '_blank', 'noopener');
   else if (/^grokbot:/i.test(href)) openChatApp(decodeURIComponent((/id=([^&]+)/.exec(href) || [])[1] || ''), name);
 }
-function openNeedsEntry(i) {
-  const e = needsEntries()[i]; if (!e) return openNeeds();
-  if (e.target && e.target.href) return openHref(e.target.href, e.owner);
-  if (e.link && /^https?:/i.test(e.link)) return openHref(e.link);
-  const who = e.bot || e.owner;
-  if (!who) return openNeeds();
-  showPanel(`<h2 id="panel-title">${esc(who)}</h2><p>${esc(e.text)}</p><p class="fallback">No PR or Grok Bot chat link is known for ${esc(who)}.</p>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
-}
 /* Screen click: go right to the live thing (screen_url, President's checksheet, Usage Budget's chart), else the mirror popup. */
 function clickScreen(name, half) {
   const b = botByName(name) || { bot: name };
@@ -755,11 +747,11 @@ function buildWorld() {
   const BW = 9.6, BH = 3.9;
   const project = makeBoard('project', BW, BH, -2, 2.3, -RD / 2 + 0.05, 0, LOW ? 1280 : 2048, LOW ? 520 : 832);
   const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.2, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
-  const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
-  const autos = makeBoard('autos', 3.6, 2.2, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 391 : 626);
+  const autos = makeBoard('autos', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683); // Tim Nov 18: Automations in the old Needs Tim spot
+  const whiteboard = makeBoard('whiteboard', 4.4, 2.6, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 378 : 605); // big conference whiteboard where Automations hung
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
   const writer = makeBoard('writer', 2.6, 1.7, -RW / 2 + 0.05, 2.3, -8.3, Math.PI / 2, LOW ? 512 : 768, LOW ? 335 : 502); // Tim Nov 17: empty left wall beside the Constraint wall
-  const boards = { project, usage, needs, autos, writer, constraint };
+  const boards = { project, usage, autos, whiteboard, writer, constraint };
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
      Desktop: the live page (https://foreman-cockpit.pages.dev/pipeline) in an iframe on a CSS3D plane that sits behind the WebGL
@@ -903,13 +895,13 @@ function buildWorld() {
     for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); }
     block(ch.position.x, ch.position.z, 0.3, 0.3, false, 'chair');
   }
-  const TRAINER_SPOT = { x: CONF.x, z: 9.3, face: Math.PI };
-  { const ch = new THREE.Group(); ch.position.set(TRAINER_SPOT.x, 0, TRAINER_SPOT.z + 0.13); scene.add(ch); /* HR stands on this chair while teaching (bots are short) */
+  const TRAINER_SPOT = { x: CONF.x - 1.95, z: CONF.z, face: Math.PI / 2 }; // head of the table, back to the big whiteboard, facing the table
+  { const ch = new THREE.Group(); ch.position.set(TRAINER_SPOT.x - Math.sin(TRAINER_SPOT.face) * 0.13, 0, TRAINER_SPOT.z - Math.cos(TRAINER_SPOT.face) * 0.13); ch.rotation.y = TRAINER_SPOT.face - Math.PI; scene.add(ch); /* HR stands on this chair while teaching (bots are short) */
     add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
-    for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); } block(ch.position.x, ch.position.z, 0.3, 0.3, false, 'chair'); } // in front of the whiteboard on the front wall, facing the table
-  const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(CONF.x, 1.7, RD / 2 - 0.05); wbG.rotation.y = Math.PI; scene.add(wbG);
-  add(box(1.75, 0.95, 0.05), MAT.metal, 0, 0, 0, wbG);
-  add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
+    for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); } block(ch.position.x, ch.position.z, 0.3, 0.3, false, 'chair'); } // in front of the big whiteboard on the left wall, facing the table
+  const wb = whiteboard.tex;
+  const schedule = makeBoard('schedule', 1.75, 0.95, CONF.x, 1.7, RD / 2 - 0.05, Math.PI, LOW ? 512 : 1024, LOW ? 278 : 555); // meeting / training schedule where the small whiteboard hung
+  boards.schedule = schedule;
   let wbKey = '';
   let skillList = null; // real skills from office/skills.json; null => the old fallback lines
   let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
@@ -917,7 +909,7 @@ function buildWorld() {
   function drawWB(meeting) {
     const live = meeting ? null : L.trainingSlide(plan.training, skillList), skill = live || (meeting ? null : L.skillSlide(skillList, Date.now()));
     const k = meeting ? meeting.id + meeting.title + meeting.seated.join() : live ? 'live' + plan.training.id + live.title : skill ? 'skill' + skill.index + '/' + skillList.length : 'skills';
-    if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, 512, 256, { meeting, skill, demo: DEMO }); wb.t.needsUpdate = true;
+    if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, wb.c.width, wb.c.height, { meeting, skill, demo: DEMO }); wb.t.needsUpdate = true;
   }
   drawWB(null);
   block(CONF.x, CONF.z, 1.5, 0.6);
@@ -1344,8 +1336,8 @@ function buildWorld() {
     pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
-    const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); drawFetched(n.ctx, n.c.width, n.c.height, S.fetched.status, null, null, needs.w); n.t.needsUpdate = true;
     drawAutos();
+    const sw = schedule.tex; drawTrainingSchedule(sw.ctx, sw.c.width, sw.c.height, { rows: L.visibleTrainingSessions(S.training, Date.now()).map(L.formatTrainingSession), fetchedAt: S.fetched.training, boardM: schedule.w }); sw.t.needsUpdate = true;
     const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); drawFetched(wr.ctx, wr.c.width, wr.c.height, S.fetched.automations, null, null, writer.w); wr.t.needsUpdate = true;
     const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); drawFetched(cw.ctx, cw.c.width, cw.c.height, DEMO ? 0 : S.cons.at, null, null, constraint.w); cw.t.needsUpdate = true;
     updateLines();
@@ -1434,7 +1426,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, constraint.screen, autos.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1442,7 +1434,6 @@ function buildWorld() {
     if (!hit || hit.distance > 45) return null;
     const o = hit.object;
     if (o.userData.board) {
-      if (o.userData.board === 'needs' && hit.uv) { const y = 1 - hit.uv.y, r = needs.hits.find(r => y >= r.y && y <= r.y + r.h); return r ? { needsIdx: r.i } : { board: 'needs' }; }
       if (o.userData.board !== 'project') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
       const h = project.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
@@ -1457,8 +1448,7 @@ function buildWorld() {
     if (!p) return false;
     if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
     else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
-    else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
-    else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
+    else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
@@ -1545,7 +1535,7 @@ function buildWorld() {
   let targets = [], rows = [];
   function buildTargets() {
     targets = [
-      { kind: 'board', id: 'needs', x: -12, view: [[-8.4, 1.9, 2.3], [-12, 1.9, 2.3]] },
+      { kind: 'board', id: 'autos', x: -12, view: [[-8.4, 1.9, 2.3], [-12, 1.9, 2.3]] },
       { kind: 'board', id: 'project', x: -2, view: [[-2, 2.2, -4.6], [-2, 2.3, -10]] },
       { kind: 'board', id: 'usage', x: 5.7, view: [[5.7, 2.1, -6.4], [5.7, 2.2, -10]] }
     ].concat(desks.map(d => ({ kind: 'desk', id: d.name, bot: d.name, x: d.x, z: d.z, view: [[d.x + 0.3, 1.85, d.z + 2.0], [d.x, 1.05, d.z - 0.25]] })));
@@ -1561,7 +1551,7 @@ function buildWorld() {
   function focusTarget(t) {
     desks.forEach(d => (d.focus.visible = t && t.kind === 'desk' && d.name === t.bot));
     const nm = $('focusname');
-    if (t) { nm.hidden = false; nm.textContent = t.kind === 'desk' ? t.bot + ' · ' + L.statusStyle((botByName(t.bot) || {}).status).word : { needs: 'Needs Tim board', project: 'Forge checksheet', usage: 'AI usage wall', constraint: 'Pipeline constraint wall' }[t.id]; }
+    if (t) { nm.hidden = false; nm.textContent = t.kind === 'desk' ? t.bot + ' · ' + L.statusStyle((botByName(t.bot) || {}).status).word : { autos: 'Automations board', project: 'Forge checksheet', usage: 'AI usage wall', constraint: 'Pipeline constraint wall' }[t.id]; }
     else nm.hidden = true;
     setHover(t ? (t.kind === 'desk' ? { bot: t.bot } : null) : null);
   }
