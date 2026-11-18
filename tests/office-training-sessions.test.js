@@ -180,3 +180,35 @@ test('learned tag stays on real trainees for a day after the session ends', () =
   assert.deepEqual(L.skillTags(null, s, end + MIN, skills), { Claude: { skill: 'PR hygiene', t: null, replay: false }, QA: { skill: 'PR hygiene', t: null, replay: false } });
   assert.deepEqual(L.skillTags(null, s, end + L.LEARNED_TAG_MS, skills), {});
 });
+test('trainer visits then leads for the whole live and replay session even when its screen is idle or offline; wander and the idle chip do not win', () => {
+  const list = bots('HR', 'Claude', 'QA', 'Root');
+  const sessions = parse([sess()]).sessions;
+  const idle = { stale: true, working: false, label: 'idle · last active 33 min ago' };
+  const off = { stale: true, working: false, label: 'offline · last seen 33 min ago' };
+  const work = { stale: false, working: true, label: '' };
+  for (const hrFresh of [idle, off]) {
+    const fresh = { HR: hrFresh, Claude: work, QA: idle, Root: work };
+    const pInv = L.planOffice(list, [], T0 + 1, 'live', fresh, { training: sessions });
+    assert.equal(pInv.plans.HR.act, 'visit');
+    assert.equal(pInv.training.replay, false);
+    assert.equal(L.activityChip(hrFresh, pInv.training, 'HR'), '');
+    assert.equal(L.activityChip(idle, pInv.training, 'QA'), idle.label);
+    const pLead = L.planOffice(list, [], T0 + 2 * L.INVITE_S * 1000, 'live', fresh, { training: sessions });
+    assert.equal(pLead.plans.HR.act, 'lead');
+    assert.notEqual(pLead.plans.HR.act, 'wander');
+    assert.equal(L.activityChip(hrFresh, pLead.training, 'HR'), '');
+    const b0 = Math.ceil((T0 + 10 * MIN) / L.REPLAY_CYCLE_MS) * L.REPLAY_CYCLE_MS;
+    const pRep = L.planOffice(list, [], b0 + 2 * L.INVITE_S * 1000, 'live', fresh, { training: sessions });
+    assert.equal(pRep.training.replay, true);
+    assert.equal(pRep.plans.HR.act, 'lead');
+    assert.notEqual(pRep.plans.HR.act, 'wander');
+    assert.equal(L.activityChip(hrFresh, pRep.training, 'HR'), '');
+  }
+  const office = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/office.js'), 'utf8');
+  const leadFirst = office.indexOf("trainPlan.act === 'lead'");
+  const jobs = office.indexOf('if (c.job || c.jobs.length)');
+  const inv = office.indexOf('S.invite = (S.hrFree && !plan.training)');
+  assert.ok(leadFirst > 0 && leadFirst < jobs, 'decide() applies lead/visit/train before job cards');
+  assert.ok(inv > 0, 'ambient invites do not run during a real or replayed session');
+  assert.match(office, /L\.activityChip\(S\.fresh\[c\.name\], plan\.training, c\.name\)/);
+});

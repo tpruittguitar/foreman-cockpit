@@ -1051,7 +1051,7 @@ function buildWorld() {
     const inv = S.invite, cur = L.inviteCurrent(inv);
     const waiting = active.filter(c => c.invitedUntil !== c.idle.until && !(inv && inv.guests.includes(c.name))).map(c => c.name);
     const heldFor = hr && cur && hr.goalKey === 'invite:' + cur && hr.arrived ? clock - hr.arrivedAt : -1;
-    S.invite = S.hrFree ? L.inviteStep(inv, { active: active.map(c => c.name), add: waiting, heldFor, now: clock }) : null;
+    S.invite = (S.hrFree && !plan.training) ? L.inviteStep(inv, { active: active.map(c => c.name), add: waiting, heldFor, now: clock }) : null;
     if (!S.invite && S.hrFree && waiting.length && !plan.training) S.invite = L.inviteStart(waiting, clock);
   }
   const charPos = n => { const o = chars.get(n); return o ? { x: o.pos.x, z: o.pos.y } : null; };
@@ -1129,6 +1129,14 @@ function buildWorld() {
     if (c.spot) return { key: 'spot', spot: c.spot, pose: 'stand' }; // test/screenshot hook only
     if (c.forceNap) return { key: 'force-nap:' + c.forceNap.id, spot: c.forceNap, pose: 'nap', lie: c.forceNap.lie }; // QA hook: T.forceNap
     if (needsTim) { book.release(c.name); return { key: 'stand', spot: d.stand, pose: 'wave' }; } // real needs_tim item only: stays at its own desk, one arm waving
+    const trainPlan = plan.plans[c.name];
+    if (trainPlan && (trainPlan.act === 'lead' || trainPlan.act === 'visit' || trainPlan.act === 'train' || trainPlan.act === 'listen')) {
+      book.release(c.name);
+      if (trainPlan.act === 'lead') return { key: 'lead', spot: TRAINER_SPOT, pose: 'talk', ambient: 'train' };
+      if (trainPlan.act === 'train') return { key: 'train:' + trainPlan.seat, spot: CONF_SEATS[trainPlan.seat], pose: 'meet', ambient: 'reply' };
+      if (trainPlan.act === 'visit') { const td = deskOf(trainPlan.partner); return { key: 'visit:' + trainPlan.partner, spot: td.visit, pose: 'talk', faceBot: trainPlan.partner, ambient: 'visit', pair: c.name + '|' + trainPlan.partner, can: trainPlan.can }; }
+      return { key: 'listen', spot: d.seat, pose: 'talk', faceBot: trainPlan.partner, ambient: 'reply', pair: trainPlan.partner + '|' + c.name, can: trainPlan.can };
+    }
     if (c.pickups.length) { // board card life: pin a new card, or take one off the board and carry it to the desk
       const pk = c.pickups[0], id = pk.itemId, key = 'pick:' + id;
       if (c.goalKey === key && c.arrived) {
@@ -1272,7 +1280,7 @@ function buildWorld() {
       const b = botByName(c.name), st = L.statusStyle(b ? b.status : 'idle'), frozen = S.state === 'failed', needs = S.needsSet.has(c.name) && !frozen;
       const rp = c.goalNow && c.goalNow.recent;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
-      const fr = !frozen && !needs && S.fresh[c.name] && S.fresh[c.name].stale ? S.fresh[c.name].label : '';
+      const fr = !frozen && !needs ? L.activityChip(S.fresh[c.name], plan.training, c.name) : '';
       const sk = skills[c.name], learned = sk && sk.t == null ? `<span class="chip learned">${sk.replay ? 'Replay · ' : ''}✓ ${esc(sk.skill)}</span>` : '';
       const key = c.name + st.status + needs + frozen + S.state + (hoverBot === c.name) + (rp ? rp.min : '') + why + fr + learned;
       if (key !== c.tagKey) {
