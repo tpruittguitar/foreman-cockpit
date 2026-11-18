@@ -2,7 +2,7 @@
    polled every 2 min straight from the browser (status files read from the raw URL directly; ⟳ Refresh re-fetches now) (all three repos are public; no proxy, no token, no new secret).
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
-import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
+import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from './chars.js';
 import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
@@ -858,19 +858,20 @@ function buildWorld() {
   const fs = canvasTex(512, 64); drawSign(fs.ctx, 512, 64, 'ENERGY', '#0b0b0c', '#5cff3a'); fs.t.needsUpdate = true;
   add(box(0.06, 0.16, 0.8), [MAT.dark, screenMat(fs.t), MAT.dark, MAT.dark, MAT.dark, MAT.dark], -0.37, 2.1, 0, fridge);
   block(11.3, -8.4, 0.42, 0.45);
-  // energy cans: two InstancedMeshes (one per lookalike style), stock / desk cans alternate deterministically per slot
-  const fridgeCans = []; const fridgeRng = L.makeRng(SEED ^ 0x51ed); let fridgeStock = L.FRIDGE_CAP, fridgeDrain = 0, fridgeRefill = 0, lastDeskCans = []; // item 10: simulated stock (no real inventory data)
+  // energy cans: two InstancedMeshes (one per lookalike style) for the fridge and desks; the warehouse shelf holds cases
+  const fridgeCans = []; const fridgeRng = L.makeRng(SEED ^ 0x51ed); let fridgeStock = L.FRIDGE_CAP, fridgeDrain = 0, fridgeRefill = 0, lastDeskCans = [];
   for (const y of shelfY) for (let k = 0; k < 5; k++) fridgeCans.push([11.3 - 0.1 + (k % 2) * 0.12, y + 0.0625, -8.4 - 0.3 + k * 0.15]);
-  const SHELF_POS = { x: WH.x0 + 0.4, z: 13.2 }; // warehouse Monster shelf, against its left wall past the office corner (12, 10)
-  const shelfCans = []; let shelfStock = L.SHELF_CAP, shelfRefill = 0; // simulated back stock: a restock trip takes one, it refills slowly
-  for (const y of [0.39, 0.76]) for (let k = 0; k < L.SHELF_CAP / 2; k++) shelfCans.push([SHELF_POS.x + 0.1, y + 0.0625, SHELF_POS.z - 0.8 + k * 0.4]);
+  const SHELF_POS = { x: WH.x0 + 0.4, z: 13.2 };
+  const shelfCases = []; let shelfStock = L.SHELF_CAP, shelfRefill = 0;
+  for (const y of [0.39, 0.76]) for (let k = 0; k < L.SHELF_CAP / 2; k++) shelfCases.push([SHELF_POS.x + 0.1, y + 0.1, SHELF_POS.z - 0.8 + k * 0.4]);
   const canSets = [0, 1].map(st => { const m = new THREE.InstancedMesh(canGeometry(), canMaterials(st), 64); m.count = 0; scene.add(m); return m; });
+  const shelfCaseMeshes = shelfCases.map(([x, y, z], k) => { const g = makeCase(); g.position.set(x, y, z); g.rotation.y = (k % 3) * 0.2; scene.add(g); return g; });
   function layoutCans(deskCans) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1); canSets.forEach(s => (s.count = 0));
     const put = (st, pos, rot) => { const set = canSets[st]; if (set.count >= 64) return; q.setFromEuler(new THREE.Euler(0, rot, 0)); set.setMatrixAt(set.count++, m.compose(pos, q, one)); };
     lastDeskCans = deskCans;
     fridgeCans.forEach(([x, y, z], k) => { if (k < fridgeStock) put(k % 2, new THREE.Vector3(x, y, z), Math.PI + (k % 3) * 0.2); });
-    shelfCans.forEach(([x, y, z], k) => { if (k < shelfStock) put(k % 2, new THREE.Vector3(x, y, z), (k % 3) * 0.2); });
+    shelfCaseMeshes.forEach((g, k) => { g.visible = k < shelfStock; });
     deskCans.forEach(([x, z, seed]) => put(canStyle(seed), new THREE.Vector3(x, 0.8325, z), seed.length * 1.7));
     canSets.forEach(s => (s.instanceMatrix.needsUpdate = true));
   }

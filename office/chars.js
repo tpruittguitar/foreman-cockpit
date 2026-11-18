@@ -105,6 +105,17 @@ export function canMaterials(style = 0) {
   });
 }
 function makeCan(style) { const g = new THREE.Group(); g.add(new THREE.Mesh(canGeometry(), canMaterials(style))); return g; }
+/* Warehouse and carried restock case: Monster-green box with a simple label band. Shared geometry, no brand artwork. */
+export const caseGeometry = () => geo('case', () => new THREE.BoxGeometry(0.3, 0.2, 0.22));
+export const caseBandGeometry = () => geo('caseBand', () => new THREE.BoxGeometry(0.305, 0.048, 0.225));
+export const caseBodyMaterial = () => mat('caseBody', () => new THREE.MeshStandardMaterial({ color: 0x1e8c14, roughness: 0.65, emissive: 0x0d2a08, emissiveIntensity: 0.3 }));
+export const caseBandMaterial = () => mat('caseBand', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0c, roughness: 0.5 }));
+export function makeCase() {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(caseGeometry(), caseBodyMaterial()));
+  g.add(new THREE.Mesh(caseBandGeometry(), caseBandMaterial()));
+  return g;
+}
 function makeCue() { // axis along the forearm (-y in the arm frame): the grip is at the origin, tip forward, butt 0.25 behind the hand
   const m = new THREE.Mesh(geo('cue', () => new THREE.CylinderGeometry(0.016, 0.009, 1.3, 8)), mat('cueWood', () => new THREE.MeshStandardMaterial({ color: 0xc8a06a, roughness: 0.5 })));
   m.position.y = -0.4; const g = new THREE.Group(); g.add(m); g.rotation.x = 0.2; return g;
@@ -518,9 +529,7 @@ function finish(c) {
   const hold = new THREE.Group(); hold.position.y = -(r.userData.len || 0.2) * 0.95; r.add(hold);
   c.cup = makeCup(); c.can = makeCan(canStyle(c.name)); c.cue = makeCue();
   c.card = new THREE.Mesh(geo('heldCard', () => new THREE.BoxGeometry(0.12, 0.09, 0.006)), mat('cardM', () => new THREE.MeshStandardMaterial({ color: 0xeef3ff, emissive: 0x334466, emissiveIntensity: 0.4 }))); c.card.visible = false;
-  c.box = new THREE.Group(); // item 10: restock box carried to the fridge (plain cardboard, no artwork)
-  { const bm = mat('cardboard', () => new THREE.MeshStandardMaterial({ color: 0xb98b56, roughness: 0.8 })), tape = mat('tape', () => new THREE.MeshStandardMaterial({ color: 0xd9c08f, roughness: 0.6 }));
-    c.box.add(new THREE.Mesh(geo('boxB', () => new THREE.BoxGeometry(0.3, 0.2, 0.22)), bm)); const t = new THREE.Mesh(geo('boxT', () => new THREE.BoxGeometry(0.06, 0.205, 0.225)), tape); c.box.add(t); }
+  c.box = makeCase();
   c.box.visible = false; c.body.add(c.box); c.box.position.set(0, 0.08, 0.3);
   c.cup.visible = c.can.visible = c.cue.visible = false;
   hold.add(c.cup, c.can, c.card, c.cue); // the cue is held in the right hand, along the forearm (pool pose angles it down at the ball)
