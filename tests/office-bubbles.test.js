@@ -21,3 +21,9 @@ test('bubble CSS wraps to a few lines: wider, no nowrap or ellipsis, white speec
   assert.ok(/max-width:\s*240px/.test(rule));
   assert.ok(/background:\s*#fff/.test(rule));
 });
+
+test('recent speech bubbles drop the RECENT label and do not hard-truncate at 40', () => {
+  assert.equal(js.includes('<span class="amb">recent'), false);
+  assert.equal(js.includes('truncate(rp.text, 40)'), false);
+  assert.ok(js.includes('truncate(rp.text, L.BUBBLE_MAX)'));
+});
