@@ -65,7 +65,6 @@ const autoSrc = L.createJsonSource({ rawUrl: RAW_FILE(AUTO_PATH), fetch: fetchFn
 const trainSrc = L.createJsonSource({ rawUrl: RAW_FILE(TRAIN_PATH), fetch: fetchFn });
 const chatSrc = L.createChatFeed({ dirUrl: API_FILE('control'), rawUrl: CHAT_FEED_URL, name: 'PRESIDENT_CHAT_FEED.jsonl', gate, fetch: fetchFn });
 async function api(url) {
-  if (!gate.open(Date.now())) { const e = new Error('GitHub rate limit: waiting for reset'); e.status = 403; throw e; }
   const r = await fetch(url, { cache: 'no-cache', headers: { Accept: 'application/vnd.github+json' } });
   gate.note(r, Date.now());
   if (!r.ok) { const e = new Error(r.status === 403 || r.status === 429 ? 'GitHub rate limit reached' : 'HTTP ' + r.status); e.status = r.status; throw e; }
@@ -74,29 +73,34 @@ async function api(url) {
 async function rawText(url) { const r = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Math.floor(Date.now() / POLL_MS), { cache: 'no-cache' }); if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; } return r.text(); }
 /* PR states: one list call per repo (state=all), cached PR_CACHE_MS; check-runs only for open, non-draft PRs (cached by sha). */
 async function loadPulls() {
-  const out = [], states = new Map(), times = new Map(), merges = new Map();
+  const folded = { merges: new Map(), times: new Map(), states: new Map(), errors: [] };
+  L.keepNewerTimes(folded.merges, S.merges);
+  L.keepNewerTimes(folded.times, S.prTimes);
+  (S.prStates || new Map()).forEach((v, k) => folded.states.set(k, v));
+  const out = [];
   for (const repo of PR_REPOS) {
-    const list = await api(`${GH_API}repos/${OWNER}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=50`);
-    L.prMerges(list, merges);
-    L.prStates(OWNER, repo, list).forEach((v, k) => states.set(k, v));
-    L.prTimes(OWNER, repo, list).forEach((v, k) => times.set(k, v));
-    for (const p of list.filter(p => p.state === 'open')) {
-      const sha = p.head && p.head.sha;
-      let checks = S.checkCache.get(sha);
-      if (!checks && !p.draft) {
-        try { const cr = await api(`${GH_API}repos/${OWNER}/${repo}/commits/${sha}/check-runs?per_page=50`); checks = L.checkState(cr.check_runs); }
-        catch (e) { checks = 'unknown'; }
-        if (checks === 'passing' || checks === 'failing') S.checkCache.set(sha, checks);
+    try {
+      const list = await api(`${GH_API}repos/${OWNER}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=50`);
+      L.foldRepoPulls(folded, { repo, list }, OWNER);
+      for (const p of list.filter(p => p.state === 'open')) {
+        const sha = p.head && p.head.sha;
+        let checks = S.checkCache.get(sha);
+        if (!checks && !p.draft) {
+          try { const cr = await api(`${GH_API}repos/${OWNER}/${repo}/commits/${sha}/check-runs?per_page=50`); checks = L.checkState(cr.check_runs); }
+          catch (e) { checks = 'unknown'; }
+          if (checks === 'passing' || checks === 'failing') S.checkCache.set(sha, checks);
+        }
+        out.push(L.summarizePull(repo, p, checks || (p.draft ? 'draft' : 'unknown')));
       }
-      out.push(L.summarizePull(repo, p, checks || (p.draft ? 'draft' : 'unknown')));
-    }
+    } catch (e) { L.foldRepoPulls(folded, { repo, error: e.message }, OWNER); }
   }
-  return { out, states, times, merges };
+  if (folded.errors.length && folded.merges.size === 0) throw new Error(folded.errors.join('; '));
+  return { out, states: folded.states, times: folded.times, merges: folded.merges, err: folded.errors.join('; ') };
 }
 function slowLoads(now) {
   if (now - S.pullsAt >= L.PR_CACHE_MS || S.pullsErr) {
     S.pullsAt = now;
-    loadPulls().then(r => { S.pulls = r.out; S.prStates = r.states; S.prTimes = r.times; S.merges = r.merges; S.pullsErr = ''; }, e => { S.pullsErr = e.message; }).then(refreshAll);
+    loadPulls().then(r => { S.pulls = r.out; S.prStates = r.states; S.prTimes = r.times; S.merges = r.merges; S.pullsErr = r.err || ''; }, e => { S.pullsErr = e.message; }).then(refreshAll);
   }
   if (now - S.asksAt >= SLOW_MS) {
     S.asksAt = now;

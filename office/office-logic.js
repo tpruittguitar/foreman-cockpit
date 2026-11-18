@@ -1217,6 +1217,27 @@
     for (const p of Array.isArray(list) ? list : []) if (p && p.number && time(p.updated_at) != null) m.set((owner + '/' + repo).toLowerCase() + '#' + p.number, str(p.updated_at));
     return m;
   }
+  /* Fold one repo's pulls (or its error) into the maps. A failed repo never clears merges already collected. */
+  function foldRepoPulls(into, result, owner) {
+    const out = into || { merges: new Map(), times: new Map(), states: new Map(), errors: [] };
+    const repo = result && result.repo;
+    if (result && result.error) { out.errors.push((repo || 'repo') + ': ' + str(result.error)); return out; }
+    const list = result && result.list;
+    if (!repo || !Array.isArray(list)) return out;
+    prMerges(list, out.merges);
+    prStates(owner, repo, list).forEach((v, k) => out.states.set(k, v));
+    prTimes(owner, repo, list).forEach((v, k) => out.times.set(k, v));
+    return out;
+  }
+  /* Keep the later ISO time per key, so a later failed repo load does not drop a merge already seen. */
+  function keepNewerTimes(into, from) {
+    const out = into || new Map();
+    for (const [k, v] of from || []) {
+      const prev = out.get(k), pt = time(prev), vt = typeof v === 'number' ? v : time(v);
+      if (vt != null && (pt == null || vt > pt)) out.set(k, v);
+    }
+    return out;
+  }
 
   /* Idle with a recent last action: replay it for up to RECENT_REPLAY_MIN minutes. */
   function replayFor(bot, now) {
@@ -2003,7 +2024,7 @@
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
