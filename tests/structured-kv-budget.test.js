@@ -177,5 +177,17 @@ test('REV-152 gate: a failed rebuild still frees the gate; the page-load sync an
   assert.strictEqual(ctx.STRUCT_SYNC_.running, null);
   const html = fs.readFileSync(path.join(__dirname, '..', 'pipeline.html'), 'utf8');
   assert.match(html, /!S\.structuredSyncing&&!structuredSyncDeferred_\(\)&&Date\.now\(\)-\(S\.structuredSyncedAt\|\|0\)>60000\)\{S\.structuredSyncing=true;structuredSync_\(base\)/);
+  assert.match(html, /S\.cfg\.key&&structuredStale_\(j\.structuredMeta\)&&!S\.structuredSyncing/, 'page-load import only for a stale snapshot');
+  assert.match(html, /structuredSync_\(base\)\.then\(function\(\)\{S\.structuredSyncing=false;S\.structuredSyncedAt=Date\.now\(\)\},/, 'no full reread after a background import');
+  assert.match(html, /'\/admin\/import-from-writer',\{method:'POST'[^\n]*\}\},2\)\.then\(/, 'import POST is never retried');
   assert.match(html, /function reloadAfterWrite_\(\)\{if\(S\.structuredBase&&S\.cfg\.key\)\{if\(structuredSyncDeferred_\(\)\)try\{render\(\)\}catch\(e\)\{\}return structuredSync_/);
+});
+
+test('aaee4a1: the page-load import gate treats a missing or 15+ min old Writer read as stale', t => {
+  const { ctx } = gate(t);
+  const now = Date.parse('2026-10-21T20:00:00Z');
+  assert.strictEqual(ctx.structuredStale_({ writerFetchedAt: new Date(now - 14 * 60000).toISOString() }, now), false);
+  assert.strictEqual(ctx.structuredStale_({ writerFetchedAt: new Date(now - 16 * 60000).toISOString() }, now), true);
+  assert.strictEqual(ctx.structuredStale_({}, now), true);
+  assert.strictEqual(ctx.structuredStale_(null, now), true);
 });
