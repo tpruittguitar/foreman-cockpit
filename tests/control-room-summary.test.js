@@ -22,9 +22,10 @@ test('summary: a stage is the constraint only when work is waiting in front of i
   const none=CR.summary(Object.assign({},base,{waiting:[{count:0},{count:0},{count:570}]}),{});
   assert.ok(none.stages.every(x=>!x.constraint),'no waiting work in front of any process: no constraint');
 });
-test('summary: delayed evidence drops the rates, like the desktop viewer',()=>{
-  const s=CR.summary(Object.assign({},base,{evidenceDelayed:true}),{});
-  assert.deepStrictEqual(s.stages.slice(0,3).map(x=>x.perHour),[null,null,null]);assert.ok(s.evidenceDelayed);
+test('summary: delayed evidence keeps the last rates with their as-of time',()=>{
+  const at='2026-11-18T02:06:00Z',live=CR.summary(base,{}),s=CR.summary(Object.assign({},base,{evidenceDelayed:true,flow:Object.assign({},base.flow,{at})}),{});
+  assert.deepStrictEqual(s.stages.slice(0,3).map(x=>x.perHour),[40,44,17]);assert.ok(s.evidenceDelayed);
+  assert.strictEqual(s.ratesAsOf,at);assert.strictEqual(live.ratesAsOf,null);
 });
 
 test('summary fallback rejects source-report-only discovery and checks capture evidence age independently',()=>{

@@ -114,15 +114,16 @@
   function ratesForWindow(m,hours){
     var completed=m.flow&&(m.flow.completionByWindow&&m.flow.completionByWindow[hours]||(hours===36?m.flow.completion:null));
     var rates=m.upstream?(m.upstream.ratesByWindow&&m.upstream.ratesByWindow[hours]||(hours===36?m.upstream.rates:null)):(hours===36?m.activity&&m.activity.rates36:null);
-    if(m.evidenceDelayed)return {rates:null,completed:null,en:null};
+    var asOf=m.evidenceDelayed&&(m.flow&&m.flow.at||m.activity&&m.activity.now)||null;
     if(!m.upstream&&rates){
       rates=Object.assign({},rates);var d=rates.discovery,age=d&&d.sourceAt&&m.now-Date.parse(d.sourceAt);
       if(!d||d.unit!=='candidate identities'||d.available===false||!Number.isFinite(age)||age<0||age>30*60000)rates.discovery=null;
       // Receipt verification time is not admission time; do not substitute it for stage intake.
       rates.intake=null;
     }
-    return {rates:rates,completed:completed,en:completed&&completed.enrichment};
+    return {rates:rates,completed:completed,en:completed&&completed.enrichment,asOf:asOf};
   }
+  function asOfText(t){return Number.isFinite(Date.parse(t||''))?' · as of '+new Date(t).toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'})+' ET':'';}
   function rateWindow(hours){return [36,24,12,6].includes(Number(hours))?Number(hours):36;}
   function flowAccounting(m,hours){
     var f=m.flow;if(!f)return '<p class="cr-note">Flow accounting unavailable: current complete job evidence is required. Unknown queues are not zero.</p>';
@@ -145,7 +146,7 @@
   }
   function html(m,options){
     options=options||{};var hours=rateWindow(options.rateWindowHours);
-    var a=m.activity,c=m.counts,unknown='Not reported',v=function(n){return n==null?unknown:n;},selected=ratesForWindow(m,hours),completed=selected.completed,rates=selected.rates,en=selected.en;
+    var a=m.activity,c=m.counts,unknown='Not reported',v=function(n){return n==null?unknown:n;},selected=ratesForWindow(m,hours),completed=selected.completed,rates=selected.rates,en=selected.en,asOf=selected.asOf;
     var stages=[
       ['Discovery',v(m.health&&m.health.candidates),'potential candidates in latest source passes','Captured candidates enter intake',m.checks.sources&&m.checks.sources.ok?'working':'unknown'],
       ['Intake',v(m.intakeToday),'new jobs today · all sources',m.blocks.some(function(x){return /intake/i.test(x.title);})?'Automatic path blocked; other paths may still write':'Recorded intake day · Eastern time',m.rowsKnown?'working':'unknown'],
@@ -153,7 +154,7 @@
       ['Your decisions',m.rowsKnown?(c.APPLIED||0)+' / '+(c.DECLINED_BY_TIM||0):unknown,'applied / declined · recorded totals',m.decisions+' questions · '+(m.flow?m.flow.queues.readyForReview+' ready for review':'review queue unknown'),m.decisions?'attention':'working']
     ];
     var bottleneck=constraint([rates&&rates.discovery,rates&&rates.intake,en],[null,m.waiting[0].count,m.waiting[1].count],hours);
-    function rateBadge(i){var r=i>=2?(completed&&completed.enrichment):rates&&(i===0?rates.discovery:rates.intake),unit=i===0?'candidates/hr':'jobs/hr',missing=!r||r.available===false||!Number.isFinite(r.perHour),partial=r&&(i===0||r.partial||rates&&rates.metadataGaps&&i>0);return '<span class="cr-rate" title="'+esc(missing?hours+'-hour history unavailable':((r.count36==null?r.count:r.count36)+' distinct '+(i===0?'captured candidate identities':'job IDs')+' / '+hours+' elapsed hours. '+(r.basis||rates.basis||'Recorded distinct jobs')+(partial?' Incomplete coverage: observed minimum only.':'')))+'">'+(missing?'Unknown':(partial&&r.perHour>0?'≥ ':'')+r.perHour.toLocaleString(undefined,{maximumFractionDigits:1}))+' <span class="cr-rate-unit">'+unit+'</span><small>'+hours+' h average'+(missing?' · no measurements':partial?' · observed minimum'+(i>=2&&Number.isFinite(r.coverageHours)?' · '+r.coverageHours.toFixed(1)+' h tracked':''):'')+'</small></span>';}
+    function rateBadge(i){var r=i>=2?(completed&&completed.enrichment):rates&&(i===0?rates.discovery:rates.intake),unit=i===0?'candidates/hr':'jobs/hr',missing=!r||r.available===false||!Number.isFinite(r.perHour),partial=r&&(i===0||r.partial||rates&&rates.metadataGaps&&i>0);return '<span class="cr-rate" title="'+esc(missing?hours+'-hour history unavailable':((r.count36==null?r.count:r.count36)+' distinct '+(i===0?'captured candidate identities':'job IDs')+' / '+hours+' elapsed hours. '+(r.basis||rates.basis||'Recorded distinct jobs')+(partial?' Incomplete coverage: observed minimum only.':'')))+'">'+(missing?'Unknown':(partial&&r.perHour>0?'≥ ':'')+r.perHour.toLocaleString(undefined,{maximumFractionDigits:1}))+' <span class="cr-rate-unit">'+unit+'</span><small>'+hours+' h average'+(missing?' · no measurements':partial?' · observed minimum'+(i>=2&&Number.isFinite(r.coverageHours)?' · '+r.coverageHours.toFixed(1)+' h tracked':''):'')+asOfText(asOf)+'</small></span>';}
     function completionWindow(i){var r=completed&&completed.enrichment;return r&&m.now-Date.parse(r.startedAt)<86400000?'since '+new Date(r.startedAt).toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'})+' ET':'completed · 24 h';}
     var maxWaiting=Math.max.apply(null,[1].concat((m.waiting||[]).map(function(q){return q.count||0;})));
     function queueBar(i){var q=m.waiting[i],n=q.count,label=n==null?'—':(q.partial?'≥ ':'')+n.toLocaleString(),height=n==null?0:Math.max(n?5:0,100*n/maxWaiting),name=i===0?'Discovery backlog':'Waiting',target=i===0?'Screen / resolve, then intake':'To '+stages[i+1][0];return '<li class="cr-buffer '+(n==null?'unknown':n?'waiting':'clear')+'"'+(n!=null?' data-cr-waiting="'+['intake','enrichment','decision'][i]+'"'+(i===2?' data-cr-decision-ready':'')+' role="button" tabindex="0" aria-label="Open '+n+' waiting '+(i===0?'candidate identities':'jobs')+'"':'')+' title="'+esc(q.basis+' Click to view this waiting queue.')+'"><span>'+name+'</span><b>'+label+'</b><div class="cr-buffer-track" role="img" aria-label="'+esc(label+(i===0?' candidate identities in discovery backlog':' jobs waiting for '+stages[i+1][0]))+'"><i style="--queue-fill:'+height+'%;height:'+height+'%"></i></div><small>'+(n==null?'Not reported':q.unit||'jobs')+'</small>'+(i===0&&q.breakdown?'<small>'+q.breakdown.screening.toLocaleString()+' need screening · '+q.breakdown.held.toLocaleString()+' held</small>':'')+'<span class="cr-buffer-target">'+esc(target)+'</span></li>';}
@@ -187,7 +188,7 @@
     var st=m.outcomes&&m.outcomes.recruiting&&m.outcomes.recruiting.stages;
     return {hours:hours,stages:stages,waiting:[0,1,2].map(function(i){var q=m.waiting&&m.waiting[i];return {count:q&&q.count!=null?q.count:null,partial:!!(q&&q.partial),breakdown:q&&q.breakdown||null};}),constraintReason:bn.reason,
       needDecision:m.flow?m.flow.queues.readyForReview:null,applied:m.rowsKnown?m.outcomes.applied:null,interviews:m.contactsKnown&&st?Object.keys(st).reduce(function(t,k){return t+(st[k]||0);},0):null,
-      severity:m.severity||'',evidenceDelayed:!!m.evidenceDelayed,details:(function(){try{return flowAccounting(m,hours).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();}catch(e){return '';}})()};
+      severity:m.severity||'',evidenceDelayed:!!m.evidenceDelayed,ratesAsOf:selected.asOf,details:(function(){try{return flowAccounting(m,hours).replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();}catch(e){return '';}})()};
   }
   return {summary:summary,qualityHtml:qualityHtml,rateWindow:rateWindow,constraint:constraint,model:model,html:html,banner:banner,recordedDay:recordedDay,interviewStatus:interviewStatus,recruiting:recruiting};
 });
