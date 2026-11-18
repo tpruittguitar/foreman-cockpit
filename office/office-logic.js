@@ -1264,8 +1264,8 @@
     for (const i of c.items || []) if (i.owner === name && c.prTimes) { const t = c.prTimes.get(prKey(i.link)); if (t) add(t, 'PR'); }
     const sc = id && c.screens && c.screens.screens && c.screens.screens[id];
     /* activeAt (Root's spec, Nov 17): when the bot last really worked. Index entries without the field keep the old capture time. */
-    /* Tim (Nov 18, 2:12 AM ET): an idle-flagged screen (busy false) gives no activeAt signal, so idle bots leave their desks. */
-    if (sc && !sc.paused && !(sc.hasActive && !sc.busy)) add(sc.hasActive ? sc.activeAt : sc.at, 'screen');
+    /* Tim (Nov 18, 2:12 AM ET): an idle-flagged (busy false) or offline screen gives no screen signal, so idle bots leave their desks. */
+    if (sc && !sc.paused && !sc.offline && !(sc.hasActive && !sc.busy)) add(sc.hasActive ? sc.activeAt : sc.at, 'screen');
     for (const r of (c.auto && c.auto.rows) || []) if (r.ai === name) { add(r.last_run_at, 'automation'); add(r.running ? r.started_at : '', 'automation'); }
     const m = c.merges && c.merges.get(name.toLowerCase()); if (m) add(m, 'PR merge'); /* QA #407: a merge is real work */
     return out;
