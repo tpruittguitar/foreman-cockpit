@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -42,7 +42,7 @@ if (TV) document.documentElement.classList.add('tv');
 const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
   pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
-  readings: [], cons: { health: null, activity: null, err: '', tried: 0, at: 0 }, readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '',
+  readings: [], cons: { health: null, activity: null, err: '', tried: 0, at: 0 }, readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '', fetched: {}, refreshedAt: 0,
   glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null, invite: null, hrFree: false
 };
 // Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
@@ -100,13 +100,13 @@ function slowLoads(now) {
   if (!DEMO && now - S.cons.tried >= SLOW_MS) { S.cons.tried = now; loadConstraint(now); }
   if (now - S.readingsAt >= SLOW_MS) {
     S.readingsAt = now;
-    rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsErr = ''; }, e => { S.readingsErr = e.message; }).then(refreshAll);
+    rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsErr = ''; S.fetched.readings = Date.now(); }, e => { S.readingsErr = e.message; }).then(refreshAll);
   }
-  fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
+  fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); if (j) S.fetched.screens = Date.now(); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
   /* missing or 404 OFFICE_TRAINING.json = no sessions, not an error */
   trainSrc.get(now).then(r => { S.training = r.ok ? L.parseTraining(r.data, L.ROSTER.map(x => x.name)).sessions : []; refreshAll(); });
   chatSrc.get(now).then(r => { S.chat = r.chat; S.chatErr = r.err; refreshAll(); }); // 404 = not published yet: quiet, slower
-  autoSrc.get(now).then(r => { if (r.ok) { S.auto = L.parseAutomations(r.data, Date.now()); S.autoErr = ''; } else S.autoErr = r.status === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : r.error; refreshAll(); });
+  autoSrc.get(now).then(r => { if (r.ok) { S.auto = L.parseAutomations(r.data, Date.now()); S.autoErr = ''; S.fetched.automations = Date.now(); } else S.autoErr = r.status === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : r.error; refreshAll(); });
 }
 /* Constraint wall: the cockpit's own model + summary (pipeline-control-room.js) over its own feeds, refreshed with the other slow loads. */
 function loadConstraint(now) {
@@ -133,10 +133,13 @@ async function poll() {
     S.prStates = new Map([['example/repo#1', 'merged']]); S.chat = L.parseChatFeed(DEMO_CHAT(now)); S.auto = L.parseAutomations(L.demoAutomations ? L.demoAutomations(now) : null, now);
   } else {
     const r = await statusSrc.get(now);
-    if (r.ok) { S.raw = r.data; S.fetchOk = true; S.error = ''; S.source = r.source; }
+    if (r.ok) { S.raw = r.data; S.fetchOk = true; S.error = ''; S.source = r.source; S.fetched.status = now; }
     else { S.fetchOk = false; S.error = r.status === 404 ? 'control/OFFICE_STATUS.json not found on forge-coordination main' : 'OFFICE_STATUS.json could not be loaded (' + r.error + ')'; }
     slowLoads(now);
   }
+  settleStatus();
+}
+function settleStatus() {
   const parsed = S.raw ? L.parseStatus(S.raw) : null;
   if (S.fetchOk && parsed && parsed.ok) {
     if (S.parsed) for (const p of L.diffItems(S.parsed.items, parsed.items)) queuePickup(p);
@@ -145,6 +148,24 @@ async function poll() {
   } else if (S.fetchOk && parsed && !parsed.ok) { S.fetchOk = false; S.error = parsed.error; }
   T.lastPoll = Date.now();
   refreshAll();
+}
+/* ⟳ Refresh (QA on #381): every office data source at once, cache-busted, then every board redraws right away. */
+const REFRESH = {
+  status: { url: RAW_FILE(STATUS_PATH), apply: t => { S.raw = JSON.parse(t); S.fetchOk = true; S.error = ''; S.source = 'raw'; },
+    fail: (e, st) => { S.fetchOk = false; S.error = st === 404 ? 'control/OFFICE_STATUS.json not found on forge-coordination main' : 'OFFICE_STATUS.json could not be loaded (' + e + ')'; } },
+  readings: { url: READINGS_URL, apply: (t, now) => { S.readings = L.parseReadings(t); S.readingsErr = ''; S.readingsAt = now; }, fail: e => { S.readingsErr = e; } },
+  automations: { url: RAW_FILE(AUTO_PATH), apply: t => { S.auto = L.parseAutomations(JSON.parse(t), Date.now()); S.autoErr = ''; },
+    fail: (e, st) => { S.autoErr = st === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : e; } },
+  pipelineHealth: { url: '/api/pipeline-health', apply: (t, now) => { Object.assign(S.cons, { health: JSON.parse(t), err: '', at: now, tried: now }); }, fail: e => { S.cons.err = e; } },
+  writerActivity: { url: '/api/writer-activity', apply: t => { S.cons.activity = JSON.parse(t); S.cons.activityErr = ''; }, fail: e => { S.cons.activity = null; S.cons.activityErr = e; } },
+  screens: { url: SCREENS_BASE + 'index.json', apply: t => { S.screens = L.parseScreensIndex(JSON.parse(t)); } }
+};
+async function refreshNow() {
+  if (DEMO) return poll();
+  const got = await L.refreshSources(REFRESH, fetchFn, Date.now());
+  for (const [k, v] of Object.entries(got)) if (v.ok) S.fetched[k] = v.at;
+  S.refreshedAt = Date.now(); T.lastPoll = S.refreshedAt;
+  settleStatus();
 }
 const DEMO_CHAT = now => [['Tim', 'EXAMPLE: is the office PR green?', 9], ['President', 'EXAMPLE: checks running, merging on green', 8], ['Tim', 'EXAMPLE: thanks, ping me at tim@example.com', 3], ['President', 'EXAMPLE: will do', 1]]
   .map(([from, text, m]) => JSON.stringify({ at: new Date(now - m * 60000).toISOString(), from, text })).join('\n');
@@ -221,6 +242,7 @@ function refreshAll() {
   if (S.state === 'failed') { banner.hidden = false; banner.textContent = '⚠ Office data unavailable: ' + (S.error || 'no data') + '. Bots are greyed out where they stand.'; }
   else banner.hidden = true;
   const n = needsCount(); $('needs-n').textContent = n; $('needs-btn').classList.toggle('zero', !n);
+  if (S.refreshedAt && !$('refresh-btn').disabled) $('refresh-lbl').textContent = 'Refresh · ' + L.dataAge(new Date(S.refreshedAt).toISOString(), now).text;
   renderFlat();
   if (world) world.refresh();
 }
@@ -499,7 +521,7 @@ $('needs-btn').onclick = () => {
   needsCursor = (needsCursor + 1) % a.length; world.goToBot(a[needsCursor].bot, true);
 };
 $('list-btn').onclick = openNeeds;
-$('refresh-btn').onclick = e => { const b = e.currentTarget; if (b.disabled) return; b.disabled = true; poll().finally(() => { b.disabled = false; }); };
+$('refresh-btn').onclick = e => { const b = e.currentTarget; if (b.disabled) return; b.disabled = true; b.classList.add('busy'); $('refresh-lbl').textContent = 'Refreshing…'; refreshNow().finally(() => { b.disabled = false; b.classList.remove('busy'); refreshAll(); }); };
 $('walk3d').onclick = () => enter3D();
 $('flat-btn').onclick = () => { $('flat').hidden = false; T.mode = 'flat'; renderFlat(); };
 
@@ -1264,14 +1286,14 @@ function buildWorld() {
     const t = project.tex, tabs = L.projectTabs(items()); if (!tabs.includes(boardTab)) boardTab = 'All';
     const cols = L.boardView(items(), { tab: boardTab, doneOpen });
     const age = S.parsed ? L.dataAge(S.parsed.updatedAt, Date.now()) : null;
-    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem });
+    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status);
     pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
-    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); u.t.needsUpdate = true;
-    const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); n.t.needsUpdate = true;
-    const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO }); a.t.needsUpdate = true;
-    const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); wr.t.needsUpdate = true;
-    const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); cw.t.needsUpdate = true;
+    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings); u.t.needsUpdate = true;
+    const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); drawFetched(n.ctx, n.c.width, n.c.height, S.fetched.status); n.t.needsUpdate = true;
+    const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO }); drawFetched(a.ctx, a.c.width, a.c.height, S.fetched.automations); a.t.needsUpdate = true;
+    const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); drawFetched(wr.ctx, wr.c.width, wr.c.height, S.fetched.automations); wr.t.needsUpdate = true;
+    const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); drawFetched(cw.ctx, cw.c.width, cw.c.height, DEMO ? 0 : S.cons.at); cw.t.needsUpdate = true;
     updateLines();
     for (const [id, ln] of lines) ln.material = hl.has(id) || (hoverBot && ln.userData.owner === hoverBot) ? MAT.lineHi : MAT.lineFaint;
     for (const d of desks) d.card.visible = d.card.visible || items().some(i => i.work && i.owner === d.name && L.columnFor(i) !== 'done' && i.work.poster !== d.name);

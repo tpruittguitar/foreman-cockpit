@@ -501,6 +501,14 @@ export function drawAutomations(ctx, W, H, o) {
   ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${16 * s}px ${SANS}`; ctx.fillText('runs / hour', 24 * s, cy + 24 * s);
   ctx.fillStyle = '#37e0ff'; ctx.fillRect(X(o.now), 70 * s, 3 * s, H - 80 * s); // now line
 }
+/* "fetched 10:15:03 PM ET" in a board's bottom-right corner: the visible proof that ⟳ Refresh reloaded its source. */
+export function drawFetched(ctx, W, H, at) {
+  if (!at) return;
+  const s = W / 1024, txt = 'fetched ' + new Date(at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }) + ' ET';
+  ctx.font = `600 ${18 * s}px ${SANS}`; const w = ctx.measureText(txt).width + 16 * s;
+  ctx.fillStyle = 'rgba(15,17,20,0.88)'; ctx.fillRect(W - w - 8 * s, H - 32 * s, w, 26 * s);
+  ctx.textAlign = 'right'; ctx.fillStyle = '#9aa0a8'; ctx.fillText(txt, W - 16 * s, H - 13 * s); ctx.textAlign = 'left';
+}
 export function drawWriterHealth(ctx, W, H, o) {
   const s = W / 768;
   ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);

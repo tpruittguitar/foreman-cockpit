@@ -805,6 +805,23 @@
     }
     return { get, state: st };
   }
+  /* ⟳ Refresh (QA on #381): fetch every office source at once with cache: 'no-store' and ?t=<now>, then hand each body to
+     its own apply(). A failing source calls its fail() so its board keeps its existing error/stale state; the rest still load. */
+  async function refreshSources(sources, fetchFn, now) {
+    const out = {};
+    await Promise.all(Object.keys(sources).map(async n => {
+      const s = sources[n];
+      try {
+        const r = await fetchFn(s.url + (s.url.includes('?') ? '&' : '?') + 't=' + now, { cache: 'no-store' });
+        if (!r.ok) throw Object.assign(new Error('HTTP ' + r.status), { status: r.status });
+        s.apply(await r.text(), now); out[n] = { ok: true, at: now };
+      } catch (e) {
+        const err = e instanceof SyntaxError ? 'not valid JSON' : String(e && e.message || e);
+        if (s.fail) s.fail(err, e && e.status); out[n] = { ok: false, error: err };
+      }
+    }));
+    return out;
+  }
   /* "updated 2 min ago", stale over STALE_MIN */
   function dataAge(iso, now) {
     const t = time(iso); if (t == null) return { text: 'update time unknown', stale: true, min: null };
@@ -1806,7 +1823,7 @@
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
-    createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
+    createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
