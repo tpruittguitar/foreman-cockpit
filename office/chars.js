@@ -593,6 +593,10 @@ export function animate(c, pose, t, dt, opts) {
         turnY = 0.06 * Math.sin(t * 2.2 + ph);
       } else if (pose === 'meet' && !still) { armR.x = -0.9 + 0.25 * Math.max(0, Math.sin(t * 2 + ph)); armL.x = -1.0; lean = 0.1; turnY = 0.35 * Math.sin(t * 0.4 + ph); }
       else { armR.x = -1.0; armL.x = -1.0; lean = pose === 'type' ? 0.12 : 0.06; }
+      if (pose === 'type' && c.kind === 'president') { // humanoid typing: arms angled up so the hands rest above the desk top (Tim 11:00 PM); the jelly bots keep their arms
+        const tap = still ? 0 : 0.05 * Math.sin(t * 15 + ph) * (Math.sin(t * 1.3 + ph) > -0.45 ? 1 : 0);
+        armR.x = -2.05 + tap; armL.x = -2.05 - tap; armR.z = c.rest.armR.z * 0.5; armL.z = c.rest.armL.z * 0.5; lean = Math.min(lean, 0.06);
+      }
       break;
     }
     case 'deskSleep': {
