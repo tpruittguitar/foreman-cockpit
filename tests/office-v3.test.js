@@ -288,3 +288,31 @@ test('writer health: missing metrics stay "no data"', () => {
   const a = L.parseAutomations(L.demoAutomations(NOW), NOW);
   assert.equal(a.writer.last_ping.source, null); assert.equal(a.writer.error_rate.status, 'red');
 });
+
+test('usage wall pool lines: optional fields pass through and format under the bar', () => {
+  const credit = { est_left_usd: 40.998251, grant_usd: 41, expires: '2026-11-30', verified_left_usd: null };
+  const text = [
+    JSON.stringify({ at: '2026-11-17T22:24:48.710Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly (Codex/Work/agents)', usedPct: 92, resetsAt: '2026-11-20T21:58:53.000Z', status: 'WATCH', openaiCredit: credit, resets_available: 0, resets_expire: null, extra_usd: null }),
+    JSON.stringify({ at: '2026-11-18T00:53:00.000Z', provider: 'CLAUDE', meter: 'weekly', label: 'weekly (all models)', usedPct: 0, resetsAt: '2026-11-22T16:00:00.000Z', status: 'OK', resets_available: 0, resets_expire: null, extra_usd: null }),
+    JSON.stringify({ at: '2026-11-18T01:22:00.000Z', provider: 'GROK', meter: 'weekly', label: 'weekly Grok Bot', usedPct: 83.3, resetsAt: '2026-11-22T21:41:00.000Z', status: 'OK', resets_available: null, resets_expire: null, extra_usd: 4.7 })
+  ].join('\n');
+  const rows = L.usageRows(L.parseReadings(text), NOW, null);
+  const by = Object.fromEntries(rows.map(r => [r.name, r]));
+  assert.equal(L.creditLine(by.ChatGPT), 'API credit: ~$41.00 of $41 left · expires Nov 30');
+  assert.equal(L.resetsLine(by.ChatGPT), 'Resets: 0 · Extra: none');
+  assert.equal(L.creditLine(by.Claude), '');
+  assert.equal(L.resetsLine(by.Claude), 'Resets: 0 · Extra: none');
+  assert.equal(L.creditLine(by.Grok), '');
+  assert.equal(L.resetsLine(by.Grok), 'Resets: none · Extra: $4.70');
+  const verified = L.usageRows(L.parseReadings(JSON.stringify({
+    at: '2026-11-17T22:24:48.710Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly', usedPct: 92,
+    resetsAt: '2026-11-20T21:58:53.000Z', status: 'OK', openaiCredit: Object.assign({}, credit, { verified_left_usd: 40.12 })
+  })), NOW, null)[0];
+  assert.equal(L.creditLine(verified), 'API credit: $40.12 of $41 left · expires Nov 30');
+  const bare = L.usageRows(L.parseReadings(JSON.stringify({
+    at: '2026-11-17T22:24:48.710Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly', usedPct: 92,
+    resetsAt: '2026-11-20T21:58:53.000Z', status: 'OK'
+  })), NOW, null)[0];
+  assert.equal(L.creditLine(bare), '');
+  assert.equal(L.resetsLine(bare), '');
+});
