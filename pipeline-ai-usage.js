@@ -34,6 +34,10 @@
       var g = groups[k].slice().sort(function (a, b) { return Date.parse(a.at) - Date.parse(b.at); });
       var last = g[g.length - 1], at = Date.parse(last.at), reset = Date.parse(last.resetsAt) || 0;
       var p = { provider: last.provider, meter: last.meter, label: last.label || last.meter, usedPct: +last.usedPct, at: at, resetsAt: reset, status: last.status || 'OK', ageH: (nowMs - at) / H, rate: null, runOutAt: null, verdict: 'UNKNOWN', basis: '' };
+      if (last.provider === 'CHATGPT' && last.openaiCredit) p.openaiCredit = last.openaiCredit;
+      if (last.resets_available !== undefined) p.resets_available = last.resets_available;
+      if (last.resets_expire !== undefined) p.resets_expire = last.resets_expire;
+      if (last.extra_usd !== undefined) p.extra_usd = last.extra_usd;
       if (p.status !== 'OK' || !isFinite(p.usedPct)) { p.verdict = 'NO_READING'; return p; }
       if (reset && reset <= nowMs) { p.verdict = 'RESET_PASSED'; return p; }
       if (p.usedPct >= 100) { p.verdict = 'OUT'; p.runOutAt = at; return p; }
@@ -62,6 +66,34 @@
     OUT: ['bad', 'OUT'], BEFORE_RESET: ['bad', 'RUNS OUT BEFORE RESET'], LASTS: ['ok', 'LASTS TO RESET'],
     UNKNOWN: ['warn', 'NEED 2 READINGS'], NO_READING: ['warn', 'NO READING'], RESET_PASSED: ['warn', 'RESET PASSED · NEW READING DUE']
   };
+  function monthDay(iso) {
+    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '';
+    return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[2] - 1] + ' ' + String(+m[3]);
+  }
+  function creditHtml(p) {
+    var c = p && p.openaiCredit;
+    if (!c) return '';
+    var grant = +c.grant_usd;
+    var verified = c.verified_left_usd != null && c.verified_left_usd !== '';
+    var left = verified ? +c.verified_left_usd : +c.est_left_usd;
+    if (!isFinite(grant) || !isFinite(left)) return '';
+    var approx = verified ? '' : '~';
+    var grantStr = (grant % 1) ? grant.toFixed(2) : String(Math.round(grant));
+    var exp = monthDay(c.expires);
+    return '<div class="dim">API credit: ' + approx + '$' + left.toFixed(2) + ' of $' + grantStr + ' left' + (exp ? ' · expires ' + exp : '') + '</div>';
+  }
+  function resetsHtml(p) {
+    if (!p || (p.resets_available === undefined && p.resets_expire === undefined && p.extra_usd === undefined)) return '';
+    var resets = (p.resets_available == null || p.resets_available === '') ? 'Resets: none' : ('Resets: ' + String(+p.resets_available));
+    var exp = monthDay(p.resets_expire);
+    if (exp && p.resets_available != null && p.resets_available !== '' && +p.resets_available > 0) resets += ' (expires ' + exp + ')';
+    var extra = 'Extra: none';
+    if (p.extra_usd != null && p.extra_usd !== '' && isFinite(+p.extra_usd) && +p.extra_usd !== 0) {
+      extra = 'Extra: $' + (+p.extra_usd).toFixed(2);
+    }
+    return '<div class="dim">' + esc(resets + ' · ' + extra) + '</div>';
+  }
   function rowHtml(p) {
     var v = VERDICT[p.verdict] || VERDICT.UNKNOWN, pct = Math.max(0, Math.min(100, p.usedPct || 0));
     var detail = p.verdict === 'OUT' ? 'out until reset ' + when(p.resetsAt)
@@ -72,6 +104,7 @@
     return '<div class="aiu-row ' + v[0] + '" title="' + esc(title) + '">' +
       '<div class="aiu-top"><b>' + esc(NAMES[p.provider] || p.provider) + '</b> <span class="dim">' + esc(p.label) + '</span><span class="aiu-pct">' + esc(String(Math.round(pct))) + '%</span></div>' +
       '<div class="aiu-track" role="img" aria-label="' + esc(title) + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+      creditHtml(p) + resetsHtml(p) +
       '<div class="aiu-foot"><span class="pill ' + v[0] + '">' + esc(v[1]) + '</span> <span class="dim">' + esc(detail) + (p.rate != null && p.rate > 0 ? ' · ' + p.rate.toFixed(2) + '%/h (' + esc(p.basis) + ')' : '') + ' · read ' + esc(p.ageH < 1 ? Math.round(p.ageH * 60) + ' min ago' : Math.round(p.ageH) + ' h ago') + '</span></div></div>';
   }
   function html(projections) {

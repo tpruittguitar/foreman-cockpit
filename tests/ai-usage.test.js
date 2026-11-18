@@ -74,3 +74,43 @@ test('load reads the GitHub contents API first and falls back to raw on refusal'
   const r2 = await U.load(limited);
   assert.deepEqual(calls2, [U.API_URL, U.URL]); assert.equal(r2.length, 1);
 });
+
+test('optional pool lines render under the bar only when fields are present', () => {
+  const credit = { est_left_usd: 38.90, grant_usd: 41, expires: '2026-11-30', verified_left_usd: null };
+  const chatgpt = U.parse(line({
+    at: '2026-10-13T19:40:00Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly',
+    usedPct: 47, resetsAt: '2026-10-20T04:40:00Z', openaiCredit: credit,
+    resets_available: 0, resets_expire: null, extra_usd: null
+  }));
+  const hChat = U.html(U.project(chatgpt, NOW));
+  assert.match(hChat, /API credit: ~\$38\.90 of \$41 left · expires Nov 30/);
+  assert.match(hChat, /Resets: 0 · Extra: none/);
+  const verified = Object.assign({}, credit, { verified_left_usd: 40.12 });
+  const hVer = U.html(U.project(U.parse(line({
+    at: '2026-10-13T19:40:00Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly',
+    usedPct: 47, resetsAt: '2026-10-20T04:40:00Z', openaiCredit: verified
+  })), NOW));
+  assert.match(hVer, /API credit: \$40\.12 of \$41 left · expires Nov 30/);
+  assert.doesNotMatch(hVer, /~/);
+  const claude = U.parse(line({
+    at: '2026-10-13T19:40:00Z', provider: 'CLAUDE', meter: 'weekly', label: 'weekly',
+    usedPct: 47, resetsAt: '2026-10-20T04:40:00Z', openaiCredit: credit,
+    resets_available: 1, resets_expire: '2026-12-10', extra_usd: null
+  }));
+  const hClaude = U.html(U.project(claude, NOW));
+  assert.match(hClaude, /Resets: 1 \(expires Dec 10\) · Extra: none/);
+  assert.doesNotMatch(hClaude, /API credit:/);
+  const grok = U.parse(line({
+    at: '2026-10-13T19:40:00Z', provider: 'GROK', meter: 'weekly', label: 'weekly',
+    usedPct: 47, resetsAt: '2026-10-20T04:40:00Z',
+    resets_available: null, resets_expire: null, extra_usd: 4.70
+  }));
+  assert.match(U.html(U.project(grok, NOW)), /Resets: none · Extra: \$4\.70/);
+  const bare = U.parse(line({
+    at: '2026-10-13T19:40:00Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly',
+    usedPct: 47, resetsAt: '2026-10-20T04:40:00Z'
+  }));
+  const hBare = U.html(U.project(bare, NOW));
+  assert.doesNotMatch(hBare, /API credit:/);
+  assert.doesNotMatch(hBare, /Resets:/);
+});
