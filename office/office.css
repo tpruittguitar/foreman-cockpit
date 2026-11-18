@@ -154,6 +154,7 @@ html.tv .hint { bottom: calc(var(--safe) + 3.2em); }
 .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .pchat { max-height: 50vh; overflow: auto; display: flex; flex-direction: column; }
 .mirror img { max-width: 100%; border-radius: 8px; }
+.mirror.offline img { filter: brightness(0.5); }
 .usage .countdown { color: #9fe8f5; }
 .timeline { overflow-x: auto; border: 1px solid #2c3a40; border-radius: 8px; padding: 6px 0; }
 .tl { position: relative; padding-left: 120px; }

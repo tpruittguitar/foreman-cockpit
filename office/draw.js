@@ -38,7 +38,7 @@ export function drawDesk(ctx, W, H, o) {
   ctx.fillStyle = '#9aa0a8'; ctx.font = `500 ${15 * s}px ${MONO}`;
   const mode = o.mode || 'terminal';
   if (mode === 'game') return drawGame(ctx, W, H, s, o.now, b.bot);
-  if (mode === 'mirror' && o.image) { drawImageFit(ctx, o.image, 0, 0, W, H); return stamp(ctx, W, H, s, o.screenWhy); }
+  if (mode === 'mirror' && o.image) { drawImageFit(ctx, o.image, 0, 0, W, H); shadeOffline(ctx, 0, 0, W, H, o.offline); return stamp(ctx, W, H, s, o.screenWhy); }
   if (mode === 'president' && o.lod !== 'far') return presidentSplit(ctx, W, H, s, o);
   if (mode === 'routine' && o.lod !== 'far') { ctx.fillStyle = C.working; ctx.font = `800 ${46 * s}px ${SANS}`; ctx.fillText(fit(ctx, '▶ ' + b.routine.name, W - 44 * s), 22 * s, H / 2 - 10 * s);
     ctx.fillStyle = '#c9ccd2'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText('running' + (b.routine.started_at ? ' · started ' + L.etClock(Date.parse(b.routine.started_at)) + ' ET' : ''), 22 * s, H / 2 + 40 * s); return; }
@@ -187,6 +187,7 @@ export function drawWhiteboard(ctx, W, H, o) {
   if (o.demo && o.meeting) exampleTag(ctx, W - 230, H * 0.92, 22);
 }
 function drawImageFit(ctx, img, x, y, w, h) { const k = Math.min(w / img.width, h / img.height), iw = img.width * k, ih = img.height * k; ctx.fillStyle = '#000'; ctx.fillRect(x, y, w, h); ctx.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih); }
+function shadeOffline(ctx, x, y, w, h, on) { if (!on) return; ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(x, y, w, h); }
 function stamp(ctx, W, H, s, text) { if (!text) return; ctx.font = `700 ${16 * s}px ${SANS}`; const tw = ctx.measureText(text).width + 16 * s; ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(W - tw - 6 * s, H - 30 * s, tw, 24 * s); ctx.fillStyle = '#e6e9ee'; ctx.fillText(text, W - tw + 2 * s, H - 12 * s); }
 /* President: LEFT = Tim-President chat (canvas text only, newest at bottom), RIGHT = mirrored screen or the checksheet fallback */
 function presidentSplit(ctx, W, H, s, o) {
@@ -199,7 +200,7 @@ function presidentSplit(ctx, W, H, s, o) {
     for (let k = chat.length - 1; k >= 0 && y > top + 50 * s; k--) { const m = chat[k];
       ctx.fillStyle = m.from === 'Tim' ? '#7fd0ff' : '#c7f0c9'; ctx.fillText(fit(ctx, L.etClock(Date.parse(m.at)) + ' ' + m.from + ': ' + m.text, half - 26 * s), 12 * s, y); y -= 24 * s; } }
   ctx.fillStyle = '#2b2f35'; ctx.fillRect(half - 2 * s, top, 4 * s, H - top);
-  if (o.image) { drawImageFit(ctx, o.image, half + 2 * s, top, half - 2 * s, H - top); stamp(ctx, W, H, s, o.screenWhy); return; }
+  if (o.image) { drawImageFit(ctx, o.image, half + 2 * s, top, half - 2 * s, H - top); shadeOffline(ctx, half + 2 * s, top, half - 2 * s, H - top, o.offline); stamp(ctx, W, H, s, o.screenWhy); return; }
   ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${16 * s}px ${SANS}`; ctx.fillText(fit(ctx, (o.screenWhy || 'Screen offline') + ' · checksheet', half - 24 * s), half + 12 * s, top + 26 * s);
   L.sortItems((o.allItems || []).filter(i => L.columnFor(i) !== 'done')).slice(0, 11).forEach((it, i) => { const w = L.statusWord(it);
     ctx.font = `800 ${15 * s}px ${SANS}`; ctx.fillStyle = TONE[w.tone] || '#ccc'; ctx.fillText(w.glyph, half + 12 * s, top + (58 + i * 28) * s);

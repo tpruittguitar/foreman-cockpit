@@ -211,6 +211,34 @@ test('screens index parse and the fallback / stale / paused rules', () => {
   assert.equal(L.screenState(ix, 'nobody', NOW).why, 'Screen offline');
   for (const bad of [null, [], 'x', { screens: [] }]) assert.deepEqual(L.parseScreensIndex(bad).screens, {});
 });
+test('offline screen: last frame stays an image, dimmed, labeled from lastSeen in ET', () => {
+  const at = '2026-11-16T07:00:00Z', lastSeen = '2026-11-16T01:50:00Z';
+  const ix = o => L.parseScreensIndex({ updated_at: at, screens: { 'id-1': Object.assign({ at }, o) } });
+  const rec = ix({ offline: true, lastSeen, busy: true }).screens['id-1'];
+  assert.equal(rec.offline, true);
+  assert.equal(rec.lastSeen, lastSeen);
+  const st = L.screenState(ix({ offline: true, lastSeen }), 'id-1', NOW);
+  assert.equal(st.show, 'image');
+  assert.equal(st.offline, true);
+  assert.equal(st.why, 'screen offline since 8:50 PM');
+  assert.equal(L.offlineSinceLabel(lastSeen), 'screen offline since 8:50 PM');
+  assert.equal(L.offlineSinceLabel('nope'), 'screen offline');
+  assert.equal(L.offlineSinceLabel(undefined), 'screen offline');
+  const staleOff = L.screenState(ix({ at: '2026-11-16T06:00:00Z', offline: true, lastSeen }), 'id-1', NOW);
+  assert.equal(staleOff.show, 'image', 'offline keeps the last frame even when at is older than 15 min');
+  assert.equal(staleOff.why, 'screen offline since 8:50 PM');
+  const pausedOff = L.screenState(ix({ offline: true, paused: true, lastSeen }), 'id-1', NOW);
+  assert.equal(pausedOff.show, 'image', 'offline wins over paused');
+  assert.equal(pausedOff.why, 'screen offline since 8:50 PM');
+  const noSeen = L.screenState(ix({ offline: true }), 'id-1', NOW);
+  assert.equal(noSeen.why, 'screen offline since 2:00 AM', 'falls back to at when lastSeen is missing');
+  const badSeen = L.screenState(ix({ offline: true, lastSeen: 'nope' }), 'id-1', NOW);
+  assert.equal(badSeen.why, 'screen offline since 2:00 AM');
+  const idle = { bot: 'Claude', status: 'idle', task: 'x' };
+  assert.equal(L.liveStatus(idle, 'id-1', ix({ at, busy: true, offline: true, lastSeen }), null, NOW).status, 'idle', 'offline is not live proof of work');
+  assert.equal(ix({}).screens['id-1'].offline, false);
+  assert.equal(L.screenState(ix({}), 'id-1', NOW).offline, undefined);
+});
 test('liveStatus: idle row with a fresh busy screen or a running routine shows as working; nothing else changes', () => {
   const at = m => new Date(NOW - m * 60000).toISOString(), ix = o => L.parseScreensIndex({ updated_at: at(0), screens: { 'id-1': o } });
   const idle = { bot: 'Claude', status: 'idle', task: 'x' };
