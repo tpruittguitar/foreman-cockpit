@@ -145,6 +145,19 @@ function activity(){return {ok:true,now:new Date().toISOString(),today:{writes:2
   await page.evaluate(()=>document.activeElement.blur());await page.waitForTimeout(100);
   if(shots)await page.screenshot({path:path.join(shots,'stage4-jobs-landscape-844x390.png')});
   assert.deepStrictEqual(errors,[],'no page errors (landscape)');await ctx.close();
+  // 10b. Age stays in the viewport after #425 widened Salary ($170K–$200K estimate).
+  for(const [w,h] of [[740,360],[932,430]]){
+    ({ctx,page,errors}=await open(phone(w,h)));
+    await page.click('#m-tab-jobs');await page.click('[data-m-jf="all"]');await page.waitForSelector('#m-jobs-list table');
+    const fit=await page.evaluate(vw=>{const box=document.querySelector('.m-table-wrap').getBoundingClientRect();
+      const age=[...document.querySelectorAll('.m-table thead th')].find(t=>t.textContent==='Age');
+      const r=age.getBoundingClientRect();
+      return {ageRight:r.right,wrapRight:box.right,vw,sw:document.documentElement.scrollWidth,cw:document.documentElement.clientWidth};},w);
+    assert.ok(fit.ageRight<=fit.wrapRight+0.5,'Age visible in the table wrap at '+w+'x'+h+' (right='+fit.ageRight+', wrap='+fit.wrapRight+')');
+    assert.ok(fit.ageRight<=fit.vw+0.5,'Age header right edge at or under the viewport at '+w+'x'+h+' (right='+fit.ageRight+', vw='+fit.vw+')');
+    assert.ok(fit.sw<=fit.cw,'no page sideways scroll at '+w+'x'+h);
+    assert.deepStrictEqual(errors,[],'no page errors at '+w+'x'+h);await ctx.close();
+  }
   // 11. Reduced motion: the constraint highlight ring does not animate.
   ({ctx,page,errors}=await open({...phone(390,844),reducedMotion:'reduce'}));await page.click('#m-tab-status');
   await page.waitForFunction(()=>document.querySelector('#m-pane-status .m-constraint'),null,{timeout:20000});

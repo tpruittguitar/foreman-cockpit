@@ -287,6 +287,11 @@ html.m-detail-open body{overflow:hidden}
   html.m-shell #m-root .m-jobchips{margin-bottom:6px;align-items:center}
   html.m-shell #m-root .m-jobcount{display:none}
   html.m-shell #m-root .m-jobcount-l{display:inline-flex;align-items:center;margin-left:6px}
+  /* #425 pay ranges plus the trust word made Salary ~225px, so Age overflowed at 844 and 740 landscape. Keep one row line so four job rows still fit at 844x390. */
+  html.m-shell #m-root .m-table{table-layout:fixed}
+  html.m-shell #m-root .m-table .m-sticky{width:120px;min-width:120px}
+  html.m-shell #m-root .m-table th,html.m-shell #m-root .m-table td{overflow:hidden;text-overflow:ellipsis}
+  html.m-shell #m-root .m-table td .m-b{max-width:100%;min-width:0;box-sizing:border-box;overflow:hidden}
 }
 
 /* Return from a desktop view. */
