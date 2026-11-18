@@ -1245,7 +1245,9 @@
     const own = [b.last_action_at, b.screen && b.screen.updated_at, b.routine && b.routine.started_at, b.audit && b.audit.last_at]
       .concat((b.work || []).map(w => w.at));
     let lastSeen = null, source = '';
-    const at = v => (v && typeof v === 'object' ? v.at : v), tagged = own.map(v => ({ at: v, src: 'status row' })).concat((extra || []).map(v => (v && typeof v === 'object' ? v : { at: v, src: 'signal' })));
+    const at = v => (v && typeof v === 'object' ? v.at : v);
+    let tagged = own.map(v => ({ at: v, src: 'status row' })).concat((extra || []).map(v => (v && typeof v === 'object' ? v : { at: v, src: 'signal' })));
+    const quiet = tagged.filter(v => v.idle); tagged = tagged.filter(v => !v.idle);
     for (const v of tagged) {
       const t = typeof v.at === 'number' ? v.at : time(v.at);
       if (t != null && t <= now + MIN && (lastSeen == null || t > lastSeen)) { lastSeen = t; source = v.src; }
@@ -1254,7 +1256,9 @@
     const stale = ageMin == null || ageMin > BOT_STALE_MIN;
     /* No activity feed: the row was only seeded (or never written) and no other signal exists, so an hour count would mislead. */
     const ok = v => { const t = typeof at(v) === 'number' ? at(v) : time(at(v)); return t != null && t <= now + MIN; };
-    const noFeed = stale && !(extra || []).some(ok) && (/^seeded$/i.test(str(b.last_action).trim()) || !own.some(ok));
+    const noFeed = stale && !(extra || []).filter(v => !(v && v.idle)).some(ok) && (/^seeded$/i.test(str(b.last_action).trim()) || !own.some(ok));
+    let q = null; for (const v of quiet) { const t = time(v.at); if (t != null && t <= now + MIN && (lastSeen == null || t > lastSeen) && (!q || t > q.t)) q = { t, src: v.src }; }
+    if (stale && q) { const qm = Math.max(0, Math.floor((now - q.t) / MIN)); return { lastSeen, ageMin, stale, noFeed: false, source, label: (q.src === 'offline' ? 'offline · last seen ' : 'idle · last active ') + ageText(qm) }; }
     return { lastSeen, ageMin, stale, noFeed, source, label: !stale ? '' : noFeed ? 'no activity feed' : 'stale · last seen ' + (ageMin == null ? 'unknown' : ageText(ageMin)) };
   }
   /* Extra signal times for one bot from data the page already holds: ctx = { items, prTimes (Map prKey -> ISO),
@@ -1266,6 +1270,8 @@
     /* activeAt (Root's spec, Nov 17): when the bot last really worked. Index entries without the field keep the old capture time. */
     /* Tim (Nov 18, 2:12 AM ET): an idle-flagged (busy false) or offline screen gives no screen signal, so idle bots leave their desks. */
     if (sc && !sc.paused && !sc.offline && !(sc.hasActive && !sc.busy)) add(sc.hasActive ? sc.activeAt : sc.at, 'screen');
+    /* Tag-only (Tim's 2:28 AM screenshot): an idle or offline screen still proves a feed, so the tag says idle/offline with its age, never "no activity feed"; it never makes the bot look working. */
+    else if (tagged && sc && !sc.paused) out.push({ at: sc.offline ? (sc.lastSeen || sc.activeAt || sc.at) : (sc.activeAt || sc.at), src: sc.offline ? 'offline' : 'idle', idle: true });
     for (const r of (c.auto && c.auto.rows) || []) if (r.ai === name) { add(r.last_run_at, 'automation'); add(r.running ? r.started_at : '', 'automation'); }
     const m = c.merges && c.merges.get(name.toLowerCase()); if (m) add(m, 'PR merge'); /* QA #407: a merge is real work */
     return out;
