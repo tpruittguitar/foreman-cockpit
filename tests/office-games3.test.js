@@ -42,7 +42,8 @@ test('(3) owning an open checksheet card without a fresh signal still shows idle
   const owner = Object.assign(row('Comp', 'working', 400), { work: [{ id: 'cs-1', at: '' }] });
   const p = L.planOffice([owner], [], NOW, 'live', { Comp: L.freshness(owner, NOW, L.botSignals(owner, { items: [{ owner: 'Comp', id: 'cs-1', link: '' }] })) }).plans;
   assert.ok(IDLE_LIFE.has(p.Comp.act), p.Comp.act);
-  assert.match(office, /if \(L\.JOB_ASSIGN_REASONS\.includes\(p\.reason\)\) \{ if \(S\.fresh\[p\.bot\] && S\.fresh\[p\.bot\]\.stale\) return;/);
+  assert.doesNotMatch(office, /S\.fresh\[p\.bot\]/, 'a stale bot still carries a new card (#408): the job is only board -> desk, never typing');
+  assert.match(office, /if \(j\.phase === 'deliver'\) return \{ key, spot: d\.seat, pose: 'sit' \};/);
   assert.doesNotMatch(office, /IDLE_PLAN\.has\(p\.act\) && L\.statusStyle\(b\.status\)\.behavior !== 'work'/);
 });
 
