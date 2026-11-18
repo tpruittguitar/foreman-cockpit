@@ -8,7 +8,7 @@ const reports={
  'ENRICHMENT_FLOW.json':{schema:'forge.enrichment-flow.v1',at,queues:{readyForReview:1}},
  'APPLICATION_OUTCOMES.json':{schema:'forge.application-outcomes.v1',at,events:[],coverageComplete:true},
  'EMAIL_RECOVERY_SUMMARY.json':{schema:'forge.email-recovery-summary.v1',at,capturedUniqueJobs:1,pendingJobs:0},
- 'NEEDS_TIM.json':{schema:'forge.needs-tim.v1',builtAt:at,items:[]},
+ 'BOT_INCIDENTS.json':{schema:'forge.bot-incidents.v1',builtAt:at,items:[]},
  'AUTOMATION_SCHEDULE_READBACK.json':{schema:'forge.schedule-readback.v1',at,local:[{id:'email',status:'ACTIVE'}]},
  'board-health.json':{schema:'forge.board-health.v1',at,boards:{}},
  'AUTOMATION_EXECUTION_EVIDENCE.json':{schema:'forge.automation-evidence.v1',at,executions:[],schedules:{active:[{id:'email',taskExecutionVerified:true}]}}
