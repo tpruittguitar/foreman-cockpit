@@ -99,6 +99,25 @@
     return items.slice().sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority)
       || (time(b.updated_at) || 0) - (time(a.updated_at) || 0) || a.id.localeCompare(b.id));
   }
+  /* Card answer box (Tim, Nov 17): every card popup can send direction to the card owner's office mailbox through the
+     #312 chat relay. The relay key stays in office.js (relayKey); nothing here sees or logs it. */
+  const CARD_TEXT_MAX = 2000;
+  function cardMessage(item, text) {
+    return '[card ' + item.id + '] ' + cardTitle(item) + ':' + (item.question ? ' answer to: ' + item.question + ' ·' : '') + ' ' + String(text || '').trim();
+  }
+  function cardBoxHTML(item, e, botId) {
+    return `<section class="chatbox cardbox" aria-label="Direction on this card">${item.question ? `<div class="q">${e(item.question)}</div>` : ''}
+    <textarea id="card-text" maxlength="${CARD_TEXT_MAX}" rows="2" placeholder="Direction for ${e(item.owner || 'the owner')} on this card…"></textarea>
+    <div class="chatrow"><button type="button" class="linkbtn" id="card-send"${botId ? '' : ' disabled'}>Send</button><span id="card-sent" class="fallback" role="status">${botId ? '' : 'Send needs a known bot as owner'}</span></div></section>`;
+  }
+  async function sendCardDirection(item, text, botId, post) {
+    if (!String(text || '').trim()) return { state: 'empty' };
+    if (!botId) return { state: 'failed', error: 'the owner is not a known bot' };
+    const message = cardMessage(item, text);
+    if (message.length > CARD_TEXT_MAX) return { state: 'failed', error: 'over ' + CARD_TEXT_MAX + ' characters with the card prefix' };
+    const r = await post(botId, message);
+    return r && r.ok ? { state: 'sent', message } : { state: 'failed', status: r ? r.status : 0, error: r && r.status ? 'relay HTTP ' + r.status : 'relay unavailable or no chat key' };
+  }
   /* Card title, with the PR number in front when the title or link has one. */
   function cardTitle(item) {
     if (item.pr == null || new RegExp('#' + item.pr + '\\b').test(item.title)) return item.title;
@@ -1886,7 +1905,7 @@
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, LOD, GAME_SLOW_M, COLORS,
-    normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle,
+    normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle, CARD_TEXT_MAX, cardMessage, cardBoxHTML, sendCardDirection,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
