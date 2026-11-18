@@ -15,11 +15,11 @@ test('fresh working bot keeps the working pose', () => {
   assert.notEqual(plan([b]).Claude.act, 'stale');
 });
 
-test('working but 3 h old: stale wins, not typing, label says so', () => {
+test('working but 3 h old: stale wins, idle life instead of typing (games3), label says so', () => {
   const b = bot('Claude', 'working', 180), f = L.freshness(b, NOW);
   assert.equal(f.stale, true);
   assert.equal(f.label, 'stale · last seen 3 h ago');
-  assert.equal(plan([b]).Claude.act, 'stale');
+  assert.ok(L.IDLE_ACTS.includes(plan([b]).Claude.act), 'no fresh signal: an idle activity, not work');
   // just over the 2 h line is stale, exactly 2 h is still fresh
   assert.equal(L.freshness(bot('A', 'working', 120), NOW).stale, false);
   assert.equal(L.freshness(bot('A', 'working', 121), NOW).stale, true);
@@ -40,7 +40,7 @@ test('newest of several signals wins (row, screen, work, PR, Actions, terminal m
   };
   const sig = L.botSignals(b, ctx);
   assert.equal(L.freshness(b, NOW, sig).ageMin, 20, 'own PR activity (not another bot\'s) is the newest');
-  assert.equal(plan([b])['Comp'].act, 'stale', 'row signals alone are stale');
+  assert.ok(L.IDLE_ACTS.includes(plan([b])['Comp'].act), 'row signals alone are stale, so idle');
 });
 
 test('missing timestamps: stale with "last seen unknown"', () => {
@@ -48,7 +48,7 @@ test('missing timestamps: stale with "last seen unknown"', () => {
   assert.deepEqual([f.stale, f.lastSeen, f.ageMin, f.label], [true, null, null, 'stale · last seen unknown']);
   assert.equal(L.freshness(null, NOW).label, 'stale · last seen unknown');
   assert.equal(L.freshness({ bot: 'x', last_action_at: 'not a date' }, NOW).stale, true);
-  assert.equal(plan([bot('GUI', 'idle', null)]).GUI.act, 'stale');
+  assert.ok(L.IDLE_ACTS.includes(plan([bot('GUI', 'idle', null)]).GUI.act));
 });
 
 test('alert (Needs Tim) bots are unaffected by staleness', () => {

@@ -189,7 +189,7 @@ function workDiff(parsed) {
 function queuePickup(p) {
   const c = chars.get(p.bot);
   if (!c) { pendingPickups.push(p); return; }
-  if (L.JOB_ASSIGN_REASONS.includes(p.reason)) { if (!(c.job && c.job.itemId === p.itemId) && !c.jobs.some(x => x.itemId === p.itemId)) c.jobs.push(p); } // item 12: assigned -> board, desk, board
+  if (L.JOB_ASSIGN_REASONS.includes(p.reason)) { if (S.fresh[p.bot] && S.fresh[p.bot].stale) return; /* an assignment alone never makes a bot look working (games3) */ if (!(c.job && c.job.itemId === p.itemId) && !c.jobs.some(x => x.itemId === p.itemId)) c.jobs.push(p); } // item 12: assigned -> board, desk, board
   else if (!c.pickups.some(x => x.itemId === p.itemId)) c.pickups.push(p);
 }
 const pendingPickups = [];
@@ -1025,7 +1025,7 @@ function buildWorld() {
     S.fresh = Object.fromEntries(list.map(b => [b.bot, freshOf(withRoutine(b), now, ctx)]));
     S.needsSet = S.state === 'failed' ? new Set() : L.needsTimNames(needsData());
     plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh, { training: DEMO ? [] : S.training, needs: S.needsSet }); // item 3 / 9: only a real needs_tim item waves
-    const idleNames = list.filter(b => { const c = chars.get(b.bot), p = plan.plans[b.bot]; return c && p && !p.brk && IDLE_PLAN.has(p.act) && L.statusStyle(b.status).behavior !== 'work' && !S.needsSet.has(b.bot) && !c.job && !c.jobs.length; }).map(b => b.bot);
+    const idleNames = list.filter(b => { const c = chars.get(b.bot), p = plan.plans[b.bot]; return c && p && !p.brk && IDLE_PLAN.has(p.act) && !S.needsSet.has(b.bot) && !c.job && !c.jobs.length; }).map(b => b.bot);
     S.restocker = L.pickRestocker(idleNames, fridgeStock, S.restocker); // item 10: an idle bot restocks when the fridge runs low
     updateInvite(list, idleNames);
     drawWB(plan.meeting);
@@ -1130,7 +1130,7 @@ function buildWorld() {
     const p = plan.plans[c.name] || { act: S.fresh[c.name] && S.fresh[c.name].stale ? 'stale' : st0.behavior === 'work' ? 'work' : 'wander' };
     const POSE_OF = { waterfall: 'stand', loiter: 'stand', sit: 'lounge', conf: 'meet', gchat: 'talk' };
     const slotted = kinds => { const s = takeSlot(c, kinds); return s ? { key: 'slot:' + s.id, spot: s, pose: POSE_OF[s.kind] || s.kind, lie: s.lie, can: p.can } : null; };
-    if (!p.brk && IDLE_PLAN.has(p.act) && st0.behavior !== 'work') return idleGoal(c, d, slotted); // item 11: idle activity rotation
+    if (!p.brk && IDLE_PLAN.has(p.act)) return idleGoal(c, d, slotted); // item 11: idle activity rotation
     const act = p.act === 'stale' && p.trip ? 'trip' : p.act; // quiet (stale) bots take idle trips too
     if (!['coffee', 'fridge', 'lounge', 'bike', 'wander', 'sleep', 'replay_board', 'trip'].includes(act)) book.release(c.name);
     switch (act) {
