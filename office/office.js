@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -114,7 +114,7 @@ function slowLoads(now) {
   }
   fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); if (j) S.fetched.screens = Date.now(); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
   /* missing or 404 OFFICE_TRAINING.json = no sessions, not an error */
-  trainSrc.get(now).then(r => { S.training = r.ok ? L.parseTraining(r.data, L.ROSTER.map(x => x.name)).sessions : []; refreshAll(); });
+  trainSrc.get(now).then(r => { S.training = r.ok ? L.parseTraining(r.data, L.ROSTER.map(x => x.name)).sessions : []; if (r.ok) S.fetched.training = Date.now(); refreshAll(); });
   chatSrc.get(now).then(r => { S.chat = r.chat; S.chatErr = r.err; refreshAll(); }); // 404 = not published yet: quiet, slower
   autoSrc.get(now).then(r => { if (r.ok) { S.auto = L.parseAutomations(r.data, Date.now()); S.autoErr = ''; S.fetched.automations = Date.now(); } else S.autoErr = r.status === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : r.error; refreshAll(); });
 }
@@ -486,14 +486,6 @@ function openHref(href, name) {
   if (/^https?:/i.test(href)) window.open(href, '_blank', 'noopener');
   else if (/^grokbot:/i.test(href)) openChatApp(decodeURIComponent((/id=([^&]+)/.exec(href) || [])[1] || ''), name);
 }
-function openNeedsEntry(i) {
-  const e = needsEntries()[i]; if (!e) return openNeeds();
-  if (e.target && e.target.href) return openHref(e.target.href, e.owner);
-  if (e.link && /^https?:/i.test(e.link)) return openHref(e.link);
-  const who = e.bot || e.owner;
-  if (!who) return openNeeds();
-  showPanel(`<h2 id="panel-title">${esc(who)}</h2><p>${esc(e.text)}</p><p class="fallback">No PR or Grok Bot chat link is known for ${esc(who)}.</p>${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
-}
 /* Screen click: go right to the live thing (screen_url, President's checksheet, Usage Budget's chart), else the mirror popup. */
 function clickScreen(name, half) {
   const b = botByName(name) || { bot: name };
@@ -755,11 +747,11 @@ function buildWorld() {
   const BW = 9.6, BH = 3.9;
   const project = makeBoard('project', BW, BH, -2, 2.3, -RD / 2 + 0.05, 0, LOW ? 1280 : 2048, LOW ? 520 : 832);
   const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.2, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
-  const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
-  const autos = makeBoard('autos', 3.6, 2.2, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 391 : 626);
+  const autos = makeBoard('autos', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683); // Tim Nov 18: Automations in the old Needs Tim spot
+  const whiteboard = makeBoard('whiteboard', 4.4, 2.6, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 378 : 605); // big conference whiteboard where Automations hung
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
   const writer = makeBoard('writer', 2.6, 1.7, -RW / 2 + 0.05, 2.3, -8.3, Math.PI / 2, LOW ? 512 : 768, LOW ? 335 : 502); // Tim Nov 17: empty left wall beside the Constraint wall
-  const boards = { project, usage, needs, autos, writer, constraint };
+  const boards = { project, usage, autos, whiteboard, writer, constraint };
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
      Desktop: the live page (https://foreman-cockpit.pages.dev/pipeline) in an iframe on a CSS3D plane that sits behind the WebGL
@@ -869,12 +861,16 @@ function buildWorld() {
   // energy cans: two InstancedMeshes (one per lookalike style), stock / desk cans alternate deterministically per slot
   const fridgeCans = []; const fridgeRng = L.makeRng(SEED ^ 0x51ed); let fridgeStock = L.FRIDGE_CAP, fridgeDrain = 0, fridgeRefill = 0, lastDeskCans = []; // item 10: simulated stock (no real inventory data)
   for (const y of shelfY) for (let k = 0; k < 5; k++) fridgeCans.push([11.3 - 0.1 + (k % 2) * 0.12, y + 0.0625, -8.4 - 0.3 + k * 0.15]);
+  const SHELF_POS = { x: WH.x0 + 0.4, z: 13.2 }; // warehouse Monster shelf, against its left wall past the office corner (12, 10)
+  const shelfCans = []; let shelfStock = L.SHELF_CAP, shelfRefill = 0; // simulated back stock: a restock trip takes one, it refills slowly
+  for (const y of [0.39, 0.76]) for (let k = 0; k < L.SHELF_CAP / 2; k++) shelfCans.push([SHELF_POS.x + 0.1, y + 0.0625, SHELF_POS.z - 0.8 + k * 0.4]);
   const canSets = [0, 1].map(st => { const m = new THREE.InstancedMesh(canGeometry(), canMaterials(st), 64); m.count = 0; scene.add(m); return m; });
   function layoutCans(deskCans) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1); canSets.forEach(s => (s.count = 0));
     const put = (st, pos, rot) => { const set = canSets[st]; if (set.count >= 64) return; q.setFromEuler(new THREE.Euler(0, rot, 0)); set.setMatrixAt(set.count++, m.compose(pos, q, one)); };
     lastDeskCans = deskCans;
     fridgeCans.forEach(([x, y, z], k) => { if (k < fridgeStock) put(k % 2, new THREE.Vector3(x, y, z), Math.PI + (k % 3) * 0.2); });
+    shelfCans.forEach(([x, y, z], k) => { if (k < shelfStock) put(k % 2, new THREE.Vector3(x, y, z), (k % 3) * 0.2); });
     deskCans.forEach(([x, z, seed]) => put(canStyle(seed), new THREE.Vector3(x, 0.8325, z), seed.length * 1.7));
     canSets.forEach(s => (s.instanceMatrix.needsUpdate = true));
   }
@@ -903,13 +899,13 @@ function buildWorld() {
     for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); }
     block(ch.position.x, ch.position.z, 0.3, 0.3, false, 'chair');
   }
-  const TRAINER_SPOT = { x: CONF.x, z: 9.3, face: Math.PI };
-  { const ch = new THREE.Group(); ch.position.set(TRAINER_SPOT.x, 0, TRAINER_SPOT.z + 0.13); scene.add(ch); /* HR stands on this chair while teaching (bots are short) */
+  const TRAINER_SPOT = { x: CONF.x - 1.95, z: CONF.z, face: Math.PI / 2 }; // head of the table, back to the big whiteboard, facing the table
+  { const ch = new THREE.Group(); ch.position.set(TRAINER_SPOT.x - Math.sin(TRAINER_SPOT.face) * 0.13, 0, TRAINER_SPOT.z - Math.cos(TRAINER_SPOT.face) * 0.13); ch.rotation.y = TRAINER_SPOT.face - Math.PI; scene.add(ch); /* HR stands on this chair while teaching (bots are short) */
     add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
-    for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); } block(ch.position.x, ch.position.z, 0.3, 0.3, false, 'chair'); } // in front of the whiteboard on the front wall, facing the table
-  const wb = canvasTex(512, 256), wbG = new THREE.Group(); wbG.position.set(CONF.x, 1.7, RD / 2 - 0.05); wbG.rotation.y = Math.PI; scene.add(wbG);
-  add(box(1.75, 0.95, 0.05), MAT.metal, 0, 0, 0, wbG);
-  add(box(1.65, 0.85, 0.03), [MAT.white, MAT.white, MAT.white, MAT.white, screenMat(wb.t), MAT.white], 0, 0, 0.025, wbG);
+    for (let k = 0; k < 5; k++) { const sp = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); sp.rotation.y = k * 1.2566; sp.translateZ(0.14); } block(ch.position.x, ch.position.z, 0.3, 0.3, false, 'chair'); } // in front of the big whiteboard on the left wall, facing the table
+  const wb = whiteboard.tex;
+  const schedule = makeBoard('schedule', 1.75, 0.95, CONF.x, 1.7, RD / 2 - 0.05, Math.PI, LOW ? 512 : 1024, LOW ? 278 : 555); // meeting / training schedule where the small whiteboard hung
+  boards.schedule = schedule;
   let wbKey = '';
   let skillList = null; // real skills from office/skills.json; null => the old fallback lines
   let plan = { plans: {}, meeting: null, training: null }, planAt = -1;
@@ -917,7 +913,7 @@ function buildWorld() {
   function drawWB(meeting) {
     const live = meeting ? null : L.trainingSlide(plan.training, skillList), skill = live || (meeting ? null : L.skillSlide(skillList, Date.now()));
     const k = meeting ? meeting.id + meeting.title + meeting.seated.join() : live ? 'live' + plan.training.id + live.title : skill ? 'skill' + skill.index + '/' + skillList.length : 'skills';
-    if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, 512, 256, { meeting, skill, demo: DEMO }); wb.t.needsUpdate = true;
+    if (k === wbKey) return; wbKey = k; drawWhiteboard(wb.ctx, wb.c.width, wb.c.height, { meeting, skill, demo: DEMO }); wb.t.needsUpdate = true;
   }
   drawWB(null);
   block(CONF.x, CONF.z, 1.5, 0.6);
@@ -964,6 +960,10 @@ function buildWorld() {
     scene.remove(d.g); d.g.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => { if (m && m.map && m.map.isCanvasTexture) m.map.dispose(); }); });
     for (let k = obstacles.length - 1; k >= 0; k--) if (obstacles[k].tag === 'desk:' + d.name) obstacles.splice(k, 1);
   }
+  const shelf = new THREE.Group(); shelf.position.set(SHELF_POS.x, 0, SHELF_POS.z); scene.add(shelf);
+  add(box(0.7, 0.08, 2.4), MAT.metal, 0, 0.35, 0, shelf); add(box(0.7, 0.08, 2.4), MAT.metal, 0, 0.72, 0, shelf);
+  for (const x of [-0.3, 0.3]) for (const z of [-1.1, 1.1]) add(box(0.05, 0.85, 0.05), MAT.metal, x, 0.425, z, shelf);
+  block(SHELF_POS.x, SHELF_POS.z, 0.4, 1.25, false, 'shelf');
   let rosterKey = '';
   function syncDesks() {
     const names = bots().map(b => b.bot), k = names.join('|');
@@ -980,7 +980,7 @@ function buildWorld() {
   const deskOf = n => desks.find(d => d.name === n);
 
   /* ---------- nav grid (A*, pure: L.createNav) ---------- */
-  const nav = L.createNav({ RW, RD, CELL: 0.2, inflate: 0.42, obstacles });
+  const nav = L.createNav({ RW, RD, CELL: 0.2, inflate: 0.42, obstacles, bounds: { x0: -RW / 2, x1: WH.x1, z0: WH.z0, z1: WH.z1 }, door: { x: RW / 2, z0: D0, z1: D1 } }); // office + warehouse, joined by the glass doors
   function buildGrid() { nav.build(obstacles); setMounts(); }
   const toCell = nav.toCell, free = nav.free;
   const mountOf = spot => spot.mount || (SIT.find(s => s.mount && Math.hypot(s.x - spot.x, s.z - spot.z) < 0.05) || {}).mount;
@@ -995,6 +995,7 @@ function buildWorld() {
     { id: 'pool1', kind: 'pool', x: 7.95 - CL, z: -2.0, face: Math.PI / 2 }, { id: 'pool2', kind: 'pool', x: 9.85 + CL, z: -1.1, face: -Math.PI / 2 },
     { id: 'coffee1', kind: 'coffee', x: 10.5 - CL, z: -6.4, face: Math.PI / 2 }, { id: 'coffee2', kind: 'coffee', x: 10.5 - CL, z: -5.4, face: Math.PI / 2 },
     { id: 'fridge1', kind: 'fridge', x: 10.45 - CL, z: -8.2, face: Math.PI / 2 }, { id: 'fridge2', kind: 'fridge', x: 9.6 - CL, z: -8.9, face: Math.PI / 2 },
+    { id: 'shelf', kind: 'shelf', x: SHELF_POS.x + 0.85, z: SHELF_POS.z, face: -Math.PI / 2 },
     { id: 'wf1', kind: 'waterfall', x: WF_X, z: RD / 2 - 1.65, face: 0 },
     { id: 'lo1', kind: 'loiter', x: 6.4, z: 1.0, face: Math.PI / 2 }, { id: 'lo2', kind: 'loiter', x: 5.0, z: -6.6, face: Math.PI / 2 }, { id: 'lo3', kind: 'loiter', x: 6.2, z: 5.2, face: Math.PI },
     { id: 'lo4', kind: 'loiter', x: -5.2, z: 4.9, face: 0 }, { id: 'lo5', kind: 'loiter', x: 1.5, z: 6.0, face: 0 }, { id: 'lo6', kind: 'loiter', x: -3, z: 6.4, face: 0 }
@@ -1107,7 +1108,10 @@ function buildWorld() {
       case 'waterfall_view': return slotted(['waterfall']) || slotted(['loiter']) || own('seat', 'sit'); // stand and face the waterfall
       case 'get_coffee': return slotted(['coffee']) || slotted(['loiter']) || own('seat', 'sit'); // walk to the machine, then hold the cup
       case 'get_energy_drink': return slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); // fridge, then hold the can
-      case 'restock_fridge': { const g = slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); return Object.assign(g, { key: 'restock:' + g.key, pose: g.spot.kind === 'fridge' ? 'restock' : g.pose, box: !c.restocked }); }
+      case 'restock_fridge': {
+        if (!c.shelfPicked) { const g = slotted(['shelf']) || slotted(['loiter']) || own('seat', 'sit'); return Object.assign(g, { key: 'restock:shelf:' + g.key, pose: 'walk', box: false }); }
+        const g = slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); return Object.assign(g, { key: 'restock:' + g.key, pose: g.spot.kind === 'fridge' ? 'restock' : g.pose, box: !c.restocked });
+      }
       case 'pool': return slotted(['pool']) || slotted(['loiter']) || own('seat', 'sit');
     }
     return slotted(['loiter']) || own('seat', 'sit');
@@ -1190,7 +1194,7 @@ function buildWorld() {
       const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
       const home = !!dk && Math.hypot(g.spot.x - dk.seat.x, g.spot.z - dk.seat.z) < 0.05; /* QA #409: back to the seat the moment a break ends, never held by the walk cap */
       if (!L.mayStartWalk(far, needs || c.forceNap || home, walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
-      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) c.restocked = false; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
+      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) { c.restocked = false; c.shelfPicked = false; } c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
     }
     const goal = c.goalKey === g.key ? g : (c.goal || g);
     let pose = goal.pose;
@@ -1227,7 +1231,8 @@ function buildWorld() {
     c.pose = pose;
     c.goalNow = goal;
     // item 10: restock = the box goes into the fridge (stock back to full); a refresh at the fridge uses one can
-    if (goal.pose === 'restock' && c.arrived && !c.restocked && clock - c.arrivedAt > 1.8) { fridgeStock = L.FRIDGE_CAP; layoutCans(lastDeskCans); c.restocked = true; c.restockedAt = clock; S.restocker = null; }
+    if (goal.key.startsWith('restock:shelf:') && c.arrived && clock - c.arrivedAt > 1.4 && !c.shelfPicked) { c.shelfPicked = true; shelfStock = L.shelfTake(shelfStock); layoutCans(lastDeskCans); c.goalKey = ''; }
+    if (goal.pose === 'restock' && c.arrived && !c.restocked && clock - c.arrivedAt > 1.8) { fridgeStock = L.FRIDGE_CAP; layoutCans(lastDeskCans); c.restocked = true; c.restockedAt = clock; c.shelfPicked = false; S.restocker = null; }
     if (goal.pose === 'fridge' && c.arrived && clock - c.arrivedAt > 1.4 && c.tookKey !== c.goalKey) { c.tookKey = c.goalKey; fridgeStock = L.fridgeTake(fridgeStock); layoutCans(lastDeskCans); }
     const nowMs = Date.now(), fresh = S.fresh[c.name], itemsNow = items(), gk = goal.key || '';
     const near = !renderer.xr.isPresenting && !TV && Math.hypot(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) < 1.5 && pose !== 'nap' && pose !== 'deskSleep';
@@ -1305,7 +1310,7 @@ function buildWorld() {
     if (!flyEl) { flyEl = document.createElement('div'); flyEl.className = 'tag fly'; $('labels').appendChild(flyEl); }
     flyEl.style.display = fly ? '' : 'none';
     if (fly) {
-      tmpV.copy(wbG.position).project(camera);
+      tmpV.copy(whiteboard.g.position).project(camera);
       const bx = (tmpV.x * 0.5 + 0.5) * w, by = (-tmpV.y * 0.5 + 0.5) * h, t = fly.sk.t;
       flyEl.innerHTML = `<span class="chip learned">${fly.sk.replay ? 'Replay · ' : ''}${esc(fly.sk.skill)}</span>`;
       flyEl.style.transform = `translate(-50%,-100%) translate(${bx + (fly.x - bx) * t}px,${by + (fly.y - by) * t}px)`;
@@ -1357,8 +1362,8 @@ function buildWorld() {
     pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
-    const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); drawFetched(n.ctx, n.c.width, n.c.height, S.fetched.status, null, null, needs.w); n.t.needsUpdate = true;
     drawAutos();
+    const sw = schedule.tex; drawTrainingSchedule(sw.ctx, sw.c.width, sw.c.height, { rows: L.visibleTrainingSessions(S.training, Date.now()).map(L.formatTrainingSession), fetchedAt: S.fetched.training, boardM: schedule.w }); sw.t.needsUpdate = true;
     const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); drawFetched(wr.ctx, wr.c.width, wr.c.height, S.fetched.automations, null, null, writer.w); wr.t.needsUpdate = true;
     const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); drawFetched(cw.ctx, cw.c.width, cw.c.height, DEMO ? 0 : S.cons.at, null, null, constraint.w); cw.t.needsUpdate = true;
     updateLines();
@@ -1447,7 +1452,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, needs.screen, constraint.screen, autos.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1455,7 +1460,6 @@ function buildWorld() {
     if (!hit || hit.distance > 45) return null;
     const o = hit.object;
     if (o.userData.board) {
-      if (o.userData.board === 'needs' && hit.uv) { const y = 1 - hit.uv.y, r = needs.hits.find(r => y >= r.y && y <= r.y + r.h); return r ? { needsIdx: r.i } : { board: 'needs' }; }
       if (o.userData.board !== 'project') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
       const h = project.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
@@ -1470,8 +1474,7 @@ function buildWorld() {
     if (!p) return false;
     if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
     else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
-    else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.needsIdx != null) openNeedsEntry(p.needsIdx);
-    else if (p.board === 'needs') openNeeds(); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
+    else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
@@ -1558,7 +1561,7 @@ function buildWorld() {
   let targets = [], rows = [];
   function buildTargets() {
     targets = [
-      { kind: 'board', id: 'needs', x: -12, view: [[-8.4, 1.9, 2.3], [-12, 1.9, 2.3]] },
+      { kind: 'board', id: 'autos', x: -12, view: [[-8.4, 1.9, 2.3], [-12, 1.9, 2.3]] },
       { kind: 'board', id: 'project', x: -2, view: [[-2, 2.2, -4.6], [-2, 2.3, -10]] },
       { kind: 'board', id: 'usage', x: 5.7, view: [[5.7, 2.1, -6.4], [5.7, 2.2, -10]] }
     ].concat(desks.map(d => ({ kind: 'desk', id: d.name, bot: d.name, x: d.x, z: d.z, view: [[d.x + 0.3, 1.85, d.z + 2.0], [d.x, 1.05, d.z - 0.25]] })));
@@ -1574,7 +1577,7 @@ function buildWorld() {
   function focusTarget(t) {
     desks.forEach(d => (d.focus.visible = t && t.kind === 'desk' && d.name === t.bot));
     const nm = $('focusname');
-    if (t) { nm.hidden = false; nm.textContent = t.kind === 'desk' ? t.bot + ' · ' + L.statusStyle((botByName(t.bot) || {}).status).word : { needs: 'Needs Tim board', project: 'Forge checksheet', usage: 'AI usage wall', constraint: 'Pipeline constraint wall' }[t.id]; }
+    if (t) { nm.hidden = false; nm.textContent = t.kind === 'desk' ? t.bot + ' · ' + L.statusStyle((botByName(t.bot) || {}).status).word : { autos: 'Automations board', project: 'Forge checksheet', usage: 'AI usage wall', constraint: 'Pipeline constraint wall' }[t.id]; }
     else nm.hidden = true;
     setHover(t ? (t.kind === 'desk' ? { bot: t.bot } : null) : null);
   }
@@ -1686,7 +1689,7 @@ function buildWorld() {
       if (k >= 1) glide = null;
     }
     if (!XR && !panelOpen && !pipe.browsing) move(dt);
-    { const near = Math.hypot(camera.position.x - RW / 2, camera.position.z - DOOR.z) < 3.5; // glass doors slide into the wall pocket as you approach
+    { const near = Math.hypot(camera.position.x - RW / 2, camera.position.z - DOOR.z) < 3.5 || [...chars.values()].some(c => Math.hypot(c.pos.x - RW / 2, c.pos.y - DOOR.z) < 2.5); // glass doors slide into the wall pocket as you approach
       for (const g of doorLeaves) { const to = g.userData.home + (near ? g.userData.sd * (DOOR.w / 2 - 0.1) : 0); g.position.z += (to - g.position.z) * Math.min(1, dt * 4); } }
     if (TV && !panelOpen && !tour && now - lastInput > L.TOUR_IDLE_MS) tour = { list: L.tourOrder(targets, bots()), i: -1, until: 0 };
     if (tour && now > tour.until && tour.list.length) {
@@ -1712,6 +1715,7 @@ function buildWorld() {
     poolNow = L.poolShot(clock); const playing = [...chars.values()].some(c => c.pose === 'pool' && c.arrived), pb = playing ? poolNow.ball : L.POOL.start; cueBall.position.set(pb.x, 0.865, pb.z);
     fridgeDrain += dt; if (fridgeDrain > 150) { fridgeDrain = 0; const n = L.fridgeTake(fridgeStock); if (n !== fridgeStock) { fridgeStock = n; layoutCans(lastDeskCans); } }
     fridgeRefill += dt; if (fridgeRefill > L.FRIDGE_REFILL_S) { fridgeRefill = 0; const n = L.fridgeAutoRefill(fridgeStock, !!S.restocker); if (n !== fridgeStock) { fridgeStock = n; layoutCans(lastDeskCans); } } // no idle bot to restock: it refills itself, never empty
+    shelfRefill += dt; if (shelfRefill > L.SHELF_REFILL_S) { shelfRefill = 0; const n = L.shelfAutoRefill(shelfStock); if (n !== shelfStock) { shelfStock = n; layoutCans(lastDeskCans); } }
     for (const c of chars.values()) updateChar(c, dt);
     separateChars();
     if (Q.labels) updateLabels();
@@ -1841,7 +1845,7 @@ function buildWorld() {
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
     refresh() { syncDesks(); ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
-    layout: () => ({ RW, RD, CELL: 0.2, inflate: 0.22, obstacles: obstacles.map(o => ({ x0: +o.x0.toFixed(3), x1: +o.x1.toFixed(3), z0: +o.z0.toFixed(3), z1: +o.z1.toFixed(3), viewerOnly: !!o.viewerOnly, tag: o.tag || '' })),
+    layout: () => ({ RW, RD, CELL: 0.2, inflate: 0.22, bounds: { x0: -RW / 2, x1: WH.x1, z0: WH.z0, z1: WH.z1 }, door: { x: RW / 2, z0: D0, z1: D1 }, obstacles: obstacles.map(o => ({ x0: +o.x0.toFixed(3), x1: +o.x1.toFixed(3), z0: +o.z0.toFixed(3), z1: +o.z1.toFixed(3), viewerOnly: !!o.viewerOnly, tag: o.tag || '' })),
   desks: desks.map(d => ({ name: d.name, seat: d.seat, stand: d.stand, visit: d.visit })),
   slots: SLOTS.concat(BOARD_SLOTS).map(s => ({ id: s.id, kind: s.kind, x: +s.x.toFixed(3), z: +s.z.toFixed(3), face: s.face })), trainer: TRAINER_SPOT }),
     info: () => ({ camY: +camera.position.y.toFixed(3), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),

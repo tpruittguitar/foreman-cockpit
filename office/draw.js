@@ -481,7 +481,7 @@ export function drawPlaque(ctx, W, H, lines) {
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
 
-/* ---------- Automations wall board (3-day schedule summary) and Writer health board ---------- */
+/* ---------- Automations wall board (3-day schedule summary), training schedule board and Writer health board ---------- */
 const RES_COL = { OK: '#3ddc84', FAIL: '#ff4b4b', SKIP: '#8b9099', EMPTY: '#4aa3ff', STALE: '#ffd23f', UPCOMING: '#3a4250' };
 export function drawAutomations(ctx, W, H, o) {
   const s = W / 1024, a = o.auto;
@@ -507,6 +507,23 @@ export function drawAutomations(ctx, W, H, o) {
     ctx.fillStyle = r.running ? '#37e0ff' : r.next === 'overdue' ? '#ffd23f' : '#c9ccd2'; ctx.fillText(fit(ctx, r.next, W - cx[3] - 20 * s), cx[3], base); });
   ctx.fillStyle = '#7d838b'; ctx.font = `600 ${16 * s}px ${SANS}`;
   ctx.fillText((rows.length > shown ? '+' + (rows.length - shown) + ' more · ' : '') + 'click for the 3-day timeline', 28 * s, H - 12 * s);
+}
+export function drawTrainingSchedule(ctx, W, H, o) {
+  const s = W / 1024, rows = o.rows || [];
+  ctx.fillStyle = '#f7f7f4'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#111114'; ctx.font = `800 ${34 * s}px ${SANS}`; ctx.fillText('MEETING / TRAINING SCHEDULE', 22 * s, 42 * s);
+  drawFetched(ctx, W, H, o.fetchedAt, null, null, o.boardM);
+  if (!rows.length) { ctx.fillStyle = '#666b73'; ctx.font = `600 ${22 * s}px ${SANS}`; ctx.fillText('No sessions scheduled', 22 * s, 92 * s); return; }
+  const top = 68 * s, rowH = Math.max(42 * s, (H - top - 16 * s) / rows.length), fs = Math.min(21 * s, rowH * 0.36);
+  rows.forEach((r, i) => {
+    const y = top + i * rowH;
+    if (i % 2) { ctx.fillStyle = '#ecebe6'; ctx.fillRect(14 * s, y, W - 28 * s, rowH); }
+    ctx.fillStyle = '#111114'; ctx.font = `800 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.title, 0.46 * W), 22 * s, y + 0.34 * rowH);
+    ctx.fillStyle = '#44474f'; ctx.font = `600 ${fs * 0.92}px ${SANS}`; ctx.fillText(fit(ctx, r.trainer, 0.16 * W), 22 * s, y + 0.72 * rowH);
+    ctx.fillText(fit(ctx, r.started + ' - ' + r.until, 0.22 * W), 0.43 * W, y + 0.34 * rowH);
+    ctx.fillText(fit(ctx, r.trainees.join(', '), 0.36 * W), 0.43 * W, y + 0.72 * rowH);
+    if (r.location) { ctx.fillText(fit(ctx, r.location, 0.18 * W), 0.78 * W, y + 0.53 * rowH); }
+  });
 }
 /* "fetched 10:15:03 PM ET": the visible proof that ⟳ Refresh reloaded a board's source. Same physical size on every board
    (QA on #394): px = FETCHED_M * canvasWidth / boardWidthMetres, so text is 7 cm tall on a 2.6 m or a 9.6 m board; FETCHED_PX

@@ -105,6 +105,23 @@ test('whiteboard override shows the session skill and "Training: <skill>"', () =
   assert.equal(L.trainingSlide(L.planOffice(bots('HR', 'Claude'), [], T0, 'live').training, skills), null);
   assert.ok(L.TRAINING_PATH.endsWith('OFFICE_TRAINING.json'));
 });
+test('visibleTrainingSessions: drops ended sessions, keeps live and upcoming, sorted by start', () => {
+  const NOW = T0, ago = m => NOW - m * MIN;
+  const s = parse([
+    sess({ id: 'ended', started_at: iso(ago(120)), until: iso(ago(60)) }),
+    sess({ id: 'later', started_at: iso(ago(-40)), until: iso(ago(-70)) }),
+    sess({ id: 'soon', started_at: iso(ago(-10)), until: iso(ago(-30)) }),
+    sess({ id: 'live', started_at: iso(ago(5)), until: iso(ago(-5)) })
+  ]).sessions;
+  assert.deepEqual(L.visibleTrainingSessions(s, NOW).map(x => x.id), ['live', 'soon', 'later']);
+  assert.deepEqual(L.visibleTrainingSessions([], NOW), []);
+  assert.deepEqual(L.visibleTrainingSessions(null, NOW), []);
+});
+test('formatTrainingSession: title falls back to skill, ET times, optional location', () => {
+  const [a, b] = parse([sess({ id: 'a', title: 'PR hygiene 101', location: 'Training room' }), sess({ id: 'b', started_at: iso(T0 + 60 * MIN), until: iso(T0 + 90 * MIN) })]).sessions;
+  assert.deepEqual(L.formatTrainingSession(a), { title: 'PR hygiene 101', trainer: 'HR', trainees: ['Claude', 'QA'], started: '11/17 5:00 AM', until: '5:10 AM ET', location: 'Training room' });
+  assert.deepEqual(L.formatTrainingSession(b), { title: 'pr-hygiene', trainer: 'HR', trainees: ['Claude', 'QA'], started: '11/17 6:00 AM', until: '6:30 AM ET', location: '' });
+});
 
 /* Tim (Nov 18, 2:29 AM ET): trainees take the skill off the board and wear a learned tag; past real sessions replay, labeled Replay. */
 const skills = [{ slug: 'pr-hygiene', title: 'PR hygiene', bullets: ['a'] }];
