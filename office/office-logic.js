@@ -498,6 +498,19 @@
      Name tags past TAG_FAR_M drop their stale / recent chips and shrink so they stop covering screens. */
   const MIRROR_NEAR_M = 4, TAG_FAR_M = 8;
   const mirrorAt = dist => dist <= MIRROR_NEAR_M, tagFar = dist => dist > TAG_FAR_M;
+  /* Name labels never overlap (card 544b368: 'UsageQA' from the door view). boxes in draw order, each { x: centre, y: bottom, w, h }
+     in screen px; a box that overlaps (or comes within pad px of) an earlier placed box moves up one label height (plus the pad), up to cap times.
+     Returns each label's new bottom y. */
+  const LABEL_NUDGE_CAP = 4, LABEL_PAD_PX = 3;
+  function nudgeLabels(boxes, cap, pad) {
+    const n = cap == null ? LABEL_NUDGE_CAP : cap, p = pad == null ? LABEL_PAD_PX : pad, placed = [], out = [];
+    for (const b of boxes || []) {
+      const hit = y => placed.some(o => Math.abs(o.x - b.x) * 2 < o.w + b.w + 2 * p && y - b.h < o.y + p && o.y - o.h < y + p);
+      let y = b.y; for (let k = 0; k < n && hit(y); k++) y -= b.h + p;
+      placed.push({ x: b.x, y, w: b.w, h: b.h }); out.push(y);
+    }
+    return out;
+  }
   function lodFor(dist) { return dist <= LOD.near ? 'near' : dist <= LOD.mid ? 'mid' : 'far'; }
 
   /* Pulse brightness 0..1 at about 1 Hz; steady under prefers-reduced-motion. */
@@ -1993,7 +2006,7 @@
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
-    RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
+    RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,

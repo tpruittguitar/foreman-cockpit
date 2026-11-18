@@ -1246,7 +1246,7 @@ function buildWorld() {
     for (const c of convoLines) activeConvos.set(c.from, c);
   }
   function updateLabels() {
-    const w = innerWidth, h = innerHeight, max = TV ? 40 : 22, now = Date.now();
+    const w = innerWidth, h = innerHeight, max = TV ? 40 : 22, now = Date.now(), shown = [];
     for (const c of chars.values()) {
       const b = botByName(c.name), st = L.statusStyle(b ? b.status : 'idle'), frozen = S.state === 'failed', needs = S.needsSet.has(c.name) && !frozen;
       const rp = c.goalNow && c.goalNow.recent;
@@ -1261,13 +1261,15 @@ function buildWorld() {
         c.tag.innerHTML = chip + esc(c.name) + recent; c.tag.title = why ? '? ' + why : '';
         const short = shortTag(c.name, c.botId);
         if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = chip + esc(short) + recent; c.tag.title = c.name + (why ? ' · ? ' + why : ''); }
+        c.tagBox = null;
       }
       tmpV.set(c.root.position.x, c.top + (needs ? 0.75 : 0.18) + c.rig.position.y, c.root.position.z).project(camera);
       const dist = camera.position.distanceTo(c.root.position);
       const vis = tmpV.z < 1 && dist < max && Math.abs(tmpV.x) < 1.2 && Math.abs(tmpV.y) < 1.2;
       c.tag.style.display = vis ? '' : 'none'; c.tag.classList.toggle('far', L.tagFar(dist));
+      if (L.tagFar(dist) !== c.tagFarNow) { c.tagFarNow = L.tagFar(dist); c.tagBox = null; }
       const sx = (tmpV.x * 0.5 + 0.5) * w, sy = (-tmpV.y * 0.5 + 0.5) * h;
-      if (vis) c.tag.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy}px)`;
+      if (vis) { if (!c.tagBox) c.tagBox = { w: c.tag.offsetWidth, h: c.tag.offsetHeight }; shown.push({ c, x: sx, y: sy, w: c.tagBox.w, h: c.tagBox.h }); }
       const lines = convoLines.filter(l => l.from === c.name).slice(-1), amb = lines.length ? '' : rp ? '' : ambientText(c);
       const bk = lines.length ? lines.map(l => l.at + l.text).join('|') : rp ? 'rp' + rp.text : amb;
       if (bk !== c.bubKey) {
@@ -1281,6 +1283,8 @@ function buildWorld() {
       c.bub.style.pointerEvents = lines.length ? '' : 'none';
       if (show && vis) c.bub.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy - (TV ? 46 : 26)}px)`;
     }
+    const ys = L.nudgeLabels(shown); /* card 544b368: a label that would overlap an earlier one moves up a label height */
+    shown.forEach((t, i) => { t.c.tag.style.transform = `translate(-50%,-100%) translate(${t.x}px,${ys[i]}px)`; });
   }
   function ambientText(c) {
     const g = c.goalNow; if (!g || !g.ambient || !c.arrived || S.state === 'failed') return '';
