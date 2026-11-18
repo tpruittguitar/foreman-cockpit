@@ -1156,7 +1156,10 @@
     }
     const ageMin = lastSeen == null ? null : Math.max(0, Math.floor((now - lastSeen) / MIN));
     const stale = ageMin == null || ageMin > BOT_STALE_MIN;
-    return { lastSeen, ageMin, stale, label: stale ? 'stale · last seen ' + (ageMin == null ? 'unknown' : ageText(ageMin)) : '' };
+    /* No activity feed: the row was only seeded (or never written) and no other signal exists, so an hour count would mislead. */
+    const ok = v => { const t = typeof v === 'number' ? v : time(v); return t != null && t <= now + MIN; };
+    const noFeed = stale && !(extra || []).some(ok) && (/^seeded$/i.test(str(b.last_action).trim()) || !own.some(ok));
+    return { lastSeen, ageMin, stale, noFeed, label: !stale ? '' : noFeed ? 'no activity feed' : 'stale · last seen ' + (ageMin == null ? 'unknown' : ageText(ageMin)) };
   }
   /* Extra signal times for one bot from data the page already holds: ctx = { items, prTimes (Map prKey -> ISO),
      screens (parseScreensIndex), auto (parseAutomations) }. */
@@ -1164,7 +1167,8 @@
     const c = ctx || {}, out = [], name = str(bot && bot.bot), id = str(bot && bot.bot_id);
     for (const i of c.items || []) if (i.owner === name && c.prTimes) { const t = c.prTimes.get(prKey(i.link)); if (t) out.push(t); }
     const sc = id && c.screens && c.screens.screens && c.screens.screens[id];
-    if (sc && !sc.paused) out.push(sc.at);
+    /* activeAt (Root's spec, Nov 17): when the bot last really worked. Index entries without the field keep the old capture time. */
+    if (sc && !sc.paused) out.push(sc.hasActive ? sc.activeAt : sc.at);
     for (const r of (c.auto && c.auto.rows) || []) if (r.ai === name) out.push(r.last_run_at, r.running ? r.started_at : '');
     return out;
   }
@@ -1341,7 +1345,8 @@
     if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
     out.updated_at = time(o.updated_at) != null ? str(o.updated_at) : '';
     const s = o.screens && typeof o.screens === 'object' && !Array.isArray(o.screens) ? o.screens : {};
-    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true, offline: e.offline === true, lastSeen: time(e.lastSeen) != null ? str(e.lastSeen) : '' }; }
+    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true, offline: e.offline === true, lastSeen: time(e.lastSeen) != null ? str(e.lastSeen) : '',
+      activeAt: time(e.activeAt) != null ? str(e.activeAt) : '', hasActive: Object.prototype.hasOwnProperty.call(e, 'activeAt') }; }
     return out;
   }
   /* Tim (Nov 17): a bot drawn napping while it is actually working. OFFICE_STATUS rows only ever go working -> idle, so an idle or

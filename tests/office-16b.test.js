@@ -43,10 +43,10 @@ test('newest of several signals wins (row, screen, work, PR, Actions, terminal m
   assert.equal(plan([b])['Comp'].act, 'stale', 'row signals alone are stale');
 });
 
-test('missing timestamps: stale with "last seen unknown"', () => {
+test('missing timestamps and no other signal: stale with "no activity feed" (Root, Nov 17)', () => {
   const f = L.freshness(bot('GUI', 'working', null), NOW);
-  assert.deepEqual([f.stale, f.lastSeen, f.ageMin, f.label], [true, null, null, 'stale · last seen unknown']);
-  assert.equal(L.freshness(null, NOW).label, 'stale · last seen unknown');
+  assert.deepEqual([f.stale, f.lastSeen, f.ageMin, f.label], [true, null, null, 'no activity feed']);
+  assert.equal(L.freshness(null, NOW).label, 'no activity feed');
   assert.equal(L.freshness({ bot: 'x', last_action_at: 'not a date' }, NOW).stale, true);
   assert.equal(plan([bot('GUI', 'idle', null)]).GUI.act, 'stale');
 });
