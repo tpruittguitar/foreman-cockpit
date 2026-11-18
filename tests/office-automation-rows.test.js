@@ -1,0 +1,51 @@
+// brief_office7 item 3: the Automations wall board shows one row per automation with a simplified result (OK / FAIL / SKIPPED),
+// last ran (ET) and a live countdown to the next run, from control/AUTOMATIONS_STATUS.json. Run: node --test tests/office-automation-rows.test.js
+const test = require('node:test'), assert = require('node:assert/strict');
+const fs = require('fs'), os = require('os'), path = require('path'), { pathToFileURL } = require('url');
+const L = require('../office/office-logic.js');
+let D;
+test.before(async () => {
+  globalThis.window = { OfficeLogic: L };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'office-draw-'));
+  for (const f of ['draw.js', 'avatars.js']) fs.copyFileSync(path.join(__dirname, '../office', f), path.join(dir, f));
+  fs.writeFileSync(path.join(dir, 'package.json'), '{"type":"module"}');
+  D = await import(pathToFileURL(path.join(dir, 'draw.js')).href);
+});
+function fakeCtx() {
+  const texts = [];
+  return { font: '', fillStyle: '', textAlign: 'left', texts,
+    measureText(t) { const px = Number((/(\d+(?:\.\d+)?)px/.exec(this.font) || [0, 10])[1]); return { width: String(t).length * px * 0.55 }; },
+    fillText(t, x, y) { texts.push({ t, x, y }); }, fillRect() {}, strokeRect() {}, beginPath() {}, arc() {}, fill() {} };
+}
+const NOW = Date.parse('2026-11-18T05:30:00Z'), MIN = 60000, iso = ms => new Date(ms).toISOString();
+const STATUS = { generated_at: iso(NOW - 2 * MIN), automations: [
+  { ai: 'ChatGPT', name: 'usage reader', result: 'success', last_run_at: iso(Date.parse('2026-11-18T05:05:00Z')), next_run_at: iso(NOW + 12 * MIN + 3000) },
+  { ai: 'Claude', name: 'intake', result: 'failure', last_run_at: iso(NOW - 3 * 60 * MIN), next_run_at: iso(NOW + 90 * MIN) },
+  { ai: 'Grok', name: 'helper', result: 'skipped', last_run_at: iso(NOW - 10 * MIN), next_run_at: iso(NOW + 26 * 60 * MIN) },
+  { ai: 'Gauge', name: 'audit', result: 'empty', last_run_at: '', next_run_at: '', running: true, started_at: iso(NOW - MIN) }] };
+
+test('rows: simplified result, last ran in ET, countdown to the next run', () => {
+  const rows = L.automationBoardRows(L.parseAutomations(STATUS, NOW), NOW);
+  assert.deepEqual(rows.map(r => r.label), ['ChatGPT · usage reader', 'Claude · intake', 'Grok · helper', 'Gauge · audit']);
+  assert.deepEqual(rows.map(r => r.result), ['OK', 'FAIL', 'SKIPPED', 'SKIPPED']);
+  assert.equal(rows[0].last, '12:05 AM ET');
+  assert.equal(rows[3].last, 'never');
+  assert.deepEqual(rows.map(r => r.next), ['in 12m 03s', 'in 1h 30m', 'in 1d 2h', 'running now']);
+});
+test('countdown is live (seconds tick) and a missed run reads overdue', () => {
+  const r = L.parseAutomations(STATUS, NOW).rows[0];
+  assert.equal(L.nextRunText(r, NOW + 1000), 'in 12m 02s');
+  assert.equal(L.nextRunText(r, NOW + 13 * MIN), 'overdue');
+  const stale = L.parseAutomations({ automations: [{ ai: 'Grok', name: 'x', result: 'ok', last_run_at: iso(NOW - 30 * 60 * MIN), next_run_at: iso(NOW - 18 * 60 * MIN) }] }, NOW);
+  assert.equal(L.automationBoardRows(stale, NOW)[0].result, 'FAIL', 'STALE (missed runs) is never OK');
+});
+test('the wall board draws one row per automation with headers, and the board redraws every second', () => {
+  const c = fakeCtx();
+  D.drawAutomations(c, 1024, 625, { auto: L.parseAutomations(STATUS, NOW), err: '', now: NOW, demo: false });
+  const t = c.texts.map(x => x.t);
+  for (const h of ['Automation', 'Result', 'Last ran', 'Next run']) assert.ok(t.includes(h), h);
+  for (const v of ['ChatGPT · usage reader', 'OK', 'FAIL', 'SKIPPED', '12:05 AM ET', 'in 12m 03s', 'running now']) assert.ok(t.includes(v), v);
+  assert.ok(!t.includes('runs / hour'), 'the timeline moved to the click panel');
+  const office = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
+  assert.match(office, /else if \(clock - autosAt >= 1\) drawAutos\(\);/);
+});

@@ -488,20 +488,23 @@ export function drawAutomations(ctx, W, H, o) {
   const headX = 28 * s + ctx.measureText('AUTOMATIONS').width + 24 * s;
   if (o.demo) exampleTag(ctx, 330 * s, 50 * s, 20 * s);
   drawFetched(ctx, W, H, o.fetchedAt, headX, 56 * s, o.boardM); // header row beside the title, clear of the runs/hour row and the now line
-  if (!a || (!a.rows.length && !a.runs.length)) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'Waiting for AUTOMATIONS_STATUS.json', 28 * s, 130 * s); return; }
-  const day0 = L.etDayStart(o.now) - 86400000, span = 3 * 86400000, x0 = 150 * s, x1 = W - 24 * s, X = t => x0 + (t - day0) / span * (x1 - x0);
-  const ais = [...new Set(a.runs.map(r => r.ai).concat(a.rows.map(r => r.ai)))].slice(0, 7), laneH = Math.min(56 * s, (H - 190 * s) / Math.max(1, ais.length));
-  ['Yesterday', 'Today', 'Tomorrow'].forEach((d, k) => { ctx.fillStyle = k === 1 ? '#c9ccd2' : '#7d838b'; ctx.font = `700 ${20 * s}px ${SANS}`; ctx.fillText(d, X(day0 + k * 86400000) + 6 * s, 88 * s); ctx.fillStyle = '#2a2e34'; ctx.fillRect(X(day0 + k * 86400000), 70 * s, 2 * s, H - 80 * s); });
-  const bad = L.writerOverlaps(a.runs);
-  ais.forEach((ai, i) => { const y = 100 * s + i * laneH;
-    ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${20 * s}px ${SANS}`; ctx.fillText(fit(ctx, ai, x0 - 34 * s), 24 * s, y + laneH * 0.62);
-    for (const r of a.runs.filter(r => r.ai === ai)) { const bx = X(r.start), bw = Math.max(3 * s, X(r.end) - bx);
-      ctx.fillStyle = RES_COL[r.result] || '#555'; ctx.fillRect(bx, y + 6 * s, bw, laneH - 14 * s);
-      if (bad.has(r)) { ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = 3 * s; ctx.strokeRect(bx, y + 6 * s, bw, laneH - 14 * s); } } });
-  const conc = L.concurrencyByHour(a.runs, day0), max = Math.max(1, ...conc), cy = H - 46 * s;
-  conc.forEach((n, h) => { ctx.fillStyle = n >= 3 ? '#ff4b4b' : n === 2 ? '#ffd23f' : '#2f6f80'; const bh = 30 * s * n / max; ctx.fillRect(X(day0 + h * 3600000), cy + 30 * s - bh, (x1 - x0) / 72 - 1, bh); });
-  ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${16 * s}px ${SANS}`; ctx.fillText('runs / hour', 24 * s, cy + 24 * s);
-  ctx.fillStyle = '#37e0ff'; ctx.fillRect(X(o.now), 70 * s, 3 * s, H - 80 * s); // now line
+  if (!a || !a.rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'Waiting for AUTOMATIONS_STATUS.json', 28 * s, 130 * s); return; }
+  /* one row per automation (brief_office7 item 3): name, OK / FAIL / SKIPPED, last ran (ET), live countdown; the 3-day timeline is in the click panel */
+  const rows = L.automationBoardRows(a, o.now), cx = [28 * s, W * 0.47, W * 0.61, W * 0.79], top = 104 * s, foot = 34 * s;
+  const rowH = Math.max(34 * s, Math.min(64 * s, (H - top - foot) / Math.max(1, rows.length))), shown = Math.min(rows.length, Math.floor((H - top - foot) / rowH));
+  const fs = Math.min(26 * s, rowH * 0.48);
+  ctx.fillStyle = '#7d838b'; ctx.font = `700 ${18 * s}px ${SANS}`;
+  ['Automation', 'Result', 'Last ran', 'Next run'].forEach((t, k) => ctx.fillText(t, cx[k], 92 * s));
+  rows.slice(0, shown).forEach((r, i) => { const y = top + i * rowH, base = y + rowH * 0.66;
+    if (i % 2) { ctx.fillStyle = '#15181c'; ctx.fillRect(16 * s, y, W - 32 * s, rowH); }
+    ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.label, cx[1] - cx[0] - 16 * s), cx[0], base);
+    const col = RES_COL[r.result === 'SKIPPED' ? 'SKIP' : r.result], cw = 0.12 * W, ch = rowH * 0.64;
+    ctx.fillStyle = col; ctx.fillRect(cx[1], y + (rowH - ch) / 2, cw, ch);
+    ctx.fillStyle = r.result === 'FAIL' ? '#ffffff' : '#0f1114'; ctx.font = `800 ${fs * 0.86}px ${SANS}`; ctx.textAlign = 'center'; ctx.fillText(r.result, cx[1] + cw / 2, base); ctx.textAlign = 'left';
+    ctx.fillStyle = '#c9ccd2'; ctx.font = `600 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.last, cx[3] - cx[2] - 12 * s), cx[2], base);
+    ctx.fillStyle = r.running ? '#37e0ff' : r.next === 'overdue' ? '#ffd23f' : '#c9ccd2'; ctx.fillText(fit(ctx, r.next, W - cx[3] - 20 * s), cx[3], base); });
+  ctx.fillStyle = '#7d838b'; ctx.font = `600 ${16 * s}px ${SANS}`;
+  ctx.fillText((rows.length > shown ? '+' + (rows.length - shown) + ' more · ' : '') + 'click for the 3-day timeline', 28 * s, H - 12 * s);
 }
 /* "fetched 10:15:03 PM ET": the visible proof that ⟳ Refresh reloaded a board's source. Same physical size on every board
    (QA on #394): px = FETCHED_M * canvasWidth / boardWidthMetres, so text is 7 cm tall on a 2.6 m or a 9.6 m board; FETCHED_PX

@@ -1516,6 +1516,22 @@
     const runs = (o && Array.isArray(o.runs) ? o.runs : []).filter(r => r && time(r.start) != null).map(r => ({ ai: str(r.ai) || 'Other', name: str(r.name), start: time(r.start), end: time(r.end) != null && time(r.end) > time(r.start) ? time(r.end) : time(r.start) + 10 * MIN, result: r.expected ? 'UPCOMING' : simpleResult(r.result), writer: r.writer === true, expected: r.expected === true }));
     return { generated_at: str(o && o.generated_at), rows, runs, writer: o && o.writer_health && typeof o.writer_health === 'object' ? o.writer_health : null };
   }
+  /* Automations wall board rows (brief_office7 item 3): one row per automation with a simplified result (OK / FAIL / SKIPPED),
+     when it last ran (ET) and a live countdown to its next run, from AUTOMATIONS_STATUS.json via parseAutomations. */
+  const BOARD_RESULT = { OK: 'OK', FAIL: 'FAIL', STALE: 'FAIL', SKIP: 'SKIPPED', EMPTY: 'SKIPPED' };
+  function nextRunText(r, now) {
+    if (r.running) return 'running now';
+    const t = time(r.next_run_at); if (t == null) return '—';
+    const sec = Math.round((t - now) / 1000), pad = n => String(n).padStart(2, '0');
+    if (sec <= 0) return 'overdue';
+    if (sec >= 86400) return 'in ' + Math.floor(sec / 86400) + 'd ' + Math.floor(sec % 86400 / 3600) + 'h';
+    if (sec >= 3600) return 'in ' + Math.floor(sec / 3600) + 'h ' + pad(Math.floor(sec % 3600 / 60)) + 'm';
+    return 'in ' + Math.floor(sec / 60) + 'm ' + pad(sec % 60) + 's';
+  }
+  function automationBoardRows(a, now) {
+    return ((a && a.rows) || []).map(r => { const last = time(r.last_run_at);
+      return { label: r.ai + ' · ' + r.name, result: BOARD_RESULT[r.result] || 'FAIL', last: last != null ? etClock(last) + ' ET' : 'never', next: nextRunText(r, now), running: r.running }; });
+  }
   /* Writer health rows with units (Tim Nov 17: no Last ping / Queue depth / Timeouts). Writer heartbeat = time of the last
      successful Writer write, i.e. AUTOMATIONS_STATUS.json generated_at minus writer_health.last_write_age_min. Public data only. */
   const WRITER_ROWS = [['last_write_age_min', 'Last good write', v => v + ' min ago'], ['writes_per_hour', 'Writes per hour', v => String(v)],
@@ -1968,7 +1984,7 @@
     RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
-    auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, writerRows,
+    auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
