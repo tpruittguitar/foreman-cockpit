@@ -789,7 +789,7 @@ function buildWorld() {
   // Rider spot comes from the bike's own transform (saddle at local z -0.22, facing the handlebars at local +z), so it follows any placement / rotation.
   bike.updateMatrixWorld(true);
   const saddle = new THREE.Vector3(0, 0, -0.22).applyMatrix4(bike.matrixWorld);
-  const ry = bike.rotation.y, fwd = [Math.sin(ry), Math.cos(ry)], bhx = Math.abs(fwd[0]) * 0.5 + Math.abs(fwd[1]) * 0.15, bhz = Math.abs(fwd[1]) * 0.5 + Math.abs(fwd[0]) * 0.15;
+  const ry = bike.rotation.y, fwd = [Math.sin(ry), Math.cos(ry)], bhx = Math.abs(fwd[0]) * 0.5 + Math.abs(fwd[1]) * 0.21, bhz = Math.abs(fwd[1]) * 0.5 + Math.abs(fwd[0]) * 0.21;
   block(bike.position.x, bike.position.z, bhx, bhz); // footprint: base 0.25 x 1.0 plus handlebars, rotated with the bike
   SIT.push({ id: 'bike', kind: 'bike', x: saddle.x, z: saddle.z, face: ry });
   // indoor waterfall: stone wall, a sheet of moving water (scrolling texture, no extra lights) and a basin
