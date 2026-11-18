@@ -1,5 +1,5 @@
 /* 3D office viewer (read-only). Data: control/OFFICE_STATUS.json, open PRs and asks/open from public GitHub repos,
-   polled every 60 s straight from the browser (all three repos are public; no proxy, no token, no new secret).
+   polled every 2 min straight from the browser (status files read from the raw URL directly; ⟳ Refresh re-fetches now) (all three repos are public; no proxy, no token, no new secret).
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
@@ -15,7 +15,7 @@ const DEMO = Q.get('demo') === '1', TV = Q.get('tv') === '1';
 const SEED = Q.has('seed') ? Number(Q.get('seed')) >>> 0 : (Math.random() * 4294967296) >>> 0; // seedable idle rotation (?seed=N)
 const OWNER = 'tpruittguitar';
 const STATUS_PATH = 'control/OFFICE_STATUS.json', AUTO_PATH = 'control/AUTOMATIONS_STATUS.json', TRAIN_PATH = L.TRAINING_PATH;
-const API_FILE = p => `https://api.github.com/repos/${OWNER}/forge-coordination/contents/${p}?ref=main`;
+const API_FILE = p => `https://api.github.com/repos/${OWNER}/forge-coordination/contents/${p}?ref=main`; // chat feed probe only
 const RAW_FILE = p => `https://raw.githubusercontent.com/${OWNER}/forge-coordination/main/${p}`;
 const PR_REPOS = ['foreman-cockpit', 'forge-coordination', 'forge-policy'];
 const ASKS_URL = `https://api.github.com/repos/${OWNER}/forge-coordination/contents/asks/open`;
@@ -25,7 +25,7 @@ const CHAT_FEED_URL = RAW_FILE('control/PRESIDENT_CHAT_FEED.jsonl');
    monitor shows its text fallback until tpruittguitar/office-screens exists. */
 const SCREENS_BASE = 'https://raw.githubusercontent.com/tpruittguitar/office-screens/main/';
 const RELAY_URL = '/api/office-chat'; // Cloudflare Pages Function (functions/api/office-chat.js)
-const POLL_MS = 60000, SLOW_MS = 5 * 60000;
+const POLL_MS = 2 * 60000, SLOW_MS = 5 * 60000;
 const coarse = matchMedia('(pointer: coarse)').matches;
 const touch = coarse; // touch UI (joystick, drag-look); mouse/keyboard stay on desktops
 const touchEvents = 'ontouchstart' in window;
@@ -55,9 +55,9 @@ fetch('build-info.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : nul
 });
 const gate = L.createGate(); // one GitHub API budget shared by status, PR list and asks
 const fetchFn = (u, o) => fetch(u, o);
-const statusSrc = L.createJsonSource({ apiUrl: API_FILE(STATUS_PATH), rawUrl: RAW_FILE(STATUS_PATH), gate, fetch: fetchFn });
-const autoSrc = L.createJsonSource({ apiUrl: API_FILE(AUTO_PATH), rawUrl: RAW_FILE(AUTO_PATH), gate, fetch: fetchFn });
-const trainSrc = L.createJsonSource({ apiUrl: API_FILE(TRAIN_PATH), rawUrl: RAW_FILE(TRAIN_PATH), gate, fetch: fetchFn });
+const statusSrc = L.createJsonSource({ rawUrl: RAW_FILE(STATUS_PATH), fetch: fetchFn });
+const autoSrc = L.createJsonSource({ rawUrl: RAW_FILE(AUTO_PATH), fetch: fetchFn });
+const trainSrc = L.createJsonSource({ rawUrl: RAW_FILE(TRAIN_PATH), fetch: fetchFn });
 const chatSrc = L.createChatFeed({ dirUrl: API_FILE('control'), rawUrl: CHAT_FEED_URL, name: 'PRESIDENT_CHAT_FEED.jsonl', gate, fetch: fetchFn });
 async function api(url) {
   if (!gate.open(Date.now())) { const e = new Error('GitHub rate limit: waiting for reset'); e.status = 403; throw e; }
@@ -499,6 +499,7 @@ $('needs-btn').onclick = () => {
   needsCursor = (needsCursor + 1) % a.length; world.goToBot(a[needsCursor].bot, true);
 };
 $('list-btn').onclick = openNeeds;
+$('refresh-btn').onclick = e => { const b = e.currentTarget; if (b.disabled) return; b.disabled = true; poll().finally(() => { b.disabled = false; }); };
 $('walk3d').onclick = () => enter3D();
 $('flat-btn').onclick = () => { $('flat').hidden = false; T.mode = 'flat'; renderFlat(); };
 
