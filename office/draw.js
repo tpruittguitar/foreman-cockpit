@@ -485,7 +485,9 @@ export function drawAutomations(ctx, W, H, o) {
   const s = W / 1024, a = o.auto;
   ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${40 * s}px ${SANS}`; ctx.fillText('AUTOMATIONS', 28 * s, 56 * s);
+  const headX = 28 * s + ctx.measureText('AUTOMATIONS').width + 24 * s;
   if (o.demo) exampleTag(ctx, 330 * s, 50 * s, 20 * s);
+  drawFetched(ctx, W, H, o.fetchedAt, headX, 56 * s); // header row beside the title, clear of the runs/hour row and the now line
   if (!a || (!a.rows.length && !a.runs.length)) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'Waiting for AUTOMATIONS_STATUS.json', 28 * s, 130 * s); return; }
   const day0 = L.etDayStart(o.now) - 86400000, span = 3 * 86400000, x0 = 150 * s, x1 = W - 24 * s, X = t => x0 + (t - day0) / span * (x1 - x0);
   const ais = [...new Set(a.runs.map(r => r.ai).concat(a.rows.map(r => r.ai)))].slice(0, 7), laneH = Math.min(56 * s, (H - 190 * s) / Math.max(1, ais.length));
@@ -501,13 +503,16 @@ export function drawAutomations(ctx, W, H, o) {
   ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${16 * s}px ${SANS}`; ctx.fillText('runs / hour', 24 * s, cy + 24 * s);
   ctx.fillStyle = '#37e0ff'; ctx.fillRect(X(o.now), 70 * s, 3 * s, H - 80 * s); // now line
 }
-/* "fetched 10:15:03 PM ET" in a board's bottom-right corner: the visible proof that ⟳ Refresh reloaded its source. */
-export function drawFetched(ctx, W, H, at) {
+/* "fetched 10:15:03 PM ET": the visible proof that ⟳ Refresh reloaded a board's source. Fixed size (the 1024 px
+   reference) on every canvas width; bottom-right corner by default, or left-aligned at (x, y) in a board's header row. */
+export const FETCHED_PX = 18;
+export function drawFetched(ctx, W, H, at, x, y) {
   if (!at) return;
-  const s = W / 1024, txt = 'fetched ' + new Date(at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }) + ' ET';
-  ctx.font = `600 ${18 * s}px ${SANS}`; const w = ctx.measureText(txt).width + 16 * s;
-  ctx.fillStyle = 'rgba(15,17,20,0.88)'; ctx.fillRect(W - w - 8 * s, H - 32 * s, w, 26 * s);
-  ctx.textAlign = 'right'; ctx.fillStyle = '#9aa0a8'; ctx.fillText(txt, W - 16 * s, H - 13 * s); ctx.textAlign = 'left';
+  const txt = 'fetched ' + new Date(at).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }) + ' ET';
+  ctx.font = `600 ${FETCHED_PX}px ${SANS}`; const w = ctx.measureText(txt).width + 16;
+  const left = x != null ? x : W - w - 8, base = y != null ? y : H - 13;
+  ctx.fillStyle = 'rgba(15,17,20,0.88)'; ctx.fillRect(left, base - 19, w, 26);
+  ctx.textAlign = 'left'; ctx.fillStyle = '#9aa0a8'; ctx.fillText(txt, left + 8, base);
 }
 export function drawWriterHealth(ctx, W, H, o) {
   const s = W / 768;
