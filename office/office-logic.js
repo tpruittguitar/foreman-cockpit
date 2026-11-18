@@ -1711,8 +1711,20 @@
     const r = Array.from(rates || []).filter(Number.isFinite).sort((a, b) => a - b);
     return r.length ? (r.find(v => v >= want) || r[r.length - 1]) : want;
   };
+  const VR_STICK_DEAD = 0.15, VR_MOVE_SPEED = 2, VR_SNAP_DEG = 30, VR_SNAP_ON = 0.6, VR_SNAP_OFF = 0.3;
+  const stickAxes = gp => { // xr-standard puts the thumbstick on axes 2/3 (Quest); other pads may only have 0/1
+    const a = (gp && gp.axes) || [], ok = i => Number.isFinite(a[i]);
+    return ok(2) && ok(3) ? { x: a[2], y: a[3] } : { x: ok(0) ? a[0] : 0, y: ok(1) ? a[1] : 0 };
+  };
+  const stickMove = (stick, yaw, dt, speed = VR_MOVE_SPEED, dead = VR_STICK_DEAD) => { // head-relative ground-plane step; yaw 0 = looking down -Z, stick up (y<0) = forward
+    let x = stick ? stick.x : 0, y = stick ? stick.y : 0; const m = Math.hypot(x, y);
+    if (!(m > dead) || !Number.isFinite(yaw) || !(dt > 0)) return { x: 0, z: 0 };
+    const k = Math.min(1, (m - dead) / (1 - dead)) / m * speed * dt; x *= k; y *= k; // rescale past the dead zone, cap at full tilt
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    return { x: x * c + y * s, z: -x * s + y * c };
+  };
   return { GAME_EVERY,
-    TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
+    TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, VR_STICK_DEAD, VR_MOVE_SPEED, VR_SNAP_DEG, VR_SNAP_ON, VR_SNAP_OFF, stickAxes, stickMove, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, LOD, COLORS,

@@ -44,3 +44,14 @@ test('office.html has exactly one vr-btn, hidden until WebXR support is detected
   assert.equal((html.match(/id="vr-btn"/g) || []).length, 1);
   assert.match(html, /id="vr-btn"[^>]*\bhidden\b/); assert.ok(!/coming soon/i.test(html));
 });
+test('thumbstick -> head-relative ground step: dead zone, yaw, speed cap, axes 2/3 with 0/1 fallback', () => {
+  const near = (a, b) => assert.ok(Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.z - b.z) < 1e-9, JSON.stringify(a));
+  near(L.stickMove({ x: 0, y: -1 }, 0, 1), { x: 0, z: -L.VR_MOVE_SPEED }); // stick up, facing -Z -> forward
+  near(L.stickMove({ x: 1, y: 0 }, 0, 0.5), { x: L.VR_MOVE_SPEED / 2, z: 0 }); // strafe right, scaled by dt
+  near(L.stickMove({ x: 0, y: -1 }, Math.PI / 2, 1), { x: -L.VR_MOVE_SPEED, z: 0 }); // head turned left 90 degrees -> forward is -X
+  near(L.stickMove({ x: 0.1, y: 0.05 }, 0, 1), { x: 0, z: 0 }); // inside the dead zone
+  const d = L.stickMove({ x: 1, y: -1 }, 0, 1); assert.ok(Math.abs(Math.hypot(d.x, d.z) - L.VR_MOVE_SPEED) < 1e-9); // diagonal is not faster
+  assert.deepEqual(L.stickAxes({ axes: [0, 0, 0.4, -0.7] }), { x: 0.4, y: -0.7 });
+  assert.deepEqual(L.stickAxes({ axes: [0.2, 0.3] }), { x: 0.2, y: 0.3 });
+  assert.deepEqual(L.stickAxes(null), { x: 0, y: 0 });
+});
