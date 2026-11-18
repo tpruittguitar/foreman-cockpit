@@ -455,6 +455,21 @@ export function drawSign(ctx, W, H, text, bg, fg) {
   ctx.fillText(text, W / 2, H / 2 + 2); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
 
+/* Desk plaque (President's desk): dark face, thin brushed-gold border, engraved-style light text on two lines */
+export function drawPlaque(ctx, W, H, lines) {
+  ctx.fillStyle = '#121316'; ctx.fillRect(0, 0, W, H);
+  const b = Math.max(3, H * 0.035), g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#8a6d2f'); g.addColorStop(0.5, '#e3c77a'); g.addColorStop(1, '#8a6d2f');
+  ctx.strokeStyle = g; ctx.lineWidth = b; ctx.strokeRect(b * 1.5, b * 1.5, W - b * 3, H - b * 3);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `600 ${H * 0.2}px ${SANS}`;
+  lines.forEach((t, i) => {
+    const y = H * (0.36 + i * 0.3);
+    ctx.fillStyle = '#000'; ctx.fillText(t, W / 2, y - 1, W * 0.9); // engraved: dark lip above the light fill
+    ctx.fillStyle = '#e8e2cf'; ctx.fillText(t, W / 2, y + 1, W * 0.9);
+  });
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
 /* ---------- Automations wall board (3-day schedule summary) and Writer health board ---------- */
 const RES_COL = { OK: '#3ddc84', FAIL: '#ff4b4b', SKIP: '#8b9099', EMPTY: '#4aa3ff', STALE: '#ffd23f', UPCOMING: '#3a4250' };
 export function drawAutomations(ctx, W, H, o) {

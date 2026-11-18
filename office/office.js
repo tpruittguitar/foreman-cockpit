@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawWhiteboard, drawAutomations, drawWriterHealth, WRITER_METRICS, drawTown, drawPipelineWall, drawConstraintWall } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawNeeds, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawWriterHealth, WRITER_METRICS, drawTown, drawPipelineWall, drawConstraintWall } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -856,6 +856,10 @@ function buildWorld() {
     add(deskGeo.shade, shadeMat, 0.63, 1.21, -0.2, g); add(deskGeo.bulb, bulbMat, 0.63, 1.17, -0.2, g);
     const np = canvasTex(256, 56); drawSign(np.ctx, 256, 56, name, '#141416', '#eceef1'); np.t.needsUpdate = true;
     add(deskGeo.plate, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(np.t), MAT.dark], 0.5, 0.815, 0.36, g);
+    if (name === 'President') { // Tim's desk: upright plaque, front-left corner, left of the monitor and behind the can, leaning back slightly to face the chair (no collider, like the other small props)
+      const pq = canvasTex(512, 160); drawPlaque(pq.ctx, 512, 160, ["We're not here to make friends...", "We're here to make cars."]); pq.t.needsUpdate = true;
+      add(box(0.3, 0.094, 0.012), [MAT.metal, MAT.metal, MAT.metal, MAT.metal, screenMat(pq.t), MAT.dark], -0.62, 0.818, -0.2, g).rotation.x = -0.2;
+    }
     const hasMug = L.hash('mug:' + name) % 3 === 0;
     if (hasMug) add(deskGeo.mug, MAT.white, -0.6, 0.82, 0.05, g);
     const card = add(deskGeo.card, new THREE.MeshStandardMaterial({ color: 0xeef3ff, emissive: 0x334466, emissiveIntensity: 0.4 }), -0.35, 0.775, 0.12, g); card.visible = false;
