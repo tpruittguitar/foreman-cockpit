@@ -1,5 +1,5 @@
 const BASE='https://raw.githubusercontent.com/tpruittguitar/forge-coordination/';
-const FILES={processStates:'state/PROCESS_COMPLETIONS.json',processFlow:'state/ENRICHMENT_FLOW.json',applicationOutcomes:'state/APPLICATION_OUTCOMES.json',emailRecovery:'state/EMAIL_RECOVERY_SUMMARY.json',attention:'attention/NEEDS_TIM.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
+const FILES={processStates:'state/PROCESS_COMPLETIONS.json',processFlow:'state/ENRICHMENT_FLOW.json',applicationOutcomes:'state/APPLICATION_OUTCOMES.json',emailRecovery:'state/EMAIL_RECOVERY_SUMMARY.json',attention:'attention/BOT_INCIDENTS.json',sources:'state/source-trial-report.json',boards:'state/board-discovery-report.json',schedules:'state/AUTOMATION_SCHEDULE_READBACK.json',boardHealth:'state/board-health.json',execution:'state/AUTOMATION_EXECUTION_EVIDENCE.json'};
 // Health is judged on data age and failure rate, never on whether the snapshot merely parsed.
 const MAX_DISCOVERY_AGE_MS=9*3600000;
 const MAX_FAILED_BOARDS=10;
@@ -57,7 +57,7 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
         if(j.schema!=='forge.email-recovery-summary.v1'||!Number.isFinite(Date.parse(j.at))||!Number.isInteger(j.capturedUniqueJobs)||j.capturedUniqueJobs<0||!Number.isInteger(j.pendingJobs)||j.pendingJobs<0)throw Error('Invalid recovery summary');
         output.emailRecovery=j;output.checks[key]={ok:true,at:j.at};
       }else if(key==='attention'){
-        if(j.schema!=='forge.needs-tim.v1'||!Array.isArray(j.items))throw Error('Unsupported incident feed');
+        if(j.schema!=='forge.bot-incidents.v1'||!Array.isArray(j.items))throw Error('Unsupported incident feed');
         output.checks[key]={ok:true,at:j.builtAt};
         output.issues=j.items.filter(x=>x&&['BLOCKING','ACTION'].includes(x.level)).map(x=>({id:String(x.id||''),section:x.section||'',level:x.level,title:String(x.title||''),detail:String(x.detail||''),action:String(x.action||''),at:x.at||null,sourceUrl:/^https:\/\/github.com\/tpruittguitar\//.test(x.sourceUrl||'')?x.sourceUrl:null}));
       }else if(key==='execution'){

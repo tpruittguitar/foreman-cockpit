@@ -159,10 +159,10 @@ function isoAge(min) { return new Date(Date.now() - min * MIN).toISOString(); }
   assert.deepStrictEqual(s.errors, []);
   await s.ctx.close();
 
-  // Queue down still wins at 61 min, and the header glyph matches the empty view.
+  // Queue down still wins at 61 min, and the header glyph matches the down banner over the Act Now list (#425).
   generatedAt = isoAge(61); queueOk = false;
   s = await phone();
-  await s.page.waitForSelector('#m-pane-decide .m-down');
+  await s.page.waitForSelector('#m-pane-decide .m-down-note');
   await s.page.waitForTimeout(700);
   h = await header(s.page);
   assert.strictEqual(h.word, 'QUEUE DOWN');
@@ -170,7 +170,7 @@ function isoAge(min) { return new Date(Date.now() - min * MIN).toISOString(); }
   assert.ok(h.path.includes(WARN));
   assert.ok(!/DATA AS OF|DATA AGE/.test(h.word));
   const icons = await s.page.evaluate(() => {
-    const c = e => getComputedStyle(e).color, v = document.querySelector('#m-pane-decide .m-down .m-g'), hd = document.querySelector('#m-sys-ic svg');
+    const c = e => getComputedStyle(e).color, v = document.querySelector('#m-pane-decide .m-down-note .m-g'), hd = document.querySelector('#m-sys-ic svg');
     return { view: c(v), head: c(hd), same: v.innerHTML.replace(/\s/g, '') === hd.innerHTML.replace(/\s/g, '') };
   });
   assert.strictEqual(icons.view, icons.head, 'queue down orange matches ' + JSON.stringify(icons));
