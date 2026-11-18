@@ -366,8 +366,10 @@ export function drawConstraintWall(ctx, W, H, o) {
   ctx.textAlign = 'left'; ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${40 * s}px ${SANS}`; ctx.fillText('PIPELINE CONSTRAINT', 24 * s, 56 * s);
   if (o.demo) exampleTag(ctx, 470 * s, 50 * s, 20 * s);
   const age = o.age || { text: 'no data yet', stale: true };
-  ctx.textAlign = 'right'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = age.stale ? C.stale : '#c9ccd2';
-  ctx.fillText((age.stale ? '? STALE · ' : '') + age.text, W - 24 * s, 54 * s); ctx.textAlign = 'left';
+  const asOf = sum && sum.ratesAsOf, asOfOk = Number.isFinite(Date.parse(asOf || ''));
+  const ageText = asOfOk ? '· as of ' + L.etClock(Date.parse(asOf)) + ' ET' : (age.stale ? '? STALE · ' : '') + age.text;
+  ctx.textAlign = 'right'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = asOfOk ? '#c9ccd2' : (age.stale ? C.stale : '#c9ccd2');
+  ctx.fillText(ageText, W - 24 * s, 54 * s); ctx.textAlign = 'left';
   if (!sum) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${32 * s}px ${SANS}`; ctx.fillText(fit(ctx, o.err ? 'Pipeline feed unavailable: ' + o.err : 'Waiting for the pipeline feed…', W - 48 * s), 24 * s, 160 * s); return; }
   const cw = 184 * s, qw = 84 * s, y0 = 80 * s, ch = 380 * s, x0 = 14 * s, num = n => n.toLocaleString('en-US');
   sum.stages.forEach((st, i) => {
