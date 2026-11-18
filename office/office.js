@@ -1172,7 +1172,7 @@ function buildWorld() {
     if (needs) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
     const perch = ['sit', 'type', 'game', 'deskSleep'].includes(pose) && !!dk && Math.hypot(c.pos.x - dk.seat.x, c.pos.y - dk.seat.z) < 0.1;
     animate(c, pose, clock, dt, { perch, chair: goal.key === 'lead' && pose === 'talk', reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null });
-    c.rig.position.x = pose === 'nap' ? 0.5 : 0;
+    c.rig.position.x = pose === 'nap' ? L.NAP_RIG_X : 0;
   }
   /* separation: no two upright bots closer than MIN_SEP (seated / lying bots are fixed points) */
   function separateChars() {
