@@ -38,3 +38,12 @@ test('idle-flagged screen (busy false) with a fresh activeAt: no screen signal, 
   assert.equal(L.botActivity(ROOT, NOW, offline).working, false, 'offline bot is not drawn typing');
   assert.deepEqual(L.botSignals(ROOT, screens({ offline: true })), [], 'offline without activeAt: no capture-time fallback either');
 });
+test("Tim's 2:28 AM screenshot: idle or offline screens tag idle/offline with their age, never 'no activity feed' or a status-row stale age", () => {
+  const seeded = { bot: 'HR', bot_id: ROOT.bot_id, status: 'idle', last_action: 'seeded', last_action_at: ago(2 * 1440) };
+  const idle = L.botActivity(seeded, NOW, screens({ activeAt: ago(8), busy: false }));
+  assert.deepEqual([idle.working, idle.noFeed, idle.label], [false, false, 'idle · last active 8 min ago']);
+  const off = L.botActivity(ROOT, NOW, screens({ activeAt: ago(80), busy: false, offline: true, lastSeen: ago(80) }));
+  assert.deepEqual([off.working, off.label], [false, 'offline · last seen 1 h ago']);
+  assert.equal(L.botActivity(ROOT, NOW, screens({ activeAt: ago(5), busy: true })).working, true);
+  assert.deepEqual(L.botSignals(ROOT, screens({ activeAt: ago(1), busy: false })), [], 'untagged signals unchanged');
+});
