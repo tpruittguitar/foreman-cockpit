@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from './chars.js';
-import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched, drawFar } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -748,6 +748,14 @@ function buildWorld() {
     screen.userData.board = id;
     return { id, w, h, g, screen, tex, hits: [] };
   }
+  /* Far layout (GUI review 2026-11-18): a second face just in front of the detail face, crossfaded by camera distance. Half the
+     detail resolution is plenty for headline counts on desktop; phones only ever show it, so they keep the full size. */
+  function addFar(b) {
+    const fw = LOW ? b.tex.c.width : Math.round(b.tex.c.width / 2), fh = LOW ? b.tex.c.height : Math.round(b.tex.c.height / 2);
+    const far = canvasTex(fw, fh), mat = new THREE.MeshBasicMaterial({ map: far.t, transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
+    b.far = far; b.farMesh = add(new THREE.PlaneGeometry(b.w, b.h), mat, 0, 0, 0.072, b.g); b.farMesh.visible = false; b.fade = 0; b.layout = 'detail'; b.farLay = null;
+    return b;
+  }
   const BW = 9.6, BH = 3.9;
   const project = makeBoard('project', BW, BH, -2, 2.3, -RD / 2 + 0.05, 0, LOW ? 1280 : 2048, LOW ? 520 : 832);
   const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.2, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
@@ -756,6 +764,7 @@ function buildWorld() {
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
   const writer = makeBoard('writer', 2.6, 1.7, -RW / 2 + 0.05, 2.3, -8.3, Math.PI / 2, LOW ? 512 : 768, LOW ? 335 : 502); // Tim Nov 17: empty left wall beside the Constraint wall
   const boards = { project, usage, autos, whiteboard, writer, constraint };
+  const FAR_BOARDS = [project, usage, constraint, autos, writer].map(addFar); // the whiteboard keeps its single layout
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
      Desktop: the live page (https://foreman-cockpit.pages.dev/pipeline) in an iframe on a CSS3D plane that sits behind the WebGL
@@ -933,7 +942,8 @@ function buildWorld() {
     for (const [lx, lz] of [[-0.75, -0.35], [0.75, -0.35], [-0.75, 0.35], [0.75, 0.35]]) add(deskGeo.leg, MAT.metal, lx, 0.36, lz, g);
     add(deskGeo.kb, MAT.dark, 0, 0.785, 0.12, g); add(deskGeo.mouse, MAT.dark, 0.36, 0.79, 0.14, g).rotation.x = Math.PI / 2;
     const scr = canvasTex(monW, monH);
-    const mon = add(deskGeo.mon, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(scr.t), MAT.dark], 0, 1.2, -0.22, g);
+    const monDark = MAT.dark.clone(), monScr = screenMat(scr.t); monDark.transparent = monScr.transparent = true; // fades to LOS_DIM in front of a board
+    const mon = add(deskGeo.mon, [monDark, monDark, monDark, monDark, monScr, monDark], 0, 1.2, -0.22, g);
     add(deskGeo.stand, MAT.metal, 0, 0.9, -0.25, g); add(deskGeo.base, MAT.metal, 0, 0.78, -0.24, g);
     const ledMat = new THREE.MeshStandardMaterial({ color: 0x888888, emissive: 0x888888, emissiveIntensity: 1 });
     add(deskGeo.led, ledMat, 0, 0.893, -0.195, g);
@@ -957,7 +967,7 @@ function buildWorld() {
     g.traverse(o => { if (o.isMesh && o !== hover && o !== focus) o.userData.deskBot = name; });
     mon.userData.monitor = name;
     block(x, z, 0.8, 0.4, false, 'desk:' + name); block(x, z + 0.85, 0.3, 0.3, false, 'desk:' + name);
-    return { name, x, z, g, mon, scr, ledMat, shadeMat, bulbMat, hover, focus, stack, cardsKey: null, lod: '', drawnKey: '', img: null, imgAt: 0,
+    return { name, x, z, g, mon, monMats: [monDark, monScr], monFade: 1, scr, ledMat, shadeMat, bulbMat, hover, focus, stack, cardsKey: null, lod: '', drawnKey: '', img: null, imgAt: 0,
       seat: { x, z: z + 0.72, face: Math.PI }, stand: { x: x + 1.12, z: z + 0.15 + CL, face: 0 }, visit: { x: x - 1.12, z: z + 0.15 + CL, face: Math.PI / 2 },
       cans: hasMug ? [] : [[x - 0.6, z + 0.05, name]].concat(L.hash('can2:' + name) % 4 === 1 ? [[x - 0.48, z - 0.1, name + '2']] : []), linkPoint: new THREE.Vector3(x, 0.78, z - 0.4) };
   }
@@ -1329,6 +1339,11 @@ function buildWorld() {
     const ys = L.nudgeLabels(shown); /* card 544b368: a label that would overlap an earlier one moves up a label height */
     shown.forEach((t, i) => { t.c.tag.style.transform = `translate(-50%,-100%) translate(${t.x}px,${ys[i]}px)`; });
     L.labelOverlaps(shown, ys).forEach((o, i) => { if (o) shown[i].c.tag.style.display = 'none'; }); /* card 653d851: a tag still overlapping after the nudge cap hides; needs-Tim tags are placed first */
+    /* line-of-sight (GUI review finding 7): a tag over a board the camera faces fades to LOS_DIM; which tags show is decided above */
+    shown.forEach((t, i) => {
+      const dim = t.c.tag.style.display === 'none' ? '' : losRects.some(b => L.rectsOverlap({ x0: t.x - t.w / 2, x1: t.x + t.w / 2, y0: ys[i] - t.h, y1: ys[i] }, b) && camera.position.distanceTo(t.c.root.position) < b.depth) ? String(L.LOS_DIM) : '';
+      if (t.c.tag.style.opacity !== dim) { t.c.tag.style.opacity = dim; t.c.bub.style.opacity = dim; }
+    });
   }
   function ambientText(c) {
     const g = c.goalNow; if (!g || !g.ambient || !c.arrived || S.state === 'failed') return '';
@@ -1360,7 +1375,8 @@ function buildWorld() {
   }
 
   /* ---------- screens ---------- */
-  let boardDirty = true, page = 0, pageAt = 0, focusItem = null, autosAt = 0;
+  let boardDirty = true, focusItem = null, autosAt = 0;
+  const colScroll = {}; // checksheet column -> first shown card; changes only when someone scrolls (no auto-paging)
   /* Automations wall board on its own, so its countdowns tick every second without redrawing the other boards */
   function drawAutos() { const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO, fetchedAt: S.fetched.automations, boardM: autos.w }); a.t.needsUpdate = true; autosAt = clock; }
   function drawBoards() {
@@ -1370,20 +1386,57 @@ function buildWorld() {
     const t = project.tex, tabs = L.projectTabs(items()); if (!tabs.includes(boardTab)) boardTab = 'All';
     const cols = L.boardView(items(), { tab: boardTab, doneOpen });
     const age = S.parsed ? L.dataAge(S.parsed.updatedAt, Date.now()) : null;
-    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
-    pagesN = project.hits.pages || 1;
+    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, scroll: colScroll, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem, hoverId: hoverItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
     t.t.needsUpdate = true;
+    lastCols = cols;
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred() }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
     drawAutos();
     const sw = schedule.tex; drawTrainingSchedule(sw.ctx, sw.c.width, sw.c.height, { rows: L.visibleTrainingSessions(S.training, Date.now()).map(L.formatTrainingSession), fetchedAt: S.fetched.training, boardM: schedule.w }); sw.t.needsUpdate = true;
     const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); drawFetched(wr.ctx, wr.c.width, wr.c.height, S.fetched.automations, null, null, writer.w); wr.t.needsUpdate = true;
     const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); drawFetched(cw.ctx, cw.c.width, cw.c.height, DEMO ? 0 : S.cons.at, null, null, constraint.w); cw.t.needsUpdate = true;
+    drawFarFaces(cols);
     updateLines();
     for (const [id, ln] of lines) ln.material = hl.has(id) || (hoverBot && ln.userData.owner === hoverBot) ? MAT.lineHi : MAT.lineFaint;
     for (const d of desks) syncCards(d);
     boardDirty = false;
   }
-  let pagesN = 1;
+  let lastCols = null;
+  function drawFarFaces(cols) {
+    const now = Date.now(), opts = LOW ? L.FAR_PHONE : L.FAR_DESKTOP;
+    const entries = { project: L.checksheetFar(cols || lastCols), usage: L.usageFar(L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null)),
+      constraint: L.constraintFar(constraintView(now)), autos: L.automationsFar(S.auto), writer: L.writerFar(S.auto, now) };
+    for (const b of FAR_BOARDS) { const f = b.far; b.farLay = drawFar(f.ctx, f.c.width, f.c.height, entries[b.id], opts); f.t.needsUpdate = true; }
+  }
+  /* per frame: Far past BOARD_FAR_M (always on phones), crossfaded; desk screens and name chips between the camera and a board
+     it faces fade to LOS_DIM (finding 7) */
+  const tmpL = new THREE.Vector3(), tmpF = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpP = new THREE.Vector3(), eye = new THREE.Vector3(), boxTmp = new THREE.Box3();
+  let losRects = [];
+  function screenRect(pts) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, front = false;
+    for (const p of pts) { tmpP.copy(p).project(camera); if (tmpP.z < 1) front = true; const x = (tmpP.x * 0.5 + 0.5) * innerWidth, y = (-tmpP.y * 0.5 + 0.5) * innerHeight; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    return front ? { x0, y0, x1, y1 } : null; }
+  const corners = (b, z) => [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => b.g.localToWorld(new THREE.Vector3(sx * b.w / 2, sy * b.h / 2, z)));
+  function boardFrame(dt) {
+    camera.updateMatrixWorld(); camera.getWorldDirection(tmpF); camera.getWorldPosition(eye); // world position: in VR the camera sits inside the rig
+    for (const b of FAR_BOARDS) {
+      tmpL.copy(eye); b.g.worldToLocal(tmpL);
+      b.dist = L.boardDistance(tmpL.x, tmpL.y, tmpL.z, b.w, b.h); b.layout = L.boardLayout(b.dist, LOW);
+      b.fade = L.fadeStep(b.fade, b.layout === 'far' ? 1 : 0, dt, reducedMQ.matches);
+      b.farMesh.visible = b.fade > 0.001; b.farMesh.material.opacity = b.fade;
+    }
+    losRects = [];
+    for (const b of Object.values(boards)) {
+      tmpL.copy(eye); b.g.worldToLocal(tmpL);
+      const dist = L.boardDistance(tmpL.x, tmpL.y, tmpL.z, b.w, b.h); b.g.getWorldPosition(tmpC);
+      if (tmpL.z > 0 && L.facesBoard(tmpF, tmpC.sub(eye), dist)) { const r = screenRect(corners(b, 0.07)); if (r) losRects.push(Object.assign(r, { id: b.id, depth: eye.distanceTo(b.g.getWorldPosition(tmpC)) })); }
+    }
+    for (const d of desks) {
+      let k = 1; d.monRect = null;
+      if (losRects.length) { boxTmp.setFromObject(d.mon); const pts = [], { min, max } = boxTmp; for (const x of [min.x, max.x]) for (const y of [min.y, max.y]) for (const z of [min.z, max.z]) pts.push(new THREE.Vector3(x, y, z));
+        const r = screenRect(pts), near = eye.distanceTo(d.mon.getWorldPosition(tmpC));
+        if (r && losRects.some(b => near < b.depth && L.rectsOverlap(r, b))) k = L.LOS_DIM; d.monRect = r; }
+      if (d.monFade !== k) { d.monFade = k; for (const m of d.monMats) m.opacity = k; }
+    }
+  }
   /* Physical cards (Tim, Nov 17): each desk shows its bot's open checksheet cards (not the ones still in a bot's hand), laid out
      neat or messy per bot; shared card geometry and side material, one small canvas texture per card. Done cards leave. */
   const cardTex = new Map(), CARD_SIDE = new THREE.MeshStandardMaterial({ color: 0xeef3ff, emissive: 0x334466, emissiveIntensity: 0.4 });
@@ -1472,10 +1525,10 @@ function buildWorld() {
     if (!hit || hit.distance > 45) return null;
     const o = hit.object;
     if (o.userData.board) {
-      if (o.userData.board !== 'project') return { board: o.userData.board };
+      if (o.userData.board !== 'project' || project.layout === 'far') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
       const h = project.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
-      return h ? (h.id ? { item: h.id } : h.tab ? { tab: h.tab } : h.done ? { done: true } : { more: h.more }) : { board: 'project' };
+      return h ? (h.id ? { item: h.id, col: h.col } : h.tab ? { tab: h.tab } : h.done ? { done: true } : h.scroll ? { scroll: h.scroll } : { more: h.more }) : { board: 'project' };
     }
     if (o.userData.monitor) return { monitor: o.userData.monitor, half: hit.uv && hit.uv.x < 0.5 ? 'left' : 'right' };
     if (o.userData.charName) return { bot: o.userData.charName };
@@ -1485,12 +1538,18 @@ function buildWorld() {
   function activate(p) {
     if (!p) return false;
     if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
-    else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
+    else if (p.scroll) scrollCol(p.scroll, 'page'); else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
+  }
+  function scrollCol(id, how) { // 'page' (click / tap on the column's more line) or a signed card count (mouse wheel)
+    const c = (lastCols || []).find(x => x.id === id); if (!c) return;
+    const n = c.cards.length, rows = id === 'needs_tim' ? 1 : Math.max(1, (project.hits.filter(h => h.col === id).length) || 1);
+    colScroll[id] = how === 'page' ? (id === 'needs_tim' ? ((colScroll[id] || 0) + 1) % Math.max(1, n) : L.nextColumnPage(colScroll[id] || 0, n, rows)) : L.scrollColumn(colScroll[id] || 0, how, n, id === 'needs_tim' ? 1 : rows);
+    boardDirty = true;
   }
   /* item 8: browse mode. The canvas stops catching the mouse so the iframe underneath is a normal, clickable web page. */
   function setBrowse(on) {
@@ -1539,6 +1598,10 @@ function buildWorld() {
     activate(pick(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1)); // a plain click opens the panel or link right away
   });
   let hoverAt = null;
+  canvas.addEventListener('wheel', e => { // a hovered checksheet column scrolls (one card per notch); nothing moves on its own
+    if (panelOpen) return; camera.updateMatrixWorld(); const p = pick(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    const col = p && (p.col || p.scroll); if (!col) return; e.preventDefault(); scrollCol(col, Math.sign(e.deltaY) * (col === 'needs_tim' ? 1 : 3));
+  }, { passive: false });
   $('start-btn').onclick = () => { $('start').hidden = true; };
 
   if (touch || touchEvents) {
@@ -1683,6 +1746,7 @@ function buildWorld() {
   if (TV) setTimeout(() => hopTo({ row: 0, col: 1 }), 300);
 
   /* ---------- loop ---------- */
+  const lastCam = new THREE.Vector3().copy(camera.position); let lastMoveAt = null; // phone HUD: hidden while moving, back after L.HUD_STILL_MS
   let last = performance.now(), realRate = 1, clock = 0, hoverTick = 0, deskTick = 0, dayTick = 0, lastFrame = 0;
   const minFrame = LOW ? 1000 / 31 : 0;
   let rafQueued = false;
@@ -1710,8 +1774,8 @@ function buildWorld() {
       focusTarget(s.target); glideTo(s.target.view, 1600); tour.until = now + s.dwellMs;
     }
     if (now - hoverTick > Q.hoverMs) { hoverTick = now; if (!XR && (!TV || !hop)) { const p = hoverAt && !down ? pick(...hoverAt) : null; if (!TV || p) setHover(p); } }
-    // free-running page tick: each board column takes tick mod its own page count (L.columnPage)
-    if (pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % 1e9; pageAt = clock; boardDirty = true; }
+    boardFrame(dt);
+    if (LOW) { if (glide || camera.position.distanceToSquared(lastCam) > 1e-6) lastMoveAt = now; lastCam.copy(camera.position); document.body.classList.toggle('hud-moving', L.hudHidden(lastMoveAt, now)); }
     if (boardDirty) drawBoards();
     else if (clock - autosAt >= 1) drawAutos();
     if (now - deskTick > Q.deskDrawMs) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
@@ -1852,6 +1916,12 @@ function buildWorld() {
     dimLevel: () => ({ target: dimTarget, shown: dimCur }), setDim: v => setDim(v, true),
     dimKnobPoint() { camera.updateMatrixWorld(); const v = dimKnob.getWorldPosition(new THREE.Vector3()).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     view(p, l) { tour = null; glideTo([p, l], 1); },
+    /* readability capture (tests/office-readability.capture.cjs): board faces, layouts and a texture -> screen projection */
+    boardProbe() { camera.updateMatrixWorld(); return FAR_BOARDS.map(b => ({ id: b.id, w: b.w, h: b.h, layout: b.layout, fade: b.fade, dist: b.dist, detail: b.tex.c, far: b.far.c, farLay: b.farLay, hits: b === project ? project.hits : null,
+      toScreen(u, v, face) { const p = b.g.localToWorld(new THREE.Vector3((u - 0.5) * b.w, (0.5 - v) * b.h, face === 'far' ? 0.072 : 0.07)).project(camera); return [(p.x * 0.5 + 0.5) * innerWidth, (-p.y * 0.5 + 0.5) * innerHeight, p.z]; } })); },
+    losProbe() { return { boards: losRects.map(r => ({ ...r })), desks: desks.map(d => ({ name: d.name, rect: d.monRect || null, opacity: d.monFade, depth: camera.position.distanceTo(d.mon.getWorldPosition(new THREE.Vector3())) })),
+      tags: [...chars.values()].map(c => ({ name: c.name, depth: camera.position.distanceTo(c.root.position) })) }; },
+    setScroll(id, off) { colScroll[id] = off; boardDirty = true; },
     forceNap(name, which) { const c = chars.get(name); if (!c) return null; const s = which ? SIT.find(p => p.kind === 'nap' && p.sofa === which) : null; c.forceNap = s || null;
       return s ? { bot: name, sofa: which, lie: { x: s.lie.x, z: s.lie.z }, seat: s.lie.seat, fit: L.napFit(c, s.lie.seat) } : null; },
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
@@ -1888,6 +1958,7 @@ T.poll = () => poll(); // test hook: poll now (demo: next example step; the exam
 T.screenPoint = (n, dx, dy) => (world ? world.screenPoint(n, dx, dy) : null);
 T.dimLevel = () => (world ? world.dimLevel() : null); T.setDim = v => world && world.setDim(v); T.dimKnobPoint = () => (world ? world.dimKnobPoint() : null); // tests / screenshots
 T.view = (p, l) => world && world.view(p, l);
+T.boards = () => (world ? world.boardProbe() : null); T.los = () => (world ? world.losProbe() : null); // readability capture
 T.pickAt = (x, y) => (world ? world.pickAt(x, y) : null);
 T.botPoint = n => (world ? world.botPoint(n) : null);
 T.spotlight = (n, x, z) => world && world.spotlight(n, x, z); // screenshots only
