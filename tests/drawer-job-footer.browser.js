@@ -1,5 +1,7 @@
 /* Desktop job drawer: the body fills leftover height, the four decision buttons stay in the
    viewport, and STATE / REASON / DUPLICATE OF have associated labels (axe label + select-name).
+   At 1440x900 on first open, Open posting, Copy packet and Draft cover letter sit fully above
+   the sticky footer, that footer is a single row, and axe reports no target-size violation.
    Run: node tests/drawer-job-footer.browser.js */
 require('./helpers/block-production-writer.cjs');
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE || 'playwright');
@@ -65,6 +67,42 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8');
     assert.deepEqual(m.labelViolations,[],width+'x'+height+' no critical label violations on the drawer fields: '+JSON.stringify(m.fields));
     assert(m.fields.every(f=>f.labeled),width+'x'+height+' STATE / REASON / DUPLICATE OF are labeled');
     assert(/auto|scroll/.test(m.overflowY),width+'x'+height+' body scrolls: '+m.overflowY);
+    if(width===1440 && height===900){
+      const first=await page.evaluate(()=>{
+        const body=document.getElementById('d-body');
+        const dec=body.querySelector(':scope > .wh-decide')||body.querySelector('.wh-decide');
+        const br=body.getBoundingClientRect(),dr=dec.getBoundingClientRect();
+        const buttons=[...dec.querySelectorAll('button')];
+        const posts=['ws-open','ws-packet','ws-cover'].map(id=>{
+          const el=document.getElementById(id),r=el.getBoundingClientRect();
+          const overlap=Math.max(0,Math.min(r.bottom,dr.bottom)-Math.max(r.top,dr.top));
+          return {id,overlap,fully:r.bottom<=dr.top+0.5&&r.top>=br.top-0.5&&r.height>0,w:r.width,h:r.height};
+        });
+        return {
+          scrollTop:body.scrollTop,
+          sameRow:buttons.length===4&&buttons.every(b=>b.offsetTop===buttons[0].offsetTop),
+          offsetTops:buttons.map(b=>b.offsetTop),
+          sizes:buttons.map(b=>{const r=b.getBoundingClientRect();return {w:r.width,h:r.height};}),
+          posts
+        };
+      });
+      assert.equal(first.scrollTop,0,'1440x900 first open is at scrollTop 0');
+      assert(first.sameRow,'1440x900 footer is a single row (shared offsetTop): '+JSON.stringify(first.offsetTops));
+      first.posts.forEach(p=>{
+        assert(p.fully,p.id+' fully visible above the footer on first open: '+JSON.stringify(p));
+        assert(p.overlap<=0.5,p.id+' is not covered by the footer rect: '+JSON.stringify(p));
+      });
+      first.sizes.forEach(sz=>assert(sz.w>=24&&sz.h>=24,'decision button is at least 24x24: '+JSON.stringify(sz)));
+      const axePath=path.join(repo,'node_modules/axe-core/axe.min.js');
+      assert(fs.existsSync(axePath),'axe-core is installed at '+axePath);
+      await page.addScriptTag({path:axePath});
+      const axe=await page.evaluate(async()=>{
+        const ctx=document.getElementById('drawer');
+        const res=await axe.run(ctx,{runOnly:{type:'rule',values:['target-size']}});
+        return res.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.map(n=>({target:n.target,msg:((n.any[0]||n.all[0]||n.none[0]||{}).message||'')}))}));
+      });
+      assert.deepEqual(axe,[],'1440x900 axe reports no target-size violation: '+JSON.stringify(axe));
+    }
     await ctx.close();
   }
   await browser.close();server.close();
