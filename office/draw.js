@@ -366,8 +366,10 @@ export function drawConstraintWall(ctx, W, H, o) {
   ctx.textAlign = 'left'; ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${40 * s}px ${SANS}`; ctx.fillText('PIPELINE CONSTRAINT', 24 * s, 56 * s);
   if (o.demo) exampleTag(ctx, 470 * s, 50 * s, 20 * s);
   const age = o.age || { text: 'no data yet', stale: true };
-  ctx.textAlign = 'right'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = age.stale ? C.stale : '#c9ccd2';
-  ctx.fillText((age.stale ? '? STALE · ' : '') + age.text, W - 24 * s, 54 * s); ctx.textAlign = 'left';
+  const asOf = sum && sum.ratesAsOf, asOfOk = Number.isFinite(Date.parse(asOf || ''));
+  const ageText = asOfOk ? '· as of ' + L.etClock(Date.parse(asOf)) + ' ET' : (age.stale ? '? STALE · ' : '') + age.text;
+  ctx.textAlign = 'right'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillStyle = asOfOk ? '#c9ccd2' : (age.stale ? C.stale : '#c9ccd2');
+  ctx.fillText(ageText, W - 24 * s, 54 * s); ctx.textAlign = 'left';
   if (!sum) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${32 * s}px ${SANS}`; ctx.fillText(fit(ctx, o.err ? 'Pipeline feed unavailable: ' + o.err : 'Waiting for the pipeline feed…', W - 48 * s), 24 * s, 160 * s); return; }
   const cw = 184 * s, qw = 84 * s, y0 = 80 * s, ch = 380 * s, x0 = 14 * s, num = n => n.toLocaleString('en-US');
   sum.stages.forEach((st, i) => {
@@ -491,7 +493,7 @@ export function drawAutomations(ctx, W, H, o) {
   if (!a || !a.rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'Waiting for AUTOMATIONS_STATUS.json', 28 * s, 130 * s); return; }
   /* one row per automation (brief_office7 item 3): name, OK / FAIL / SKIPPED, last ran (ET), live countdown; the 3-day timeline is in the click panel */
   const rows = L.automationBoardRows(a, o.now), cx = [28 * s, W * 0.47, W * 0.61, W * 0.79], top = 104 * s, foot = 34 * s;
-  const rowH = Math.max(34 * s, Math.min(64 * s, (H - top - foot) / Math.max(1, rows.length))), shown = Math.min(rows.length, Math.floor((H - top - foot) / rowH));
+  const avail = H - top - foot, rowH = Math.min(64 * s, avail / Math.max(1, rows.length)), shown = rows.length;
   const fs = Math.min(26 * s, rowH * 0.48);
   ctx.fillStyle = '#7d838b'; ctx.font = `700 ${18 * s}px ${SANS}`;
   ['Automation', 'Result', 'Last ran', 'Next run'].forEach((t, k) => ctx.fillText(t, cx[k], 92 * s));

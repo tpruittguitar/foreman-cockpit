@@ -49,3 +49,22 @@ test('the wall board draws one row per automation with headers, and the board re
   const office = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
   assert.match(office, /else if \(clock - autosAt >= 1\) drawAutos\(\);/);
 });
+
+test('all 15 source rows paint, including FORGE_CLAUDE_SHARED_HELPER, with no +N more', () => {
+  const autos = { generated_at: iso(NOW - 2 * MIN), automations: Array.from({ length: 15 }, (_, i) => ({
+    ai: i === 14 ? 'Claude' : 'Bot' + (i + 1),
+    name: i === 14 ? 'FORGE_CLAUDE_SHARED_HELPER' : 'job' + (i + 1),
+    result: 'success', last_run_at: iso(NOW - MIN), next_run_at: iso(NOW + 10 * MIN)
+  })) };
+  const parsed = L.parseAutomations(autos, NOW);
+  const rows = L.automationBoardRows(parsed, NOW);
+  assert.equal(rows.length, 15);
+  const c = fakeCtx();
+  D.drawAutomations(c, 1024, 626, { auto: parsed, err: '', now: NOW, demo: false });
+  const t = c.texts.map(x => x.t);
+  for (const r of rows) assert.ok(t.includes(r.label), 'painted ' + r.label);
+  assert.ok(t.some(x => String(x).includes('FORGE_CLAUDE_SHARED_HELPER')));
+  assert.ok(!t.some(x => /\+\d+ more/.test(String(x))), 'no +N more: ' + JSON.stringify(t.filter(x => /more/.test(String(x)))));
+  const ys = c.texts.filter(x => rows.some(r => r.label === x.t)).map(x => x.y).sort((a, b) => a - b);
+  for (let i = 1; i < ys.length; i++) assert.ok(ys[i] > ys[i - 1], 'row labels do not overlap: ' + JSON.stringify(ys));
+});
