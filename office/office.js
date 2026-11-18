@@ -675,8 +675,8 @@ function buildWorld() {
   const BW = 9.6, BH = 3.9;
   const project = makeBoard('project', BW, BH, -2, 2.3, -RD / 2 + 0.05, 0, LOW ? 1280 : 2048, LOW ? 520 : 832);
   const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.2, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
-  const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 1.4, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
-  const autos = makeBoard('autos', 3.6, 2.2, -RW / 2 + 0.05, 2.1, 6.2, Math.PI / 2, LOW ? 640 : 1024, LOW ? 391 : 626);
+  const needs = makeBoard('needs', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683);
+  const autos = makeBoard('autos', 3.6, 2.2, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 391 : 626);
   const writer = makeBoard('writer', 2.6, 1.7, 0 + 4.2, 2.3, RD / 2 - 0.05, Math.PI, LOW ? 512 : 768, LOW ? 335 : 502);
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
   const boards = { project, usage, needs, autos, writer, constraint };
@@ -1401,7 +1401,7 @@ function buildWorld() {
   let targets = [], rows = [];
   function buildTargets() {
     targets = [
-      { kind: 'board', id: 'needs', x: -12, view: [[-8.4, 1.9, 1.4], [-12, 1.9, 1.4]] },
+      { kind: 'board', id: 'needs', x: -12, view: [[-8.4, 1.9, 2.3], [-12, 1.9, 2.3]] },
       { kind: 'board', id: 'project', x: -2, view: [[-2, 2.2, -4.6], [-2, 2.3, -10]] },
       { kind: 'board', id: 'usage', x: 5.7, view: [[5.7, 2.1, -6.4], [5.7, 2.2, -10]] }
     ].concat(desks.map(d => ({ kind: 'desk', id: d.name, bot: d.name, x: d.x, z: d.z, view: [[d.x + 0.3, 1.85, d.z + 2.0], [d.x, 1.05, d.z - 0.25]] })));
