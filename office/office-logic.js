@@ -985,6 +985,9 @@
   }
   /* Walking cap: never more than a third of the bots walking at once. */
   function walkCap(total) { return Math.max(1, Math.floor(total / 3)); }
+  /* May a bot start a new walk this frame? Short hops always; urgent goals (needs Tim, the QA forceNap hook) skip the cap,
+     because with idle trips the cap stays full and a forced nap waited 90 s+ at the desk (QA on #392, Nov 17). */
+  function mayStartWalk(far, urgent, walkingNow, total) { return !far || !!urgent || walkingNow < walkCap(total); }
   function admitWalkers(requests, walkingNow, total) {
     const room = Math.max(0, walkCap(total) - walkingNow);
     return new Set(requests.slice().sort((a, b) => a.since - b.since || a.name.localeCompare(b.name)).slice(0, room).map(r => r.name));
@@ -1913,7 +1916,7 @@
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
-    RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
+    RECENT_REPLAY_MIN, mayStartWalk, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, writerRows,
