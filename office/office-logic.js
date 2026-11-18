@@ -1521,6 +1521,23 @@
     const p = buildParts(info);
     return p ? 'PR ' + p.pr + ' · ' + p.sha + ' · ' + p.when : 'build unknown';
   }
+  function buildPrPopup(info) {
+    const i = info && typeof info === 'object' ? info : null;
+    const title = str(i && i.prTitle).trim();
+    const summary = str(i && i.prSummary).trim();
+    const when = str(i && i.mergedAt).trim() ? new Date(i.mergedAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET' : '';
+    const pr = Number(i && i.pr) > 0 ? Math.floor(Number(i.pr)) : 0;
+    const url = pr ? 'https://github.com/tpruittguitar/foreman-cockpit/pull/' + pr : '';
+    const desc = title || summary || when || url ? '' : 'No description for this build';
+    return { title, summary, when, url, desc };
+  }
+  function wireBuildBadge(el, open) {
+    if (!el) return;
+    el.onclick = function(e) {
+      e.stopPropagation();
+      open();
+    };
+  }
   /* Wall plate under the FORGE sign: same data as the corner badge, as big lines [title, release time, commit, version details]. */
   function buildPlate(info) {
     const p = buildParts(info);
@@ -1882,7 +1899,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
+    needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
