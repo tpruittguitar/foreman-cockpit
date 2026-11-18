@@ -618,7 +618,7 @@ export function animate(c, pose, t, dt, opts) {
       armR.x = -1.3; armR.z = c.rest.armR.z * 0.2; armL.x = -1.45; c.cue.position.y = -stroke * 0.18; /* cue slides along the forearm */ lean = 0.18 + 0.1 * stroke; bob = 0; break;
     }
     case 'nap': {
-      lieZ = Math.PI / 2; lieY = window.OfficeLogic.napLieY(c.halfW || c.radius); legX = -0.2;
+      lieZ = Math.PI / 2; lieY = window.OfficeLogic.napFit(c, opts.nap).lieY; legX = -0.2;
       const br = still ? 1 : 1 + 0.035 * Math.sin(t * 1.4 + ph); c.body.scale.set(br, br, br);
       floatZzz(c.zzz, t, 0.15, c.top * 0.6, 0);
       break;

@@ -756,13 +756,13 @@ function buildWorld() {
   const seatBlock = (g, len, depth) => { add(box(depth, 0.38, len), MAT.fabric, 0, 0.19, 0, g); add(box(0.22, 0.72, len), MAT.fabric, depth / 2 - 0.11, 0.5, 0, g);
     for (const s of [-1, 1]) add(box(depth, 0.5, 0.18), MAT.fabric, 0, 0.3, s * (len / 2 - 0.09), g);
     add(box(depth - 0.24, 0.12, len - 0.4), MAT.cushion, -0.1, 0.44, 0, g); add(box(0.02, 0.02, len), MAT.cyan, -depth / 2, 0.06, 0, g); };
-  function sofa(cx, cz, rotY, len, kind, napOK) {
-    const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = rotY; scene.add(g); seatBlock(g, len, 0.9);
+  function sofa(cx, cz, rotY, len, kind, napOK, yScale = 1) {
+    const g = new THREE.Group(); g.position.set(cx, 0, cz); g.rotation.y = rotY; g.scale.y = yScale; scene.add(g); seatBlock(g, len, 0.9);
     // seats along the sofa; face = the sofa's front (local -x)
     const face = rotY - Math.PI / 2, n = Math.max(1, Math.floor(len / 1.0));
     for (let k = 0; k < n; k++) { const off = (k - (n - 1) / 2) * (len / n), lx = -0.1;
       SIT.push({ id: kind + cx + ':' + k, kind: 'sit', x: cx + Math.cos(rotY) * lx + Math.sin(rotY) * off, z: cz - Math.sin(rotY) * lx + Math.cos(rotY) * off, face }); }
-    if (napOK) SIT.push({ id: 'nap' + cx, kind: 'nap', x: cx - Math.cos(rotY) * (0.5 + CL), z: cz + Math.sin(rotY) * (0.5 + CL), face, lie: { x: cx, z: cz } });
+    if (napOK) { const seat = L.napSeat(len, yScale); SIT.push({ id: 'nap' + cx, kind: 'nap', sofa: kind, x: cx - Math.cos(rotY) * (0.5 + CL), z: cz + Math.sin(rotY) * (0.5 + CL), face, lie: { x: cx - Math.cos(rotY) * seat.front, z: cz + Math.sin(rotY) * seat.front, seat } }); } // lie on the seat area in front of the backrest
     const hx = Math.abs(Math.cos(rotY)) * 0.45 + Math.abs(Math.sin(rotY)) * len / 2, hz = Math.abs(Math.sin(rotY)) * 0.45 + Math.abs(Math.cos(rotY)) * len / 2;
     block(cx, cz, hx, hz);
     return g;
@@ -771,7 +771,7 @@ function buildWorld() {
   sofa(9.5, 9.35, -Math.PI / 2, 2.4, 'secB', false);      // sectional return, along the front wall (faces -z)
   sofa(7.2, 7.2, Math.PI, 2.2, 'couch', true);            // couch facing the coffee table (+x)
   { // futon: low frame, slatted base, single cushion (faces +z)
-    const g = sofa(9.6, 4.6, Math.PI / 2, 2.0, 'futon', true); g.scale.y = 0.85; }
+    sofa(9.6, 4.6, Math.PI / 2, 2.0, 'futon', true, 0.85); }
   const ct = new THREE.Group(); ct.position.set(9.4, 0, 7.3); scene.add(ct);
   add(box(1.3, 0.04, 0.75), MAT.glass, 0, 0.42, 0, ct); add(box(1.2, 0.03, 0.65), MAT.dark, 0, 0.12, 0, ct);
   for (const [lx, lz] of [[-0.6, -0.32], [0.6, -0.32], [-0.6, 0.32], [0.6, 0.32]]) add(box(0.03, 0.42, 0.03), MAT.metal, lx, 0.21, lz, ct);
@@ -1085,6 +1085,7 @@ function buildWorld() {
   function decide(c, b, convo) {
     const st0 = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name), needsTim = S.needsSet.has(c.name);
     if (c.spot) return { key: 'spot', spot: c.spot, pose: 'stand' }; // test/screenshot hook only
+    if (c.forceNap) return { key: 'force-nap:' + c.forceNap.id, spot: c.forceNap, pose: 'nap', lie: c.forceNap.lie }; // QA hook: T.forceNap
     if (needsTim) { book.release(c.name); return { key: 'stand', spot: d.stand, pose: 'wave' }; } // real needs_tim item only: stays at its own desk, one arm waving
     if (c.pickups.length) { // board card life: pin a new card, or take one off the board and carry it to the desk
       const pk = c.pickups[0], id = pk.itemId, key = 'pick:' + id;
@@ -1193,8 +1194,9 @@ function buildWorld() {
     c.updateFace(dt, clock, reduced);
     if (needs) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
     const perch = ['sit', 'type', 'game', 'deskSleep'].includes(pose) && !!dk && Math.hypot(c.pos.x - dk.seat.x, c.pos.y - dk.seat.z) < 0.1;
-    animate(c, pose, clock, dt, { perch, chair: goal.key === 'lead' && pose === 'talk', reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null });
-    c.rig.position.x = pose === 'nap' ? L.NAP_RIG_X : 0;
+    animate(c, pose, clock, dt, { perch, chair: goal.key === 'lead' && pose === 'talk', reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null, nap: pose === 'nap' && goal.lie ? goal.lie.seat : null });
+    const nap = pose === 'nap' ? L.napFit(c, goal.lie && goal.lie.seat) : null;
+    c.rig.position.x = nap ? nap.rigX : 0; c.rig.scale.setScalar(nap ? nap.scale : 1);
   }
   /* separation: no two upright bots closer than MIN_SEP (seated / lying bots are fixed points) */
   function separateChars() {
@@ -1733,6 +1735,8 @@ function buildWorld() {
     dimLevel: () => ({ target: dimTarget, shown: dimCur }), setDim: v => setDim(v, true),
     dimKnobPoint() { camera.updateMatrixWorld(); const v = dimKnob.getWorldPosition(new THREE.Vector3()).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     view(p, l) { tour = null; glideTo([p, l], 1); },
+    forceNap(name, which) { const c = chars.get(name); if (!c) return null; const s = which ? SIT.find(p => p.kind === 'nap' && p.sofa === which) : null; c.forceNap = s || null;
+      return s ? { bot: name, sofa: which, lie: { x: s.lie.x, z: s.lie.z }, seat: s.lie.seat, fit: L.napFit(c, s.lie.seat) } : null; },
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
     refresh() { syncDesks(); ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
@@ -1770,4 +1774,5 @@ T.view = (p, l) => world && world.view(p, l);
 T.pickAt = (x, y) => (world ? world.pickAt(x, y) : null);
 T.botPoint = n => (world ? world.botPoint(n) : null);
 T.spotlight = (n, x, z) => world && world.spotlight(n, x, z); // screenshots only
+T.forceNap = (n, w) => (world ? world.forceNap(n, w) : null); // QA: T.forceNap('President', 'couch'|'futon'|'secA'); T.forceNap('President', null) releases
 T.openBot = n => openBot(n); T.openBoard = () => openBoard(); T.openAutomations = () => openAutomations(); // screenshots / tests
