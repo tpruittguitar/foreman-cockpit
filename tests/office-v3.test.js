@@ -336,3 +336,10 @@ test('GROK stale windows follow Usage reads: 90 min from 2 PM-2 AM ET, 3.5 h fro
   assert.equal(L.readingStale(claude, NOW), false);
   assert.equal(L.readingStale(claude, Date.parse('2026-11-16T13:40:00Z')), true, 'CLAUDE still uses nextCheck + grace');
 });
+test('status source without apiUrl reads the raw URL directly with a fresh cache-buster', async () => {
+  const calls = [];
+  const src = L.createJsonSource({ rawUrl: 'https://raw.githubusercontent.com/x', fetch: async u => { calls.push(u); return res(200, '{"v":2}'); } });
+  assert.deepEqual(await src.get(NOW), { ok: true, data: { v: 2 }, source: 'raw' });
+  await src.get(NOW + 1000);
+  assert.deepEqual(calls, ['https://raw.githubusercontent.com/x?t=' + NOW, 'https://raw.githubusercontent.com/x?t=' + (NOW + 1000)]);
+});

@@ -768,7 +768,7 @@
      raw.githubusercontent.com caches for minutes and ignores ?t=, so read through the contents API (Accept: raw) with
      If-None-Match; a 304 keeps the current data. Unauthenticated API calls are 60/hour per IP and shared with the PR
      list, so one RateGate is shared: when X-RateLimit-Remaining <= RATE_LOW or on 403/429 we fall back to raw until
-     X-RateLimit-Reset. */
+     X-RateLimit-Reset. Without opt.apiUrl the source reads the raw URL only, with a per-request ?t= cache-buster. */
   const RATE_LOW = 6, PR_CACHE_MS = 5 * MIN;
   function createGate() {
     return {
@@ -787,7 +787,7 @@
     const st = { etag: '', data: null, source: '', at: 0 };
     async function get(now) {
       const f = opt.fetch, gate = opt.gate;
-      if (gate.open(now)) {
+      if (opt.apiUrl && gate && gate.open(now)) {
         try {
           const headers = { Accept: 'application/vnd.github.raw' }; if (st.etag) headers['If-None-Match'] = st.etag;
           const r = await f(opt.apiUrl, { cache: 'no-store', headers });
@@ -798,7 +798,7 @@
         } catch (e) { if (e instanceof SyntaxError) return { ok: false, error: 'not valid JSON' }; }
       }
       try {
-        const r = await f(opt.rawUrl + '?t=' + Math.floor(now / 60000), { cache: 'no-cache' });
+        const r = await f(opt.rawUrl + '?t=' + (opt.apiUrl ? Math.floor(now / 60000) : now), { cache: 'no-cache' });
         if (!r.ok) return { ok: false, status: r.status, error: 'HTTP ' + r.status };
         const d = JSON.parse(await r.text()); st.data = d; st.source = 'raw'; st.at = now; return { ok: true, data: d, source: 'raw' };
       } catch (e) { return { ok: false, error: e instanceof SyntaxError ? 'not valid JSON' : String(e && e.message || e) }; }
