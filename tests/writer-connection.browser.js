@@ -48,14 +48,18 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   ({ctx,page,errors,posts}=await open({viewport:{width:1440,height:900}}));await page.waitForFunction(()=>{const b=document.getElementById('writer-badge');return /off/.test(b.textContent)&&!!b.querySelector('svg')},null,{timeout:15000});
   assert.ok(!(await page.$('#hstat .hs-nowriter')),'one Writer indicator: no separate status cell');
   await page.waitForFunction(()=>/off/.test(document.getElementById('writer-badge').textContent),null,{timeout:10000});await page.waitForTimeout(800);   // let the badge colour transition finish
-  const wb=await page.evaluate(()=>{const b=document.getElementById('writer-badge'),r=document.getElementById('refresh').getBoundingClientRect();return {text:b.textContent.trim(),cls:b.className,badge:getComputedStyle(b.querySelector('b')).color,glyph:!!b.querySelector('b svg'),refreshRight:Math.round(r.right),refreshW:Math.round(r.width),vw:innerWidth}});
+  const wb=await page.evaluate(()=>{const b=document.getElementById('writer-badge'),r=document.querySelector('header [data-refresh-now]').getBoundingClientRect();return {text:b.textContent.trim(),cls:b.className,badge:getComputedStyle(b.querySelector('b')).color,glyph:!!b.querySelector('b svg'),refreshRight:Math.round(r.right),refreshW:Math.round(r.width),vw:innerWidth}});
   assert.match(wb.text,/Writer\s*off/i,'Writer box says Writer off, not idle ('+wb.text+')');assert.match(wb.cls,/\boff\b/);assert.ok(wb.glyph,'with a warning glyph');
   assert.strictEqual(wb.badge,'rgb(232, 134, 42)','Writer off is orange, not red');
-  assert.ok(wb.refreshW>0&&wb.refreshRight<=wb.vw,'Refresh button fully on screen at 1440px with no Writer ('+wb.refreshRight+' of '+wb.vw+')');
+  assert.ok(wb.refreshW>0&&wb.refreshRight<=wb.vw,'Refresh control (the countdown chip, the one desktop refresh control since #445) fully on screen at 1440px with no Writer ('+wb.refreshRight+' of '+wb.vw+')');
   if(shots)await page.screenshot({path:path.join(shots,'stage3-no-writer-desktop-1440x900.png'),clip:{x:0,y:0,width:1440,height:120}});
   await page.goto(base+'/pipeline.html?open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.click('#grid tbody tr[data-id]');
   await page.waitForSelector('#edit-state',{state:'attached'});await page.evaluate(()=>{const d=document.getElementById('decision-details');if(d)d.open=true});
-  await page.selectOption('#edit-state','DECLINED_BY_TIM');await page.click('#save-decision');await page.waitForTimeout(1500);
+  await page.selectOption('#edit-state','DECLINED_BY_TIM');
+  // Since #443 the Writer-off gate disables Save while the Writer is off; check that, then force a click anyway so gsPost's last check is still proven.
+  await page.waitForFunction(()=>{const b=document.getElementById('save-decision');return b&&b.disabled&&b.getAttribute('aria-disabled')==='true'},null,{timeout:10000});
+  assert.match(await page.getAttribute('#save-decision','title'),/Writer off/,'Save says why it is disabled');
+  await page.evaluate(()=>{const b=document.getElementById('save-decision');b.disabled=false;b.click()});await page.waitForTimeout(1500);
   assert.deepStrictEqual(posts,[],'desktop decision form sends nothing without a deliberate connection');
   assert.deepStrictEqual(errors,[]);await ctx.close();
 
