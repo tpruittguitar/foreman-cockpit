@@ -45,7 +45,9 @@ function labelsOk(s,what){
     const away=async()=>{await page.mouse.move(vp.width*0.5,vp.height*0.5);await page.waitForTimeout(450)};
     await away();
     const collapsed=await snap(page);labelsOk(collapsed,what+' collapsed');
-    ['STATUS','REFRESH','PIPELINE'].forEach(t=>assert(collapsed.labels.some(l=>l.t.toUpperCase()===t),what+' collapsed: the '+t+' label shows under its icon'));
+    ['STATUS','PIPELINE'].forEach(t=>assert(collapsed.labels.some(l=>l.t.toUpperCase()===t),what+' collapsed: the '+t+' label shows under its icon'));
+    assert(!collapsed.labels.some(l=>l.t.toUpperCase()==='REFRESH'),what+' collapsed: #rail-refresh is hidden on desktop');
+    const rr=await page.evaluate(()=>{const e=document.getElementById('rail-refresh');if(!e)return {exists:false};const s=getComputedStyle(e),b=e.getBoundingClientRect();return {exists:true,display:s.display,visibility:s.visibility,w:b.width,h:b.height}});assert.equal(rr.display,'none',what+': #rail-refresh computed display is none (got '+JSON.stringify(rr)+')');
 
     // hover the second group's icon (the measured case: the icon must stay under the cursor)
     const btn=page.locator('#rail .rail-group > button').nth(1),ic=collapsed.icons[1],cx=ic.x+ic.w/2,cy=ic.y+ic.h/2;
