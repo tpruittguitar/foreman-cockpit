@@ -495,17 +495,16 @@ export function drawAutomations(ctx, W, H, o) {
   ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${16 * s}px ${SANS}`; ctx.fillText('runs / hour', 24 * s, cy + 24 * s);
   ctx.fillStyle = '#37e0ff'; ctx.fillRect(X(o.now), 70 * s, 3 * s, H - 80 * s); // now line
 }
-export const WRITER_METRICS = [['last_ping', 'Last ping'], ['last_write_age_min', 'Last good write'], ['writes_per_hour', 'Writes / hour'], ['error_rate', 'Errors'], ['timeout_rate', 'Timeouts'], ['lock_waits', 'Lock waits'], ['queue_depth', 'Queue depth']];
 export function drawWriterHealth(ctx, W, H, o) {
-  const s = W / 768, wh = o.auto && o.auto.writer;
+  const s = W / 768;
   ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${38 * s}px ${SANS}`; ctx.fillText('WRITER HEALTH', 24 * s, 52 * s);
   if (o.demo) exampleTag(ctx, 330 * s, 46 * s, 18 * s);
-  WRITER_METRICS.forEach(([k, label], i) => { const m = wh && wh[k], y = (96 + i * 56) * s, st = m && m.status;
+  L.writerRows(o.auto, o.now).forEach((r, i) => { const y = (110 + i * 74) * s, st = r.status;
     ctx.fillStyle = st === 'green' ? '#3ddc84' : st === 'amber' ? '#ffd23f' : st === 'red' ? '#ff4b4b' : '#555a62'; ctx.beginPath(); ctx.arc(36 * s, y - 9 * s, 11 * s, 0, 7); ctx.fill();
-    ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${24 * s}px ${SANS}`; ctx.fillText(label, 60 * s, y);
-    ctx.textAlign = 'right'; ctx.fillStyle = m && m.value != null && m.source ? '#c9ccd2' : '#7d838b'; ctx.font = `600 ${22 * s}px ${SANS}`;
-    ctx.fillText(fit(ctx, m && m.value != null && m.source ? String(typeof m.value === 'object' ? JSON.stringify(m.value) : m.value) : 'no data', 330 * s), W - 24 * s, y); ctx.textAlign = 'left'; });
+    ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${26 * s}px ${SANS}`; ctx.fillText(r.label, 60 * s, y);
+    ctx.textAlign = 'right'; ctx.fillStyle = r.source ? '#c9ccd2' : '#7d838b'; ctx.font = `600 ${24 * s}px ${SANS}`;
+    ctx.fillText(fit(ctx, r.text, 360 * s), W - 24 * s, y); ctx.textAlign = 'left'; });
 }
 
 /* Window view (Tim item 5): a simple small town at the edge of the hills. `sky` is L.skyState(now) (America/New_York time of
