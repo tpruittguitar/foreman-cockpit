@@ -37,7 +37,7 @@ export function drawDesk(ctx, W, H, o) {
   ['#ff5f57', '#febc2e', '#28c840'].forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc((18 + i * 18) * s, 17 * s, 5 * s, 0, 7); ctx.fill(); });
   ctx.fillStyle = '#9aa0a8'; ctx.font = `500 ${15 * s}px ${MONO}`;
   const mode = o.mode || 'terminal';
-  if (mode === 'game' && o.lod !== 'far') return drawGame(ctx, W, H, s, o.now, b.bot);
+  if (mode === 'game') return drawGame(ctx, W, H, s, o.now, b.bot);
   if (mode === 'mirror' && o.image) { drawImageFit(ctx, o.image, 0, 0, W, H); return stamp(ctx, W, H, s, o.screenWhy); }
   if (mode === 'president' && o.lod !== 'far') return presidentSplit(ctx, W, H, s, o);
   if (mode === 'routine' && o.lod !== 'far') { ctx.fillStyle = C.working; ctx.font = `800 ${46 * s}px ${SANS}`; ctx.fillText(fit(ctx, '▶ ' + b.routine.name, W - 44 * s), 22 * s, H / 2 - 10 * s);

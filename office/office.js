@@ -926,7 +926,7 @@ function buildWorld() {
     for (const b of bots()) {
       if (chars.has(b.bot) || !deskOf(b.bot)) continue;
       const c = makeBot(b.bot, !LOW, b.bot_id, b), d = deskOf(b.bot);
-      c.phase = (L.hash(b.bot) % 600) / 100; c.pickups = []; c.jobs = []; c.job = null; c.idle = L.createIdleState(); c.rng = L.makeRng(SEED ^ L.hash(b.bot)); c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
+      c.phase = (L.hash(b.bot) % 600) / 100; c.pickups = []; c.jobs = []; c.job = null; c.idle = L.createIdleState(); c.idle.sinceGame = L.GAME_EVERY - 1 - chars.size % L.GAME_EVERY /* stagger the 1-in-5 game slot: first bot games at once, the next after 1 activity, ... */; c.rng = L.makeRng(SEED ^ L.hash(b.bot)); c.path = []; c.goalKey = ''; c.pos = new THREE.Vector2(d.seat.x, d.seat.z);
       c.root.position.set(d.seat.x, 0, d.seat.z); c.root.rotation.y = Math.PI; c.pose = 'sit'; c.wantSince = 0; c.carry = false;
       scene.add(c.root); chars.set(b.bot, c); c.botId = b.bot_id;
       c.tag = document.createElement('div'); c.tag.className = 'tag'; $('labels').appendChild(c.tag);
@@ -1266,7 +1266,7 @@ function buildWorld() {
     const sc = mirrorFor(d, b, now), image = sc.show === 'image' && d.img;
     const mine = L.sortItems(items().filter(i => i.owner === d.name && L.columnFor(i) !== 'done'));
     const oc = chars.get(d.name), act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (plan.plans[d.name] || {}).act || '', mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
-    const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + Math.floor(now / (mode === 'game' && lod !== 'far' ? 120 : 30000));
+    const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + Math.floor(now / (mode === 'game' ? (lod === 'far' ? 400 : 120) : 30000));
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;
     drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, lod, now, items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', mode, image: image || null, screenWhy: sc.why,
