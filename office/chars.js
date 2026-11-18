@@ -569,6 +569,7 @@ export function animate(c, pose, t, dt, opts) {
   let lean = 0, turnY = 0;
   // eager to work: an occasional quick glance (towards the desk / monitor) while standing about
   const glance = still ? 0 : Math.max(0, Math.sin(t * 0.7 + ph * 3) - 0.85) / 0.15;
+  if (c.body) c.body.position.z = 0; // President typing leans in (z 0.23); every other pose resets
   switch (pose) {
     case 'walk': {
       const s = Math.sin(t * 9 + ph); legX = s * 0.6; armR.x = -s * 0.5; armL.x = s * 0.5; bob = Math.abs(Math.cos(t * 9 + ph)) * 0.03; if (opts.box) { armR.x = armL.x = -1.25; armR.z = c.rest.armR.z * 0.3; armL.z = c.rest.armL.z * 0.3; } break;
@@ -595,7 +596,7 @@ export function animate(c, pose, t, dt, opts) {
       else { armR.x = -1.0; armL.x = -1.0; lean = pose === 'type' ? 0.12 : 0.06; }
       if (pose === 'type' && c.kind === 'president') { // humanoid typing: arms angled up so the hands rest above the desk top (Tim 11:00 PM); the jelly bots keep their arms
         const tap = still ? 0 : 0.05 * Math.sin(t * 15 + ph) * (Math.sin(t * 1.3 + ph) > -0.45 ? 1 : 0);
-        armR.x = -2.05 + tap; armL.x = -2.05 - tap; armR.z = c.rest.armR.z * 0.5; armL.z = c.rest.armL.z * 0.5; lean = Math.min(lean, 0.06);
+        c.body.position.z = 0.23; armR.x = -1.9 + tap; armL.x = -1.9 - tap; armR.z = c.rest.armR.z; armL.z = c.rest.armL.z; lean = Math.min(lean, 0.06);
       }
       break;
     }
