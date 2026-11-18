@@ -813,17 +813,19 @@
   }
 
   /* ---------- Floor: desk layout for N bots (item 13), standing slots and separation (item 22) ---------- */
-  /* Tim (Nov 16, 9:07 AM): President's desk and the whole back row stay where the earlier (v2) layout had them.
-     The v2 grid is 4 columns at DESK_X by 3 rows at DESK_Z (back row first). Pinned names keep their v2 spot; everyone
-     else fills the free v2 spots in roster order, then overflow spots (right side first, then a front row). */
-  const DESK_X = [-7, -3.8, -0.6, 2.6], DESK_Z = [-4, -0.6, 2.8];
-  const DESK_PINS = { Claude: [0, 0], Cursor: [1, 0], Comp: [2, 0], GUI: [3, 0], President: [1, 1] }; // [col, row] in the v2 grid
-  const DESK_OVERFLOW = [[5.8, -0.6], [5.8, 2.8], [5.8, 6.2], [2.6, 6.2], [-0.6, 6.2], [-3.8, 6.2]];
+  /* Tim (Nov 16, 9:07 AM): President's desk and the whole back row keep their grid cells from the earlier (v2) layout.
+     Tim (Nov 17): every desk on the carpet (x -10.7..6.3, z -6.1..4.5) in an even 5 x 3 grid, centred on the carpet: 3.2 m column pitch
+     (1.6 m aisle between desks), 3.4 m row pitch (1.85 m aisle behind each chair). Pinned names keep their [col, row]; everyone else fills
+     the free spots in roster order (first 4 columns, then the 5th column front-to-back, matching the old overflow order; the back-row
+     5th spot is used last so the back row keeps only its four bots); >15 bots overflow to a front row. */
+  const DESK_X = [-8.6, -5.4, -2.2, 1, 4.2], DESK_Z = [-4, -0.6, 2.8];
+  const DESK_PINS = { Claude: [0, 0], Cursor: [1, 0], Comp: [2, 0], GUI: [3, 0], President: [1, 1] }; // [col, row] in the grid
+  const DESK_OVERFLOW = [[1, 6.2], [-2.2, 6.2], [4.2, 6.2]];
   function deskLayout(n, names) {
     const grid = [];
     DESK_Z.forEach((z, r) => DESK_X.forEach((x, c) => grid.push({ x, z, row: r, col: c })));
-    const spots = grid.concat(DESK_OVERFLOW.map(([x, z], k) => ({ x, z, row: DESK_Z.length + Math.floor(k / 3), col: DESK_X.length + k })));
-    for (let k = 0; spots.length < n; k++) spots.push({ x: DESK_X[k % 4], z: +(DESK_Z[2] + 3.4 * (2 + Math.floor(k / 4))).toFixed(2), row: 5 + Math.floor(k / 4), col: k % 4 });
+    const C = DESK_X.length, R = (r) => grid[r * C + C - 1], spots = grid.filter(p => p.col < C - 1).concat([R(1), R(2), R(0)], DESK_OVERFLOW.map(([x, z], k) => ({ x, z, row: DESK_Z.length, col: k })));
+    for (let k = 0; spots.length < n; k++) spots.push({ x: DESK_X[k % C], z: +(DESK_Z[2] + 3.4 * (2 + Math.floor(k / C))).toFixed(2), row: 4 + Math.floor(k / C), col: k % C });
     const key = (p) => p.x + ',' + p.z, used = new Set(), out = new Array(n);
     const nm = names || [];
     for (let i = 0; i < n; i++) {

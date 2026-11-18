@@ -146,9 +146,9 @@ test("Tim's desk rule: President and the whole back row sit where the v2 layout 
   const roster = ['President', 'Root', 'Cursor', 'GUI', 'QA', 'Sniffer', 'Comp', 'Archive', 'Claude', 'ChatGPT', 'Usage', 'HR', 'Gauge', 'Edgar'];
   for (const names of [roster, roster.slice().reverse(), roster.slice(0, 9)]) {
     const d = L.deskLayout(names.length, names), at = n => { const p = d[names.indexOf(n)]; return [p.x, p.z]; };
-    assert.deepEqual(at('Claude'), [-7, -4]); assert.deepEqual(at('Cursor'), [-3.8, -4]);
-    assert.deepEqual(at('Comp'), [-0.6, -4]); assert.deepEqual(at('GUI'), [2.6, -4]);
-    assert.deepEqual(at('President'), [-3.8, -0.6]);
+    assert.deepEqual(at('Claude'), [-8.6, -4]); assert.deepEqual(at('Cursor'), [-5.4, -4]);
+    assert.deepEqual(at('Comp'), [-2.2, -4]); assert.deepEqual(at('GUI'), [1, -4]);
+    assert.deepEqual(at('President'), [-5.4, -0.6]);
     assert.equal(d.filter(p => p.z === -4).length, 4, 'back row holds only the four v2 back-row bots');
     for (let i = 0; i < d.length; i++) for (let j = i + 1; j < d.length; j++) assert.ok(Math.abs(d[i].x - d[j].x) >= 3 || Math.abs(d[i].z - d[j].z) >= 3);
   }
