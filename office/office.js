@@ -425,6 +425,7 @@ function openItem(id) {
   const it = items().find(i => i.id === id); if (!it) return;
   const w = L.statusWord(it), pb = L.priorityBadge(it.priority), col = L.COLUMNS.find(c => c.id === L.columnFor(it)).label;
   const ownerId = it.owner ? idFor(it.owner, (botByName(it.owner) || {}).bot_id) : '';
+  const to = L.cardRecipient(it, ownerId, idFor('President', (botByName('President') || {}).bot_id)); // Tim or a non-bot owner: feedback goes to President
   showPanel(`<h2 id="panel-title">${esc(L.cardTitle(it))}</h2>
     <dl><dt>Priority</dt><dd><span class="pbadge ${pb.loud ? 'loud' : ''}">${esc(it.priority)}</span></dd>
     <dt>Status</dt><dd><span class="st ${w.tone}">${w.glyph} ${w.word}</span> (${esc(it.status)}${it.prState ? ', PR ' + esc(it.prState) : ''}) · column ${esc(col)}</dd>
@@ -432,15 +433,15 @@ function openItem(id) {
     ${it.question ? `<dt>Question</dt><dd>${esc(it.question)}</dd>` : ''}${it.note ? `<dt>Note</dt><dd>${esc(it.note)}</dd>` : ''}
     <dt>Owner</dt><dd>${it.owner ? `<button class="linkbtn" data-bot="${esc(it.owner)}">${esc(it.owner)}</button>${it.ownerKnown ? '' : ' (not a known bot)'}` : '—'}${it.owner && botByName(it.owner) ? ` · <a href="#" data-go="${esc(it.owner)}">desk</a>` : ''}</dd>
     <dt>Project</dt><dd>${esc(it.project)}</dd><dt>Updated</dt><dd>${it.updated_at ? L.etClock(Date.parse(it.updated_at)) + ' ET · ' + L.relTime(it.updated_at, Date.now()) : '—'}</dd><dt>ID</dt><dd>${esc(it.id)}</dd></dl>
-    ${L.cardBoxHTML(it, esc, ownerId)}
+    ${L.cardBoxHTML(it, esc, to.id, to)}
     ${L.safeLink(it.link) ? linkHTML(it.link, 'Open link') + `<div class="fallback">${esc(it.link)}</div>` : '<p class="fallback">No link on this card.</p>'}
     ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
   $('card-send').onclick = async () => {
     const ta = $('card-text'), out = $('card-sent'); out.className = 'fallback'; out.textContent = 'Sending…';
-    const r = await L.sendCardDirection(it, ta.value, ownerId, postRelay);
+    const r = await L.sendCardDirection(it, ta.value, to.id, postRelay);
     if (r.state === 'empty') { out.textContent = ''; return ta.focus(); }
     out.className = r.state === 'sent' ? 'st working' : 'src-down';
-    out.textContent = r.state === 'sent' ? '✓ Sent to ' + it.owner + "'s mailbox" : '⚠ Not sent: ' + r.error;
+    out.textContent = r.state === 'sent' ? '✓ Sent to ' + to.name + "'s mailbox" : '⚠ Not sent: ' + r.error;
     if (r.state === 'sent') ta.value = '';
   };
 }

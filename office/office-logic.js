@@ -105,10 +105,16 @@
   function cardMessage(item, text) {
     return '[card ' + item.id + '] ' + cardTitle(item) + ':' + (item.question ? ' answer to: ' + item.question + ' ·' : '') + ' ' + String(text || '').trim();
   }
-  function cardBoxHTML(item, e, botId) {
+  /* Tim (Nov 18, 1:10 AM): a card owned by Tim (Needs Tim) or by anyone who is not a known bot sends its feedback to
+     President, who makes the cards. A known bot owner still gets it directly. */
+  function cardRecipient(item, ownerId, presidentId) {
+    return ownerId ? { id: ownerId, name: item.owner || 'the owner', routed: false } : { id: presidentId || '', name: 'President', routed: true };
+  }
+  function cardBoxHTML(item, e, botId, to) {
+    const name = to ? to.name : (item.owner || 'the owner'), note = !botId ? 'Send needs a known bot as owner' : to && to.routed ? 'Owner is not a bot, so this goes to President' : '';
     return `<section class="chatbox cardbox" aria-label="Direction on this card">${item.question ? `<div class="q">${e(item.question)}</div>` : ''}
-    <textarea id="card-text" maxlength="${CARD_TEXT_MAX}" rows="2" placeholder="Direction for ${e(item.owner || 'the owner')} on this card…"></textarea>
-    <div class="chatrow"><button type="button" class="linkbtn" id="card-send"${botId ? '' : ' disabled'}>Send</button><span id="card-sent" class="fallback" role="status">${botId ? '' : 'Send needs a known bot as owner'}</span></div></section>`;
+    <textarea id="card-text" maxlength="${CARD_TEXT_MAX}" rows="2" placeholder="Direction for ${e(name)} on this card…"></textarea>
+    <div class="chatrow"><button type="button" class="linkbtn" id="card-send"${botId ? '' : ' disabled'}>Send</button><span id="card-sent" class="fallback" role="status">${e(note)}</span></div></section>`;
   }
   async function sendCardDirection(item, text, botId, post) {
     if (!String(text || '').trim()) return { state: 'empty' };
@@ -2071,7 +2077,7 @@
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, LOD, GAME_SLOW_M, COLORS,
-    normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle, CARD_TEXT_MAX, cardMessage, cardBoxHTML, sendCardDirection,
+    normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle, CARD_TEXT_MAX, cardMessage, cardRecipient, cardBoxHTML, sendCardDirection,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,

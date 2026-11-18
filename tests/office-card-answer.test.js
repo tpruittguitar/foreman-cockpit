@@ -33,9 +33,20 @@ test('relay errors, unknown owners and oversize text show a failed state', async
 });
 test('office.js wires every card popup to the shared relay path and never logs or embeds the key', () => {
   const open = office.slice(office.indexOf('function openItem('), office.indexOf('function openNeeds('));
-  assert.match(open, /L\.cardBoxHTML\(it, esc, ownerId\)/); assert.match(open, /L\.sendCardDirection\(it, ta\.value, ownerId, postRelay\)/);
+  assert.match(open, /L\.cardRecipient\(it, ownerId, idFor\('President'/); assert.match(open, /L\.cardBoxHTML\(it, esc, to\.id, to\)/); assert.match(open, /L\.sendCardDirection\(it, ta\.value, to\.id, postRelay\)/);
   assert.match(open, /Not sent: /); assert.match(open, /Sent to /);
   assert.match(office, /async function postRelay\(id, text\) \{\n  let r = await relay\('POST', id, text\);/);
   assert.doesNotMatch(office, /console\.\w+\([^)]*[Kk]ey/);
   assert.match(office, /const RELAY_URL = '\/api\/office-chat';/);
+});
+
+test('a Tim-owned or non-bot card sends its feedback to President; a bot owner still gets it directly (Tim, Nov 18)', async () => {
+  const P = '431e8cf1-f077-4548-82b7-46c1959dc4c9';
+  const tim = L.cardRecipient(card({ owner: 'Tim', priority: 'Needs Tim' }), '', P);
+  assert.deepEqual(tim, { id: P, name: 'President', routed: true });
+  assert.deepEqual(L.cardRecipient(card(), 'cursor-id', P), { id: 'cursor-id', name: 'Cursor', routed: false });
+  const h = L.cardBoxHTML(card({ owner: 'Tim' }), esc, tim.id, tim);
+  assert.match(h, /id="card-send">Send</); assert.match(h, /Direction for President/); assert.match(h, /goes to President/);
+  const calls = []; const r = await L.sendCardDirection(card({ owner: 'Tim' }), 'looks good', tim.id, async (id, text) => { calls.push(id); return { ok: true }; });
+  assert.equal(r.state, 'sent'); assert.deepEqual(calls, [P]);
 });
