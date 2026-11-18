@@ -1550,7 +1550,7 @@
     out.updated_at = time(o.updated_at) != null ? str(o.updated_at) : '';
     const s = o.screens && typeof o.screens === 'object' && !Array.isArray(o.screens) ? o.screens : {};
     for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true, offline: e.offline === true, lastSeen: time(e.lastSeen) != null ? str(e.lastSeen) : '',
-      activeAt: time(e.activeAt) != null ? str(e.activeAt) : '', hasActive: Object.prototype.hasOwnProperty.call(e, 'activeAt') }; }
+      activeAt: time(e.activeAt) != null ? str(e.activeAt) : '', hasActive: Object.prototype.hasOwnProperty.call(e, 'activeAt'), task: str(e.task).replace(/^Task:\s*/i, '').trim().slice(0, 120) }; }
     return out;
   }
   /* Tim (Nov 17): a bot drawn napping while it is actually working. OFFICE_STATUS rows only ever go working -> idle, so an idle or
