@@ -1467,7 +1467,6 @@
     }
     return ms + 6 * 60 * MIN;
   }
-  function countdown(target, now) { const m = Math.max(0, Math.ceil((target - now) / MIN)); return 'Next check in ' + Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; }
   /* stale: CLAUDE/CHATGPT use one missed cycle (nextCheck + grace). GROK follows Usage's
      read schedule: hourly 2 PM-2 AM ET (stale after 90 min), then 5/8/11 AM (stale after 3.5 h). */
   function grokStaleLimitMin(now) {
@@ -1484,10 +1483,10 @@
   function etClock(ms) { return new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }); }
   function usageRows(readings, now, fallback) {
     const latest = latestPerProvider(readings || []);
-    if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', next: countdown(nextCheck(now), now), stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
+    if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
     return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => {
       const r = latest[p.id];
-      const row = { name: p.name, pct_used: r.usedPct, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: 'Measured ' + etClock(time(r.at)) + ' ET', next: countdown(nextCheck(now), now), stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
+      const row = { name: p.name, pct_used: r.usedPct, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: 'Measured ' + etClock(time(r.at)) + ' ET', stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
       if (r.resets_available !== undefined) row.resets_available = r.resets_available;
       if (r.resets_expire !== undefined) row.resets_expire = r.resets_expire;
       if (r.extra_usd !== undefined) row.extra_usd = r.extra_usd;
@@ -2187,7 +2186,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
+    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,

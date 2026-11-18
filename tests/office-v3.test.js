@@ -187,13 +187,12 @@ test('usage: latest reading per provider, Measured time, countdown to the next s
   assert.equal(latest.CLAUDE.usedPct, 27); assert.equal(r.length, 4);
   assert.equal(L.etClock(Date.parse(latest.CLAUDE.at)), '2:08 AM');
   // 2:10 AM ET -> next check 8:05 AM ET
-  assert.equal(L.countdown(L.nextCheck(NOW), NOW), 'Next check in 5h 55m');
   assert.equal(new Date(L.nextCheck(Date.parse('2026-11-16T01:30:00Z'))).toISOString(), '2026-11-16T07:05:00.000Z');
   assert.equal(L.readingStale(latest.CLAUDE, NOW), false);
   assert.equal(L.readingStale(latest.CLAUDE, Date.parse('2026-11-16T13:40:00Z')), true, '8:05 check + 30 min grace missed');
   const rows = L.usageRows(r, NOW, null);
   assert.deepEqual(rows.map(x => [x.name, x.pct_used, x.stale]), [['Claude', 27, false], ['ChatGPT', 76, false], ['Grok', null, true]]);
-  assert.ok(rows.every(x => /^Measured \d{1,2}:\d\d (AM|PM) ET$/.test(x.measured) && /^Next check in \d+h \d+m$/.test(x.next)));
+  assert.ok(rows.every(x => /^Measured \d{1,2}:\d\d (AM|PM) ET$/.test(x.measured) && !('next' in x)), 'no stale next-check line (card bd3ecea)');
   assert.equal(L.usageLatest(rows), Math.max(...rows.map(x => x.at)), 'one latest time for monitor and wall');
   assert.match(L.usageHeader(rows, NOW), /^Latest reading \d{1,2}:\d\d (AM|PM) ET · /);
   assert.equal(L.usageHeader([], NOW), 'No usage reading yet');
