@@ -464,11 +464,16 @@ export function drawPlaque(ctx, W, H, lines) {
   const b = Math.max(3, H * 0.035), g = ctx.createLinearGradient(0, 0, W, H);
   g.addColorStop(0, '#8a6d2f'); g.addColorStop(0.5, '#e3c77a'); g.addColorStop(1, '#8a6d2f');
   ctx.strokeStyle = g; ctx.lineWidth = b; ctx.strokeRect(b * 1.5, b * 1.5, W - b * 3, H - b * 3);
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `600 ${H * 0.2}px ${SANS}`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // size the font so the widest line fits inside the border at its natural spacing (never squeezed via fillText maxWidth)
+  let fs = H * 0.2; ctx.font = `600 ${fs}px ${SANS}`;
+  const wide = Math.max(...lines.map(t => ctx.measureText(t).width)), room = W - b * 3 - H * 0.16;
+  if (wide > room) { fs *= room / wide; ctx.font = `600 ${fs}px ${SANS}`; }
+  const gap = fs * 1.5, y0 = H / 2 - gap * (lines.length - 1) / 2;
   lines.forEach((t, i) => {
-    const y = H * (0.36 + i * 0.3);
-    ctx.fillStyle = '#000'; ctx.fillText(t, W / 2, y - 1, W * 0.9); // engraved: dark lip above the light fill
-    ctx.fillStyle = '#e8e2cf'; ctx.fillText(t, W / 2, y + 1, W * 0.9);
+    const y = y0 + i * gap, d = Math.max(1, fs * 0.025);
+    ctx.fillStyle = '#000'; ctx.fillText(t, W / 2, y - d); // engraved: dark lip above the light fill
+    ctx.fillStyle = '#e8e2cf'; ctx.fillText(t, W / 2, y + d);
   });
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
 }
