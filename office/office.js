@@ -825,7 +825,7 @@ function buildWorld() {
   const saddle = new THREE.Vector3(0, 0, -0.22).applyMatrix4(bike.matrixWorld);
   const ry = bike.rotation.y, fwd = [Math.sin(ry), Math.cos(ry)], bhx = Math.abs(fwd[0]) * 0.5 + Math.abs(fwd[1]) * 0.42, bhz = Math.abs(fwd[1]) * 0.5 + Math.abs(fwd[0]) * 0.42;
   block(bike.position.x, bike.position.z, bhx, bhz); // footprint: base 0.25 x 1.0 plus handlebars, rotated with the bike
-  SIT.push({ id: 'bike', kind: 'bike', x: saddle.x, z: saddle.z, face: ry });
+  SIT.push({ id: 'bike', kind: 'bike', x: saddle.x, z: saddle.z, face: ry, halfSide: 0.42 });
   // indoor waterfall: stone wall, a sheet of moving water (scrolling texture, no extra lights) and a basin
   const wf = canvasTex(64, 256); { const g = wf.ctx; g.fillStyle = '#5c8fb0'; g.fillRect(0, 0, 64, 256); for (let k = 0; k < 90; k++) { g.fillStyle = `rgba(230,245,255,${0.15 + (k % 5) * 0.08})`; g.fillRect((k * 23) % 64, (k * 71) % 256, 1 + k % 2, 18 + (k * 13) % 40); } }
   wf.t.wrapS = wf.t.wrapT = THREE.RepeatWrapping; wf.t.repeat.set(2, 1.5); wf.t.needsUpdate = true;
@@ -981,9 +981,12 @@ function buildWorld() {
 
   /* ---------- nav grid (A*, pure: L.createNav) ---------- */
   const nav = L.createNav({ RW, RD, CELL: 0.2, inflate: 0.42, obstacles });
-  function buildGrid() { nav.build(obstacles); }
+  function buildGrid() { nav.build(obstacles); setMounts(); }
   const toCell = nav.toCell, free = nav.free;
-  const route = (from, to) => nav.route(from, to).map(p => new THREE.Vector2(p.x, p.z));
+  const mountOf = spot => spot.mount || (SIT.find(s => s.mount && Math.hypot(s.x - spot.x, s.z - spot.z) < 0.05) || {}).mount;
+  const route = (from, to) => nav.route(from, mountOf(to) || to).map(p => new THREE.Vector2(p.x, p.z));
+  function setMounts() { for (const s of SIT) if (s.halfSide) s.mount = L.mountSpot(s, s.halfSide, 0.45, (x, z) => free(...toCell(x, z))); } /* bike: walk to the free side of the saddle, then sit straight on */
+  setMounts();
 
   /* ---------- reserved standing / sitting slots (one bot per slot; item 22) ---------- */
   const book = L.createSlotBook();
@@ -1212,7 +1215,7 @@ function buildWorld() {
       } else c.prog = null;
     }
     if (!c.path.length) {
-      if (!c.arrived) { c.arrived = true; c.arrivedAt = clock; }
+      if (!c.arrived) { c.arrived = true; c.arrivedAt = clock; if (mountOf(goal.spot) && c.goalKey === g.key) c.pos.set(goal.spot.x, goal.spot.z); }
       if (c.goalKey !== g.key) pose = seated(c.pose) ? c.pose : 'stand';
       let face = goal.spot.face;
       if (goal.faceBot) { const o = charPos(goal.faceBot) || deskOf(goal.faceBot); if (o) face = Math.atan2(o.x - c.pos.x, o.z - c.pos.y); }

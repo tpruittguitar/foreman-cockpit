@@ -1021,6 +1021,17 @@
 
 
   /* ---------- Idle trips + pure navigation (Tim: characters get up, walk to idle spots, return to the desk) ---------- */
+  /* Mount point beside a saddle-style seat (QA #406 follow-up): bots walk to a free spot just outside the seat's side,
+     clear by at least `clear` (the widest body radius), then sit straight onto the seat, so no walking body enters the bike box.
+     spot {x, z, face}; halfSide: the seat's half-width across its facing; free(x, z): nav-grid test. Tries the nearer offset on either side first. */
+  function mountSpot(spot, halfSide, clear, free) {
+    const sx = Math.cos(spot.face || 0), sz = -Math.sin(spot.face || 0);
+    for (let d = halfSide + clear; d <= halfSide + clear + 0.6 + 1e-9; d += 0.05) for (const k of [1, -1]) {
+      const x = spot.x + k * sx * d, z = spot.z + k * sz * d;
+      if (!free || free(x, z)) return { x: +x.toFixed(3), z: +z.toFixed(3) };
+    }
+    return null;
+  }
   /* Nav grid with A*: obstacles are {x0,x1,z0,z1,viewerOnly?} boxes in metres; cells within `inflate` of a box (or the walls) are blocked.
      route() returns [{x,z}] waypoints that never cross a blocked cell (line-of-sight smoothing only joins cells that are all free). */
   function createNav(o) {
@@ -2085,7 +2096,7 @@
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
-    RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
+    RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
