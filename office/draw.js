@@ -350,7 +350,10 @@ export function drawUsage(ctx, W, H, o) {
     pool.forEach((t, j) => ctx.fillText(fit(ctx, t, 600 * s), 34 * s, y + (134 + j * 20) * s));
     ctx.textAlign = 'right'; ctx.fillStyle = col; ctx.font = `800 ${92 * s}px ${SANS}`;
     ctx.fillText(u.pct_used == null ? '—' : Math.round(u.pct_used) + '%', W - 120 * s, y + 100 * s);
-    ctx.font = `700 ${24 * s}px ${SANS}`; ctx.fillText('used', W - 34 * s, y + 70 * s); ctx.textAlign = 'left';
+    ctx.font = `700 ${24 * s}px ${SANS}`; ctx.fillText('used', W - 34 * s, y + 70 * s);
+    const pr = o.pred && o.pred[String(u.name).toUpperCase()]; /* card 7077752: same verdict and time as the flat view */
+    if (pr && pr.text) { ctx.fillStyle = pr.bad ? '#ff6b6b' : '#a9aeb6'; ctx.font = `700 ${22 * s}px ${SANS}`; ctx.fillText(fit(ctx, pr.text, 330 * s), W - 34 * s, y + 134 * s); }
+    ctx.textAlign = 'left';
   });
 }
 

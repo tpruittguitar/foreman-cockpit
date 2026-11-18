@@ -110,7 +110,7 @@ function slowLoads(now) {
   if (!DEMO && now - S.cons.tried >= SLOW_MS) { S.cons.tried = now; loadConstraint(now); }
   if (now - S.readingsAt >= SLOW_MS) {
     S.readingsAt = now;
-    rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsErr = ''; S.fetched.readings = Date.now(); }, e => { S.readingsErr = e.message; }).then(refreshAll);
+    rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsText = t; S.readingsErr = ''; S.fetched.readings = Date.now(); }, e => { S.readingsErr = e.message; }).then(refreshAll);
   }
   fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); if (j) S.fetched.screens = Date.now(); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
   /* missing or 404 OFFICE_TRAINING.json = no sessions, not an error */
@@ -163,7 +163,7 @@ function settleStatus() {
 const REFRESH = {
   status: { url: RAW_FILE(STATUS_PATH), apply: t => { S.raw = JSON.parse(t); S.fetchOk = true; S.error = ''; S.source = 'raw'; },
     fail: (e, st) => { S.fetchOk = false; S.error = st === 404 ? 'control/OFFICE_STATUS.json not found on forge-coordination main' : 'OFFICE_STATUS.json could not be loaded (' + e + ')'; } },
-  readings: { url: READINGS_URL, apply: (t, now) => { S.readings = L.parseReadings(t); S.readingsErr = ''; S.readingsAt = now; }, fail: e => { S.readingsErr = e; } },
+  readings: { url: READINGS_URL, apply: (t, now) => { S.readings = L.parseReadings(t); S.readingsText = t; S.readingsErr = ''; S.readingsAt = now; }, fail: e => { S.readingsErr = e; } },
   automations: { url: RAW_FILE(AUTO_PATH), apply: t => { S.auto = L.parseAutomations(JSON.parse(t), Date.now()); S.autoErr = ''; },
     fail: (e, st) => { S.autoErr = st === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : e; } },
   pipelineHealth: { url: '/api/pipeline-health', apply: (t, now) => { Object.assign(S.cons, { health: JSON.parse(t), err: '', at: now, tried: now }); }, fail: e => { S.cons.err = e; } },
@@ -1273,6 +1273,12 @@ function buildWorld() {
     convoLines = S.state === 'failed' ? [] : L.recentConversations(S.parsed ? S.parsed.conversations : [], Date.now());
     for (const c of convoLines) activeConvos.set(c.from, c);
   }
+  /* Card 7077752: per-provider run-out prediction from the flat view's own code (pipeline-ai-usage.js), so both views say the same thing. */
+  function usagePred() {
+    const A = window.PipelineAiUsage; if (!A || !S.readingsText) return {};
+    const out = {}; A.project(A.parse(S.readingsText), Date.now()).forEach(p => { out[p.provider] = { text: A.brief(p), bad: p.verdict === 'BEFORE_RESET' || p.verdict === 'OUT' }; });
+    return out;
+  }
   function updateLabels() {
     const w = innerWidth, h = innerHeight, max = TV ? 40 : 22, now = Date.now(), shown = [];
     for (const c of chars.values()) {
@@ -1363,7 +1369,7 @@ function buildWorld() {
     project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
     pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
-    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
+    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred() }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
     drawAutos();
     const sw = schedule.tex; drawTrainingSchedule(sw.ctx, sw.c.width, sw.c.height, { rows: L.visibleTrainingSessions(S.training, Date.now()).map(L.formatTrainingSession), fetchedAt: S.fetched.training, boardM: schedule.w }); sw.t.needsUpdate = true;
     const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); drawFetched(wr.ctx, wr.c.width, wr.c.height, S.fetched.automations, null, null, writer.w); wr.t.needsUpdate = true;

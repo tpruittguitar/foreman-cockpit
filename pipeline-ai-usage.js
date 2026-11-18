@@ -135,6 +135,14 @@
       fiveHourHtml(p, nowMs) + creditHtml(p) + resetsHtml(p) +
       '<div class="aiu-foot"><span class="pill ' + v[0] + '">' + esc(v[1]) + '</span> <span class="dim">' + esc(detail) + (p.rate != null && p.rate > 0 ? ' · ' + p.rate.toFixed(2) + '%/h (' + esc(p.basis) + ')' : '') + ' · read ' + esc(p.ageH < 1 ? Math.round(p.ageH * 60) + ' min ago' : Math.round(p.ageH) + ' h ago') + '</span></div></div>';
   }
+  /* Card 7077752 (Tim, Nov 18): the one short prediction both views print, so the 3D AI USAGE screen and this panel agree. */
+  function brief(p) {
+    if (!p) return '';
+    if (p.verdict === 'OUT') return 'out until reset';
+    if (p.verdict === 'BEFORE_RESET') return 'runs out ~' + when(p.runOutAt);
+    if (p.verdict === 'LASTS') return 'lasts to reset';
+    return '';
+  }
   function html(projections, nowMs) {
     if (!projections || !projections.length) return '<div class="dim">No usage readings yet.</div>';
     return '<div class="aiu">' + projections.map(function (p) { return rowHtml(p, nowMs); }).join('') + '</div>';
@@ -149,6 +157,6 @@
       .catch(function () { return f(URL, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('usage readings HTTP ' + r.status); return r.text(); }); })
       .then(parse);
   }
-  var api = { parse: parse, project: project, html: html, fiveHourLine: fiveHourLine, load: load, URL: URL, API_URL: API_URL };
+  var api = { parse: parse, project: project, brief: brief, html: html, fiveHourLine: fiveHourLine, load: load, URL: URL, API_URL: API_URL };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PipelineAiUsage = api;
 })(typeof window !== 'undefined' ? window : globalThis);
