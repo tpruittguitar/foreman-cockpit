@@ -18,6 +18,9 @@ function rec() { const t = []; const ctx = new Proxy({ font: '', fillStyle: '', 
 
 test('skills.json: every skill has a title and 3 short bullets, no secrets/paths', () => {
   assert.ok(skills.length >= 6);
+  const slugs = new Set(skills.map(s => s.slug));
+  for (const slug of ['clear-the-board', 'usage-routing', 'qa-live-proof', 'root-cause-five-whys', 'ask-qa-or-root-for-help', 'lean-repo-checkout', 'office-floor-walk', 'small-hand-pr', 'job-materials-canon'])
+    assert.ok(slugs.has(slug), slug);
   for (const s of skills) {
     assert.ok(s.slug && s.title); assert.equal(s.bullets.length, 3);
     for (const b of s.bullets) { assert.ok(b.length > 0 && b.length <= 32, b); assert.doesNotMatch(b, /\/home|token|key=|secret/i); }
