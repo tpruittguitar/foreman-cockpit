@@ -756,9 +756,9 @@ function buildWorld() {
   block(9.4, 7.3, 0.65, 0.38);
   bonsai(9.3, 0.44, 7.3, 1.1);
   // exercise bike
-  // Tim: middle of the open floor between the pool table (z -2.8 edge) and the Forge sign on the back wall, clear of the coffee / fridge spots and the group-chat ring.
+  // Tim: about one bike length toward the open floor in front of the pool table (back edge z -2.8), away from the coffee counter at (11.3, -6.0). Was (9.1, -6.0).
   // (A trailing "//" comment used to swallow rotation + scene.add on this line, so the bike was never added to the scene.)
-  const bike = new THREE.Group(); bike.position.set(9.1, 0, -6.0);
+  const bike = new THREE.Group(); bike.position.set(8.9, 0, -3.7);
   bike.rotation.y = -Math.PI / 2; scene.add(bike);
   add(box(0.25, 0.05, 1.0), MAT.dark, 0, 0.03, 0, bike); const fw = add(new THREE.CylinderGeometry(0.22, 0.22, 0.06, 24), MAT.metal, 0, 0.3, 0.35, bike); fw.rotation.z = Math.PI / 2;
   add(box(0.05, 0.62, 0.05), MAT.metal, 0, 0.36, -0.15, bike).rotation.x = -0.25; add(box(0.2, 0.05, 0.28), MAT.dark, 0, 0.68, -0.22, bike);
