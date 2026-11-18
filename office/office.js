@@ -940,7 +940,7 @@ function buildWorld() {
     }
     const hasMug = L.hash('mug:' + name) % 3 === 0;
     if (hasMug) add(deskGeo.mug, MAT.white, -0.6, 0.82, 0.05, g);
-    const card = add(deskGeo.card, new THREE.MeshStandardMaterial({ color: 0xeef3ff, emissive: 0x334466, emissiveIntensity: 0.4 }), -0.35, 0.775, 0.12, g); card.visible = false;
+    const stack = new THREE.Group(); stack.position.set(0, 0.775, 0); g.add(stack);
     const ch = new THREE.Group(); ch.position.set(0, 0, 0.85); g.add(ch);
     add(deskGeo.seat, MAT.chair, 0, 0.46, 0, ch); add(deskGeo.back, MAT.chair, 0, 0.78, 0.24, ch); add(deskGeo.pole, MAT.metal, 0, 0.24, 0, ch);
     for (let k = 0; k < 5; k++) { const s = add(deskGeo.spoke, MAT.metal, 0, 0.05, 0, ch); s.rotation.y = k * 1.2566; s.translateZ(0.14); }
@@ -949,7 +949,7 @@ function buildWorld() {
     g.traverse(o => { if (o.isMesh && o !== hover && o !== focus) o.userData.deskBot = name; });
     mon.userData.monitor = name;
     block(x, z, 0.8, 0.4, false, 'desk:' + name); block(x, z + 0.85, 0.3, 0.3, false, 'desk:' + name);
-    return { name, x, z, g, mon, scr, ledMat, shadeMat, bulbMat, hover, focus, card, lod: '', drawnKey: '', img: null, imgAt: 0,
+    return { name, x, z, g, mon, scr, ledMat, shadeMat, bulbMat, hover, focus, stack, cardsKey: null, lod: '', drawnKey: '', img: null, imgAt: 0,
       seat: { x, z: z + 0.72, face: Math.PI }, stand: { x: x + 1.12, z: z + 0.15 + CL, face: 0 }, visit: { x: x - 1.12, z: z + 0.15 + CL, face: Math.PI / 2 },
       cans: hasMug ? [] : [[x - 0.6, z + 0.05, name]].concat(L.hash('can2:' + name) % 4 === 1 ? [[x - 0.48, z - 0.1, name + '2']] : []), linkPoint: new THREE.Vector3(x, 0.78, z - 0.4) };
   }
@@ -1049,8 +1049,8 @@ function buildWorld() {
     if (!c.job) c.job = L.jobStart(c.jobs.shift().itemId, clock);
     const j = c.job, key = 'job:' + j.itemId + ':' + j.phase, it = items().find(i => i.id === j.itemId), finished = !it || L.columnFor(it) === 'done';
     const here = c.goalKey === key && !!c.arrived, held = here ? clock - c.arrivedAt : -1;
-    if (j.phase !== 'work' && here && !S.glow.has(j.itemId)) { S.glow.add(j.itemId); boardDirty = true; }
-    if (j.phase === 'work' && here && c.carry) { c.carry = false; d.card.visible = true; }
+    if (j.phase === 'receive' && here && !S.glow.has(j.itemId)) { S.glow.add(j.itemId); boardDirty = true; }
+    if (j.phase === 'deliver' && here && c.carry) { c.carry = false; boardDirty = true; }
     const nx = L.jobStep(j, { arrived: here, heldFor: held, finished, now: clock });
     if (nx !== j) {
       S.glow.delete(j.itemId); boardDirty = true; book.release(c.name); c.job = nx;
@@ -1058,7 +1058,7 @@ function buildWorld() {
       if (!nx) { c.carry = false; return c.jobs.length ? jobGoal(c, d) : null; }
       return jobGoal(c, d);
     }
-    if (j.phase === 'work') return { key, spot: d.seat, pose: 'type' };
+    if (j.phase === 'deliver') return { key, spot: d.seat, pose: 'sit' };
     return { key, spot: takeSlot(c, ['board']) || BOARD_SLOTS[0], pose: 'board' };
   }
   /* Group chat: bots whose idle activity is group_chat stand in groups of 2 or 3 around a free spot, each facing the next. */
@@ -1124,7 +1124,7 @@ function buildWorld() {
       return { key, spot: s, pose: 'board' };
     }
     if (c.job || c.jobs.length) { const jg = jobGoal(c, d); if (jg) return jg; } // item 12: walk to the board for the job, work at the desk, walk back to log it
-    if (c.carry) { if (c.goalKey === 'carry' && c.arrived) { c.carry = false; d.card.visible = true; } else return { key: 'carry', spot: d.seat, pose: 'sit' }; }
+    if (c.carry) { if (c.goalKey === 'carry' && c.arrived) { c.carry = false; boardDirty = true; } else return { key: 'carry', spot: d.seat, pose: 'sit' }; }
     if (convo && deskOf(convo.to)) { book.release(c.name); const dd = deskOf(convo.to); return { key: 'talk:' + convo.to, spot: dd.visit, pose: 'talk', faceBot: convo.to }; }
     if (c.name === L.TRAINER && S.invite) { book.release(c.name); return hrInviteGoal(c); }
     const p = plan.plans[c.name] || { act: S.fresh[c.name] && S.fresh[c.name].stale ? 'stale' : st0.behavior === 'work' ? 'work' : 'wander' };
@@ -1325,10 +1325,33 @@ function buildWorld() {
     const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); drawFetched(cw.ctx, cw.c.width, cw.c.height, DEMO ? 0 : S.cons.at, null, null, constraint.w); cw.t.needsUpdate = true;
     updateLines();
     for (const [id, ln] of lines) ln.material = hl.has(id) || (hoverBot && ln.userData.owner === hoverBot) ? MAT.lineHi : MAT.lineFaint;
-    for (const d of desks) d.card.visible = d.card.visible || items().some(i => i.work && i.owner === d.name && L.columnFor(i) !== 'done' && i.work.poster !== d.name);
+    for (const d of desks) syncCards(d);
     boardDirty = false;
   }
   let pagesN = 1;
+  /* Physical cards (Tim, Nov 17): each desk shows its bot's open checksheet cards (not the ones still in a bot's hand), laid out
+     neat or messy per bot; shared card geometry and side material, one small canvas texture per card. Done cards leave. */
+  const cardTex = new Map(), CARD_SIDE = new THREE.MeshStandardMaterial({ color: 0xeef3ff, emissive: 0x334466, emissiveIntensity: 0.4 });
+  function cardMats(it) {
+    let e = cardTex.get(it.id);
+    if (e && e.title === it.title) return e.mats;
+    if (e) { e.tex.t.dispose(); e.mats[2].dispose(); }
+    const tex = canvasTex(256, 192), x = tex.ctx;
+    x.fillStyle = '#f4f7ff'; x.fillRect(0, 0, 256, 192); x.fillStyle = '#1c2230'; x.font = '700 34px system-ui, sans-serif'; x.textBaseline = 'top';
+    L.cardLines(it.title).forEach((l, k) => x.fillText(l, 14, 40 + k * 46)); tex.t.needsUpdate = true;
+    const top = new THREE.MeshStandardMaterial({ map: tex.t, emissive: 0x223044, emissiveIntensity: 0.25 });
+    e = { title: it.title, tex, mats: [CARD_SIDE, CARD_SIDE, top, CARD_SIDE, CARD_SIDE, CARD_SIDE] }; cardTex.set(it.id, e); return e.mats;
+  }
+  function syncCards(d) {
+    const c = chars.get(d.name), carrying = new Set(c ? c.jobs.map(j => j.itemId).concat(c.job && (c.job.phase === 'receive' || c.carry) ? [c.job.itemId] : []) : []);
+    const list = L.deskCards(items(), d.name, n => idFor(n, (botByName(n) || {}).bot_id), carrying), key = list.map(i => i.id + '\u0001' + i.title).join('\u0002');
+    if (key === d.cardsKey) return;
+    d.cardsKey = key; d.stack.clear();
+    const spots = L.cardStack(list.length, L.cardStyle(d.name), d.name);
+    list.forEach((it, k) => { const m = new THREE.Mesh(deskGeo.card, cardMats(it)), s = spots[k]; m.position.set(s.x, s.y, s.z); m.rotation.y = s.rot; m.userData.deskBot = d.name; d.stack.add(m); });
+    const open = new Set(items().filter(i => L.columnFor(i) !== 'done').map(i => i.id));
+    for (const [id, e] of cardTex) if (!open.has(id)) { e.tex.t.dispose(); e.mats[2].dispose(); cardTex.delete(id); }
+  }
   /* monitor mirror images: small, refreshed every 60 s with ?t= (popup loads its own full-size copy) */
   function mirrorFor(d, b, now) {
     const id = idFor(b.bot, b.bot_id), sc = L.screenState(S.screens, id, now);

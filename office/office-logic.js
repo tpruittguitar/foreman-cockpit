@@ -1693,17 +1693,42 @@
     return idleNames.slice().sort((a, b) => hash('rs:' + a) - hash('rs:' + b))[0] || null;
   }
 
-  /* Item 12: job flow. receive (walk to the board, take the card) -> work (walk to the desk, type) -> log (walk back to
-     the board, log it) -> done (null). Finished = the card is Done or gone from the board; capped so nothing waits forever. */
-  const JOB_PHASES = ['receive', 'work', 'log'], JOB_HOLD_S = 2.6, JOB_WORK_MAX_S = 600;
+  /* Item 12, physical cards (Tim, Nov 17 9:58 / 10:02 PM): receive (walk to the board, take the card) -> deliver (carry it to
+     the desk and set it on the stack) -> done (null). No typing: holding cards is not working (true-activity rule); the walk is
+     capped so nothing waits forever. */
+  const JOB_PHASES = ['receive', 'deliver'], JOB_HOLD_S = 2.6, JOB_WORK_MAX_S = 600, JOB_SET_S = 1;
   const jobStart = (itemId, nowSec) => ({ itemId, phase: 'receive', since: nowSec || 0 });
-  const jobGoal = job => (job && job.phase === 'work' ? 'desk' : 'board');
+  const jobGoal = job => (job && job.phase === 'deliver' ? 'desk' : 'board');
   function jobStep(job, ctx) {
     if (!job) return null;
     const c = ctx || {}, held = c.heldFor == null ? -1 : c.heldFor;
-    if (job.phase === 'receive') return c.arrived && held >= JOB_HOLD_S ? Object.assign({}, job, { phase: 'work', since: c.now || 0 }) : job;
-    if (job.phase === 'work') return c.finished || (c.now != null && c.now - job.since > JOB_WORK_MAX_S) ? Object.assign({}, job, { phase: 'log', since: c.now || 0 }) : job;
-    return c.arrived && held >= JOB_HOLD_S ? null : job;
+    if (job.phase === 'receive') return c.arrived && held >= JOB_HOLD_S ? Object.assign({}, job, { phase: 'deliver', since: c.now || 0 }) : job;
+    return (c.arrived && held >= JOB_SET_S) || (c.now != null && c.now - job.since > JOB_WORK_MAX_S) ? null : job;
+  }
+  /* The cards on a bot's desk: its open checksheet cards (owner by name or bot id, so 'HR - Bot Trainer' / 'Usage Budget' /
+     renamed bots match), minus any still being carried from the board. Done cards leave. */
+  function deskCards(items, name, idOf, carrying) {
+    const id = idOf ? idOf(name) : '', skip = carrying || new Set();
+    return sortItems((items || []).filter(i => i.source === 'checksheet' && columnFor(i) !== 'done' && !skip.has(i.id) && (i.owner === name || (!!id && idOf(i.owner) === id))));
+  }
+  /* Desk personality: neat squared-up pile or messy scattered piles. Defaults per Tim; everyone else by a stable hash. */
+  const CARD_STYLE = { President: 'neat', QA: 'neat', 'QA bot': 'neat', Gauge: 'neat', Claude: 'messy', Sniffer: 'messy' };
+  const cardStyle = name => CARD_STYLE[name] || (hash('cards:' + name) % 2 ? 'messy' : 'neat');
+  /* Desk-local spots for n cards on the desktop left of the keyboard: {x, z, y (above the desktop), rot}. */
+  function cardStack(n, style, name) {
+    const out = [], piles = [0, 0, 0];
+    for (let k = 0; k < n; k++) {
+      if (style !== 'messy') { out.push({ x: -0.45, z: 0.2, y: k * 0.0045, rot: 0 }); continue; }
+      const h = hash(name + ':card:' + k), p = h % 3, r = ((h >>> 4) % 1000) / 1000 - 0.5, q = ((h >>> 14) % 1000) / 1000 - 0.5;
+      out.push({ x: -0.66 + p * 0.16 + r * 0.05, z: 0.21 + q * 0.08, y: piles[p]++ * 0.0045, rot: r * 1.4 });
+    }
+    return out;
+  }
+  /* 1-2 lines of the card title for its face, trimmed with an ellipsis. */
+  function cardLines(title, max) {
+    const m = max || 18, words = str(title).trim().split(/\s+/).filter(Boolean), lines = [''];
+    for (const w of words) { const cur = lines[lines.length - 1]; if (!cur || (cur + ' ' + w).length <= m) lines[lines.length - 1] = cur ? cur + ' ' + w : w; else if (lines.length < 2) lines.push(w); else { lines[1] += ' ' + w; break; } }
+    return lines.filter(Boolean).map(l => (l.length > m ? l.slice(0, m - 1).trimEnd() + '…' : l));
   }
   const JOB_ASSIGN_REASONS = ['new', 'reassigned', 'take']; // diffItems / diffWork events that hand a card to a bot
 
@@ -1935,6 +1960,6 @@
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
-    groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
+    groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
 });

@@ -111,24 +111,21 @@ test('work breaks: stretch or refresh, short and occasional; otherwise the bot w
 });
 
 /* ---------- item 12: job flow ---------- */
-test('job flow: walk to board (receive) -> desk (work) -> back to board (log) -> done', () => {
+test('job flow: walk to board (receive) -> carry the card to the desk (deliver) -> done; no typing phase', () => {
   let job = L.jobStart('w:1', 0); const seq = [[job.phase, L.jobGoal(job)]];
   const step = ctx => { const n = L.jobStep(job, ctx); job = n; if (n) seq.push([n.phase, L.jobGoal(n)]); return n; };
   assert.equal(L.jobStep(job, { arrived: false }), job, 'still walking: no change');
   assert.equal(L.jobStep(job, { arrived: true, heldFor: 1 }), job, 'must hold at the board a moment');
   step({ arrived: true, heldFor: L.JOB_HOLD_S, now: 5 });
-  assert.equal(job.phase, 'work');
-  assert.equal(L.jobStep(job, { arrived: true, heldFor: 99, finished: false, now: 60 }), job, 'works until finished');
-  step({ finished: true, now: 90 });
-  assert.equal(job.phase, 'log');
-  assert.equal(L.jobStep(job, { arrived: false, finished: true }), job);
-  assert.equal(step({ arrived: true, heldFor: L.JOB_HOLD_S }), null, 'logged: job complete');
-  assert.deepEqual(seq, [['receive', 'board'], ['work', 'desk'], ['log', 'board']]);
-  assert.deepEqual(L.JOB_PHASES, ['receive', 'work', 'log']);
+  assert.equal(job.phase, 'deliver');
+  assert.equal(L.jobStep(job, { arrived: false, now: 60 }), job, 'still carrying');
+  assert.equal(step({ arrived: true, heldFor: 1, now: 70 }), null, 'card set on the desk: job complete');
+  assert.deepEqual(seq, [['receive', 'board'], ['deliver', 'desk']]);
+  assert.deepEqual(L.JOB_PHASES, ['receive', 'deliver']);
 });
-test('job flow: a job that never reports finished still ends (work cap)', () => {
-  const j = { itemId: 'x', phase: 'work', since: 0 };
-  assert.equal(L.jobStep(j, { now: L.JOB_WORK_MAX_S + 1 }).phase, 'log');
+test('job flow: a carry that never arrives still ends (walk cap)', () => {
+  const j = { itemId: 'x', phase: 'deliver', since: 0 };
+  assert.equal(L.jobStep(j, { now: L.JOB_WORK_MAX_S + 1 }), null);
   assert.deepEqual(L.JOB_ASSIGN_REASONS, ['new', 'reassigned', 'take']);
 });
 
