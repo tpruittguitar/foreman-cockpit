@@ -1,5 +1,5 @@
 /* Mobile shell Stage 3 (Decide): cards sorted by score with the score colour, reason line and badges always carrying a glyph
-   or word; Pursue / Hold / Decline / Research go through the existing ruling sender (postRuling_ batch queue) and the Undo
+   or word; Pursue / Research / Decline go through the existing ruling sender (postRuling_ batch queue) and the Undo
    toast appears only once the decision is queued; Undo restores the card at its place and runs the existing undo path;
    swipe right / left on the top card = Pursue / Decline with the same buttons visible; long-press and ⋯ reach Research in
    two taps; the job detail sheet closes by back arrow, Escape, browser Back and swipe-down, and nothing bleeds over it.
@@ -116,11 +116,11 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   const c1=await cards(page);assert.strictEqual(c1[0].id,top,'Undo restores the card to the top');
   assert.ok(posts.some(p=>p.action==='undo_ruling'&&p.undo.primaryId===top),'Undo runs the existing undo_ruling for a sent decision');
   // 4. Toast ends after 5 seconds.
-  await page.click('.m-card.m-top [data-m-do="hold"]');await page.waitForSelector('#m-toast:not([hidden])');await page.waitForTimeout(5300);
+  await page.click('.m-card.m-top [data-m-do="research"]');await page.waitForSelector('#m-toast:not([hidden])');await page.waitForTimeout(5300);
   assert.ok(await page.isHidden('#m-toast'),'toast gone after 5s');
-  r=rulings(posts);assert.strictEqual(r[r.length-1].kind,'MANUAL_RESEARCH','Hold is a MANUAL_RESEARCH hold');
+  r=rulings(posts);assert.strictEqual(r[r.length-1].kind,'MANUAL_RESEARCH','Research writes MANUAL_RESEARCH');
   // 5. Research in two taps: ⋯ then Research; and long-press opens the same menu.
-  const t2=(await cards(page))[0].id;await page.click('.m-card.m-top [data-m-menu]');await page.click('.m-card.m-top [data-m-do="research"]');await page.waitForTimeout(500);
+  const t2=(await cards(page))[0].id;await page.click('.m-card.m-top [data-m-menu]');await page.click('.m-card.m-top .m-menu [data-m-do="research"]');await page.waitForTimeout(500);
   r=rulings(posts);assert.strictEqual(r[r.length-1].kind,'MANUAL_RESEARCH');assert.match(r[r.length-1].note,/Research requested/,'Research note');assert.strictEqual(r[r.length-1].primaryId,t2);
   await page.waitForTimeout(5300);
   const lp=await page.$('.m-card.m-top .m-reason');const bb=await lp.boundingBox();await page.mouse.move(bb.x+10,bb.y+5);await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up();
@@ -169,7 +169,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   await page.mouse.move(h.x+h.width/2,h.y+8);await page.mouse.down();for(let i=1;i<=8;i++){await page.mouse.move(h.x+h.width/2,h.y+8+200*i/8);await page.waitForTimeout(16)}await page.mouse.up();
   await page.waitForTimeout(200);assert.ok(await page.isHidden('#m-detail'),'swipe down on the handle closes');
   // A decision from the detail sheet closes it and queues like the card buttons.
-  await page.click('.m-card.m-top [data-m-open]');await page.click('#m-detail [data-m-do="hold"]');await page.waitForSelector('#m-toast:not([hidden])');
+  await page.click('.m-card.m-top [data-m-open]');await page.click('#m-detail [data-m-do="research"]');await page.waitForSelector('#m-toast:not([hidden])');
   assert.ok(await page.isHidden('#m-detail'),'deciding in the sheet closes it');r=rulings(posts);await page.waitForTimeout(500);r=rulings(posts);assert.strictEqual(r[r.length-1].primaryId,d1);
   // 8. Act Now 10 chip narrows the list.
   const all8=await cards(page),chip8=parseInt((await page.textContent('[data-m-filter="act"]')).replace(/\D+/g,' ').trim().split(' ').pop(),10);
@@ -197,7 +197,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
 
   // 10b. A short phone (375x667): the toast still never covers the next card's action buttons.
   ({ctx,page,errors}=await open({ctx:{viewport:{width:375,height:667}}}));
-  await page.click('.m-card.m-top [data-m-do="hold"]');await page.waitForSelector('#m-toast:not([hidden])');await page.waitForTimeout(700);
+  await page.click('.m-card.m-top [data-m-do="research"]');await page.waitForSelector('#m-toast:not([hidden])');await page.waitForTimeout(700);
   assert.strictEqual(await page.evaluate(()=>{const t=document.getElementById('m-toast').getBoundingClientRect();return [...document.querySelectorAll('.m-card.m-top .m-actions .m-btn')].filter(b=>{const r=b.getBoundingClientRect();return r.bottom>t.top&&r.top<t.bottom}).length}),0,'375x667: toast clear of the next card actions');
   assert.deepStrictEqual(errors,[],'no page errors (375x667)');await ctx.close();
 

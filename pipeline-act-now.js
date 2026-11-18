@@ -6,7 +6,7 @@
      a) something material changed after the decision (title, location, pay, posting reopened/reposted, score moved 10+), or
      b) the decision did not save (the Writer refused it, or the result stayed unknown); then "Decision not saved, tap to retry"
         resends the same request (same requestId), so a retry can never record a second decision.
-   "Later" is not a decision: it hides the role here for 3 days on this device.
+   "Snooze 3 days (this device)" is not a decision: it hides the role here for 3 days on this device.
    Pure functions (Node-testable) plus html(); pipeline.html supplies the row accessors and wires the buttons. */
 (function (root) {
   'use strict';
@@ -98,10 +98,22 @@
   }
   /** Same-identity guard for a second decision: "Already decided: <decision>, <date>". */
   function alreadyDecided(r, ru) { var d = decision(r, ru); if (!d || d.state === 'NOT_SAVED') return null; return { kind: d.kind, label: LABEL[d.kind] || d.kind, date: day(d.at) }; }
+  function payMod() {
+    if (typeof PipelinePayFormat !== 'undefined') return PipelinePayFormat;
+    if (typeof module === 'object' && module.exports) {
+      try { return require('./pipeline-pay-format'); } catch (e) { return null; }
+    }
+    return null;
+  }
   function payText(r, ctx) {
-    if (r.compMid == null) return 'Pay unknown';
-    var est = /ESTIMATE/i.test(String((r.payload || {}).SALARY_BASIS || '')) || /EST/.test(String(r.compSource || ''));
-    return '$' + Math.round(r.compMid / 1000) + 'k' + (est ? ' est.' : ' posted');
+    var F = payMod(), p = r.payload || {}, sr = null;
+    if (typeof PipelineTrust !== 'undefined' && PipelineTrust.salaryRange) sr = PipelineTrust.salaryRange(p);
+    else if (typeof module === 'object' && module.exports) {
+      try { sr = require('./pipeline-trust').salaryRange(p); } catch (e) { sr = null; }
+    }
+    if (F) return F.display(p, r.compMid, sr || undefined);
+    if (r.compMid == null) return 'Pay not posted';
+    return '$' + Math.round(r.compMid / 1000) + 'K';
   }
   function card(it, ctx) {
     var r = it.r, ru = it.rule, url = ctx.posting(r), why = ctx.why ? ctx.why(r) : '';
@@ -114,7 +126,8 @@
       (why ? '<div class="an-why">' + esc(why) + '</div>' : '') + chip +
       (ru.decided && ru.back === 'CHANGED' ? '<div class="an-was">Your decision: ' + esc(LABEL[ru.d.kind] || ru.d.kind) + (ru.d.at ? ', ' + esc(day(ru.d.at)) : '') + '</div>' : '') +
       '<div class="an-act">' + (url ? '<a class="an-btn" href="' + esc(url) + '" target="_blank" rel="noopener">Open posting</a>' : '<span class="an-btn off" aria-disabled="true">No posting link</span>') +
-      (pending ? '<span class="an-btn off">Saving…</span>' : ru.back === 'NOT_SAVED' ? '' : '<button class="an-btn go" data-an-applied="' + esc(r.id) + '" type="button">Applied</button><button class="an-btn" data-an-decline="' + esc(r.id) + '" type="button">Decline</button><button class="an-btn" data-an-later="' + esc(r.id) + '" type="button">Later</button>') + '</div>' +
+      (pending ? '<span class="an-btn off">Saving…</span>' : ru.back === 'NOT_SAVED' ? '' : '<button class="an-btn go" data-an-pursue="' + esc(r.id) + '" type="button">Pursue</button><button class="an-btn" data-an-research="' + esc(r.id) + '" type="button">Research</button><button class="an-btn an-decline" data-an-decline="' + esc(r.id) + '" type="button">Decline</button>') + '</div>' +
+      (pending || ru.back === 'NOT_SAVED' ? '' : '<div class="an-sec"><button class="an-sec-btn" data-an-applied="' + esc(r.id) + '" type="button">Mark applied</button><button class="an-link" data-an-later="' + esc(r.id) + '" type="button">Snooze 3 days (this device)</button></div>') +
       '<div class="an-reasons" data-an-reasons="' + esc(r.id) + '" hidden>' + DECLINE_REASONS.map(function (x) { return '<button class="an-btn" data-an-reason="' + x.k + '" data-an-for="' + esc(r.id) + '" type="button">' + x.label + '</button>'; }).join('') + '</div>' +
       '</article>';
   }
@@ -135,7 +148,7 @@
     '.an-card.an-pin{border-left:var(--pe-bar-card) solid var(--pe-cyan)}.an-top{display:flex;gap:var(--pe-gap);justify-content:space-between;align-items:baseline}' +
     '.an-title{font-size:var(--pe-fs-body);overflow-wrap:anywhere}.an-score{font-variant-numeric:tabular-nums;font-weight:700;min-width:2.2em;text-align:right;font-size:var(--pe-fs-body)}' +
     '.an-sub,.an-why,.an-was{font-size:var(--pe-fs-small);color:var(--pe-text-secondary);overflow-wrap:anywhere}' +
-    '.an-act,.an-reasons{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}' +
+    '.an-act,.an-reasons{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}.an-act .an-decline{margin-left:auto}.an-sec{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:4px}.an-sec-btn{min-height:var(--pe-target-min);padding:0 10px;border:0;background:none;color:var(--pe-text-primary);font:inherit;font-size:var(--pe-fs-small);cursor:pointer}' +
     '.an-btn{min-height:var(--pe-target-min);min-width:var(--pe-target-min);padding:0 14px;border-radius:var(--pe-radius);border:var(--pe-border);background:var(--pe-raised);color:var(--pe-text-primary);font:inherit;font-size:var(--pe-fs-small);display:inline-flex;align-items:center;justify-content:center;text-decoration:none;cursor:pointer;text-transform:uppercase;letter-spacing:var(--pe-pill-tracking)}' +
     '.an-btn.go{border-color:var(--pe-green)}.an-btn.off{cursor:default;color:var(--pe-text-secondary)}' +
     '.an-chip{align-self:flex-start;font-size:var(--pe-fs-small);padding:4px 10px;border-radius:var(--pe-radius);border:1px solid var(--pe-amber);background:var(--pe-tint-amber);color:var(--pe-text-primary)}' +

@@ -127,6 +127,7 @@ html.m-shell:not(.m-legacy) body{display:block;margin:0;background:var(--m-bg);c
 .m-b.attn{color:var(--m-attn);border-color:var(--m-attn-border)}.m-b.fault{color:var(--m-fault);border-color:var(--m-fault-border)}
 .m-b.m-i{font-style:italic}
 .m-actions{display:flex;gap:8px;margin-top:12px;align-items:stretch}
+#m-root .m-actions .m-btn{padding:0 8px;flex:0 0 auto}
 #m-root .m-btn{display:inline-flex;align-items:center;justify-content:center;gap:2px;min-height:44px;min-width:44px;padding:0 12px;flex:none;white-space:nowrap;border-radius:var(--m-radius);
   font:600 15px/1 var(--m-sans);border:1px solid transparent;text-transform:none;letter-spacing:normal}
 #m-root .m-primary{background:var(--m-accent);color:var(--m-on-accent);flex:1 1 auto;min-width:0}
@@ -198,6 +199,7 @@ html.m-detail-open body{overflow:hidden}
 .m-faint{color:var(--m-text-2)}
 #m-root .m-link{color:var(--m-text);text-decoration:underline;display:inline-flex;min-height:44px;align-items:center}
 .m-dbar{flex:none;display:flex;gap:8px;padding:10px 12px calc(10px + var(--m-safe-bottom));background:var(--m-panel);border-top:1px solid var(--m-border)}
+.m-sec{margin-top:8px}.m-dsec{flex:none;padding:8px 12px 0;background:var(--m-panel);border-top:1px solid var(--m-border)}.m-dsec .m-btn{min-height:44px}
 /* Detail action bar fits Pursue / Hold / Research / Decline without clipping down to 360px (CI 2026-11-02: Pursue had 0px to spare
    at 390 and was clipped at 375; the CI runner's wider text then overflowed 360 by 7px, hence 14px text and 7px padding at <=380). Tighter side padding; the 16px Research-Decline gap stays; Pursue never shrinks below its label. */
 #m-root .m-dbar .m-btn{padding:0 10px}
