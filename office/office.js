@@ -809,7 +809,11 @@ function buildWorld() {
   const conf = new THREE.Group(); conf.position.set(CONF.x, 0, CONF.z); scene.add(conf);
   add(box(3.0, 0.06, 1.2), MAT.desk, 0, 0.74, 0, conf); add(box(3.0, 0.015, 1.2), MAT.cyan, 0, 0.7, 0, conf).scale.set(0.98, 1, 0.96);
   for (const [lx, lz] of [[-1.35, -0.48], [1.35, -0.48], [-1.35, 0.48], [1.35, 0.48]]) add(deskGeo.leg, MAT.metal, lx, 0.36, lz, conf);
-  add(box(0.04, 2.4, 3.6), MAT.glass, CONF.x + 2.35, 1.2, CONF.z + 0.4).visible = !LOW; // glass partition
+  // training-room glass wall: the 16%-opacity pane alone (and hidden on phones) read as no wall at all; a metal frame makes it visible everywhere
+  const GW = { x: CONF.x + 2.35, z: CONF.z + 0.4 };
+  add(box(0.04, 2.4, 3.6), MAT.glass, GW.x, 1.2, GW.z); // glass partition
+  for (const y of [0.03, 2.4]) add(box(0.06, 0.06, 3.64), MAT.metal, GW.x, y, GW.z); // bottom and top rails
+  for (const dz of [-1.8, 1.8]) add(box(0.06, 2.4, 0.06), MAT.metal, GW.x, 1.2, GW.z + dz); // end posts
   const CONF_SEATS = [[-1.0, -1.05, 0], [-1.0, 1.05, Math.PI], [0, -1.05, 0], [0, 1.05, Math.PI], [1.0, -1.05, 0], [1.0, 1.05, Math.PI], [1.95, 0, -Math.PI / 2]]
     .map(([dx, dz, face]) => ({ x: CONF.x + dx, z: CONF.z + dz, face }));
   for (const st of CONF_SEATS) {
