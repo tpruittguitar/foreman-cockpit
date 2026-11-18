@@ -40,7 +40,7 @@ test('office.js wires Refresh to every source and stamps every board with its fe
   for (const u of ['RAW_FILE(STATUS_PATH)', 'READINGS_URL', 'RAW_FILE(AUTO_PATH)', "'/api/pipeline-health'", "'/api/writer-activity'", "SCREENS_BASE + 'index.json'"]) assert.ok(block.includes('url: ' + u), u);
   assert.match(office, /\$\('refresh-btn'\)\.onclick = [^\n]*classList\.add\('busy'\)[^\n]*refreshNow\(\)/);
   assert.match(office, /L\.refreshSources\(REFRESH, fetchFn, Date\.now\(\)\)/);
-  assert.match(office, /drawAutomations\([^\n]*fetchedAt: S\.fetched\.automations \}\)/, 'drawAutomations shows fetched-at in its header');
+  assert.match(office, /drawAutomations\([^\n]*fetchedAt: S\.fetched\.automations(, boardM: autos\.w)? \}\)/, 'drawAutomations shows fetched-at in its header');
   for (const board of ['drawBoard', 'drawUsage', 'drawNeeds', 'drawWriterHealth', 'drawConstraintWall']) assert.match(office, new RegExp(board + '\\([^\\n]*\\); drawFetched\\('), board + ' shows fetched-at');
   assert.match(office, /'Refresh · ' \+ L\.dataAge\(/, 'button says "updated just now" and then ages');
 });
