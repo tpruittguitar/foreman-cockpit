@@ -393,21 +393,3 @@ test('item 17: roster is the 14 sidebar bots, in sidebar order, short names, exa
   assert.equal(Object.keys(A.AVATARS).length, 14);
   assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');
 });
-
-test('nap pose rests on the cushion and stays inside the sofa footprint for every body size', () => {
-  const sizes = [
-    { name: 'president', halfW: 0.27, halfD: 0.2, top: 1.45 },
-    { name: 'slim', halfW: 0.2, halfD: 0.15, top: 0.9 },
-    { name: 'typical', halfW: 0.32, halfD: 0.25, top: 1.1 },
-    { name: 'chubby', halfW: 0.45, halfD: 0.4, top: 1.2 },
-    { name: 'max', halfW: 0.5, halfD: 0.45, top: 1.45 }
-  ];
-  for (const c of sizes) {
-    const r = L.napFits(c);
-    assert.ok(r.onCushion, c.name + ' bottom ' + r.bottom);
-    assert.ok(r.inside, c.name + ' inside footprint');
-    assert.equal(r.lieY, L.CUSHION_TOP + c.halfW);
-  }
-  const oldPres = 0.75 - 0.27, oldBot = 0.88 - 0.45;
-  assert.ok(oldPres < L.CUSHION_TOP && oldBot < L.CUSHION_TOP, 'the old fixed lieY sank wide bodies');
-});

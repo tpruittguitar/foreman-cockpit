@@ -497,16 +497,20 @@
     return list.filter(c => { const t = time(c.at); return t != null && t <= now + MIN && now - t <= win; })
       .sort((a, b) => time(a.at) - time(b.at)).slice(-max);
   }
-  const CUSHION_TOP = 0.50, SOFA_DEPTH = 0.9, SOFA_MIN_LEN = 2.0, NAP_RIG_X = 0.5;
-  function napLieY(halfW) { return CUSHION_TOP + Math.max(0, +halfW || 0); }
-  function napFits(c, sofa) {
-    const halfW = Math.max(0, +((c && c.halfW) != null ? c.halfW : c && c.radius) || 0);
-    const halfD = Math.max(0, +(c && c.halfD) || 0);
-    const top = Math.max(0, +(c && c.top) || 0);
-    const depth = (sofa && sofa.depth) || SOFA_DEPTH, len = (sofa && sofa.len) || SOFA_MIN_LEN;
-    const bottom = napLieY(halfW) - halfW;
-    const a0 = Math.min(NAP_RIG_X, NAP_RIG_X - top), a1 = Math.max(NAP_RIG_X, NAP_RIG_X - top);
-    return { bottom, lieY: napLieY(halfW), onCushion: bottom >= CUSHION_TOP - 1e-9, inside: halfD <= depth / 2 + 1e-9 && a0 >= -len / 2 - 1e-9 && a1 <= len / 2 + 1e-9 };
+  /* Nap seat from the lounge sofa geometry (office.js seatBlock, before the sofa's own height scale): cushion top 0.50 m,
+     seat front edge 0.45 m ahead of the sofa centre line, backrest front 0.23 m behind it, 0.18 m armrests at each end. */
+  const NAP_CUSHION_TOP = 0.50, NAP_SEAT_FRONT = 0.45, NAP_BACKREST = 0.23, NAP_ARM = 0.18, NAP_MARGIN = 0.03;
+  function napSeat(len, yScale) {
+    return { top: NAP_CUSHION_TOP * (yScale || 1), inner: len - 2 * NAP_ARM, depth: NAP_SEAT_FRONT + NAP_BACKREST, front: (NAP_SEAT_FRONT - NAP_BACKREST) / 2 };
+  }
+  /* Lying body on a nap seat: bottom on the cushion top, centred between the armrests (rigX = half its length, since the
+     lying rig hangs head-first toward -x), scaled down only when it is longer than the inner length or deeper than the seat. */
+  function napFit(c, seat) {
+    seat = seat || napSeat(2.0, 1);
+    const halfW = Math.max(0, +((c && c.halfW) != null ? c.halfW : c && c.radius) || 0), halfD = Math.max(0, +(c && c.halfD) || 0), top = Math.max(0, +(c && c.top) || 0);
+    const scale = Math.min(1, top ? (seat.inner - 2 * NAP_MARGIN) / top : 1, halfD ? (seat.depth / 2 - NAP_MARGIN) / halfD : 1);
+    const len = top * scale;
+    return { scale, halfW: halfW * scale, halfD: halfD * scale, len, lieY: seat.top + halfW * scale, rigX: len / 2, span: [-len / 2, len / 2] };
   }
   const BUBBLE_MAX = 90; // wider 2-3 line bubbles; typical sentences fit with no ellipsis
   function bubbleText(c) { return c.text ? truncate(c.text, BUBBLE_MAX) : 'talking with ' + c.to; }
@@ -1840,7 +1844,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, CUSHION_TOP, SOFA_DEPTH, SOFA_MIN_LEN, NAP_RIG_X, napLieY, napFits, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
+    needsTimNames, waterfallOffset, buildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
