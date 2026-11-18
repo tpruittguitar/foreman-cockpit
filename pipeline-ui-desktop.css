@@ -17,6 +17,12 @@
   header #bell{order:8;margin-left:6px;border-left:1px solid var(--forge-line);border-radius:0;padding-left:8px;min-width:46px}
   header #settings{order:9;min-width:38px;min-height:38px;border-color:transparent;background:transparent;font-size:19px}
   header #layout-toggle{order:10}
+  /* P3: one refresh control (the countdown chip) and a header that fits at 1440: middle items shrink, bell and gear stay on screen */
+  header #refresh,#rail-refresh{display:none!important}
+  header .brand,header .writer-identity,header .hstat,header #crumb{flex:0 1 auto;min-width:0;overflow:hidden}
+  header #search{min-width:140px}
+  header #bell,header #settings,header .menu-btn{flex:none}
+  header [data-refresh-now]{cursor:pointer}
 
   /* Rail: 96px, label under each icon; hover or the menu button opens the sub-items */
   #rail{width:96px}#rail .rail-in{width:96px;padding-top:6px;border-right:1px solid var(--forge-line-strong)}

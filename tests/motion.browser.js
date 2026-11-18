@@ -37,7 +37,7 @@ const fixture=require('./gen_population').generate(600,70);
   await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width/2,b.y-85,{steps:18});await page.mouse.up();await page.waitForTimeout(750);
   await divider.dblclick();await page.mouse.move(700,400);await page.waitForTimeout(650);
   await page.locator('#grid tbody tr[data-id]').nth(5).click();await page.waitForTimeout(1000);
-  delayRead=true;await page.locator('#refresh').click();
+  delayRead=true;await page.locator('header [data-refresh-now]').click();   // P3: the countdown chip is the desktop refresh control
   await page.waitForFunction(()=>document.body.dataset.freshness==='loading');
   assert.equal(await page.locator('#gridpane').getAttribute('aria-busy'),'true');
   await page.waitForFunction(()=>document.body.dataset.freshness==='live');

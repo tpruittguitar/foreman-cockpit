@@ -70,7 +70,7 @@
       bar.setAttribute('aria-label','Next automatic Writer status refresh');bar.setAttribute('aria-valuetext',!clock.enabled||paused||clock.busy?text:seconds+' seconds until next refresh');
       if(clock.enabled&&!paused&&!clock.busy&&clock.deadline){bar.setAttribute('aria-valuemin','0');bar.setAttribute('aria-valuemax','60');bar.setAttribute('aria-valuenow',String(Math.min(60,seconds)));fill.style.width=Math.min(100,seconds/60*100)+'%';}
       else{bar.removeAttribute('aria-valuenow');fill.style.width='';}
-      el.title='Writer status only. The job master refreshes separately.';
+      el.title=el.hasAttribute('data-refresh-now')?'Refresh now: reloads the job master and the Writer status':'Writer status only. The job master refreshes separately.';
     });
   }
   function clockState(value){clock=Object.assign(clock,value);paintClock();}
