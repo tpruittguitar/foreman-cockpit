@@ -355,12 +355,12 @@
     const others = n => list.map(b => b.bot).filter(x => x !== n);
     const partnerFor = (n, salt) => { const o = others(n); return o.length ? o[hash(n + ':' + salt) % o.length] : null; };
     // working (and blocked) bots type at their desk, with a short staggered break every 4-6 minutes
-    for (const b of list) if (!plans[b.bot] && b.bot !== TRAINER) { const r = replayFor(b, now); if (r) plans[b.bot] = { act: r.act, replay: r }; }
     for (const b of list) if (!plans[b.bot] && busy(b)) {
       const br = workBreak(b.bot, now);
       plans[b.bot] = br ? { act: br, brk: true } : { act: 'work' };
       if (br === 'visitdesk') plans[b.bot].partner = partnerFor(b.bot, Math.floor(now / 60000));
     }
+    for (const b of list) if (!plans[b.bot] && b.bot !== TRAINER) { const r = replayFor(b, now); if (r) plans[b.bot] = { act: r.act, replay: r }; }
     const trainer = training ? null : list.find(b => b.bot === TRAINER && !plans[b.bot]);
     const idle = list.filter(b => !plans[b.bot] && b.bot !== TRAINER).map(b => b.bot).sort();
     idle.forEach(n => { const a = idleAct(n, now); plans[n] = { act: a }; if (a === 'visitdesk') plans[n].partner = partnerFor(n, idleSlot(n, now).idx); });
@@ -377,9 +377,7 @@
         plans[TRAINER] = { act: 'visit', partner: target }; plans[target] = { act: 'listen', partner: TRAINER };
       } else plans[TRAINER] = { act: 'wander' };
     }
-    // idle trips: working / quiet bots periodically get up, walk to an idle spot, idle there, then walk back and sit (tripScheduleAt)
-    const tripNames = list.map(b => b.bot).filter(n => plans[n] && (plans[n].act === 'work' || plans[n].act === 'stale'));
-    if (tripNames.length) { const trips = tripScheduleAt(tripNames, now, { total: list.length }); for (const n of tripNames) if (trips[n]) plans[n] = plans[n].act === 'stale' ? Object.assign(plans[n], { trip: trips[n].spot }) : { act: 'trip', spot: trips[n].spot, brk: true }; }
+    /* QA #407: no idle trips from the work plan; a fresh bot is away only for its short workBreak (WORK_BREAK_MAX_S) */
     const chat = idle.filter(n => plans[n].act === 'chat');
     for (let i = 0; i + 1 < chat.length; i += 2) {
       plans[chat[i]] = { act: 'chat', partner: chat[i + 1], host: false };
@@ -1128,6 +1126,7 @@
   /* ---------- Busy office schedule (Tim 12:19 / 12:20 AM) ---------- */
   const RECENT_REPLAY_MIN = 30;
   const IDLE_ACTS = ['wander', 'coffee', 'chat', 'fridge', 'lounge', 'chat', 'wander', 'bike', 'sleep', 'visitdesk', 'chat', 'game']; // sleep+game = 2/12
+  const WORK_BREAK_MAX_S = 45, WORK_BREAK_S = 30;
   const BREAK_ACTS = ['stretch', 'coffee', 'stretch', 'fridge']; // stretch at the desk (short) or refresh (coffee / drink)
   function idleSlot(name, nowMs) {
     const dur = 120 + hash('dur:' + name) % 61, t = nowMs / 1000 + hash('off:' + name) % dur; // 2-3 min, staggered per bot
@@ -1137,7 +1136,7 @@
   function workBreak(name, nowMs) {
     const period = 240 + hash('brk:' + name) % 121, t = nowMs / 1000 + hash('bo:' + name) % period; // every 4-6 min, staggered
     const kind = BREAK_ACTS[hash(name + ':b' + Math.floor(t / period)) % BREAK_ACTS.length];
-    if (t % period >= (kind === 'stretch' ? 14 : 45)) return null; // a stretch is ~14 s, a refresh walk ~45 s
+    if (t % period >= (kind === 'stretch' ? 14 : WORK_BREAK_S)) return null; // a stretch is ~14 s; a refresh walk leaves room to walk back inside 45 s
     return kind;
   }
   /* ---------- Item 16b: pose follows the freshest real signal ----------
@@ -1151,28 +1150,41 @@
     const b = bot || {};
     const own = [b.last_action_at, b.screen && b.screen.updated_at, b.routine && b.routine.started_at, b.audit && b.audit.last_at]
       .concat((b.work || []).map(w => w.at));
-    let lastSeen = null;
-    for (const v of own.concat(extra || [])) {
-      const t = typeof v === 'number' ? v : time(v);
-      if (t != null && t <= now + MIN && (lastSeen == null || t > lastSeen)) lastSeen = t;
+    let lastSeen = null, source = '';
+    const at = v => (v && typeof v === 'object' ? v.at : v), tagged = own.map(v => ({ at: v, src: 'status row' })).concat((extra || []).map(v => (v && typeof v === 'object' ? v : { at: v, src: 'signal' })));
+    for (const v of tagged) {
+      const t = typeof v.at === 'number' ? v.at : time(v.at);
+      if (t != null && t <= now + MIN && (lastSeen == null || t > lastSeen)) { lastSeen = t; source = v.src; }
     }
     const ageMin = lastSeen == null ? null : Math.max(0, Math.floor((now - lastSeen) / MIN));
     const stale = ageMin == null || ageMin > BOT_STALE_MIN;
     /* No activity feed: the row was only seeded (or never written) and no other signal exists, so an hour count would mislead. */
-    const ok = v => { const t = typeof v === 'number' ? v : time(v); return t != null && t <= now + MIN; };
+    const ok = v => { const t = typeof at(v) === 'number' ? at(v) : time(at(v)); return t != null && t <= now + MIN; };
     const noFeed = stale && !(extra || []).some(ok) && (/^seeded$/i.test(str(b.last_action).trim()) || !own.some(ok));
-    return { lastSeen, ageMin, stale, noFeed, label: !stale ? '' : noFeed ? 'no activity feed' : 'stale · last seen ' + (ageMin == null ? 'unknown' : ageText(ageMin)) };
+    return { lastSeen, ageMin, stale, noFeed, source, label: !stale ? '' : noFeed ? 'no activity feed' : 'stale · last seen ' + (ageMin == null ? 'unknown' : ageText(ageMin)) };
   }
   /* Extra signal times for one bot from data the page already holds: ctx = { items, prTimes (Map prKey -> ISO),
      screens (parseScreensIndex), auto (parseAutomations) }. */
-  function botSignals(bot, ctx) {
-    const c = ctx || {}, out = [], name = str(bot && bot.bot), id = str(bot && bot.bot_id);
-    for (const i of c.items || []) if (i.owner === name && c.prTimes) { const t = c.prTimes.get(prKey(i.link)); if (t) out.push(t); }
+  function botSignals(bot, ctx, tagged) {
+    const c = ctx || {}, out = [], name = str(bot && bot.bot), id = str(bot && bot.bot_id), add = (at, src) => out.push(tagged ? { at, src } : at);
+    for (const i of c.items || []) if (i.owner === name && c.prTimes) { const t = c.prTimes.get(prKey(i.link)); if (t) add(t, 'PR'); }
     const sc = id && c.screens && c.screens.screens && c.screens.screens[id];
     /* activeAt (Root's spec, Nov 17): when the bot last really worked. Index entries without the field keep the old capture time. */
-    if (sc && !sc.paused) out.push(sc.hasActive ? sc.activeAt : sc.at);
-    for (const r of (c.auto && c.auto.rows) || []) if (r.ai === name) out.push(r.last_run_at, r.running ? r.started_at : '');
+    if (sc && !sc.paused) add(sc.hasActive ? sc.activeAt : sc.at, 'screen');
+    for (const r of (c.auto && c.auto.rows) || []) if (r.ai === name) { add(r.last_run_at, 'automation'); add(r.running ? r.started_at : '', 'automation'); }
+    const m = c.merges && c.merges.get(name.toLowerCase()); if (m) add(m, 'PR merge'); /* QA #407: a merge is real work */
     return out;
+  }
+  /* The ONE activity read (QA #407): the list view, the name tags and the 3D plan all call this, so they never disagree. */
+  function botActivity(bot, now, ctx) { const f = freshness(bot, now, botSignals(bot, ctx, true)); return Object.assign(f, { working: !f.stale }); }
+  /* GitHub pulls list -> Map botLower -> newest merged_at, by the branch's first word (cursor/..., cursor-obsfix-..., claude/..., chatgpt/...). */
+  function prMerges(list, into) {
+    const m = into || new Map();
+    for (const p of Array.isArray(list) ? list : []) {
+      const t = p && time(p.merged_at), who = str(p && p.head && p.head.ref).toLowerCase().split(/[\/_-]/)[0];
+      if (t != null && who && (!m.has(who) || time(m.get(who)) < t)) m.set(who, str(p.merged_at));
+    }
+    return m;
   }
   /* GitHub pulls list -> Map prKey -> updated_at (same key as prStates) */
   function prTimes(owner, repo, list) {
@@ -1950,7 +1962,7 @@
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, prTimes,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, WORK_BREAK_MAX_S, WORK_BREAK_S, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,

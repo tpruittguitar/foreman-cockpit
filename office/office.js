@@ -42,7 +42,7 @@ if (TV) document.documentElement.classList.add('tv');
 /* ============================== data ============================== */
 const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
-  pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
+  pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), merges: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
   readings: [], cons: { health: null, activity: null, err: '', tried: 0, at: 0 }, readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '', fetched: {}, refreshedAt: 0,
   glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null, invite: null, hrFree: false
 };
@@ -74,9 +74,10 @@ async function api(url) {
 async function rawText(url) { const r = await fetch(url + (url.includes('?') ? '&' : '?') + 't=' + Math.floor(Date.now() / POLL_MS), { cache: 'no-cache' }); if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; throw e; } return r.text(); }
 /* PR states: one list call per repo (state=all), cached PR_CACHE_MS; check-runs only for open, non-draft PRs (cached by sha). */
 async function loadPulls() {
-  const out = [], states = new Map(), times = new Map();
+  const out = [], states = new Map(), times = new Map(), merges = new Map();
   for (const repo of PR_REPOS) {
     const list = await api(`${GH_API}repos/${OWNER}/${repo}/pulls?state=all&sort=updated&direction=desc&per_page=50`);
+    L.prMerges(list, merges);
     L.prStates(OWNER, repo, list).forEach((v, k) => states.set(k, v));
     L.prTimes(OWNER, repo, list).forEach((v, k) => times.set(k, v));
     for (const p of list.filter(p => p.state === 'open')) {
@@ -90,12 +91,12 @@ async function loadPulls() {
       out.push(L.summarizePull(repo, p, checks || (p.draft ? 'draft' : 'unknown')));
     }
   }
-  return { out, states, times };
+  return { out, states, times, merges };
 }
 function slowLoads(now) {
   if (now - S.pullsAt >= L.PR_CACHE_MS || S.pullsErr) {
     S.pullsAt = now;
-    loadPulls().then(r => { S.pulls = r.out; S.prStates = r.states; S.prTimes = r.times; S.pullsErr = ''; }, e => { S.pullsErr = e.message; }).then(refreshAll);
+    loadPulls().then(r => { S.pulls = r.out; S.prStates = r.states; S.prTimes = r.times; S.merges = r.merges; S.pullsErr = ''; }, e => { S.pullsErr = e.message; }).then(refreshAll);
   }
   if (now - S.asksAt >= SLOW_MS) {
     S.asksAt = now;
@@ -208,8 +209,9 @@ function withRoutine(b) {
   return r ? Object.assign({}, b, { routine: { name: r.name, started_at: r.started_at } }) : b;
 }
 /* item 16b: freshest real signal for a bot (row times + PR / Actions / terminal-screen times the page already read) */
-const signalCtx = () => ({ items: items(), prTimes: S.prTimes, screens: S.screens, auto: S.auto });
-function freshOf(b, now, ctx) { return L.freshness(b, now || Date.now(), L.botSignals(b, ctx || signalCtx())); }
+const signalCtx = () => ({ items: items(), prTimes: S.prTimes, merges: S.merges, screens: S.screens, auto: S.auto });
+/* QA #407: the list view, the name tags and the 3D plan all read L.botActivity through here (routine rows folded in first) */
+function freshOf(b, now, ctx) { return L.botActivity(withRoutine(b), now || Date.now(), ctx || signalCtx()); }
 function staleChip(b, now) { const f = b && !L.statusStyle(b.status).alert ? freshOf(b, now) : null; return f && f.stale ? ` <span class="st stale">? ${esc(f.label)}</span>` : ''; }
 function botByName(n) { return withRoutine(bots().find(b => b.bot === n)); }
 function alertBots() { return bots().filter(b => L.statusStyle(b.status).alert); }
@@ -261,7 +263,7 @@ function needsRowHTML(e) {
   if (t.href) return `<a class="needlink" data-kind="${t.kind}" ${targetAttrs(t.href)}>${inner}</a>`;
   return `<span class="needlink nolink">${inner}${t.label ? `<span class="meta">${esc(t.label)} · no PR or chat link known</span>` : ''}</span>`;
 }
-function stWord(b) { const st = L.statusStyle(b.status); return `<span class="st ${st.alert ? 'alert' : st.status}">${st.glyph} ${st.word}</span>`; }
+function stWord(b) { const s0 = L.statusStyle(b.status), st = s0.alert ? s0 : L.statusStyle(freshOf(b).working ? 'working' : 'idle'); return `<span class="st ${st.alert ? 'alert' : st.status}">${st.glyph} ${st.word}</span>`; }
 function renderFlat() {
   if ($('flat').hidden) return;
   const now = Date.now(), h = [];
@@ -1022,7 +1024,7 @@ function buildWorld() {
   function updatePlan() {
     const t = performance.now(); if (t - planAt < 500) return; planAt = t;
     const now = Date.now(), list = bots().filter(b => deskOf(b.bot)), ctx = signalCtx();
-    S.fresh = Object.fromEntries(list.map(b => [b.bot, freshOf(withRoutine(b), now, ctx)]));
+    S.fresh = Object.fromEntries(list.map(b => [b.bot, freshOf(b, now, ctx)]));
     S.needsSet = S.state === 'failed' ? new Set() : L.needsTimNames(needsData());
     plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh, { training: DEMO ? [] : S.training, needs: S.needsSet }); // item 3 / 9: only a real needs_tim item waves
     const idleNames = list.filter(b => { const c = chars.get(b.bot), p = plan.plans[b.bot]; return c && p && !p.brk && IDLE_PLAN.has(p.act) && !S.needsSet.has(b.bot) && !c.job && !c.jobs.length; }).map(b => b.bot);
@@ -1794,7 +1796,7 @@ function buildWorld() {
   desks: desks.map(d => ({ name: d.name, seat: d.seat, stand: d.stand, visit: d.visit })),
   slots: SLOTS.concat(BOARD_SLOTS).map(s => ({ id: s.id, kind: s.kind, x: +s.x.toFixed(3), z: +s.z.toFixed(3), face: s.face })), trainer: TRAINER_SPOT }),
     info: () => ({ camY: +camera.position.y.toFixed(3), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
-      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
+      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: plan.plans, activity: Object.fromEntries(Object.entries(S.fresh).map(([n, f]) => [n, { plan: (plan.plans[n] || {}).act || '', working: f.working, source: f.source || 'none', ageMin: f.ageMin }])), meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
       lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose, +(c.radius || 0.3).toFixed(2)]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
       generic: [...chars.values()].filter(c => c.generic).map(c => c.name), idle: [...chars.values()].map(c => c.name + ':' + (c.idleAct || '')), fridge: fridgeStock, restocker: S.restocker, needs: [...S.needsSet],
       jobs: [...chars.values()].filter(c => c.job).map(c => c.name + ':' + c.job.phase), pipeline: { live: pipe.live, embed: !!pipe.css, browsing: pipe.browsing }, conf: CONF })
