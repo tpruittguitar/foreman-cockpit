@@ -1134,7 +1134,12 @@
     for (const line of str(text).split(/\r?\n/)) {
       if (!line.trim()) continue; let r; try { r = JSON.parse(line); } catch (e) { continue; }
       if (!r || time(r.at) == null || !str(r.provider)) continue;
-      out.push({ at: str(r.at), provider: str(r.provider).toUpperCase(), usedPct: typeof r.usedPct === 'number' && Number.isFinite(r.usedPct) ? r.usedPct : null, meter: str(r.meter), label: str(r.label), resetsAt: str(r.resetsAt), status: str(r.status) });
+      const rec = { at: str(r.at), provider: str(r.provider).toUpperCase(), usedPct: typeof r.usedPct === 'number' && Number.isFinite(r.usedPct) ? r.usedPct : null, meter: str(r.meter), label: str(r.label), resetsAt: str(r.resetsAt), status: str(r.status) };
+      if ('resets_available' in r) rec.resets_available = r.resets_available;
+      if ('resets_expire' in r) rec.resets_expire = r.resets_expire;
+      if ('extra_usd' in r) rec.extra_usd = r.extra_usd;
+      if ('openaiCredit' in r) rec.openaiCredit = r.openaiCredit;
+      out.push(rec);
     }
     return out;
   }
@@ -1167,7 +1172,15 @@
   function usageRows(readings, now, fallback) {
     const latest = latestPerProvider(readings || []);
     if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', next: countdown(nextCheck(now), now), stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
-    return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => { const r = latest[p.id]; return { name: p.name, pct_used: r.usedPct, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: 'Measured ' + etClock(time(r.at)) + ' ET', next: countdown(nextCheck(now), now), stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' }; });
+    return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => {
+      const r = latest[p.id];
+      const row = { name: p.name, pct_used: r.usedPct, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: 'Measured ' + etClock(time(r.at)) + ' ET', next: countdown(nextCheck(now), now), stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
+      if (r.resets_available !== undefined) row.resets_available = r.resets_available;
+      if (r.resets_expire !== undefined) row.resets_expire = r.resets_expire;
+      if (r.extra_usd !== undefined) row.extra_usd = r.extra_usd;
+      if (r.openaiCredit !== undefined) row.openaiCredit = r.openaiCredit;
+      return row;
+    });
   }
   /* Newest reading time across the rows (ms or null): the monitor header and the wall both show this one time. */
   function usageLatest(rows) { const ts = (rows || []).map(r => r.at).filter(t => t != null); return ts.length ? Math.max(...ts) : null; }
@@ -1182,6 +1195,34 @@
     return { hours: 36, stages: [{ name: 'Discovery', unit: 'candidates/hr', perHour: 9.1, partial: true, constraint: false }, { name: 'Intake', unit: 'jobs/hr', perHour: 4.1, partial: true, constraint: false },
       { name: 'Enrichment', unit: 'jobs/hr', perHour: 0, partial: true, constraint: true }, { name: 'Your decisions', manual: true, constraint: false }],
       waiting: [{ count: 854, partial: false }, { count: 3011, partial: false }, { count: 15, partial: false }], constraintReason: '', needDecision: 15, evidenceDelayed: false };
+  }
+  function monthDay(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return '';
+    return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[2] - 1] + ' ' + String(+m[3]);
+  }
+  function creditLine(u) {
+    const c = u && u.openaiCredit;
+    if (!c) return '';
+    const grant = +c.grant_usd;
+    const verified = c.verified_left_usd != null && c.verified_left_usd !== '';
+    const left = verified ? +c.verified_left_usd : +c.est_left_usd;
+    if (!isFinite(grant) || !isFinite(left)) return '';
+    const approx = verified ? '' : '~';
+    const grantStr = (grant % 1) ? grant.toFixed(2) : String(Math.round(grant));
+    const exp = monthDay(c.expires);
+    return 'API credit: ' + approx + '$' + left.toFixed(2) + ' of $' + grantStr + ' left' + (exp ? ' · expires ' + exp : '');
+  }
+  function resetsLine(u) {
+    if (!u || (u.resets_available === undefined && u.resets_expire === undefined && u.extra_usd === undefined)) return '';
+    let resets = (u.resets_available == null || u.resets_available === '') ? 'Resets: none' : ('Resets: ' + String(+u.resets_available));
+    const exp = monthDay(u.resets_expire);
+    if (exp && u.resets_available != null && u.resets_available !== '' && +u.resets_available > 0) resets += ' (expires ' + exp + ')';
+    let extra = 'Extra: none';
+    if (u.extra_usd != null && u.extra_usd !== '' && isFinite(+u.extra_usd) && +u.extra_usd !== 0) {
+      extra = 'Extra: $' + (+u.extra_usd).toFixed(2);
+    }
+    return resets + ' · ' + extra;
   }
   function usageHeader(rows, now) { const t = usageLatest(rows); return t == null ? 'No usage reading yet' : 'Latest reading ' + etClock(t) + ' ET · ' + relTime(new Date(t).toISOString(), now); }
 
@@ -1737,7 +1778,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, screenState,
+    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
