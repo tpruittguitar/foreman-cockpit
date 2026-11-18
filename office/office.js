@@ -368,12 +368,17 @@ async function refreshThread(botId) {
   if (r.ok && r.json) el.innerHTML = threadHTML(r.json.messages);
   else if (relayDown || !relayKey()) el.innerHTML = '<p class="fallback">' + (relayKey() ? 'Chat relay not configured: Send copies the message for Open chat.' : 'Replies show here once the office chat key is set (<a href="#" data-chatkey="1">set key</a>).') + '</p>';
 }
+/* POST to a bot's mailbox; asks for the chat key once if it is missing or was refused (shared by chat and card Send). */
+async function postRelay(id, text) {
+  let r = await relay('POST', id, text);
+  if (!relayDown && (r.status === 401 || !relayKey()) && askRelayKey(r.status === 401 ? 'That chat key was not accepted.' : '')) r = await relay('POST', id, text);
+  return r;
+}
 async function sendChat(b) {
   const ta = $('chat-text'), text = (ta.value || '').trim(); if (!text) return ta.focus();
   if (text.length > 2000) return toast('Messages are limited to 2000 characters');
   const id = idFor(b.bot, b.bot_id);
-  let r = await relay('POST', id, text);
-  if (!relayDown && (r.status === 401 || !relayKey()) && askRelayKey(r.status === 401 ? 'That chat key was not accepted.' : '')) r = await relay('POST', id, text);
+  const r = await postRelay(id, text);
   if (r.ok) { ta.value = ''; toast('Sent to ' + b.bot + "'s mailbox; the reply shows here"); return refreshThread(id); }
   try { await navigator.clipboard.writeText(text); } catch (e) { /* clipboard blocked: the text stays in the box */ }
   openChatApp(id, b.bot, "Message copied, paste it in " + b.bot + "'s chat");
@@ -412,6 +417,7 @@ function openBot(name) {
 function openItem(id) {
   const it = items().find(i => i.id === id); if (!it) return;
   const w = L.statusWord(it), pb = L.priorityBadge(it.priority), col = L.COLUMNS.find(c => c.id === L.columnFor(it)).label;
+  const ownerId = it.owner ? idFor(it.owner, (botByName(it.owner) || {}).bot_id) : '';
   showPanel(`<h2 id="panel-title">${esc(L.cardTitle(it))}</h2>
     <dl><dt>Priority</dt><dd><span class="pbadge ${pb.loud ? 'loud' : ''}">${esc(it.priority)}</span></dd>
     <dt>Status</dt><dd><span class="st ${w.tone}">${w.glyph} ${w.word}</span> (${esc(it.status)}${it.prState ? ', PR ' + esc(it.prState) : ''}) · column ${esc(col)}</dd>
@@ -419,8 +425,17 @@ function openItem(id) {
     ${it.question ? `<dt>Question</dt><dd>${esc(it.question)}</dd>` : ''}${it.note ? `<dt>Note</dt><dd>${esc(it.note)}</dd>` : ''}
     <dt>Owner</dt><dd>${it.owner ? `<button class="linkbtn" data-bot="${esc(it.owner)}">${esc(it.owner)}</button>${it.ownerKnown ? '' : ' (not a known bot)'}` : '—'}${it.owner && botByName(it.owner) ? ` · <a href="#" data-go="${esc(it.owner)}">desk</a>` : ''}</dd>
     <dt>Project</dt><dd>${esc(it.project)}</dd><dt>Updated</dt><dd>${it.updated_at ? L.etClock(Date.parse(it.updated_at)) + ' ET · ' + L.relTime(it.updated_at, Date.now()) : '—'}</dd><dt>ID</dt><dd>${esc(it.id)}</dd></dl>
+    ${L.cardBoxHTML(it, esc, ownerId)}
     ${L.safeLink(it.link) ? linkHTML(it.link, 'Open link') + `<div class="fallback">${esc(it.link)}</div>` : '<p class="fallback">No link on this card.</p>'}
     ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
+  $('card-send').onclick = async () => {
+    const ta = $('card-text'), out = $('card-sent'); out.className = 'fallback'; out.textContent = 'Sending…';
+    const r = await L.sendCardDirection(it, ta.value, ownerId, postRelay);
+    if (r.state === 'empty') { out.textContent = ''; return ta.focus(); }
+    out.className = r.state === 'sent' ? 'st working' : 'src-down';
+    out.textContent = r.state === 'sent' ? '✓ Sent to ' + it.owner + "'s mailbox" : '⚠ Not sent: ' + r.error;
+    if (r.state === 'sent') ta.value = '';
+  };
 }
 function openNeeds() {
   const ne = needsEntries(), d = needsData();
