@@ -1462,10 +1462,10 @@ function buildWorld() {
   function turn(dx, dy) { look.setFromQuaternion(camera.quaternion); look.y -= dx; look.x = Math.max(-1.4, Math.min(1.4, look.x - dy)); camera.quaternion.setFromEuler(look); }
   let down = null;
   canvas.addEventListener('pointerdown', e => { // dimmer first: a grab on the plate drags the knob and never starts a look-drag
-    if (e.pointerType === 'touch' || e.button !== 0 || panelOpen) return;
+    if (e.button !== 0 || panelOpen) return;
     ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera);
     const h = ray.intersectObject(dimPlate, true)[0], other = ray.intersectObjects(pickables(), true)[0];
-    if (!h || (other && other.distance < h.distance)) return;
+    if (!L.dimmerTouchHit(h, other)) return;
     dimDrag = true; down = null; glide = null; tour = null; lastInput = performance.now(); $('start').hidden = true; try { canvas.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
     canvas.style.cursor = 'ns-resize'; dimDragTo(e.clientX, e.clientY); e.stopImmediatePropagation();
   });
@@ -1499,11 +1499,23 @@ function buildWorld() {
     js.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === jid) jmove(t); }, { passive: false });
     const jend = e => { for (const t of e.changedTouches) if (t.identifier === jid) { jid = null; joy.x = joy.y = 0; knob.style.transform = ''; } };
     js.addEventListener('touchend', jend); js.addEventListener('touchcancel', jend);
-    const looks = new Map();
-    canvas.addEventListener('touchstart', e => { e.preventDefault(); for (const t of e.changedTouches) looks.set(t.identifier, { x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, at: performance.now() }); lastInput = performance.now(); glide = null; }, { passive: false });
-    canvas.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) { const l = looks.get(t.identifier); if (!l) continue; turn((t.clientX - l.x) * 0.005, (t.clientY - l.y) * 0.005); l.x = t.clientX; l.y = t.clientY; } }, { passive: false });
-    canvas.addEventListener('touchend', e => { for (const t of e.changedTouches) { const l = looks.get(t.identifier); looks.delete(t.identifier);
-      if (l && performance.now() - l.at < 350 && Math.hypot(t.clientX - l.sx, t.clientY - l.sy) < 10) activate(pick(t.clientX / innerWidth * 2 - 1, -(t.clientY / innerHeight) * 2 + 1)); } });
+    const looks = new Map(), dims = new Map();
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); for (const t of e.changedTouches) {
+      ndc.set(t.clientX / innerWidth * 2 - 1, -(t.clientY / innerHeight) * 2 + 1); camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera);
+      const h = ray.intersectObject(dimPlate, true)[0], other = ray.intersectObjects(pickables(), true)[0];
+      if (L.touchDragTarget(h, other)) { dims.set(t.identifier, true); dimDrag = true; down = null; glide = null; tour = null; lastInput = performance.now(); $('start').hidden = true; canvas.style.cursor = 'ns-resize'; dimDragTo(t.clientX, t.clientY); }
+      else looks.set(t.identifier, { x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, at: performance.now() });
+    } lastInput = performance.now(); glide = null; }, { passive: false });
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) {
+      if (dims.has(t.identifier)) { dimDragTo(t.clientX, t.clientY); continue; }
+      const l = looks.get(t.identifier); if (!l) continue; turn((t.clientX - l.x) * 0.005, (t.clientY - l.y) * 0.005); l.x = t.clientX; l.y = t.clientY;
+    } }, { passive: false });
+    const endTouch = e => { for (const t of e.changedTouches) {
+      if (dims.delete(t.identifier)) { dimDrag = false; canvas.style.cursor = ''; setDim(dimTarget, true); continue; }
+      const l = looks.get(t.identifier); looks.delete(t.identifier);
+      if (l && performance.now() - l.at < 350 && Math.hypot(t.clientX - l.sx, t.clientY - l.sy) < 10) activate(pick(t.clientX / innerWidth * 2 - 1, -(t.clientY / innerHeight) * 2 + 1));
+    } };
+    canvas.addEventListener('touchend', endTouch); canvas.addEventListener('touchcancel', endTouch);
   }
 
   // keyboard: desktop WASD/arrows; TV hop / free walk
