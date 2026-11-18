@@ -1312,7 +1312,9 @@ function buildWorld() {
   }
 
   /* ---------- screens ---------- */
-  let boardDirty = true, page = 0, pageAt = 0, focusItem = null;
+  let boardDirty = true, page = 0, pageAt = 0, focusItem = null, autosAt = 0;
+  /* Automations wall board on its own, so its countdowns tick every second without redrawing the other boards */
+  function drawAutos() { const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO, fetchedAt: S.fetched.automations, boardM: autos.w }); a.t.needsUpdate = true; autosAt = clock; }
   function drawBoards() {
     const hl = new Set();
     if (hoverBot) items().filter(i => i.owner === hoverBot).forEach(i => hl.add(i.id));
@@ -1325,7 +1327,7 @@ function buildWorld() {
     t.t.needsUpdate = true;
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
     const n = needs.tex; needs.hits = drawNeeds(n.ctx, n.c.width, n.c.height, { entries: needsEntries(), count: needsCount(), demo: DEMO, state: S.state }); drawFetched(n.ctx, n.c.width, n.c.height, S.fetched.status, null, null, needs.w); n.t.needsUpdate = true;
-    const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO, fetchedAt: S.fetched.automations, boardM: autos.w }); a.t.needsUpdate = true;
+    drawAutos();
     const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); drawFetched(wr.ctx, wr.c.width, wr.c.height, S.fetched.automations, null, null, writer.w); wr.t.needsUpdate = true;
     const cw = constraint.tex; drawConstraintWall(cw.ctx, cw.c.width, cw.c.height, constraintView(Date.now())); drawFetched(cw.ctx, cw.c.width, cw.c.height, DEMO ? 0 : S.cons.at, null, null, constraint.w); cw.t.needsUpdate = true;
     updateLines();
@@ -1665,6 +1667,7 @@ function buildWorld() {
     // free-running page tick: each board column takes tick mod its own page count (L.columnPage)
     if (pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % 1e9; pageAt = clock; boardDirty = true; }
     if (boardDirty) drawBoards();
+    else if (clock - autosAt >= 1) drawAutos();
     if (now - deskTick > Q.deskDrawMs) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
     if (now - dayTick > 60000) { dayTick = now; applyDaylight(); }
     if (dimCur !== dimTarget) { dimCur = L.dimSmooth(dimCur, dimTarget, dt); applyDim(); }
