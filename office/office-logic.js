@@ -1054,8 +1054,21 @@
   }
   /* Walking cap: never more than a third of the bots walking at once. */
   function walkCap(total) { return Math.max(1, Math.floor(total / 3)); }
-  /* May a bot start a new walk this frame? Short hops always; urgent goals (needs Tim, the QA forceNap hook) skip the cap,
-     because with idle trips the cap stays full and a forced nap waited 90 s+ at the desk (QA on #392, Nov 17). */
+  /* May a bot start a new walk this frame? Short hops always; urgent goals (needs Tim, the QA forceNap hook, a training
+     session walk) skip the cap, because with idle trips the cap stays full and a forced nap waited 90 s+ at the desk
+     (QA on #392, Nov 17) and #446 left HR sitting at home while the plan said lead. */
+  function isSessionWalk(g) {
+    const k = g && typeof g.key === 'string' ? g.key : '';
+    return k === 'lead' || k === 'listen' || k.startsWith('visit:') || k.startsWith('train:') || k.startsWith('invite:');
+  }
+  /* A stuck walk sits the bot at its desk for 30 s. Session lead/train/visit/listen retry instead, so the trainer is
+     not sent home mid-session (QA FAIL #446: plan lead, pose=sit, goalKey=home at the HR desk). */
+  function applyGaveUp(g, gaveUp, now, desk) {
+    if (!g) return g;
+    if (isSessionWalk(g)) return g;
+    if (gaveUp && desk && gaveUp.key === g.key && now < gaveUp.until) return { key: 'home', spot: desk.seat, pose: 'sit' };
+    return g;
+  }
   function mayStartWalk(far, urgent, walkingNow, total) { return !far || !!urgent || walkingNow < walkCap(total); }
   function admitWalkers(requests, walkingNow, total) {
     const room = Math.max(0, walkCap(total) - walkingNow);
@@ -2160,7 +2173,7 @@
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
-    createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
+    createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,

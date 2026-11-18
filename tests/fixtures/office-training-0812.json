@@ -1,0 +1,19 @@
+{
+  "sessions": [
+    {
+      "id": "train-20261118-0812-2",
+      "skill": "lean-repo-checkout refresher",
+      "trainer": "HR",
+      "trainees": [
+        "Cursor",
+        "Claude",
+        "ChatGPT",
+        "Root"
+      ],
+      "started_at": "2026-11-18T08:12:07Z",
+      "until": "2026-11-18T08:24:07Z",
+      "title": "Lean-repo-checkout refresher",
+      "location": "Training room"
+    }
+  ]
+}
