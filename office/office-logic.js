@@ -1150,6 +1150,9 @@
       if ('resets_expire' in r) rec.resets_expire = r.resets_expire;
       if ('extra_usd' in r) rec.extra_usd = r.extra_usd;
       if ('openaiCredit' in r) rec.openaiCredit = r.openaiCredit;
+      if ('fiveHourUsedPct' in r) rec.fiveHourUsedPct = r.fiveHourUsedPct;
+      if ('fiveHourResetsAt' in r) rec.fiveHourResetsAt = r.fiveHourResetsAt;
+      if (r.fiveHour && typeof r.fiveHour === 'object') rec.fiveHour = r.fiveHour;
       out.push(rec);
     }
     return out;
@@ -1158,6 +1161,27 @@
   function latestPerProvider(readings) {
     const best = {};
     for (const r of readings) { const b = best[r.provider]; if (!b || time(r.at) > time(b.at) || (time(r.at) === time(b.at) && r.meter === 'weekly')) best[r.provider] = r; }
+    return best;
+  }
+  function isFiveHourMeter(r) { return !!r && (r.meter === 'session' || r.meter === '5-hour' || +r.windowHours === 5); }
+  function fiveHourFromReading(r) {
+    if (!r) return null;
+    let used = null, resetsAt = null;
+    if (r.fiveHour && typeof r.fiveHour === 'object' && r.fiveHour.usedPct != null) {
+      used = r.fiveHour.usedPct; resetsAt = r.fiveHour.resetsAt;
+    } else if (r.fiveHourUsedPct != null) { used = r.fiveHourUsedPct; resetsAt = r.fiveHourResetsAt; }
+    else if (isFiveHourMeter(r)) { used = r.usedPct; resetsAt = r.resetsAt; }
+    if (used == null || !isFinite(+used)) return null;
+    return { usedPct: +used, resetsAt, at: r.at };
+  }
+  function latestFiveHour(readings, provider) {
+    let best = null;
+    for (const r of readings || []) {
+      if (str(r.provider).toUpperCase() !== provider) continue;
+      const f = fiveHourFromReading(r);
+      if (!f) continue;
+      if (!best || time(f.at) > time(best.at) || (time(f.at) === time(best.at) && isFiveHourMeter(r))) best = f;
+    }
     return best;
   }
   function etOffsetMin(ms) { // minutes ET is behind UTC at ms (DST aware)
@@ -1201,6 +1225,10 @@
       if (r.resets_expire !== undefined) row.resets_expire = r.resets_expire;
       if (r.extra_usd !== undefined) row.extra_usd = r.extra_usd;
       if (r.openaiCredit !== undefined) row.openaiCredit = r.openaiCredit;
+      if (p.id === 'CLAUDE') {
+        const f = latestFiveHour(readings || [], 'CLAUDE') || fiveHourFromReading(r);
+        if (f) row.fiveHour = f;
+      }
       return row;
     });
   }
@@ -1245,6 +1273,15 @@
       extra = 'Extra: $' + (+u.extra_usd).toFixed(2);
     }
     return resets + ' · ' + extra;
+  }
+  /* Tim: text only under the Claude bar, no second bar. Hide when the window has already reset. */
+  function fiveHourLine(u, now) {
+    const f = u && u.fiveHour, pct = f && +f.usedPct, reset = f && time(f.resetsAt);
+    if (!f || !isFinite(pct) || reset == null) return '';
+    if (reset <= (now != null ? now : Date.now())) return '';
+    const t = etClock(reset);
+    if (pct >= 100) return '5-hr window: FULL, stopped · resets ' + t + ' ET';
+    return '5-hr window: ' + Math.round(pct) + '% used · resets ' + t + ' ET';
   }
   function usageHeader(rows, now) { const t = usageLatest(rows); return t == null ? 'No usage reading yet' : 'Latest reading ' + etClock(t) + ' ET · ' + relTime(new Date(t).toISOString(), now); }
 
@@ -1819,7 +1856,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
+    latestPerProvider, nextCheck, countdown, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,

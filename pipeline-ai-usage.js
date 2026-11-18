@@ -30,7 +30,7 @@
       if (r.meter !== 'weekly' || ORDER.indexOf(r.provider) === -1) return;
       var k = r.provider + '|' + r.meter; (groups[k] = groups[k] || []).push(r);
     });
-    return Object.keys(groups).map(function (k) {
+    var projections = Object.keys(groups).map(function (k) {
       var g = groups[k].slice().sort(function (a, b) { return Date.parse(a.at) - Date.parse(b.at); });
       var last = g[g.length - 1], at = Date.parse(last.at), reset = Date.parse(last.resetsAt) || 0;
       var p = { provider: last.provider, meter: last.meter, label: last.label || last.meter, usedPct: +last.usedPct, at: at, resetsAt: reset, status: last.status || 'OK', ageH: (nowMs - at) / H, rate: null, runOutAt: null, verdict: 'UNKNOWN', basis: '' };
@@ -55,6 +55,19 @@
       p.verdict = reset && p.runOutAt < reset ? 'BEFORE_RESET' : 'LASTS';
       return p;
     }).sort(function (a, b) { return ORDER.indexOf(a.provider) - ORDER.indexOf(b.provider); });
+    var five = null;
+    readings.forEach(function (r) {
+      if (r.provider !== 'CLAUDE') return;
+      var f = null;
+      var raw, fAt;
+      if (r.meter === 'session' || r.meter === '5-hour' || +r.windowHours === 5) { raw = r.usedPct; fAt = r.resetsAt; }
+      else if (r.fiveHourUsedPct != null) { raw = r.fiveHourUsedPct; fAt = r.fiveHourResetsAt; }
+      else if (r.fiveHour && r.fiveHour.usedPct != null) { raw = r.fiveHour.usedPct; fAt = r.fiveHour.resetsAt; }
+      if (raw != null && isFinite(+raw) && r.status !== 'UNREADABLE') f = { usedPct: +raw, resetsAt: fAt, at: r.at };
+      if (f && (!five || Date.parse(f.at) >= Date.parse(five.at))) five = f;
+    });
+    if (five) projections.forEach(function (p) { if (p.provider === 'CLAUDE') p.fiveHour = five; });
+    return projections;
   }
 
   function when(ms) {
@@ -83,6 +96,21 @@
     var exp = monthDay(c.expires);
     return '<div class="dim">API credit: ' + approx + '$' + left.toFixed(2) + ' of $' + grantStr + ' left' + (exp ? ' · expires ' + exp : '') + '</div>';
   }
+  function etClock(ms) {
+    return new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+  }
+  function fiveHourLine(p, nowMs) {
+    var f = p && p.fiveHour, pct = f && +f.usedPct, reset = f && Date.parse(f.resetsAt);
+    if (!f || !isFinite(pct) || !isFinite(reset)) return '';
+    if (reset <= (nowMs != null ? nowMs : Date.now())) return '';
+    var t = etClock(reset);
+    if (pct >= 100) return '5-hr window: FULL, stopped · resets ' + t + ' ET';
+    return '5-hr window: ' + Math.round(pct) + '% used · resets ' + t + ' ET';
+  }
+  function fiveHourHtml(p, nowMs) {
+    var t = fiveHourLine(p, nowMs);
+    return t ? '<div class="dim">' + esc(t) + '</div>' : '';
+  }
   function resetsHtml(p) {
     if (!p || (p.resets_available === undefined && p.resets_expire === undefined && p.extra_usd === undefined)) return '';
     var resets = (p.resets_available == null || p.resets_available === '') ? 'Resets: none' : ('Resets: ' + String(+p.resets_available));
@@ -94,7 +122,7 @@
     }
     return '<div class="dim">' + esc(resets + ' · ' + extra) + '</div>';
   }
-  function rowHtml(p) {
+  function rowHtml(p, nowMs) {
     var v = VERDICT[p.verdict] || VERDICT.UNKNOWN, pct = Math.max(0, Math.min(100, p.usedPct || 0));
     var detail = p.verdict === 'OUT' ? 'out until reset ' + when(p.resetsAt)
       : p.verdict === 'BEFORE_RESET' ? 'projected out ' + when(p.runOutAt) + ' · resets ' + when(p.resetsAt)
@@ -104,12 +132,12 @@
     return '<div class="aiu-row ' + v[0] + '" title="' + esc(title) + '">' +
       '<div class="aiu-top"><b>' + esc(NAMES[p.provider] || p.provider) + '</b> <span class="dim">' + esc(p.label) + '</span><span class="aiu-pct">' + esc(String(Math.round(pct))) + '%</span></div>' +
       '<div class="aiu-track" role="img" aria-label="' + esc(title) + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
-      creditHtml(p) + resetsHtml(p) +
+      fiveHourHtml(p, nowMs) + creditHtml(p) + resetsHtml(p) +
       '<div class="aiu-foot"><span class="pill ' + v[0] + '">' + esc(v[1]) + '</span> <span class="dim">' + esc(detail) + (p.rate != null && p.rate > 0 ? ' · ' + p.rate.toFixed(2) + '%/h (' + esc(p.basis) + ')' : '') + ' · read ' + esc(p.ageH < 1 ? Math.round(p.ageH * 60) + ' min ago' : Math.round(p.ageH) + ' h ago') + '</span></div></div>';
   }
-  function html(projections) {
+  function html(projections, nowMs) {
     if (!projections || !projections.length) return '<div class="dim">No usage readings yet.</div>';
-    return '<div class="aiu">' + projections.map(rowHtml).join('') + '</div>';
+    return '<div class="aiu">' + projections.map(function (p) { return rowHtml(p, nowMs); }).join('') + '</div>';
   }
   function load(fetchFn) {
     // raw.githubusercontent.com caches for 5 minutes and ignores query strings, so a fresh push stays invisible.
@@ -121,6 +149,6 @@
       .catch(function () { return f(URL, { cache: 'no-store' }).then(function (r) { if (!r.ok) throw new Error('usage readings HTTP ' + r.status); return r.text(); }); })
       .then(parse);
   }
-  var api = { parse: parse, project: project, html: html, load: load, URL: URL, API_URL: API_URL };
+  var api = { parse: parse, project: project, html: html, fiveHourLine: fiveHourLine, load: load, URL: URL, API_URL: API_URL };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.PipelineAiUsage = api;
 })(typeof window !== 'undefined' ? window : globalThis);

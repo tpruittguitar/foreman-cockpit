@@ -371,3 +371,21 @@ test('status source without apiUrl reads the raw URL directly with a fresh cache
   await src.get(NOW + 1000);
   assert.deepEqual(calls, ['https://raw.githubusercontent.com/x?t=' + NOW, 'https://raw.githubusercontent.com/x?t=' + (NOW + 1000)]);
 });
+
+test('Claude 5-hr window line is text only, exact wording, hidden after reset', () => {
+  const reset = '2026-11-16T05:49:00.000Z'; // 12:49 AM ET (EST, UTC-5)
+  const now = Date.parse('2026-11-16T03:00:00.000Z');
+  const text = [
+    JSON.stringify({ at: '2026-11-16T02:00:00.000Z', provider: 'CLAUDE', meter: 'weekly', label: 'weekly (all models)', usedPct: 4, resetsAt: '2026-11-22T16:00:00.000Z', status: 'OK' }),
+    JSON.stringify({ at: '2026-11-16T02:05:00.000Z', provider: 'CLAUDE', meter: 'session', label: 'current session', usedPct: 4, resetsAt: reset, windowHours: 5, status: 'OK' }),
+    JSON.stringify({ at: '2026-11-16T02:00:00.000Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly', usedPct: 92, resetsAt: '2026-11-20T21:58:53.000Z', status: 'OK' })
+  ].join('\n');
+  const rows = L.usageRows(L.parseReadings(text), now, null);
+  const by = Object.fromEntries(rows.map(r => [r.name, r]));
+  assert.equal(by.Claude.pct_used, 4);
+  assert.equal(by.Claude.fiveHour.usedPct, 4);
+  assert.equal(L.fiveHourLine(by.Claude, now), '5-hr window: 4% used · resets 12:49 AM ET');
+  assert.equal(L.fiveHourLine({ fiveHour: { usedPct: 100, resetsAt: reset } }, now), '5-hr window: FULL, stopped · resets 12:49 AM ET');
+  assert.equal(L.fiveHourLine(by.Claude, Date.parse('2026-11-16T06:00:00.000Z')), '');
+  assert.equal(L.fiveHourLine(by.ChatGPT, now), '');
+});

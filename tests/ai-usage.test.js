@@ -114,3 +114,39 @@ test('optional pool lines render under the bar only when fields are present', ()
   assert.doesNotMatch(hBare, /API credit:/);
   assert.doesNotMatch(hBare, /Resets:/);
 });
+
+test('Claude 5-hr window is a text line under the bar, never a second bar', () => {
+  const reset = '2026-10-14T04:49:00.000Z'; // 12:49 AM ET (EDT, UTC-4)
+  const now = Date.parse('2026-10-13T20:00:00Z');
+  const weekly = U.parse(line({
+    at: '2026-10-13T19:40:00Z', provider: 'CLAUDE', meter: 'weekly', label: 'weekly',
+    usedPct: 47, resetsAt: '2026-10-18T16:00:00Z'
+  }));
+  const session = U.parse([
+    line({ at: '2026-10-13T19:40:00Z', provider: 'CLAUDE', meter: 'weekly', label: 'weekly', usedPct: 47, resetsAt: '2026-10-18T16:00:00Z' }),
+    JSON.stringify({ at: '2026-10-13T19:45:00Z', provider: 'CLAUDE', meter: 'session', label: 'current session', usedPct: 4, resetsAt: reset, windowHours: 5, status: 'OK' })
+  ].join('\n'));
+  assert.equal(U.fiveHourLine({ fiveHour: { usedPct: 4, resetsAt: reset } }, now), '5-hr window: 4% used · resets 12:49 AM ET');
+  assert.equal(U.fiveHourLine({ fiveHour: { usedPct: 100, resetsAt: reset } }, now), '5-hr window: FULL, stopped · resets 12:49 AM ET');
+  assert.equal(U.fiveHourLine({ fiveHour: { usedPct: 142, resetsAt: reset } }, now), '5-hr window: FULL, stopped · resets 12:49 AM ET');
+  assert.equal(U.fiveHourLine({ fiveHour: { usedPct: 4, resetsAt: reset } }, Date.parse('2026-10-14T06:00:00Z')), '');
+  assert.equal(U.fiveHourLine({}, now), '');
+  const p = U.project(session, now);
+  assert.equal(p.length, 1);
+  assert.equal(p[0].meter, 'weekly');
+  assert.equal(p[0].usedPct, 47);
+  assert.equal(p[0].fiveHour.usedPct, 4);
+  const h = U.html(p, now);
+  assert.match(h, /5-hr window: 4% used · resets 12:49 AM ET/);
+  assert.equal((h.match(/class="aiu-track"/g) || []).length, 1);
+  assert.doesNotMatch(h, /aiu-track[^>]*>[^<]*5-hr/);
+  const hWeekly = U.html(U.project(weekly, now), now);
+  assert.doesNotMatch(hWeekly, /5-hr window:/);
+  const fields = U.parse(line({
+    at: '2026-10-13T19:40:00Z', provider: 'CLAUDE', meter: 'weekly', label: 'weekly',
+    usedPct: 47, resetsAt: '2026-10-18T16:00:00Z', fiveHourUsedPct: 100, fiveHourResetsAt: reset
+  }));
+  const hFull = U.html(U.project(fields, now), now);
+  assert.match(hFull, /5-hr window: FULL, stopped · resets 12:49 AM ET/);
+  assert.equal((hFull.match(/class="aiu-track"/g) || []).length, 1);
+});
