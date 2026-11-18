@@ -244,6 +244,10 @@ function miniUsage(ctx, W, H, s, rows, now) {
     ctx.fillStyle = u.stale ? C.stale : '#a9aeb6'; ctx.fillText(fit(ctx, (u.stale ? '? stale · ' : '') + u.measured.replace('Measured ', ''), 190 * s), x, 348 * s);
   });
 }
+function resetClock(iso) {
+  const t = Date.parse(iso); if (!Number.isFinite(t)) return '?';
+  return new Date(t).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
+}
 function resetText(iso, now) {
   const t = Date.parse(iso); if (!Number.isFinite(t)) return '?';
   const d = new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
@@ -343,7 +347,8 @@ export function drawUsage(ctx, W, H, o) {
     ctx.fillStyle = '#2b2e33'; ctx.fillRect(34 * s, y + 64 * s, 560 * s, 18 * s);
     ctx.fillStyle = col; ctx.fillRect(34 * s, y + 64 * s, 560 * s * (u.pct_used || 0) / 100, 18 * s);
     ctx.fillStyle = u.stale ? C.stale : '#a9aeb6'; ctx.font = `600 ${22 * s}px ${SANS}`;
-    ctx.fillText(fit(ctx, u.measured, 600 * s), 34 * s, y + 112 * s);
+    /* card 94dfd7f489 (Tim, Nov 18): each plan shows its reset day and time again. */
+    ctx.fillText(fit(ctx, u.measured + (u.resets_at ? ' · resets ' + resetClock(u.resets_at) : ''), 600 * s), 34 * s, y + 112 * s);
     ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${16 * s}px ${SANS}`;
     const pool = [L.fiveHourLine(u, o.now), L.creditLine(u), L.resetsLine(u)].filter(Boolean);
     pool.forEach((t, j) => ctx.fillText(fit(ctx, t, 600 * s), 34 * s, y + (134 + j * 20) * s));

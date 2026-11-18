@@ -30,3 +30,9 @@ test('AI USAGE row: used under the %, prediction right of it, no next-check line
   assert.doesNotMatch(d, /u\.next/);
   assert.doesNotMatch(read('office/office.js'), /r\.next\)|USAGE_CHECK_SCHEDULE_ET\.join/);
 });
+
+test('card 94dfd7f489: 3D AI USAGE rows show each plan reset day and time', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'office', 'draw.js'), 'utf8');
+  assert.match(src, /u\.measured \+ \(u\.resets_at \? ' · resets ' \+ resetClock\(u\.resets_at\)/);
+  assert.match(src, /function resetClock\(iso\)/);
+});
