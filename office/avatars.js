@@ -39,8 +39,9 @@ const SHAPES = {
   starburst: rot => polar(t => 0.31 + 0.11 * Math.sign(-Math.cos(6 * t)) * Math.pow(Math.abs(Math.cos(6 * t)), 0.6), rot, 120), // Claude: 6 rounded rays (3D body is an SDF in chars.js; this outline is for the 2D owner icon)
   blob: rot => polar(t => 0.38 + 0.03 * Math.cos(3 * t) + 0.02 * Math.sin(2 * t), rot),
   dial: rot => polar(() => 0.4, rot),                                                        // round gauge face
-  /* Hermes: a soft tapered egg, broad shoulders narrowing to a round base (no corners, no point); default body depth */
-  taper: rot => Array.from({ length: 96 }, (_, i) => { const t = i / 96 * TAU, x = 0.4 * Math.cos(t) * (1 + 0.16 * Math.sin(t)), y = 0.42 * Math.sin(t), c = Math.cos(rot), s = Math.sin(rot); return [x * c - y * s, x * s + y * c]; })
+  /* Hermes: a soft hexagonal puck traced from Tim's avatar (/workspace/hermes/avatar.png): fuller corners than Archive's hexagon;
+     built thin front to back like the other flat bots (SHAPE_THICK.hexpuck in chars.js) */
+  hexpuck: rot => roundedPoly(regular(6, 0.44), 0.1, rot)
 };
 /* Sidebar shape names (profile.json avatarShape) -> our shapes. */
 const SHAPE_ALIAS = { square: 'roundsquare', tablet: 'pill', sparkle: 'star4', star: 'cookie6', clover: 'clover4', teardrop: 'teardrop', wedge: 'wedge', blob: 'blob', flower: 'flower', pentagon: 'pentagon', dial: 'dial', circle: 'blob', hexagon: 'hexagon', cloud: 'cloud', starburst: 'starburst' };
@@ -101,7 +102,9 @@ export const AVATARS = {
   '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
   'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' },         // GUI: red clover
   'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'hexagon', rot: 0.15, color: '#f2389b' },         // Archive: pink soft hexagon
-  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'taper', rot: 0, color: '#8f6ee8', prop: 'wings' }  // Hermes (messenger to TIMMAY): violet taper + winged helmet and heel wings
+  /* Hermes (card cs-d390e7b5), matched to Tim's picture: a teal rounded hexagon (corners at -10 deg + 60k) with two white slanted
+     oval eyes set right of centre. face: the eye pair is tilted 15 deg, shifted dx right and dy up (centred, not low), each eye leaning tilt rad, in eye colour. */
+  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'hexpuck', rot: 0.35, color: '#1ec4b2', face: { rot: 0.26, dx: 0.085, dy: 0.035, tilt: 0.21, color: '#ffffff' } }
 };
 /* bot_id -> short tag, used only when the full name does not fit the label. */
 export const SHORT_TAGS = { 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive' };
@@ -136,7 +139,8 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * size, -y * size) : ctx.moveTo(x * size, -y * size)));
     ctx.closePath(); ctx.fill();
   }
-  ctx.fillStyle = '#111';
-  for (const dx of [-0.1, 0.1]) { ctx.beginPath(); ctx.ellipse(dx * size, -0.02 * size, size * 0.05, size * 0.09, 0, 0, TAU); ctx.fill(); }
+  const fc = a.face || {}, fr = fc.rot || 0;
+  ctx.fillStyle = fc.color || '#111'; ctx.rotate(-fr); // canvas y points down, so a CCW face tilt is a negative canvas rotation
+  for (const dx of [-0.1, 0.1]) { ctx.beginPath(); ctx.ellipse((dx + (fc.dx || 0)) * size, (-0.02 - (fc.dy || 0)) * size, size * 0.05, size * 0.09, -(fc.tilt || 0), 0, TAU); ctx.fill(); }
   ctx.restore();
 }

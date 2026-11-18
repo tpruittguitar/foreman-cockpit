@@ -248,21 +248,24 @@ test('renamed bots are matched by bot_id first', () => {
   assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
 });
 
-test('Hermes avatar (card cs-d390e7b5): its own colour, a soft tapered body, winged-helmet prop', async () => {
+test('Hermes avatar (card cs-d390e7b5): matches Tim\'s picture, a teal rounded hexagon with two white slanted eyes right of centre', async () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const id = '15ab4cfb-2d51-4809-9ae3-f1285ebd829f', a = A.avatarFor('Hermes', id);
   assert.equal(A.BOT_IDS.Hermes, id);
-  assert.deepEqual([a.shape, a.color, a.prop], ['taper', '#8f6ee8', 'wings']);
-  assert.ok(!a.generic);
+  assert.deepEqual([a.shape, a.color], ['hexpuck', '#1ec4b2']);
+  assert.ok(!a.generic && !a.prop, 'no wings, helmet or halo');
   for (const [k, o] of Object.entries(A.AVATARS)) if (k !== id) assert.notEqual(o.color.toLowerCase(), a.color, 'colour not used by another bot');
-  const pts = A.shapePoints(a), widthAt = y => { const xs = []; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; if ((p[1] - y) * (q[1] - y) <= 0 && p[1] !== q[1]) xs.push(p[0] + (q[0] - p[0]) * (y - p[1]) / (q[1] - p[1])); } return Math.max(...xs) - Math.min(...xs); };
-  assert.ok(widthAt(0.25) > widthAt(-0.25) + 0.08, 'tapered: broad shoulders, narrower base');
-  // soft, not pointy or boxy: the outline turns smoothly everywhere (no corner sharper than a few degrees between samples)
-  let worst = 0;
-  for (let i = 0; i < pts.length; i++) { const p = pts[(i + pts.length - 1) % pts.length], q = pts[i], r = pts[(i + 1) % pts.length];
-    const t1 = Math.atan2(q[1] - p[1], q[0] - p[0]), t2 = Math.atan2(r[1] - q[1], r[0] - q[0]); worst = Math.max(worst, Math.abs(Math.atan2(Math.sin(t2 - t1), Math.cos(t2 - t1)))); }
-  assert.ok(worst < 0.15, 'max turn ' + worst);
+  // white eyes, the pair tilted about 15 deg and set right of centre, each eye leaning (top toward the left)
+  assert.equal(a.face.color, '#ffffff');
+  assert.ok(Math.abs(a.face.rot - 15 * Math.PI / 180) < 0.05 && a.face.dx > 0.05 && a.face.tilt > 0.1);
+  // a hexagon with rounded corners: six radius peaks 60 deg apart, flat sides between them, no sharp corner
+  const pts = A.shapePoints(a), at = th => { let best = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length];
+    const dx = Math.cos(th), dy = Math.sin(th), den = dx * (q[1] - p[1]) - dy * (q[0] - p[0]); if (!den) continue;
+    const t = (p[0] * (q[1] - p[1]) - p[1] * (q[0] - p[0])) / den, u = (p[0] * dy - p[1] * dx) / den; if (t > 0 && u >= 0 && u <= 1) best = Math.max(best, t); } return best; };
+  const prof = Array.from({ length: 360 }, (_, d) => at(d * Math.PI / 180)), peaks = prof.map((r, d) => r > prof[(d + 359) % 360] && r >= prof[(d + 1) % 360] ? d : -1).filter(d => d >= 0);
+  assert.equal(peaks.length, 6, 'six corners: ' + peaks);
+  const lo = Math.min(...prof), hi = Math.max(...prof); assert.ok(lo / hi > 0.86 && lo / hi < 0.95, 'rounded hexagon, not a circle or a star: ' + (lo / hi).toFixed(3));
   // about the size of the other bots, so it stays short and stands in its chair like them
   const ys = pts.map(p => p[1]), xs = pts.map(p => p[0]);
   assert.ok(Math.max(...ys) - Math.min(...ys) <= 0.9 && Math.max(...xs) - Math.min(...xs) <= 0.95);
@@ -417,7 +420,7 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['starburst', '#a8733f'],
     ChatGPT: ['wedge', '#f79a1d'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['cloud', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
     Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'],
-    Hermes: ['taper', '#8f6ee8'] };
+    Hermes: ['hexpuck', '#1ec4b2'] };
   for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
   assert.equal(Object.keys(A.AVATARS).length, 15, '14 sidebar bots + Hermes');
   assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');
