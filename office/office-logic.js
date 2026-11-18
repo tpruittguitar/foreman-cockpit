@@ -1126,7 +1126,17 @@
   /* ---------- Busy office schedule (Tim 12:19 / 12:20 AM) ---------- */
   const RECENT_REPLAY_MIN = 30;
   const IDLE_ACTS = ['wander', 'coffee', 'chat', 'fridge', 'lounge', 'chat', 'wander', 'bike', 'sleep', 'visitdesk', 'chat', 'game']; // sleep+game = 2/12
-  const WORK_BREAK_MAX_S = 45, WORK_BREAK_S = 30;
+  const WORK_BREAK_MAX_S = 45, WORK_BREAK_S = 30, WALK_MPS = 1.35, BREAK_SPOT_MAX_M = 3;
+  /* QA #409: a fresh bot's break counts its walk. The plan window (WORK_BREAK_S) covers the walk out and the stay; the walk back
+     comes after it, so a spot fits only if WORK_BREAK_S + dist / speed <= WORK_BREAK_MAX_S, and never beyond BREAK_SPOT_MAX_M.
+     speed is the bot's real walk speed in m/s (it drops when the page renders slowly). */
+  function breakSpotFits(distM, speedMps) { return distM <= BREAK_SPOT_MAX_M && speedMps > 0 && WORK_BREAK_S + distM / speedMps <= WORK_BREAK_MAX_S; }
+  /* nearest free spot of the break's kind that fits, else null (the bot stretches beside its desk instead) */
+  function breakSpot(kind, seat, slots, speedMps, isFree) {
+    let best = null, bd = Infinity;
+    for (const s of slots || []) { if (s.kind !== kind || (isFree && !isFree(s))) continue; const d = Math.hypot(s.x - seat.x, s.z - seat.z); if (d < bd && breakSpotFits(d, speedMps)) { best = s; bd = d; } }
+    return best;
+  }
   const BREAK_ACTS = ['stretch', 'coffee', 'stretch', 'fridge']; // stretch at the desk (short) or refresh (coffee / drink)
   function idleSlot(name, nowMs) {
     const dur = 120 + hash('dur:' + name) % 61, t = nowMs / 1000 + hash('off:' + name) % dur; // 2-3 min, staggered per bot
@@ -1962,7 +1972,7 @@
     daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, WORK_BREAK_MAX_S, WORK_BREAK_S, prTimes,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers,
     RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
