@@ -1166,8 +1166,19 @@
     return ms + 6 * 60 * MIN;
   }
   function countdown(target, now) { const m = Math.max(0, Math.ceil((target - now) / MIN)); return 'Next check in ' + Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; }
-  /* stale = the reading is older than one missed cycle: the check after it is past by more than the grace period */
-  function readingStale(r, now) { const t = time(r && r.at); return t == null || now > nextCheck(t) + USAGE_GRACE_MIN * MIN; }
+  /* stale: CLAUDE/CHATGPT use one missed cycle (nextCheck + grace). GROK follows Usage's
+     read schedule: hourly 2 PM-2 AM ET (stale after 90 min), then 5/8/11 AM (stale after 3.5 h). */
+  function grokStaleLimitMin(now) {
+    const et = new Date(now - etOffsetMin(now) * MIN);
+    const hm = et.getUTCHours() * 60 + et.getUTCMinutes();
+    return (hm >= 14 * 60 || hm < 2 * 60) ? 90 : 210;
+  }
+  function readingStale(r, now) {
+    const t = time(r && r.at);
+    if (t == null) return true;
+    if (r && String(r.provider).toUpperCase() === 'GROK') return now - t > grokStaleLimitMin(now) * MIN;
+    return now > nextCheck(t) + USAGE_GRACE_MIN * MIN;
+  }
   function etClock(ms) { return new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }); }
   function usageRows(readings, now, fallback) {
     const latest = latestPerProvider(readings || []);

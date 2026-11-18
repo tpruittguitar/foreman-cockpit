@@ -316,3 +316,23 @@ test('usage wall pool lines: optional fields pass through and format under the b
   assert.equal(L.creditLine(bare), '');
   assert.equal(L.resetsLine(bare), '');
 });
+
+test('GROK stale windows follow Usage reads: 90 min from 2 PM-2 AM ET, 3.5 h from 2 AM-2 PM, including midnight', () => {
+  const grok = at => ({ at, provider: 'GROK', meter: 'weekly', label: 'weekly Grok Bot', usedPct: 80, status: 'OK' });
+  const eve = Date.parse('2026-11-18T02:00:00Z');
+  assert.equal(L.readingStale(grok('2026-11-18T00:30:00.000Z'), eve), false, '90 min old at 9 PM ET is fresh');
+  assert.equal(L.readingStale(grok('2026-11-18T00:29:00.000Z'), eve), true, '91 min old at 9 PM ET is stale');
+  assert.equal(L.usageRows(L.parseReadings(JSON.stringify(grok('2026-11-18T00:30:00.000Z'))), eve, null)[0].stale, false);
+  const day = Date.parse('2026-11-17T15:00:00Z');
+  assert.equal(L.readingStale(grok('2026-11-17T11:30:00.000Z'), day), false, '210 min old at 10 AM ET is fresh');
+  assert.equal(L.readingStale(grok('2026-11-17T11:29:00.000Z'), day), true, '211 min old at 10 AM ET is stale');
+  assert.equal(L.usageRows(L.parseReadings(JSON.stringify(grok('2026-11-17T11:29:00.000Z'))), day, null)[0].stale, true);
+  const halfPastMidnight = Date.parse('2026-11-18T05:30:00Z');
+  assert.equal(L.readingStale(grok('2026-11-18T04:00:00.000Z'), halfPastMidnight), false, '90 min old at 12:30 AM ET is fresh');
+  assert.equal(L.readingStale(grok('2026-11-18T03:59:00.000Z'), halfPastMidnight), true, '91 min old at 12:30 AM ET is stale');
+  const afterTwo = Date.parse('2026-11-18T07:30:00Z');
+  assert.equal(L.readingStale(grok('2026-11-18T05:00:00.000Z'), afterTwo), false, '150 min old at 2:30 AM ET is fresh under the 3.5 h rule');
+  const claude = { at: '2026-11-16T07:08:54Z', provider: 'CLAUDE', meter: 'weekly', usedPct: 27, status: 'OK' };
+  assert.equal(L.readingStale(claude, NOW), false);
+  assert.equal(L.readingStale(claude, Date.parse('2026-11-16T13:40:00Z')), true, 'CLAUDE still uses nextCheck + grace');
+});
