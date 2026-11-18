@@ -32,5 +32,5 @@ test('simulated walk: with the cap full all the time, a forced President reaches
 });
 
 test('office.js passes forceNap as urgent to the walk cap', () => {
-  assert.match(office, /if \(!L\.mayStartWalk\(far, needs \|\| c\.forceNap, walkingNow, chars\.size\)\)/);
+  assert.match(office, /if \(!L\.mayStartWalk\(far, needs \|\| c\.forceNap( \|\| home)?, walkingNow, chars\.size\)\)/);
 });

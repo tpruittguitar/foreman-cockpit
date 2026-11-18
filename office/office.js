@@ -1145,7 +1145,9 @@ function buildWorld() {
       case 'lead': return { key: 'lead', spot: TRAINER_SPOT, pose: 'talk', ambient: 'train' };
       case 'sleep': return (L.hash(c.name) % 2 && slotted(['nap'])) || (book.release(c.name), { key: 'sleep', spot: d.seat, pose: 'deskSleep' });
       case 'game': return { key: 'game', spot: d.seat, pose: 'game' };
-      case 'coffee': case 'fridge': return slotted([p.act]) || slotted(['loiter']) || { key: 'seat', spot: d.seat, pose: 'type' };
+      case 'coffee': case 'fridge': if (p.brk) { const s = L.breakSpot(p.act, d.seat, SLOTS, L.WALK_MPS * realRate, x => !book.holder(x.id) || book.holder(x.id) === c.name); /* QA #409: walk time counts in the 45 s */
+          if (s && book.take(s.id, c.name)) return { key: 'slot:' + s.id, spot: s, pose: s.kind }; book.release(c.name); return { key: 'stretch', spot: d.stand, pose: 'stretch' }; }
+        return slotted([p.act]) || slotted(['loiter']) || { key: 'seat', spot: d.seat, pose: 'type' };
       case 'lounge': return slotted(['sit']) || slotted(['loiter']);
       case 'bike': return slotted(['bike']) || slotted(['sit']) || slotted(['loiter']);
       case 'visitdesk': { const td = deskOf(p.partner); if (td) return { key: 'vd:' + p.partner, spot: td.visit, pose: 'talk', faceBot: p.partner, ambient: 'chat', pair: c.name + '|' + p.partner, can: p.can }; break; }
@@ -1177,7 +1179,8 @@ function buildWorld() {
     if (g.key !== c.goalKey) {
       // walking cap: at most a third of the bots on the move; others wait where they are (alerts never wait)
       const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
-      if (!L.mayStartWalk(far, needs || c.forceNap, walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
+      const home = !!dk && Math.hypot(g.spot.x - dk.seat.x, g.spot.z - dk.seat.z) < 0.05; /* QA #409: back to the seat the moment a break ends, never held by the walk cap */
+      if (!L.mayStartWalk(far, needs || c.forceNap || home, walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
       else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) c.restocked = false; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
     }
     const goal = c.goalKey === g.key ? g : (c.goal || g);
@@ -1192,7 +1195,7 @@ function buildWorld() {
       }
     }
     if (c.path.length) {
-      const tgt = c.path[0], dx = tgt.x - c.pos.x, dz = tgt.y - c.pos.y, dist = Math.hypot(dx, dz), step = 1.35 * dt;
+      const tgt = c.path[0], dx = tgt.x - c.pos.x, dz = tgt.y - c.pos.y, dist = Math.hypot(dx, dz), step = L.WALK_MPS * dt;
       if (dist <= step) { c.pos.copy(tgt); c.path.shift(); c.prog = null; } else { c.pos.x += dx / dist * step; c.pos.y += dz / dist * step; }
       if (dist > 0.01) c.root.rotation.y = angLerp(c.root.rotation.y, Math.atan2(dx, dz), Math.min(1, dt * 10));
       pose = 'walk';
@@ -1620,7 +1623,7 @@ function buildWorld() {
   if (TV) setTimeout(() => hopTo({ row: 0, col: 1 }), 300);
 
   /* ---------- loop ---------- */
-  let last = performance.now(), clock = 0, hoverTick = 0, deskTick = 0, dayTick = 0, lastFrame = 0;
+  let last = performance.now(), realRate = 1, clock = 0, hoverTick = 0, deskTick = 0, dayTick = 0, lastFrame = 0;
   const minFrame = LOW ? 1000 / 31 : 0;
   let rafQueued = false;
   const nextFrame = () => { if (rafQueued || renderer.xr.isPresenting) return; rafQueued = true; requestAnimationFrame(t => { rafQueued = false; if (!renderer.xr.isPresenting) frame(t); }); };
@@ -1629,7 +1632,7 @@ function buildWorld() {
     if (!XR) nextFrame();
     if (!XR && minFrame && now - lastFrame < minFrame) return;
     lastFrame = now;
-    const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now; // rAF time can precede the setup time: never negative
+    const raw = (now - last) / 1000, dt = Math.max(0, Math.min(0.1, raw)); if (raw > 0) realRate += (dt / raw - realRate) * 0.05; last = now; // rAF time can precede the setup time: never negative
     clock += dt; // (v2 bug: this sat inside the comment above, so every animation clock stood still)
     if (XR) { glide = null; tour = null; vrFrame(dt, now); }
     if (glide) {
