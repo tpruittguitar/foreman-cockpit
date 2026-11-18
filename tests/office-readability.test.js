@@ -102,32 +102,19 @@ test('farLayout lines: one line per AI, label | count | word, counts aligned, in
   assert.deepEqual(L.farLayout(L.usageFar([]), 512, 269, measure, { lines: true }).runs.map(r => r.text), ['AI usage', 'NO DATA']);
 });
 
-test('paging removed: a column window only moves when scrolled', () => {
+test('checksheet Detail: auto-paging via columnPage, at most 6 rows per column', () => {
+  assert.equal(typeof L.columnPage, 'function');
+  assert.equal(L.columnWindow, undefined, 'scroll window helper removed with the #426 Detail layout');
+  assert.equal(L.scrollColumn, undefined);
+  assert.equal(L.nextColumnPage, undefined);
   const cards = Array.from({ length: 27 }, (_, i) => ({ id: 'ip-' + i }));
-  const ids = w => w.items.map(i => i.id);
-  const first = L.columnWindow(cards, 9, 0);
-  assert.deepEqual([first.items.length, first.above, first.below], [9, 0, 18]);
-  for (let t = 0; t < 10; t++) assert.deepEqual(ids(L.columnWindow(cards, 9, 0)), ids(first), 'same cards however long it sits');
-  assert.equal(L.columnWindow(cards, 9, 100).offset, 18, 'clamped to the last full window');
-  assert.equal(L.columnWindow(cards, 9, -4).offset, 0);
-  assert.equal(L.scrollColumn(0, 3, 27, 9), 3);
-  assert.equal(L.scrollColumn(17, 3, 27, 9), 18);
-  assert.equal(L.scrollColumn(2, -3, 27, 9), 0);
-  assert.deepEqual([0, 9, 18].map(o => L.nextColumnPage(o, 27, 9)), [9, 18, 0], 'the more line steps a page, then back to the top');
-  assert.equal(L.nextColumnPage(0, 5, 9), 0, 'a column that fits never moves');
-});
-
-test('wrapText: Needs Tim titles wrap whole, other titles ellipsise', () => {
-  const m = t => t.length * 10;
-  const t = 'Pay estimator rule gaps: confirm the overtime and shift-differential rules';
-  const all = L.wrapText(t, 200, m, 2, false);
-  assert.equal(all.truncated, false);
-  assert.equal(all.lines.join(' '), t, 'every word kept');
-  assert.ok(all.lines.every(l => m(l) <= 200));
-  const cut = L.wrapText(t, 200, m, 2, true);
-  assert.equal(cut.lines.length, 2); assert.ok(cut.lines[1].endsWith('…')); assert.ok(m(cut.lines[1]) <= 200);
-  assert.deepEqual(L.wrapText('short', 200, m, 2, true), { lines: ['short'], truncated: false });
-  assert.ok(L.wrapText('supercalifragilisticexpialidocious', 100, m, 0, false).lines.every(l => m(l) <= 100), 'long words break');
+  const ids = r => r.items.map(i => i.id);
+  const p0 = L.columnPage(cards, 6, 0), p1 = L.columnPage(cards, 6, 1), p4 = L.columnPage(cards, 6, 4);
+  assert.deepEqual([p0.items.length, p0.pages, p0.page], [6, 5, 0]);
+  assert.deepEqual(ids(p1), ['ip-6', 'ip-7', 'ip-8', 'ip-9', 'ip-10', 'ip-11']);
+  assert.deepEqual(ids(p4), ['ip-24', 'ip-25', 'ip-26']);
+  assert.deepEqual(ids(L.columnPage(cards, 6, 5)), ids(p0), 'tick wraps');
+  for (let t = 0; t < 5; t++) assert.ok(L.columnPage(cards, 6, t).items.length <= 6);
 });
 
 test('phone labels: on collision the lower-priority label hides', () => {

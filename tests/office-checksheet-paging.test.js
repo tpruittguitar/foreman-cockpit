@@ -53,3 +53,16 @@ test('empty column stays empty without errors', () => {
   assert.deepEqual(L.columnPage(ex(2), 0, 1).pages, 2, 'perPage < 1 is treated as 1');
   assert.deepEqual(L.columnPage(ex(2), 3, undefined).page, 0);
 });
+
+test('wall Detail layout caps each column at 6 card rows and pages the rest', () => {
+  const draw = require('fs').readFileSync(require('path').join(__dirname, '../office/draw.js'), 'utf8');
+  assert.match(draw, /Math\.min\(\s*6\s*,\s*Math\.max\(1,\s*Math\.floor/, 'drawBoard uses min(fit, 6)');
+  assert.match(draw, /L\.columnPage\(c\.cards,\s*fit,\s*o\.page/, 'drawBoard pages via L.columnPage');
+  assert.match(draw, /'p '\s*\+\s*\(pg\.page\s*\+\s*1\)\s*\+\s*'\/'\s*\+\s*pg\.pages/, 'p N/M page label');
+  assert.doesNotMatch(draw, /columnWindow|o\.scroll|SHARE\s*=/, 'no #426 scroll / unequal-column Detail layout');
+  const col = ex(20, 'ip');
+  assert.equal(L.columnPage(col, 6, 0).items.length, 6);
+  assert.equal(L.columnPage(col, 6, 0).pages, 4);
+  assert.deepEqual(ids(L.columnPage(col, 6, 1)), ['ip-6', 'ip-7', 'ip-8', 'ip-9', 'ip-10', 'ip-11']);
+  assert.equal(L.columnPage(col, 9, 0).items.length, 9, 'without the 6-row cap a tall board would show 9');
+});

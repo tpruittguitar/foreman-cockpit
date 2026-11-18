@@ -1380,8 +1380,7 @@ function buildWorld() {
   }
 
   /* ---------- screens ---------- */
-  let boardDirty = true, focusItem = null, autosAt = 0;
-  const colScroll = {}; // checksheet column -> first shown card; changes only when someone scrolls (no auto-paging)
+  let boardDirty = true, page = 0, pageAt = 0, focusItem = null, autosAt = 0;
   /* Automations wall board on its own, so its countdowns tick every second without redrawing the other boards */
   function drawAutos() { const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO, fetchedAt: S.fetched.automations, boardM: autos.w }); a.t.needsUpdate = true; autosAt = clock; }
   function drawBoards() {
@@ -1391,9 +1390,9 @@ function buildWorld() {
     const t = project.tex, tabs = L.projectTabs(items()); if (!tabs.includes(boardTab)) boardTab = 'All';
     const cols = L.boardView(items(), { tab: boardTab, doneOpen });
     const age = S.parsed ? L.dataAge(S.parsed.updatedAt, Date.now()) : null;
-    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, scroll: colScroll, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem, hoverId: hoverItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
+    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
+    pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
-    lastCols = cols;
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred() }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
     drawAutos();
     const sw = schedule.tex; drawTrainingSchedule(sw.ctx, sw.c.width, sw.c.height, { rows: L.visibleTrainingSessions(S.training, Date.now()).map(L.formatTrainingSession), fetchedAt: S.fetched.training, boardM: schedule.w }); sw.t.needsUpdate = true;
@@ -1405,10 +1404,10 @@ function buildWorld() {
     for (const d of desks) syncCards(d);
     boardDirty = false;
   }
-  let lastCols = null;
+  let pagesN = 1;
   function drawFarFaces(cols) {
     const now = Date.now(), opts = LOW ? L.FAR_PHONE : L.FAR_DESKTOP;
-    const entries = { project: L.checksheetFar(cols || lastCols), usage: L.usageFar(L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null)),
+    const entries = { project: L.checksheetFar(cols), usage: L.usageFar(L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null)),
       constraint: L.constraintFar(constraintView(now)), autos: L.automationsFar(S.auto), writer: L.writerFar(S.auto, now) };
     for (const b of FAR_BOARDS) { const f = b.far; b.farLay = drawFar(f.ctx, f.c.width, f.c.height, entries[b.id], b.id === 'usage' ? Object.assign({ lines: true }, opts) : opts); f.t.needsUpdate = true; }
   }
@@ -1533,7 +1532,7 @@ function buildWorld() {
       if (o.userData.board !== 'project' || project.layout === 'far') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
       const h = project.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
-      return h ? (h.id ? { item: h.id, col: h.col } : h.tab ? { tab: h.tab } : h.done ? { done: true } : h.scroll ? { scroll: h.scroll } : { more: h.more }) : { board: 'project' };
+      return h ? (h.id ? { item: h.id } : h.tab ? { tab: h.tab } : h.done ? { done: true } : { more: h.more }) : { board: 'project' };
     }
     if (o.userData.monitor) return { monitor: o.userData.monitor, half: hit.uv && hit.uv.x < 0.5 ? 'left' : 'right' };
     if (o.userData.charName) return { bot: o.userData.charName };
@@ -1543,18 +1542,12 @@ function buildWorld() {
   function activate(p) {
     if (!p) return false;
     if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
-    else if (p.scroll) scrollCol(p.scroll, 'page'); else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
+    else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
-  }
-  function scrollCol(id, how) { // 'page' (click / tap on the column's more line) or a signed card count (mouse wheel)
-    const c = (lastCols || []).find(x => x.id === id); if (!c) return;
-    const n = c.cards.length, rows = id === 'needs_tim' ? 1 : Math.max(1, (project.hits.filter(h => h.col === id).length) || 1);
-    colScroll[id] = how === 'page' ? (id === 'needs_tim' ? ((colScroll[id] || 0) + 1) % Math.max(1, n) : L.nextColumnPage(colScroll[id] || 0, n, rows)) : L.scrollColumn(colScroll[id] || 0, how, n, id === 'needs_tim' ? 1 : rows);
-    boardDirty = true;
   }
   /* item 8: browse mode. The canvas stops catching the mouse so the iframe underneath is a normal, clickable web page. */
   function setBrowse(on) {
@@ -1603,10 +1596,6 @@ function buildWorld() {
     activate(pick(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1)); // a plain click opens the panel or link right away
   });
   let hoverAt = null;
-  canvas.addEventListener('wheel', e => { // a hovered checksheet column scrolls (one card per notch); nothing moves on its own
-    if (panelOpen) return; camera.updateMatrixWorld(); const p = pick(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-    const col = p && (p.col || p.scroll); if (!col) return; e.preventDefault(); scrollCol(col, Math.sign(e.deltaY) * (col === 'needs_tim' ? 1 : 3));
-  }, { passive: false });
   $('start-btn').onclick = () => { $('start').hidden = true; };
 
   if (touch || touchEvents) {
@@ -1781,6 +1770,8 @@ function buildWorld() {
     if (now - hoverTick > Q.hoverMs) { hoverTick = now; if (!XR && (!TV || !hop)) { const p = hoverAt && !down ? pick(...hoverAt) : null; if (!TV || p) setHover(p); } }
     boardFrame(dt);
     if (LOW) { if (glide || camera.position.distanceToSquared(lastCam) > 1e-6) lastMoveAt = now; lastCam.copy(camera.position); document.body.classList.toggle('hud-moving', L.hudHidden(lastMoveAt, now)); }
+    // free-running page tick: each board column takes tick mod its own page count (L.columnPage)
+    if (pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % 1e9; pageAt = clock; boardDirty = true; }
     if (boardDirty) drawBoards();
     else if (clock - autosAt >= 1) drawAutos();
     if (now - deskTick > Q.deskDrawMs) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
@@ -1926,7 +1917,6 @@ function buildWorld() {
       toScreen(u, v, face) { const f = face === 'far' ? b.farFace : { x: 0, y: 0, w: b.w, h: b.h }, p = b.g.localToWorld(new THREE.Vector3(f.x + (u - 0.5) * f.w, f.y + (0.5 - v) * f.h, face === 'far' ? 0.072 : 0.07)).project(camera); return [(p.x * 0.5 + 0.5) * innerWidth, (-p.y * 0.5 + 0.5) * innerHeight, p.z]; } })); },
     losProbe() { return { boards: losRects.map(r => ({ ...r })), desks: desks.map(d => ({ name: d.name, rect: d.monRect || null, opacity: d.monFade, depth: camera.position.distanceTo(d.mon.getWorldPosition(new THREE.Vector3())) })),
       tags: [...chars.values()].map(c => ({ name: c.name, depth: camera.position.distanceTo(c.root.position) })) }; },
-    setScroll(id, off) { colScroll[id] = off; boardDirty = true; },
     forceNap(name, which) { const c = chars.get(name); if (!c) return null; const s = which ? SIT.find(p => p.kind === 'nap' && p.sofa === which) : null; c.forceNap = s || null;
       return s ? { bot: name, sofa: which, lie: { x: s.lie.x, z: s.lie.z }, seat: s.lie.seat, fit: L.napFit(c, s.lie.seat) } : null; },
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
