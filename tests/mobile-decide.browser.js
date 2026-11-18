@@ -90,8 +90,8 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   const sizes=await page.evaluate(()=>{const small=[],taps=[];document.querySelectorAll('#m-root *').forEach(e=>{if(!e.offsetParent&&getComputedStyle(e).position!=='fixed')return;
       if([...e.childNodes].some(x=>x.nodeType===3&&x.textContent.trim())&&parseFloat(getComputedStyle(e).fontSize)<12)small.push(e.textContent.trim().slice(0,30))});
     document.querySelectorAll('#m-pane-decide button').forEach(b=>{const r=b.getBoundingClientRect();if(r.width&&(r.height<44||r.width<44)&&!b.classList.contains('m-chip'))taps.push(b.textContent.trim()+' '+Math.round(r.width)+'x'+Math.round(r.height))});
-    const p=document.querySelector('.m-top [data-m-do="pursue"]').getBoundingClientRect(),dots=document.querySelector('.m-top [data-m-menu]').getBoundingClientRect(),d=document.querySelector('.m-top [data-m-do="decline"]').getBoundingClientRect();
-    return {small,taps,gap:Math.round(d.left-dots.right),sw:document.documentElement.scrollWidth,cw:document.documentElement.clientWidth}});
+    const p=document.querySelector('.m-top [data-m-do="pursue"]').getBoundingClientRect(),research=document.querySelector('.m-top [data-m-do="research"]').getBoundingClientRect(),d=document.querySelector('.m-top [data-m-do="decline"]').getBoundingClientRect();
+    return {small,taps,gap:Math.round(d.left-research.right),sw:document.documentElement.scrollWidth,cw:document.documentElement.clientWidth}});
   const clipped=await page.$$eval('#m-pane-decide .m-actions .m-btn',bs=>bs.filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim()+' '+b.scrollWidth+'>'+b.clientWidth));
   assert.deepStrictEqual(clipped,[],'no action button label is clipped');
   assert.deepStrictEqual(sizes.small,[],'no text under 12px');assert.deepStrictEqual(sizes.taps,[],'buttons >= 44px');
@@ -119,10 +119,8 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   await page.click('.m-card.m-top [data-m-do="research"]');await page.waitForSelector('#m-toast:not([hidden])');await page.waitForTimeout(5300);
   assert.ok(await page.isHidden('#m-toast'),'toast gone after 5s');
   r=rulings(posts);assert.strictEqual(r[r.length-1].kind,'MANUAL_RESEARCH','Research writes MANUAL_RESEARCH');
-  // 5. Research in two taps: ⋯ then Research; and long-press opens the same menu.
-  const t2=(await cards(page))[0].id;await page.click('.m-card.m-top [data-m-menu]');await page.click('.m-card.m-top .m-menu [data-m-do="research"]');await page.waitForTimeout(500);
-  r=rulings(posts);assert.strictEqual(r[r.length-1].kind,'MANUAL_RESEARCH');assert.match(r[r.length-1].note,/Research requested/,'Research note');assert.strictEqual(r[r.length-1].primaryId,t2);
-  await page.waitForTimeout(5300);
+  // 5. Research is a visible card button (no ⋯ on the row); long-press still opens the same menu.
+  assert.ok(!(await page.$('.m-card.m-top .m-actions [data-m-menu]')),'Decide cards have no ⋯ in the action row');
   const lp=await page.$('.m-card.m-top .m-reason');const bb=await lp.boundingBox();await page.mouse.move(bb.x+10,bb.y+5);await page.mouse.down();await page.waitForTimeout(650);await page.mouse.up();
   assert.ok(await page.isVisible('.m-card.m-top .m-menu [data-m-do="research"]'),'long-press opens the Research menu');
   await page.keyboard.press('Escape');assert.ok(!(await page.isVisible('.m-menu')),'Escape closes the menu');

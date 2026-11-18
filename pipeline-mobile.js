@@ -232,9 +232,8 @@
       (ns ? '<p class="m-alert" role="alert">' + gl('no') + 'Decision not saved <button type="button" class="m-btn m-quiet" data-m-retry="' + esc(v.id) + '">Retry</button></p>' : '') +
       '<div class="m-actions"><button type="button" class="m-btn m-primary" data-m-do="pursue" data-id="' + esc(v.id) + '">' + gl('ok') + 'Pursue</button>' +
       '<button type="button" class="m-btn m-quiet m-research" data-m-do="research" data-id="' + esc(v.id) + '">Research</button>' +
-      '<button type="button" class="m-btn m-quiet m-dots" data-m-menu="' + esc(v.id) + '" aria-haspopup="menu" aria-expanded="' + (menuFor === v.id) + '" aria-label="More actions">⋯</button>' +
       '<button type="button" class="m-btn m-danger" data-m-do="decline" data-id="' + esc(v.id) + '">' + gl('no') + 'Decline</button></div>' +
-      '<div class="m-sec"><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></div>' +
+      '<div class="m-applied"><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></div>' +
       (menuFor === v.id ? menuHtml(v.id) : '') + '<p class="m-say" role="status" data-m-say="' + esc(v.id) + '"></p></article>';
   }
   function menuHtml(id) {
@@ -430,7 +429,7 @@
         kv('Flex', esc(flexBadge(v.flex)[2])) + kv('Recency', a == null ? '? unknown' : a + ' days') + kv('Final score', v.score == null ? 'unscored' : Math.round(v.score))) +
       sec('My application', (v.applied ? kv('Applied', esc(v.applied.date || 'yes')) : '<p class="m-faint">No application recorded.</p><p><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></p>') + (v.ruling ? kv('Decision', esc(v.ruling)) : '')) +
       '<p class="m-say" role="status" data-m-say="' + esc(v.id) + '"></p></div>' +
-      '<div class="m-sec m-dsec"><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></div>' +
+      '<div class="m-applied m-dsec"><button type="button" class="m-btn m-quiet" data-m-do="applied" data-id="' + esc(v.id) + '">Mark applied</button></div>' +
       '<div class="m-dbar"><button type="button" class="m-btn m-primary" data-m-do="pursue" data-id="' + esc(v.id) + '">' + gl('ok') + 'Pursue</button>' +
       '<button type="button" class="m-btn m-quiet m-research" data-m-do="research" data-id="' + esc(v.id) + '">Research</button>' +
       '<button type="button" class="m-btn m-danger" data-m-do="decline" data-id="' + esc(v.id) + '">' + gl('no') + 'Decline</button></div>';

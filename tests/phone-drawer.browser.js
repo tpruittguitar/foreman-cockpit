@@ -6,7 +6,7 @@
    REV-073 (Track M step 7; Grok Bot 20:54 ET, p42 item 5): state card dropped when quiet, compact otherwise; pay right after the place.
    REV-072 (Track M step 6; Grok Bot 20:35 ET, p42 items 1-4): header row, ‹ Queue, title token, one meta line, ring clear of the decision row.
    REV-071 (Track M step 5; Grok Bot 20:21 ET, phone drawer vs v1.5 p42 B): ring (SVG, --pe-ring-phone 88 px, value 26 px,
-   band text right), decision row pinned to the drawer bottom (52 px, no key hints, Pursue · Research · Decline, plus Mark applied),
+   band text right), decision row pinned to the drawer bottom (52 px, no key hints, Pursue · Research · Decline; Mark applied is a secondary control by the posting actions),
    evidence rows (44 px, 3 px state bar, glyph, 11 px word), materials after the drawer body (44 px, >= 11 px). 390 / 402.
    Run: node tests/phone-drawer.browser.js */
 require('./helpers/block-production-writer.cjs'); // no request to the production Writer
@@ -68,7 +68,7 @@ const JOB='V2X-A4CCD49EE686';
     const t=w+'x'+h+': ';
     assert.equal(r.ring.w,88,t+'ring 88 px (--pe-ring-phone)');assert(r.ring.svg,t+'SVG ring');assert.equal(r.ring.fs,'26px',t+'ring value 26 px');assert(r.ring.info,t+'band text to the right of the ring');
     assert.equal(r.dec.pos,'sticky',t+'decision row pinned');assert.equal(r.dec.bottom,'0px');assert(r.dec.fits,t+'decision row inside the drawer');
-    assert.deepEqual(r.dec.btn.map(b=>b.t.replace(/\s+/g,' ')),['✓ Pursue','Research','⊖ Decline','Mark applied'],t+'decision buttons: '+JSON.stringify(r.dec.btn));
+    assert.deepEqual(r.dec.btn.map(b=>b.t.replace(/\s+/g,' ')),['✓ Pursue','Research','⊖ Decline'],t+'decision buttons: '+JSON.stringify(r.dec.btn));
     r.dec.btn.forEach(b=>assert(b.h>=52,t+'decision target >= 52 px: '+JSON.stringify(b)));assert.equal(r.dec.sub,false,t+'no key hints on the phone');
     assert(r.ev.length===5,'five evidence lines');r.ev.forEach(e=>{assert(e.h>=44,t+'evidence row >= 44 px');assert.equal(e.bar,'3px');assert.match(e.glyph,/^"[✓✕?≈]"$/,t+'state glyph: '+JSON.stringify(r.ev));assert.equal(e.sfs,'11px')});
     // REV-082 (p42 item 14): materials buttons outline style: no fill, 1 px border, mono 11 px capitals; Open posting Cyan; disabled dashed.
