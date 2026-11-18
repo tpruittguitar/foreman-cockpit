@@ -24,6 +24,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
 let enrichRate=0;
 function health(){const at=new Date().toISOString();return {ok:true,candidates:400,issues:[],checks:{attention:{ok:true,at},sources:{ok:true,at},boards:{ok:true,at},schedules:{ok:true,at,configured:5,executionVerified:true}},
   emailRecovery:{at,awaitingIntake:2},processFlow:{at,population:{total:10,reconciled:true},queues:{verification:0,enrichment:10,readyForReview:0,blockedClosed:0},
+    upstream:{at,reconciled:true,total:2,accounted:2,sourceIdentities:2,aliasesMerged:0,waiting:2,counts:{WAITING:2,PRESENT:0,EXCLUDED:0,HELD:0,IDENTITY_HOLD:0,MISSING_PREVIOUSLY_PRESENT:0},reconciliation:{opening:0,arrivals:2,admitted:0,excluded:0,otherExits:0,closing:2},coverage:{unreadSourceWindows:0},ratesByWindow:{36:{intake:{count:252,perHour:7}}}},   // admission-time intake rate (#267): 7 jobs/hr
     completion:{verification:{countsAvailable:true,last24h:0,available:true,perHour:0,count36:0,partial:true,startedAt:at},enrichment:{countsAvailable:true,last24h:enrichRate,available:true,perHour:enrichRate,count36:enrichRate*36,partial:true,startedAt:at}}}}}
 function activity(){return {ok:true,now:new Date().toISOString(),today:{writes:21},sources:{},pendingReceipts:0,problemReceipts:0,rates36:{intake:{perHour:7}}}}
 (async()=>{
