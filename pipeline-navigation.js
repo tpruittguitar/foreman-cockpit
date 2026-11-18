@@ -58,18 +58,19 @@
  function state(){
   var o={};try{o=JSON.parse(decodeURIComponent(location.hash.slice(1))||'{}')||{};}catch(e){o={};}
   var v=document.querySelector('.view.on'),tab=(v&&v.id.replace(/^view-/,''))||o.t||'pipeline';
-  return {tab:tab,preset:o.p||'',map:!!o.m||document.body.classList.contains('map-full')};
+  var q=document.getElementById('search');return {tab:tab,preset:o.p||'',map:!!o.m||document.body.classList.contains('map-full'),search:String(q&&q.value||'').trim()};
  }
  function routeOf(item){return item[1]==='operations'?'automations':item[1];}
  function groupFor(st){
-  if(st.tab==='pipeline'){if(INTAKE_PRESETS[st.preset]&&lastGroup==='discovery')return 'discovery';return 'pipeline';}
+  if(st.tab==='pipeline'){if(st.search)return 'pipeline';if(INTAKE_PRESETS[st.preset]&&lastGroup==='discovery')return 'discovery';return 'pipeline';}
   return TAB_GROUP[st.tab]||lastGroup;
  }
  function matches(item,st){
   var r=routeOf(item);
   if(r==='map')return st.tab==='pipeline'&&st.map;
   if(r!==st.tab)return false;
-  if(r==='pipeline'){if(st.map)return false;if(item[3]==='compare')return false;if(item[2])return st.preset===item[2];return !DECISION_PRESETS[st.preset]&&(!INTAKE_PRESETS[st.preset]||lastGroup!=='discovery');}
+  if(r==='pipeline'){if(st.map)return false;if(item[3]==='compare')return false;if(st.search)return !item[2]&&!item[3];   /* P3: a search shows Jobs */
+   if(item[2])return st.preset===item[2];return !DECISION_PRESETS[st.preset]&&(!INTAKE_PRESETS[st.preset]||lastGroup!=='discovery');}
   return true;
  }
  function update(){
@@ -96,7 +97,7 @@
  window.addEventListener('hashchange',function(){setTimeout(update,0);});
  function boot(){update();setTimeout(update,300);setTimeout(update,1500);}
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
- window.PipelineSectionNav={update:update,groups:groups};
+ window.PipelineSectionNav={update:update,groups:groups,groupFor:groupFor,matches:matches};
 })();
 
 /* Phase 6 Control Center baseline.
