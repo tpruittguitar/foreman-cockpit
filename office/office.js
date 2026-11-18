@@ -1315,11 +1315,11 @@ function buildWorld() {
   }
   function drawDeskIf(d, force) {
     const b = botByName(d.name) || { bot: d.name, bot_id: '', status: 'idle', task: '', last_action: '', last_action_at: '', question: '' };
-    const now = Date.now(), lod = L.lodFor(camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2)));
+    const now = Date.now(), dist = camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2)), lod = L.lodFor(dist);
     const sc = mirrorFor(d, b, now), image = sc.show === 'image' && d.img;
     const mine = L.sortItems(items().filter(i => i.owner === d.name && L.columnFor(i) !== 'done'));
     const oc = chars.get(d.name), act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (plan.plans[d.name] || {}).act || '', mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
-    const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + (sc.offline ? 'off' : '') + sc.why + Math.floor(now / (mode === 'game' ? (lod === 'far' ? 400 : 120) : 30000));
+    const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + (sc.offline ? 'off' : '') + sc.why + Math.floor(now / (mode === 'game' ? (dist > L.GAME_SLOW_M ? 400 : 120) : 30000));
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;
     drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, lod, now, items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', mode, image: image || null, screenWhy: sc.why, offline: !!sc.offline,
