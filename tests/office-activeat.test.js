@@ -28,9 +28,13 @@ test('"no activity feed" for seeded or never-written rows with no other signal; 
   assert.equal(L.freshness(seeded, NOW, [ago(400)]).label, 'stale · last seen 6 h ago', 'any other signal is a feed');
   assert.deepEqual([L.freshness(seeded, NOW, [ago(30)]).stale, L.freshness(seeded, NOW, [ago(30)]).label], [false, '']);
 });
-test('idle-flagged screen (busy false) with a fresh activeAt: no screen signal, bot goes to the idle rotation; busy true stays at its desk', () => {
+test('idle-flagged screen (busy false) with a fresh activeAt: no screen signal, bot goes to the idle rotation; busy true stays at its desk; offline never counts', () => {
   const idle = screens({ activeAt: ago(1), busy: false }), busy = screens({ activeAt: ago(1), busy: true });
   assert.deepEqual(L.botSignals(ROOT, idle), []);
   assert.equal(L.botActivity(ROOT, NOW, idle).working, false);
   assert.equal(L.botActivity(ROOT, NOW, busy).working, true);
+  const offline = screens({ activeAt: ago(1), busy: true, offline: true });
+  assert.deepEqual(L.botSignals(ROOT, offline), [], 'offline screen gives no signal even when busy');
+  assert.equal(L.botActivity(ROOT, NOW, offline).working, false, 'offline bot is not drawn typing');
+  assert.deepEqual(L.botSignals(ROOT, screens({ offline: true })), [], 'offline without activeAt: no capture-time fallback either');
 });
