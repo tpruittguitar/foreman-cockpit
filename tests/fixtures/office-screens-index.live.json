@@ -1,0 +1,99 @@
+{
+  "updated_at": "2026-11-18T08:18:25Z",
+  "screens": {
+    "132c47df-ccfb-4f91-b4e2-ebcb1d775bc6": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": false,
+      "activeAt": "2026-11-18T06:05:57Z"
+    },
+    "338fc1b1-fecc-475d-ba9e-acd49bcadcfc": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": false,
+      "activeAt": "2026-11-18T08:17:44Z"
+    },
+    "372936ae-81e1-4013-b0d0-9ee47d97a3c4": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": true,
+      "activeAt": "2026-11-18T07:52:51Z"
+    },
+    "431e8cf1-f077-4548-82b7-46c1959dc4c9": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": false,
+      "activeAt": "2026-11-18T06:01:21Z"
+    },
+    "70f0889b-ecd4-457b-a69c-304cd2aff540": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": true,
+      "activeAt": "2026-11-18T08:10:09Z"
+    },
+    "7bcb0d85-ec55-4e17-907f-3e71688e8799": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": true,
+      "activeAt": "2026-11-18T08:06:48Z"
+    },
+    "b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": true,
+      "activeAt": "2026-11-18T08:08:54Z"
+    },
+    "c95408dd-c07f-460e-aaa0-9d515fe5be7d": {
+      "at": "2026-11-18T07:32:39Z",
+      "paused": false,
+      "busy": true,
+      "activeAt": "2026-11-18T07:03:43Z",
+      "offline": true,
+      "lastSeen": "2026-11-18T07:32:39Z"
+    },
+    "d4118f0c-1b06-4e9a-982f-f5314451c841": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": true,
+      "activeAt": "2026-11-18T08:17:15Z"
+    },
+    "f1a70b7a-6051-45d7-8031-e46a4cba066f": {
+      "at": "2026-11-18T08:18:25Z",
+      "paused": false,
+      "busy": false,
+      "activeAt": "2026-11-18T07:39:37Z"
+    },
+    "321469c4-1299-43e7-bd32-1704f58777be": {
+      "at": "2026-11-18T06:54:26Z",
+      "paused": false,
+      "busy": true,
+      "activeAt": "2026-11-18T06:54:26Z",
+      "offline": true,
+      "lastSeen": "2026-11-18T06:54:26Z"
+    },
+    "424e5611-fb8f-4ae1-a360-051e61e63e8a": {
+      "at": "2026-11-18T06:02:43Z",
+      "paused": false,
+      "busy": false,
+      "activeAt": "2026-11-18T06:02:43Z",
+      "offline": true,
+      "lastSeen": "2026-11-18T06:02:43Z"
+    },
+    "811cc842-4bef-47c2-98d2-0f4bb78f7169": {
+      "at": "2026-11-18T06:02:48Z",
+      "paused": false,
+      "busy": false,
+      "activeAt": "2026-11-18T06:02:48Z",
+      "offline": true,
+      "lastSeen": "2026-11-18T06:02:48Z"
+    },
+    "a8b4a0b2-acfd-4485-8444-7ab27007df4a": {
+      "at": "2026-11-18T06:02:04Z",
+      "paused": false,
+      "busy": false,
+      "activeAt": "2026-11-18T06:02:04Z",
+      "offline": true,
+      "lastSeen": "2026-11-18T06:02:04Z"
+    }
+  }
+}

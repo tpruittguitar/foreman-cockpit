@@ -1197,12 +1197,12 @@ function buildWorld() {
     const convo = activeConvos.get(c.name);
     let g = decide(c, b, convo);
     const dk = deskOf(c.name);
-    if (c.gaveUp && dk && (c.gaveUp.key === g.key && clock < c.gaveUp.until)) g = { key: 'home', spot: dk.seat, pose: 'sit' }; // could not get there: back to the desk until the idle rotation picks something else
+    g = L.applyGaveUp(g, c.gaveUp, clock, dk);
     if (g.key !== c.goalKey) {
-      // walking cap: at most a third of the bots on the move; others wait where they are (alerts never wait)
+      // walking cap: at most a third of the bots on the move; others wait where they are (alerts and session walks never wait)
       const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
       const home = !!dk && Math.hypot(g.spot.x - dk.seat.x, g.spot.z - dk.seat.z) < 0.05; /* QA #409: back to the seat the moment a break ends, never held by the walk cap */
-      if (!L.mayStartWalk(far, needs || c.forceNap || home, walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
+      if (!L.mayStartWalk(far, needs || c.forceNap || home || L.isSessionWalk(g), walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
       else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) { c.restocked = false; c.shelfPicked = false; } c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
     }
     const goal = c.goalKey === g.key ? g : (c.goal || g);
