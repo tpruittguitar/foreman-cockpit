@@ -1595,8 +1595,29 @@ function buildWorld() {
     camera.getWorldPosition(tmpHead); const r = L.teleportRigPos(q, { x: tmpHead.x - rig.position.x, z: tmpHead.z - rig.position.z });
     rig.position.x = r.x; rig.position.z = r.z; rig.position.y = 0; // y stays 0: local-floor puts the head at real standing height
   }
-  function vrFrame() { // per-frame controller work while presenting
-    marker.visible = false;
+  let snapArmed = true; const tmpDir = new THREE.Vector3();
+  function vrSticks(dt) { // thumbsticks: left = smooth head-relative walk on the floor, right = 30 degree snap turn
+    const s = renderer.xr.getSession(); if (!s) return;
+    for (const src of s.inputSources) {
+      if (!src.gamepad) continue;
+      const st = L.stickAxes(src.gamepad);
+      if (src.handedness === 'right') {
+        if (Math.abs(st.x) < L.VR_SNAP_OFF) snapArmed = true;
+        else if (snapArmed && Math.abs(st.x) > L.VR_SNAP_ON) { // turn the rig about the head so the player stays in place
+          snapArmed = false; const a = -Math.sign(st.x) * L.VR_SNAP_DEG * Math.PI / 180, c = Math.cos(a), sn = Math.sin(a);
+          camera.getWorldPosition(tmpHead); const ox = rig.position.x - tmpHead.x, oz = rig.position.z - tmpHead.z;
+          rig.position.x = tmpHead.x + ox * c + oz * sn; rig.position.z = tmpHead.z - ox * sn + oz * c; rig.rotation.y += a;
+        }
+      } else {
+        camera.getWorldDirection(tmpDir); const m = L.stickMove(st, Math.atan2(-tmpDir.x, -tmpDir.z), dt);
+        if (!m.x && !m.z) continue;
+        camera.getWorldPosition(tmpHead); const q = { x: tmpHead.x + m.x, z: tmpHead.z + m.z }; collide(q); // same furniture / wall clearance as walking
+        rig.position.x += q.x - tmpHead.x; rig.position.z += q.z - tmpHead.z; // height untouched: local-floor keeps the real head height
+      }
+    }
+  }
+  function vrFrame(dt) { // per-frame controller work while presenting
+    vrSticks(dt); marker.visible = false;
     for (const st of pads) {
       if (!st.c.visible) { st.line.visible = false; continue; }
       st.line.visible = true; aim(st); st.floor = null; let len = 4;
