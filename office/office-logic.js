@@ -369,6 +369,11 @@
     const name = skillTitle(training.skill, skills);
     return { index: -1, title: (training.replay ? 'Replay: ' : 'Skill: ') + name, bullets: ['Training: ' + name, 'Led by ' + training.trainer, training.trainees.length + ' in the room'], counter: training.replay ? 'REPLAY' : 'LIVE', training: true };
   }
+  /* The trainer of a live or replayed session is leading, not idle: their name tag drops the screen-idle / offline / stale chip. */
+  function activityChip(fresh, training, name) {
+    if (training && training.trainer === name) return '';
+    return fresh && fresh.stale ? (fresh.label || '') : '';
+  }
 
   /* ---------- What each bot is doing on the floor (ambient behaviour, never data) ----------
      Order: needs Tim / blocked -> waves at its own desk; meeting member -> conference seat; working -> types at its desk;
@@ -2161,7 +2166,7 @@
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
-    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine,
+    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine, activityChip,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
 });
