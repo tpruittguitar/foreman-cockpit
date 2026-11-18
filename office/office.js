@@ -47,10 +47,14 @@ const S = {
 };
 // Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
 let buildInfo, onBuildInfo = null; // buildInfo === undefined until the fetch settles; the wall plate repaints from it
+function openBuildPopup() {
+  var b = L.buildPrPopup(buildInfo);
+  showPanel('<h2 id="panel-title">Build details</h2>' + (b.desc ? '<p class="tip">' + esc(b.desc) + '</p>' : '<p><b>' + esc(b.title || '') + '</b></p><p>' + esc(b.summary || '') + '</p><p>' + esc(b.when || '') + '</p>' + (b.url ? '<p><a href="' + esc(b.url) + '" target="_blank" rel="noopener">Open PR</a></p>' : '')));
+}
 fetch('build-info.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(info => {
   buildInfo = info; if (onBuildInfo) onBuildInfo();
   const line = L.buildBadge(info), el = document.getElementById('build-badge');
-  if (el) el.textContent = line;
+  if (el) { el.textContent = line; L.wireBuildBadge(el, openBuildPopup); }
   console.info(line);
 });
 const gate = L.createGate(); // one GitHub API budget shared by status, PR list and asks
@@ -297,6 +301,13 @@ function showPanel(html) {
   const f = $('panel').querySelector('a,button.linkbtn,textarea') || $('panel-close'); f.focus({ preventScroll: true });
 }
 function closePanel() { $('panel').hidden = true; panelOpen = false; if (chatPoll) { clearInterval(chatPoll); chatPoll = null; } if (panelReturn) { panelReturn.focus(); panelReturn = null; } }
+function wireBuildBadge(el, open) {
+  if (!el) return;
+  el.onclick = function(e) {
+    e.stopPropagation();
+    open();
+  };
+}
 $('panel-close').onclick = closePanel;
 $('panel').addEventListener('click', e => {
   if (e.target === $('panel')) closePanel();

@@ -9,15 +9,45 @@ function prFromSubject(subject) {
   const m = s.match(/\(#(\d+)\)\s*$/) || s.match(/^#(\d+)\b/);
   return m ? +m[1] : null;
 }
-module.exports = { prFromSubject };
+function prTitleFromSubject(subject) {
+  return String(subject || '').replace(/\s*\(#\d+\)\s*$/, '').trim();
+}
+function prSummaryFromBody(body) {
+  const text = String(body || '').trim();
+  if (!text) return '';
+  const flat = text.replace(/^\s*[-*]\s+/gm, '').replace(/\s+/g, ' ').trim();
+  const sentences = flat.match(/[^.!?]+[.!?]+(\s|$)/g) || [flat];
+  const out = sentences.slice(0, 2).join('').trim();
+  return out.length > 300 ? out.slice(0, 297).trimEnd() + '...' : out;
+}
+function parseGitLog(subject, body, commitAt) {
+  return {
+    pr: prFromSubject(subject),
+    prTitle: prTitleFromSubject(subject),
+    prSummary: prSummaryFromBody(body),
+    mergedAt: commitAt && !Number.isNaN(Date.parse(commitAt)) ? new Date(commitAt).toISOString() : ''
+  };
+}
+module.exports = { prFromSubject, prTitleFromSubject, prSummaryFromBody, parseGitLog };
 if (require.main !== module) return;
 
 // Cloudflare Pages build variables (Netlify retired 2026-11-03).
 const commit = process.env.CF_PAGES_COMMIT_SHA || 'local';
-// The PR this build came from: a squash-merge subject ending "(#NN)"; preview builds carry their branch name.
 let subject = '';
-try { subject = execSync('git log -1 --format=%s', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) { subject = ''; }
-const pr = prFromSubject(subject);
+let body = '';
+let mergedAt = '';
+try {
+  const out = execSync('git log -1 --format=%s%x00%b%x00%cI', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+  const parts = out.split('\x00');
+  subject = parts[0] || '';
+  body = parts[1] || '';
+  mergedAt = (parts[2] || '').trim();
+} catch (e) {
+  subject = '';
+  body = '';
+  mergedAt = '';
+}
+const parsed = parseGitLog(subject, body, mergedAt);
 const branch = process.env.CF_PAGES_BRANCH || 'local';
 const info = {
   app: 'Pipeline Explorer',
@@ -25,8 +55,11 @@ const info = {
   commit,
   commitShort: commit === 'local' ? 'local' : commit.slice(0, 7),
   branch,
-  pr,
-  prSource: pr === null ? '' : 'merge-commit',
+  pr: parsed.pr,
+  prSource: parsed.pr === null ? '' : 'merge-commit',
+  prTitle: parsed.prTitle,
+  prSummary: parsed.prSummary,
+  mergedAt: parsed.mergedAt,
   subject: subject.slice(0, 160),
   context: commit === 'local' ? 'local' : branch === 'main' ? 'production' : 'preview',
   deployId: '',
@@ -37,4 +70,4 @@ const info = {
 };
 
 fs.writeFileSync(path.join(root, 'build-info.json'), JSON.stringify(info, null, 2) + '\n');
-console.log(`Pipeline Explorer build ${info.commitShort}${pr ? ' PR #' + pr : ''} (${info.context})`);
+console.log(`Pipeline Explorer build ${info.commitShort}${parsed.pr ? ' PR #' + parsed.pr : ''} (${info.context})`);
