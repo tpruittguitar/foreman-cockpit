@@ -861,12 +861,16 @@ function buildWorld() {
   // energy cans: two InstancedMeshes (one per lookalike style), stock / desk cans alternate deterministically per slot
   const fridgeCans = []; const fridgeRng = L.makeRng(SEED ^ 0x51ed); let fridgeStock = L.FRIDGE_CAP, fridgeDrain = 0, fridgeRefill = 0, lastDeskCans = []; // item 10: simulated stock (no real inventory data)
   for (const y of shelfY) for (let k = 0; k < 5; k++) fridgeCans.push([11.3 - 0.1 + (k % 2) * 0.12, y + 0.0625, -8.4 - 0.3 + k * 0.15]);
+  const SHELF_POS = { x: WH.x0 + 0.4, z: 13.2 }; // warehouse Monster shelf, against its left wall past the office corner (12, 10)
+  const shelfCans = []; let shelfStock = L.SHELF_CAP, shelfRefill = 0; // simulated back stock: a restock trip takes one, it refills slowly
+  for (const y of [0.39, 0.76]) for (let k = 0; k < L.SHELF_CAP / 2; k++) shelfCans.push([SHELF_POS.x + 0.1, y + 0.0625, SHELF_POS.z - 0.8 + k * 0.4]);
   const canSets = [0, 1].map(st => { const m = new THREE.InstancedMesh(canGeometry(), canMaterials(st), 64); m.count = 0; scene.add(m); return m; });
   function layoutCans(deskCans) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1); canSets.forEach(s => (s.count = 0));
     const put = (st, pos, rot) => { const set = canSets[st]; if (set.count >= 64) return; q.setFromEuler(new THREE.Euler(0, rot, 0)); set.setMatrixAt(set.count++, m.compose(pos, q, one)); };
     lastDeskCans = deskCans;
     fridgeCans.forEach(([x, y, z], k) => { if (k < fridgeStock) put(k % 2, new THREE.Vector3(x, y, z), Math.PI + (k % 3) * 0.2); });
+    shelfCans.forEach(([x, y, z], k) => { if (k < shelfStock) put(k % 2, new THREE.Vector3(x, y, z), (k % 3) * 0.2); });
     deskCans.forEach(([x, z, seed]) => put(canStyle(seed), new THREE.Vector3(x, 0.8325, z), seed.length * 1.7));
     canSets.forEach(s => (s.instanceMatrix.needsUpdate = true));
   }
@@ -956,6 +960,10 @@ function buildWorld() {
     scene.remove(d.g); d.g.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => { if (m && m.map && m.map.isCanvasTexture) m.map.dispose(); }); });
     for (let k = obstacles.length - 1; k >= 0; k--) if (obstacles[k].tag === 'desk:' + d.name) obstacles.splice(k, 1);
   }
+  const shelf = new THREE.Group(); shelf.position.set(SHELF_POS.x, 0, SHELF_POS.z); scene.add(shelf);
+  add(box(0.7, 0.08, 2.4), MAT.metal, 0, 0.35, 0, shelf); add(box(0.7, 0.08, 2.4), MAT.metal, 0, 0.72, 0, shelf);
+  for (const x of [-0.3, 0.3]) for (const z of [-1.1, 1.1]) add(box(0.05, 0.85, 0.05), MAT.metal, x, 0.425, z, shelf);
+  block(SHELF_POS.x, SHELF_POS.z, 0.4, 1.25, false, 'shelf');
   let rosterKey = '';
   function syncDesks() {
     const names = bots().map(b => b.bot), k = names.join('|');
@@ -972,7 +980,7 @@ function buildWorld() {
   const deskOf = n => desks.find(d => d.name === n);
 
   /* ---------- nav grid (A*, pure: L.createNav) ---------- */
-  const nav = L.createNav({ RW, RD, CELL: 0.2, inflate: 0.42, obstacles });
+  const nav = L.createNav({ RW, RD, CELL: 0.2, inflate: 0.42, obstacles, bounds: { x0: -RW / 2, x1: WH.x1, z0: WH.z0, z1: WH.z1 }, door: { x: RW / 2, z0: D0, z1: D1 } }); // office + warehouse, joined by the glass doors
   function buildGrid() { nav.build(obstacles); setMounts(); }
   const toCell = nav.toCell, free = nav.free;
   const mountOf = spot => spot.mount || (SIT.find(s => s.mount && Math.hypot(s.x - spot.x, s.z - spot.z) < 0.05) || {}).mount;
@@ -987,6 +995,7 @@ function buildWorld() {
     { id: 'pool1', kind: 'pool', x: 7.95 - CL, z: -2.0, face: Math.PI / 2 }, { id: 'pool2', kind: 'pool', x: 9.85 + CL, z: -1.1, face: -Math.PI / 2 },
     { id: 'coffee1', kind: 'coffee', x: 10.5 - CL, z: -6.4, face: Math.PI / 2 }, { id: 'coffee2', kind: 'coffee', x: 10.5 - CL, z: -5.4, face: Math.PI / 2 },
     { id: 'fridge1', kind: 'fridge', x: 10.45 - CL, z: -8.2, face: Math.PI / 2 }, { id: 'fridge2', kind: 'fridge', x: 9.6 - CL, z: -8.9, face: Math.PI / 2 },
+    { id: 'shelf', kind: 'shelf', x: SHELF_POS.x + 0.85, z: SHELF_POS.z, face: -Math.PI / 2 },
     { id: 'wf1', kind: 'waterfall', x: WF_X, z: RD / 2 - 1.65, face: 0 },
     { id: 'lo1', kind: 'loiter', x: 6.4, z: 1.0, face: Math.PI / 2 }, { id: 'lo2', kind: 'loiter', x: 5.0, z: -6.6, face: Math.PI / 2 }, { id: 'lo3', kind: 'loiter', x: 6.2, z: 5.2, face: Math.PI },
     { id: 'lo4', kind: 'loiter', x: -5.2, z: 4.9, face: 0 }, { id: 'lo5', kind: 'loiter', x: 1.5, z: 6.0, face: 0 }, { id: 'lo6', kind: 'loiter', x: -3, z: 6.4, face: 0 }
@@ -1099,7 +1108,10 @@ function buildWorld() {
       case 'waterfall_view': return slotted(['waterfall']) || slotted(['loiter']) || own('seat', 'sit'); // stand and face the waterfall
       case 'get_coffee': return slotted(['coffee']) || slotted(['loiter']) || own('seat', 'sit'); // walk to the machine, then hold the cup
       case 'get_energy_drink': return slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); // fridge, then hold the can
-      case 'restock_fridge': { const g = slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); return Object.assign(g, { key: 'restock:' + g.key, pose: g.spot.kind === 'fridge' ? 'restock' : g.pose, box: !c.restocked }); }
+      case 'restock_fridge': {
+        if (!c.shelfPicked) { const g = slotted(['shelf']) || slotted(['loiter']) || own('seat', 'sit'); return Object.assign(g, { key: 'restock:shelf:' + g.key, pose: 'walk', box: false }); }
+        const g = slotted(['fridge']) || slotted(['loiter']) || own('seat', 'sit'); return Object.assign(g, { key: 'restock:' + g.key, pose: g.spot.kind === 'fridge' ? 'restock' : g.pose, box: !c.restocked });
+      }
       case 'pool': return slotted(['pool']) || slotted(['loiter']) || own('seat', 'sit');
     }
     return slotted(['loiter']) || own('seat', 'sit');
@@ -1182,7 +1194,7 @@ function buildWorld() {
       const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
       const home = !!dk && Math.hypot(g.spot.x - dk.seat.x, g.spot.z - dk.seat.z) < 0.05; /* QA #409: back to the seat the moment a break ends, never held by the walk cap */
       if (!L.mayStartWalk(far, needs || c.forceNap || home, walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
-      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) c.restocked = false; c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
+      else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) { c.restocked = false; c.shelfPicked = false; } c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
     }
     const goal = c.goalKey === g.key ? g : (c.goal || g);
     let pose = goal.pose;
@@ -1219,7 +1231,8 @@ function buildWorld() {
     c.pose = pose;
     c.goalNow = goal;
     // item 10: restock = the box goes into the fridge (stock back to full); a refresh at the fridge uses one can
-    if (goal.pose === 'restock' && c.arrived && !c.restocked && clock - c.arrivedAt > 1.8) { fridgeStock = L.FRIDGE_CAP; layoutCans(lastDeskCans); c.restocked = true; c.restockedAt = clock; S.restocker = null; }
+    if (goal.key.startsWith('restock:shelf:') && c.arrived && clock - c.arrivedAt > 1.4 && !c.shelfPicked) { c.shelfPicked = true; shelfStock = L.shelfTake(shelfStock); layoutCans(lastDeskCans); c.goalKey = ''; }
+    if (goal.pose === 'restock' && c.arrived && !c.restocked && clock - c.arrivedAt > 1.8) { fridgeStock = L.FRIDGE_CAP; layoutCans(lastDeskCans); c.restocked = true; c.restockedAt = clock; c.shelfPicked = false; S.restocker = null; }
     if (goal.pose === 'fridge' && c.arrived && clock - c.arrivedAt > 1.4 && c.tookKey !== c.goalKey) { c.tookKey = c.goalKey; fridgeStock = L.fridgeTake(fridgeStock); layoutCans(lastDeskCans); }
     const nowMs = Date.now(), fresh = S.fresh[c.name], itemsNow = items(), gk = goal.key || '';
     const near = !renderer.xr.isPresenting && !TV && Math.hypot(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) < 1.5 && pose !== 'nap' && pose !== 'deskSleep';
@@ -1663,7 +1676,7 @@ function buildWorld() {
       if (k >= 1) glide = null;
     }
     if (!XR && !panelOpen && !pipe.browsing) move(dt);
-    { const near = Math.hypot(camera.position.x - RW / 2, camera.position.z - DOOR.z) < 3.5; // glass doors slide into the wall pocket as you approach
+    { const near = Math.hypot(camera.position.x - RW / 2, camera.position.z - DOOR.z) < 3.5 || [...chars.values()].some(c => Math.hypot(c.pos.x - RW / 2, c.pos.y - DOOR.z) < 2.5); // glass doors slide into the wall pocket as you approach
       for (const g of doorLeaves) { const to = g.userData.home + (near ? g.userData.sd * (DOOR.w / 2 - 0.1) : 0); g.position.z += (to - g.position.z) * Math.min(1, dt * 4); } }
     if (TV && !panelOpen && !tour && now - lastInput > L.TOUR_IDLE_MS) tour = { list: L.tourOrder(targets, bots()), i: -1, until: 0 };
     if (tour && now > tour.until && tour.list.length) {
@@ -1689,6 +1702,7 @@ function buildWorld() {
     poolNow = L.poolShot(clock); const playing = [...chars.values()].some(c => c.pose === 'pool' && c.arrived), pb = playing ? poolNow.ball : L.POOL.start; cueBall.position.set(pb.x, 0.865, pb.z);
     fridgeDrain += dt; if (fridgeDrain > 150) { fridgeDrain = 0; const n = L.fridgeTake(fridgeStock); if (n !== fridgeStock) { fridgeStock = n; layoutCans(lastDeskCans); } }
     fridgeRefill += dt; if (fridgeRefill > L.FRIDGE_REFILL_S) { fridgeRefill = 0; const n = L.fridgeAutoRefill(fridgeStock, !!S.restocker); if (n !== fridgeStock) { fridgeStock = n; layoutCans(lastDeskCans); } } // no idle bot to restock: it refills itself, never empty
+    shelfRefill += dt; if (shelfRefill > L.SHELF_REFILL_S) { shelfRefill = 0; const n = L.shelfAutoRefill(shelfStock); if (n !== shelfStock) { shelfStock = n; layoutCans(lastDeskCans); } }
     for (const c of chars.values()) updateChar(c, dt);
     separateChars();
     if (Q.labels) updateLabels();
@@ -1818,7 +1832,7 @@ function buildWorld() {
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
     refresh() { syncDesks(); ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
-    layout: () => ({ RW, RD, CELL: 0.2, inflate: 0.22, obstacles: obstacles.map(o => ({ x0: +o.x0.toFixed(3), x1: +o.x1.toFixed(3), z0: +o.z0.toFixed(3), z1: +o.z1.toFixed(3), viewerOnly: !!o.viewerOnly, tag: o.tag || '' })),
+    layout: () => ({ RW, RD, CELL: 0.2, inflate: 0.22, bounds: { x0: -RW / 2, x1: WH.x1, z0: WH.z0, z1: WH.z1 }, door: { x: RW / 2, z0: D0, z1: D1 }, obstacles: obstacles.map(o => ({ x0: +o.x0.toFixed(3), x1: +o.x1.toFixed(3), z0: +o.z0.toFixed(3), z1: +o.z1.toFixed(3), viewerOnly: !!o.viewerOnly, tag: o.tag || '' })),
   desks: desks.map(d => ({ name: d.name, seat: d.seat, stand: d.stand, visit: d.visit })),
   slots: SLOTS.concat(BOARD_SLOTS).map(s => ({ id: s.id, kind: s.kind, x: +s.x.toFixed(3), z: +s.z.toFixed(3), face: s.face })), trainer: TRAINER_SPOT }),
     info: () => ({ camY: +camera.position.y.toFixed(3), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),

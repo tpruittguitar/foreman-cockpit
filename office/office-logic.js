@@ -1039,13 +1039,17 @@
      route() returns [{x,z}] waypoints that never cross a blocked cell (line-of-sight smoothing only joins cells that are all free). */
   function createNav(o) {
     const RW = o.RW, RD = o.RD, CELL = o.CELL || 0.2, INF = o.inflate == null ? 0.22 : o.inflate, WALL = o.wall == null ? 0.4 : o.wall;
-    const GX = Math.round(RW / CELL), GZ = Math.round(RD / CELL), grid = new Uint8Array(GX * GZ);
-    const toCell = (x, z) => [Math.max(0, Math.min(GX - 1, Math.floor((x + RW / 2) / CELL))), Math.max(0, Math.min(GZ - 1, Math.floor((z + RD / 2) / CELL)))];
-    const cellC = (i, j) => [-RW / 2 + (i + 0.5) * CELL, -RD / 2 + (j + 0.5) * CELL];
+    const bounds = o.bounds || { x0: -RW / 2, x1: RW / 2, z0: -RD / 2, z1: RD / 2 };
+    const door = o.door || null, PAST = door && { x0: door.x, x1: bounds.x1, z0: bounds.z0, z1: bounds.z1 };
+    const OFFICE = { x0: -RW / 2, x1: RW / 2, z0: -RD / 2, z1: RD / 2 }, inRoom = (r, x, z) => x > r.x0 + WALL && x < r.x1 - WALL && z > r.z0 + WALL && z < r.z1 - WALL;
+    const GX = Math.round((bounds.x1 - bounds.x0) / CELL), GZ = Math.round((bounds.z1 - bounds.z0) / CELL), grid = new Uint8Array(GX * GZ);
+    const toCell = (x, z) => [Math.max(0, Math.min(GX - 1, Math.floor((x - bounds.x0) / CELL))), Math.max(0, Math.min(GZ - 1, Math.floor((z - bounds.z0) / CELL)))];
+    const cellC = (i, j) => [bounds.x0 + (i + 0.5) * CELL, bounds.z0 + (j + 0.5) * CELL];
     function build(obstacles) {
       for (let j = 0; j < GZ; j++) for (let i = 0; i < GX; i++) {
         const [x, z] = cellC(i, j);
-        let b = x < -RW / 2 + WALL || x > RW / 2 - WALL || z < -RD / 2 + WALL || z > RD / 2 - WALL;
+        let b = !inRoom(bounds, x, z);
+        if (door) b = !(inRoom(OFFICE, x, z) || inRoom(PAST, x, z) || (Math.abs(x - door.x) <= WALL + CELL && z > door.z0 + WALL && z < door.z1 - WALL)); // office, the room past the door wall, and the doorway between them
         if (!b) for (const ob of obstacles || []) if (!ob.viewerOnly && x > ob.x0 - INF && x < ob.x1 + INF && z > ob.z0 - INF && z < ob.z1 + INF) { b = true; break; }
         grid[j * GX + i] = b ? 1 : 0;
       }
@@ -1765,7 +1769,7 @@
   /* Items 10 / 11: idle activity rotation. A shuffled "bag" so every activity comes round before one repeats; never the
      same activity twice in a row; 60-150 s each (randomized); restock only when the fridge is not full, forced when low. */
   const IDLE_ACTIVITIES = ['couch_sleep', 'desk_nap', 'hr_training', 'video_game', 'exercise_bike', 'group_chat', 'restock_fridge', 'pool', 'waterfall_view', 'get_coffee', 'get_energy_drink'];
-  const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 14, FRIDGE_MIN = 12, FRIDGE_REFILL_S = 20; // low = 70% (call a restocker), floor = 60% (never shown lower)
+  const IDLE_ACT_MIN_S = 60, IDLE_ACT_MAX_S = 150, FRIDGE_CAP = 20, FRIDGE_LOW = 14, FRIDGE_MIN = 12, FRIDGE_REFILL_S = 20, SHELF_CAP = 10, SHELF_REFILL_S = 180; // low = 70% (call a restocker), floor = 60% (never shown lower)
   const GAME_EVERY = 5; // Tim (Nov 17, 2:05 AM): video games are 1 in 5 idle activities (one game after every 4 other activities)
   function createIdleState() { return { act: null, until: 0, bag: [], last: null, sinceGame: 0 }; }
   /* A desk whose monitor never shows a game (President's checksheet, Usage's chart) must not take a staggered game slot. */
@@ -1777,6 +1781,8 @@
      tops itself up one can at a time (every FRIDGE_REFILL_S) until it is back above the low mark. */
   function fridgeTake(stock) { return Math.max(FRIDGE_MIN, stock - 1); }
   function fridgeAutoRefill(stock, restockerActive) { return !restockerActive && fridgeLow(stock) && stock < FRIDGE_CAP ? stock + 1 : stock; }
+  function shelfTake(stock) { return Math.max(0, stock - 1); }
+  function shelfAutoRefill(stock) { return stock < SHELF_CAP ? stock + 1 : stock; }
   function idleTick(state, rng, nowSec, ctx) {
     const c = ctx || {}, restock = c.restock || 'ok'; // 'force' | 'ok' | 'no'
     if (restock === 'force' && state.act !== 'restock_fridge') { state.act = 'restock_fridge'; state.last = state.act; state.until = nowSec + IDLE_ACT_MIN_S + rng() * (IDLE_ACT_MAX_S - IDLE_ACT_MIN_S); return state.act; }
@@ -2111,7 +2117,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
+    needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
