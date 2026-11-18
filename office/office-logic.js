@@ -1829,6 +1829,7 @@
      tops itself up one can at a time (every FRIDGE_REFILL_S) until it is back above the low mark. */
   function fridgeTake(stock) { return Math.max(FRIDGE_MIN, stock - 1); }
   function fridgeAutoRefill(stock, restockerActive) { return !restockerActive && fridgeLow(stock) && stock < FRIDGE_CAP ? stock + 1 : stock; }
+  /* Shelf stock counts cases. A restock trip takes one case off the shelf. */
   function shelfTake(stock) { return Math.max(0, stock - 1); }
   function shelfAutoRefill(stock) { return stock < SHELF_CAP ? stock + 1 : stock; }
   function idleTick(state, rng, nowSec, ctx) {
