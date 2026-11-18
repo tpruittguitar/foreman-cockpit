@@ -33,6 +33,13 @@ test('upstream status, body and rate-limit headers pass through; success is edge
   assert.equal(seen[0][1].Authorization, undefined, 'works with no token');
   const r2 = await call(c, PULLS); assert.equal(r2.headers.get('X-Office-Cache'), 'HIT'); assert.equal(await r2.text(), '[{"n":1}]'); assert.equal(seen.length, 1, 'second read from the edge cache');
 });
+test('rate limited upstream serves the last good copy marked STALE instead of an error', async () => {
+  const cache = memCache(); let n = 0;
+  const c = load(async () => (n++ ? new Response('{"message":"rate"}', { status: 403 }) : new Response('[{"n":1}]', { status: 200 })), cache);
+  assert.equal((await call(c, PULLS)).status, 200);
+  for (const k of [...cache.m.keys()]) if (!k.includes('stale=1')) cache.m.delete(k);
+  const r = await call(c, PULLS); assert.equal(r.status, 200); assert.equal(r.headers.get('X-Office-Cache'), 'STALE'); assert.equal(await r.text(), '[{"n":1}]');
+});
 test('errors pass through uncached; optional GITHUB_TOKEN is sent only from the server', async () => {
   const cache = memCache(); let auth;
   const c = load(async (u, o) => { auth = o.headers.Authorization; return new Response('{"message":"rate limited"}', { status: 403, headers: { 'X-RateLimit-Remaining': '0' } }); }, cache);
