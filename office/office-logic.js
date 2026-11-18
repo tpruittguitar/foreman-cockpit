@@ -1284,7 +1284,15 @@
     return out;
   }
   /* The ONE activity read (QA #407): the list view, the name tags and the 3D plan all call this, so they never disagree. */
-  function botActivity(bot, now, ctx) { const f = freshness(bot, now, botSignals(bot, ctx, true)); return Object.assign(f, { working: !f.stale }); }
+  /* QA #434 (Nov 18, 2:43 AM ET): a screen that says busy:false (with activeAt) or offline:true wins over merge, PR, automation and
+     status-row times, so a bot is never drawn typing while its own screen says idle or offline. */
+  function botActivity(bot, now, ctx) {
+    const sig = botSignals(bot, ctx, true), f = freshness(bot, now, sig), id = str(bot && bot.bot_id), c = ctx || {};
+    const sc = id && c.screens && c.screens.screens && c.screens.screens[id];
+    if (f.stale || !sc || sc.paused || !(sc.offline || (sc.hasActive && !sc.busy))) return Object.assign(f, { working: !f.stale });
+    const q = sig.find(v => v && v.idle), t = q ? time(q.at) : null, m = t == null ? null : Math.max(0, Math.floor((now - t) / MIN));
+    return Object.assign(f, { stale: true, working: false, label: (sc.offline ? 'offline · last seen ' : 'idle · last active ') + (m == null ? 'unknown' : ageText(m)) });
+  }
   /* GitHub pulls list -> Map botLower -> newest merged_at, by the branch's first word (cursor/..., cursor-obsfix-..., claude/..., chatgpt/...). */
   function prMerges(list, into) {
     const m = into || new Map();

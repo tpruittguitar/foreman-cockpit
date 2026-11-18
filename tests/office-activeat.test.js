@@ -47,3 +47,12 @@ test("Tim's 2:28 AM screenshot: idle or offline screens tag idle/offline with th
   assert.equal(L.botActivity(ROOT, NOW, screens({ activeAt: ago(5), busy: true })).working, true);
   assert.deepEqual(L.botSignals(ROOT, screens({ activeAt: ago(1), busy: false })), [], 'untagged signals unchanged');
 });
+test('QA #434: screen busy:false or offline:true wins over a fresh PR merge or status row, so the bot is not drawn typing', () => {
+  const merges = new Map([['root', ago(58)]]), fresh = Object.assign({}, ROOT, { last_action_at: ago(10) });
+  const idle = Object.assign(screens({ activeAt: ago(30), busy: false }), { merges });
+  assert.deepEqual([L.botActivity(fresh, NOW, idle).working, L.botActivity(fresh, NOW, idle).label], [false, 'idle · last active 30 min ago']);
+  const off = Object.assign(screens({ activeAt: ago(70), busy: true, offline: true, lastSeen: ago(70) }), { merges });
+  assert.deepEqual([L.botActivity(fresh, NOW, off).working, L.botActivity(fresh, NOW, off).label], [false, 'offline · last seen 1 h ago']);
+  assert.equal(L.botActivity(fresh, NOW, Object.assign(screens({ activeAt: ago(30), busy: true }), { merges })).working, true, 'busy screen keeps the merge signal');
+  assert.equal(L.botActivity(fresh, NOW, { merges }).working, true, 'no screen entry: merge still counts');
+});
