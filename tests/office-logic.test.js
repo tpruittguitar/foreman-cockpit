@@ -379,7 +379,7 @@ test('item 17: roster is the 14 sidebar bots, in sidebar order, short names, exa
   // desks, one per bot, no overlap; Cursor keeps the old Software desk
   const names = demo.map(b => b.bot), d = L.deskLayout(names.length, names);
   assert.equal(new Set(d.map(p => p.x + ',' + p.z)).size, 14);
-  assert.deepEqual([d[names.indexOf('Cursor')].x, d[names.indexOf('Cursor')].z], [-3.8, -4]);
+  assert.deepEqual([d[names.indexOf('Cursor')].x, d[names.indexOf('Cursor')].z], [-5.4, -4]);
   // avatars: each bot has its own sidebar-matched body
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
