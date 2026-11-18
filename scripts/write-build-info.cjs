@@ -31,7 +31,6 @@ function parseGitLog(subject, body, commitAt) {
 module.exports = { prFromSubject, prTitleFromSubject, prSummaryFromBody, parseGitLog };
 if (require.main !== module) return;
 
-// Cloudflare Pages build variables (Netlify retired 2026-11-03).
 const commit = process.env.CF_PAGES_COMMIT_SHA || 'local';
 let subject = '';
 let body = '';
@@ -48,6 +47,13 @@ try {
   mergedAt = '';
 }
 const parsed = parseGitLog(subject, body, mergedAt);
+if (parsed.pr && !parsed.prSummary) {
+  try {
+    const url = 'https://api.github.com/repos/tpruittguitar/foreman-cockpit/pulls/' + parsed.pr;
+    const res = execSync('node -e "const u=process.argv[1];const ac=new AbortController();const t=setTimeout(()=>ac.abort(),5000);fetch(u,{signal:ac.signal,headers:{Accept:\'application/vnd.github+json\',\'User-Agent\':\'foreman-cockpit\'}}).then(r=>r.ok?r.json():null).then(j=>{clearTimeout(t);process.stdout.write(j&&j.body?j.body:\'\')}).catch(()=>{clearTimeout(t)})" ' + JSON.stringify(url), { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    parsed.prSummary = prSummaryFromBody(res);
+  } catch (e) {}
+}
 const branch = process.env.CF_PAGES_BRANCH || 'local';
 const info = {
   app: 'Pipeline Explorer',
@@ -61,7 +67,7 @@ const info = {
   prSummary: parsed.prSummary,
   mergedAt: parsed.mergedAt,
   subject: subject.slice(0, 160),
-  context: commit === 'local' ? 'local' : branch === 'main' ? 'production' : 'preview',
+  context: commit === 'local' ? 'source' : branch === 'main' ? 'production' : 'preview',
   deployId: '',
   deployUrl: process.env.CF_PAGES_URL || '',
   siteUrl: 'https://foreman-cockpit.pages.dev',

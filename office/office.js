@@ -50,7 +50,7 @@ const S = {
 let buildInfo, onBuildInfo = null; // buildInfo === undefined until the fetch settles; the wall plate repaints from it
 function openBuildPopup() {
   var b = L.buildPrPopup(buildInfo);
-  showPanel('<h2 id="panel-title">Build details</h2>' + (b.desc ? '<p class="tip">' + esc(b.desc) + '</p>' : '<p><b>' + esc(b.title || '') + '</b></p><p>' + esc(b.summary || '') + '</p><p>' + esc(b.when || '') + '</p>' + (b.url ? '<p><a href="' + esc(b.url) + '" target="_blank" rel="noopener">Open PR</a></p>' : '')));
+  showPanel('<h2 id="panel-title">Build details</h2>' + ((b.summary || b.when || b.url || b.desc) ? '<p><b>' + esc(b.title || '') + '</b></p><p>' + esc(b.summary || b.desc || '') + '</p><p>' + esc(b.when || '') + '</p>' + (b.url ? '<p><a href="' + esc(b.url) + '" target="_blank" rel="noopener">Open PR</a></p>' : '') : '<p class="tip">' + esc(b.desc || 'No description for this build') + '</p>'));
 }
 fetch('build-info.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(info => {
   buildInfo = info; if (onBuildInfo) onBuildInfo();

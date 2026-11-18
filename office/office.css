@@ -176,4 +176,5 @@ table.autos { width: 100%; border-collapse: collapse; margin-top: 10px; font-siz
 canvas { cursor: grab; }
 
 /* Revision badge: tiny, bottom-right, never intercepts input. */
-#build-badge { position: fixed; z-index: 3; right: var(--safe); bottom: calc(var(--safe) * .6); font: 10px/1.2 ui-monospace, Menlo, monospace; color: rgba(220,226,236,.6); background: rgba(10,10,12,.45); padding: 1px 6px; border-radius: 4px; pointer-events: none; user-select: none; white-space: nowrap; }
+#build-badge { position: fixed; z-index: 11; right: var(--safe); bottom: calc(var(--safe) * .6); font: 10px/1.2 ui-monospace, Menlo, monospace; color: rgba(220,226,236,.6); background: rgba(10,10,12,.45); padding: 1px 6px; border-radius: 4px; user-select: none; white-space: nowrap; }
+.flat { z-index: 8; }

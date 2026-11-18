@@ -1551,7 +1551,7 @@
     const pr = Number(i && i.pr) > 0 ? Math.floor(Number(i.pr)) : 0;
     const url = pr ? 'https://github.com/tpruittguitar/foreman-cockpit/pull/' + pr : '';
     const desc = title || summary || when || url ? '' : 'No description for this build';
-    return { title, summary, when, url, desc };
+    return { title, summary, when, url, desc, fallback: 'No description for this build' };
   }
   function wireBuildBadge(el, open) {
     if (!el) return;
