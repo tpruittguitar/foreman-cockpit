@@ -100,7 +100,7 @@ test('separateWalkers: walkers and standers get pushed apart, seated bots never 
   assert.equal(pts[2].x, seat.x); assert.equal(pts[2].z, seat.z);
   assert.ok(Math.hypot(pts[0].x - pts[1].x, pts[0].z - pts[1].z) > 0.5);
   const tbl = real.find(o => o.x0 < -9 && o.x1 > -8 && o.z0 < 7.4 && o.z1 > 7.4), cx = (tbl.x0 + tbl.x1) / 2;
-  const cz = (tbl.z0 + tbl.z1) / 2, a = { x: tbl.x0 - 0.5, z: cz }, b = { x: tbl.x0 - 0.62, z: cz }; // west end: the north / south sides are lined with chair bases
+  const cz = tbl.z1 + 0.1, a = { x: tbl.x0 - 0.5, z: cz }, b = { x: tbl.x0 - 0.62, z: cz }; // north-west corner: the sides are lined with chair bases and HR's trainer chair holds the west end
   assert.ok(free(a.x, a.z) && free(b.x, b.z));
   for (let k = 0; k < 60; k++) { L.separateWalkers([a, b], 0.72, free); assert.ok(!inBox(tbl, a.x, a.z) && !inBox(tbl, b.x, b.z)); assert.ok(free(a.x, a.z) && free(b.x, b.z)); }
 });

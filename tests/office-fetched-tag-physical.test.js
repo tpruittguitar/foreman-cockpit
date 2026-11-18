@@ -25,11 +25,12 @@ const AT = Date.parse('2026-11-18T03:39:43Z');
 const pxOf = c => Number(/(\d+(?:\.\d+)?)px/.exec(c.texts.find(x => x.t.startsWith('fetched ')).font)[1]);
 
 test('fetched tag text is 7 cm tall on every board, at both canvas resolutions', () => {
-  assert.deepEqual(BOARDS.map(b => b.id).sort(), ['autos', 'constraint', 'needs', 'project', 'usage', 'writer']);
+  assert.deepEqual(BOARDS.map(b => b.id).sort(), ['autos', 'constraint', 'project', 'schedule', 'usage', 'whiteboard', 'writer']);
   const cm = [];
   for (const b of BOARDS) for (const W of [b.low, b.hi]) {
     const c = fakeCtx();
     if (b.id === 'autos') D.drawAutomations(c, W, Math.round(W * b.h / b.hi), { auto: null, err: '', now: AT, demo: false, fetchedAt: AT, boardM: b.m });
+    else if (b.id === 'schedule') D.drawTrainingSchedule(c, W, Math.round(W * b.h / b.hi), { rows: [], fetchedAt: AT, boardM: b.m });
     else D.drawFetched(c, W, Math.round(W * b.h / b.hi), AT, null, null, b.m);
     cm.push(+(pxOf(c) * b.m / W * 100).toFixed(6));
   }
@@ -43,6 +44,7 @@ test('box and padding scale with the font; no board width falls back to FETCHED_
   const n = fakeCtx(); D.drawFetched(n, 1024, 600, AT); assert.equal(pxOf(n), D.FETCHED_PX);
 });
 test('office.js passes each board width to its fetched tag', () => {
-  for (const id of ['project', 'usage', 'needs', 'writer', 'constraint']) assert.match(office, new RegExp('drawFetched\\(\\w+\\.ctx, \\w+\\.c\\.width, \\w+\\.c\\.height, [^;]*, null, null, ' + id + '\\.w\\)'));
+  for (const id of ['project', 'usage', 'writer', 'constraint']) assert.match(office, new RegExp('drawFetched\\(\\w+\\.ctx, \\w+\\.c\\.width, \\w+\\.c\\.height, [^;]*, null, null, ' + id + '\\.w\\)'));
   assert.match(office, /fetchedAt: S\.fetched\.automations, boardM: autos\.w \}/);
+  assert.match(office, /fetchedAt: S\.fetched\.training, boardM: schedule\.w \}/);
 });

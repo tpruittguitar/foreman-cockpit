@@ -298,13 +298,21 @@
       const trainees = [];
       for (const t of Array.isArray(r.trainees) ? r.trainees : []) { const n = resolve(t); if (n && n !== trainer && !trainees.includes(n) && (!known || known.has(n))) trainees.push(n); }
       if (!trainees.length) continue;
-      out.sessions.push({ id, skill, trainer, trainees, startMs, untilMs });
+      out.sessions.push({ id, skill, trainer, trainees, startMs, untilMs, title: str(r.title).trim(), location: str(r.location).trim() });
     }
     return out;
   }
   function activeTraining(sessions, now) {
     const list = Array.isArray(sessions) ? sessions : sessions && Array.isArray(sessions.sessions) ? sessions.sessions : [];
     return list.filter(x => x && x.startMs <= now && now < x.untilMs).sort((a, b) => a.startMs - b.startMs || (a.id < b.id ? -1 : 1))[0] || null;
+  }
+  function visibleTrainingSessions(sessions, now) {
+    const list = Array.isArray(sessions) ? sessions : sessions && Array.isArray(sessions.sessions) ? sessions.sessions : [];
+    return list.filter(x => x && x.untilMs > now).sort((a, b) => a.startMs - b.startMs || (a.id < b.id ? -1 : 1));
+  }
+  function formatTrainingSession(s) {
+    const d = etDate(s.startMs);
+    return { title: s.title || s.skill, trainer: s.trainer, trainees: s.trainees, started: d.mo + '/' + d.d + ' ' + etClock(s.startMs), until: etClock(s.untilMs) + ' ET', location: s.location || '' };
   }
   /* Who can be pulled in: not in a meeting, not waiting on Tim. Returns { plans, training } to merge, or null when the trainer cannot lead. */
   function trainingPlan(session, list, plans, now, needs, seatBase) {
@@ -2104,7 +2112,7 @@
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, fridgeTake, fridgeAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
-    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, trainingPlan, trainingSlide,
+    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
 });
