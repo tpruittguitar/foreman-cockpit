@@ -6,7 +6,7 @@ const fs = require('fs'), path = require('path');
 const L = require('../office/office-logic.js');
 const lay = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/office-layout.json'), 'utf8'));
 const real = lay.obstacles.filter(o => !o.viewerOnly);
-const nav = L.createNav({ RW: lay.RW, RD: lay.RD, CELL: lay.CELL, inflate: lay.inflate, obstacles: lay.obstacles });
+const nav = L.createNav({ RW: lay.RW, RD: lay.RD, CELL: lay.CELL, inflate: lay.inflate, obstacles: lay.obstacles, bounds: lay.bounds, door: lay.door });
 const inBox = (o, x, z) => x > o.x0 && x < o.x1 && z > o.z0 && z < o.z1;
 // a leg may only touch a real box that holds one of its own endpoints (a sofa seat, the bike saddle)
 function crossing(a, b) {
@@ -43,7 +43,7 @@ test('every desk seat reaches every idle, meeting, training and trip spot and ba
 });
 
 test('spots between every pair of idle spots (including the conference seats) also route cleanly', () => {
-  const spots = lay.slots.filter(s => ['conf', 'sit', 'nap', 'bike', 'pool', 'board', 'waterfall', 'coffee', 'fridge'].includes(s.kind));
+  const spots = lay.slots.filter(s => ['conf', 'sit', 'nap', 'bike', 'pool', 'board', 'waterfall', 'coffee', 'fridge', 'shelf'].includes(s.kind));
   for (const a of spots) for (const b of spots) if (a !== b) checkRoute(a, b, a.id + ' -> ' + b.id);
 });
 

@@ -184,3 +184,10 @@ test('fridge: refills gradually by itself when no idle bot can restock', () => {
   assert.equal(L.fridgeAutoRefill(L.FRIDGE_MIN, true), L.FRIDGE_MIN, 'a restocker on the way does the refill, not the timer');
   assert.equal(L.fridgeAutoRefill(L.FRIDGE_CAP, false), L.FRIDGE_CAP);
 });
+test('shelf: take and auto-refill move one can at a time up to the cap', () => {
+  let s = L.SHELF_CAP;
+  assert.equal(L.shelfTake(s), L.SHELF_CAP - 1);
+  s = 0;
+  for (let i = 0; i < 20; i++) s = L.shelfAutoRefill(s);
+  assert.equal(s, L.SHELF_CAP);
+});
