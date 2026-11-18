@@ -239,7 +239,7 @@ function starSDF(rot) {
   };
 }
 /* Wide face shapes read as fat from the side, so they are thinner front to back (Tim, Nov 17, 2026). Applies to every bot with that shape. */
-const SHAPE_THICK = { clover4: 0.55, pill: 0.5 };
+const SHAPE_THICK = { clover4: 0.55, pill: 0.5, hexpuck: 0.52 }; // hexpuck: Hermes's flat hexagonal puck
 function puffBody(a, hi) {
   const NT = hi ? 160 : 96, NP = hi ? 64 : 40, star = a.shape === 'starburst';
   let ringAt, W, D, hbar, zFront;
@@ -291,9 +291,10 @@ export function makeBot(name, hiQuality, botId, override) {
   const face = makeFace(bb.max.z - 0.012, 1.0, false, true, 0);
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
-  { const eyeM = mat('eyeClay', () => new THREE.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 1, metalness: 0 }));
-    const rot = a.rot || 0, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004, ZV = new THREE.Vector3(0, 0, 1);
-    const EY = -0.02, tmpQ = new THREE.Quaternion(), qz = new THREE.Quaternion();
+  /* a.face (Hermes): its own eye colour, the eye pair tilted by face.rot instead of the body rot, shifted dx/dy, each eye leaning by tilt */
+  { const fc = a.face || {}, eyeHex = fc.color || '#0b0b0e', eyeM = mat('eyeClay' + eyeHex, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(eyeHex), roughness: 1, metalness: 0 }));
+    const rot = fc.rot ?? (a.rot || 0), EDX = fc.dx || 0, ETILT = fc.tilt || 0, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004, ZV = new THREE.Vector3(0, 0, 1);
+    const EY = -0.02 + (fc.dy || 0), tmpQ = new THREE.Quaternion(), qz = new THREE.Quaternion();
     /* sit each eye ON the curved skin: sample the surface where the eye really lands (the face is rotated by rot and lifted 0.02), then
        tilt it to the surface normal so neither end sinks into the body (Tim, Nov 17: Usage's eyes vanished into its slope) */
     const placeEye = (e, ex, ey, tilt) => {
@@ -303,9 +304,9 @@ export function makeBot(name, hiQuality, botId, override) {
       e.position.set(ex, ey, z - fz).addScaledVector(n, 0.006); e.quaternion.setFromUnitVectors(ZV, n);
       if (tilt) e.quaternion.multiply(qz.setFromAxisAngle(ZV, tilt));
     };
-    face.userData.eyes.forEach((e, i) => { e.material = eyeM; e.geometry = slotGeometry(); setSlot(e.geometry, 0.068, 0.2); placeEye(e, (i ? 1 : -1) * 0.1, EY, 0);
+    face.userData.eyes.forEach((e, i) => { e.material = eyeM; e.geometry = slotGeometry(); setSlot(e.geometry, 0.068, 0.2); placeEye(e, (i ? 1 : -1) * 0.1 + EDX, EY, ETILT);
       e.scale.set(1, 1, 1); e.userData.sy = 1; face.userData.shines[i].scale.set(0, 0, 0); });
-    face.userData.brows.forEach((br, i) => { const ex = (i ? 1 : -1) * 0.085, ey = 0.15, bx = ex * cr - ey * sr, by = ex * sr + ey * cr + 0.02; br.position.z = zAt(bx, by) - fz + 0.008; });
+    face.userData.brows.forEach((br, i) => { const ex = (i ? 1 : -1) * 0.085 + EDX, ey = 0.15, bx = ex * cr - ey * sr, by = ex * sr + ey * cr + 0.02; br.position.z = zAt(bx, by) - fz + 0.008; });
     /* studio faces: p = blended expression weights (office-logic EXPR); extra = {yaw, pitch, roll (deg), wink 0..1, eyeScale} from the idle motions.
        Per eye: a stadium (slot) of the studio w x h, tilted by the studio tilt, shifted by the gaze, re-seated on the surface when it moved. */
     const L = window.OfficeLogic;
@@ -316,7 +317,7 @@ export function makeBot(name, hiQuality, botId, override) {
         const open = Math.max(0.06, Math.min(p[i ? 'e1o' : 'e0o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
         if (face.userData.slotKey !== key) {
           const sx = (i ? 1 : -1) * 0.1 * g.spread, cx = sx * Math.cos(g.roll), cy = sx * Math.sin(g.roll);
-          placeEye(e, cx + g.x, EY + cy + g.y, -tilt * Math.PI / 180 - g.roll);
+          placeEye(e, cx + g.x + EDX, EY + cy + g.y, ETILT - tilt * Math.PI / 180 - g.roll);
           setSlot(e.geometry, sz.w, sz.h);
         }
         e.scale.set(1, open, 1); e.visible = true;
