@@ -20,7 +20,7 @@ test('allowlist: only the office reads pass; other paths, repos, owners and quer
     'repos/tpruittguitar/foreman-cockpit/commits/abc/check-runs', 'repos/tpruittguitar/foreman-cockpit/pulls?access_token=x', 'repos/tpruittguitar/foreman-cockpit/issues'])
     assert.equal((await call(c, p)).status, 403, p);
   assert.equal(calls, 0);
-  for (const p of [PULLS, 'repos/tpruittguitar/forge-policy/commits/' + 'a'.repeat(40) + '/check-runs?per_page=50', 'repos/tpruittguitar/forge-coordination/contents/asks/open', 'repos/tpruittguitar/forge-coordination/contents/control?ref=main'])
+  for (const p of [PULLS, 'repos/tpruittguitar/forge-policy/commits/' + 'a'.repeat(40) + '/check-runs?per_page=50', 'repos/tpruittguitar/forge-coordination/contents/asks/open', 'repos/tpruittguitar/forge-coordination/contents/control?ref=main', 'repos/tpruittguitar/forge-coordination/contents/control/OFFICE_TRAINING.json?ref=main'])
     assert.equal((await call(c, p)).status, 200, p);
 });
 test('upstream status, body and rate-limit headers pass through; success is edge-cached 60 s and served from cache', async () => {
@@ -52,5 +52,6 @@ test('office.js reads GitHub only through /api/gh and holds no token', () => {
   assert.doesNotMatch(office.replace(/\/\/[^\n]*/g, ''), /https:\/\/api\.github\.com/);
   assert.match(office, /const GH_API = '\/api\/gh\/';/);
   for (const u of ['${GH_API}repos/${OWNER}/${repo}/pulls?', '${GH_API}repos/${OWNER}/${repo}/commits/${sha}/check-runs', '${GH_API}repos/${OWNER}/forge-coordination/contents/asks/open']) assert.ok(office.includes(u), u);
+  assert.match(office, /createJsonSource\(\{ apiUrl: API_FILE\(TRAIN_PATH\), rawUrl: RAW_FILE\(TRAIN_PATH\), gate, fetch: fetchFn \}\)/);
   assert.doesNotMatch(office, /GITHUB_TOKEN|Authorization/);
 });

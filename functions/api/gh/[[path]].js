@@ -5,7 +5,7 @@ const OWNER = 'tpruittguitar', REPOS = '(?:foreman-cockpit|forge-coordination|fo
 const ALLOW = [
   new RegExp('^repos/' + OWNER + '/' + REPOS + '/pulls$'),
   new RegExp('^repos/' + OWNER + '/' + REPOS + '/commits/[0-9a-f]{40}/check-runs$'),
-  new RegExp('^repos/' + OWNER + '/forge-coordination/contents/(?:asks/open|control)$')
+  new RegExp('^repos/' + OWNER + '/forge-coordination/contents/(?:asks/open|control(?:/OFFICE_TRAINING\\.json)?)$')
 ];
 const QUERY = new Set(['state', 'sort', 'direction', 'per_page', 'ref']), TTL = 60, STALE_TTL = 6 * 3600;
 const PASS = ['content-type', 'etag', 'last-modified', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset'];

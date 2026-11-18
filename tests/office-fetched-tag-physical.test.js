@@ -48,3 +48,17 @@ test('office.js passes each board width to its fetched tag', () => {
   assert.match(office, /fetchedAt: S\.fetched\.automations, boardM: autos\.w \}/);
   assert.match(office, /fetchedAt: S\.fetched\.training, boardM: schedule\.w \}/);
 });
+
+test('training schedule board is dark, with light text from the automations palette', () => {
+  const styles = [];
+  const c = fakeCtx();
+  const rect = c.fillRect.bind(c), text = c.fillText.bind(c);
+  c.fillRect = function (x, y, w, h) { styles.push({ kind: 'rect', color: this.fillStyle }); return rect(x, y, w, h); };
+  c.fillText = function (t, x, y) { styles.push({ kind: 'text', color: this.fillStyle, t: t }); return text(t, x, y); };
+  D.drawTrainingSchedule(c, 1024, 555, { rows: [{ title: 'QA live proof', trainer: 'HR', trainees: ['QA'], started: '11/18 2:48 AM', until: '3:00 AM ET', location: 'Training room' }], fetchedAt: AT, boardM: 1.75 });
+  assert.equal(styles.find(s => s.kind === 'rect').color, '#0f1114');
+  assert.equal(styles.find(s => s.kind === 'text' && String(s.t).includes('MEETING')).color, '#f1f2f4');
+  assert.ok(styles.some(s => s.kind === 'text' && s.color === '#e3e5e9'));
+  assert.ok(styles.some(s => s.kind === 'text' && s.color === '#c9ccd2'));
+  assert.equal(styles.some(s => /#f7f7f4|#ecebe6|#111114/.test(s.color)), false);
+});

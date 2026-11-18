@@ -62,7 +62,7 @@ const gate = L.createGate(); // one GitHub API budget shared by status, PR list 
 const fetchFn = (u, o) => fetch(u, o);
 const statusSrc = L.createJsonSource({ rawUrl: RAW_FILE(STATUS_PATH), fetch: fetchFn });
 const autoSrc = L.createJsonSource({ rawUrl: RAW_FILE(AUTO_PATH), fetch: fetchFn });
-const trainSrc = L.createJsonSource({ rawUrl: RAW_FILE(TRAIN_PATH), fetch: fetchFn });
+const trainSrc = L.createJsonSource({ apiUrl: API_FILE(TRAIN_PATH), rawUrl: RAW_FILE(TRAIN_PATH), gate, fetch: fetchFn });
 const chatSrc = L.createChatFeed({ dirUrl: API_FILE('control'), rawUrl: CHAT_FEED_URL, name: 'PRESIDENT_CHAT_FEED.jsonl', gate, fetch: fetchFn });
 async function api(url) {
   const r = await fetch(url, { cache: 'no-cache', headers: { Accept: 'application/vnd.github+json' } });

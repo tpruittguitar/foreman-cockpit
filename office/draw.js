@@ -510,16 +510,16 @@ export function drawAutomations(ctx, W, H, o) {
 }
 export function drawTrainingSchedule(ctx, W, H, o) {
   const s = W / 1024, rows = o.rows || [];
-  ctx.fillStyle = '#f7f7f4'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#111114'; ctx.font = `800 ${34 * s}px ${SANS}`; ctx.fillText('MEETING / TRAINING SCHEDULE', 22 * s, 42 * s);
+  ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${34 * s}px ${SANS}`; ctx.fillText('MEETING / TRAINING SCHEDULE', 22 * s, 42 * s);
   drawFetched(ctx, W, H, o.fetchedAt, null, null, o.boardM);
-  if (!rows.length) { ctx.fillStyle = '#666b73'; ctx.font = `600 ${22 * s}px ${SANS}`; ctx.fillText('No sessions scheduled', 22 * s, 92 * s); return; }
+  if (!rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${22 * s}px ${SANS}`; ctx.fillText('No sessions scheduled', 22 * s, 92 * s); return; }
   const top = 68 * s, rowH = Math.max(42 * s, (H - top - 16 * s) / rows.length), fs = Math.min(21 * s, rowH * 0.36);
   rows.forEach((r, i) => {
     const y = top + i * rowH;
-    if (i % 2) { ctx.fillStyle = '#ecebe6'; ctx.fillRect(14 * s, y, W - 28 * s, rowH); }
-    ctx.fillStyle = '#111114'; ctx.font = `800 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.title, 0.46 * W), 22 * s, y + 0.34 * rowH);
-    ctx.fillStyle = '#44474f'; ctx.font = `600 ${fs * 0.92}px ${SANS}`; ctx.fillText(fit(ctx, r.trainer, 0.16 * W), 22 * s, y + 0.72 * rowH);
+    if (i % 2) { ctx.fillStyle = '#15181c'; ctx.fillRect(14 * s, y, W - 28 * s, rowH); }
+    ctx.fillStyle = '#e3e5e9'; ctx.font = `800 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.title, 0.46 * W), 22 * s, y + 0.34 * rowH);
+    ctx.fillStyle = '#c9ccd2'; ctx.font = `600 ${fs * 0.92}px ${SANS}`; ctx.fillText(fit(ctx, r.trainer, 0.16 * W), 22 * s, y + 0.72 * rowH);
     ctx.fillText(fit(ctx, r.started + ' - ' + r.until, 0.22 * W), 0.43 * W, y + 0.34 * rowH);
     ctx.fillText(fit(ctx, r.trainees.join(', '), 0.36 * W), 0.43 * W, y + 0.72 * rowH);
     if (r.location) { ctx.fillText(fit(ctx, r.location, 0.18 * W), 0.78 * W, y + 0.53 * rowH); }
