@@ -438,7 +438,7 @@ function makePresident(hi) {
     const inner = new THREE.Mesh(geo('pCuffIn7', () => new THREE.CylinderGeometry(0.082, 0.082, 0.04, 48)), pants); inner.position.y = -0.155; p.add(inner);
     const fore = new THREE.Mesh(geo('pFore7', () => new THREE.CapsuleGeometry(0.056, 0.14, 12, 40)), skin); fore.position.y = -0.25; p.add(fore);
     const h = hand(side); h.position.set(0, -0.345, 0); p.add(h);
-    p.userData.len = 0.52; p.position.set(side * 0.225, 0.275, 0); p.rotation.z = side * 0.5; return p; };
+    p.userData.len = 0.52; p.userData.tip = 0.503; /* shoulder to middle fingertip */ p.position.set(side * 0.225, 0.275, 0); p.rotation.z = side * 0.5; return p; };
   const armR = arm(-1), armL = arm(1); body.add(armR, armL);
 
   /* ---- head: big smooth near-sphere, wider than tall ---- */
@@ -667,4 +667,22 @@ export function animate(c, pose, t, dt, opts) {
   c.rig.position.y = lerp(c.rig.position.y, lift + bob + lieY, k);
   c.rig.rotation.z = lerp(c.rig.rotation.z, lieZ, Math.min(1, dt * 4));
   c.rig.rotation.x = 0;
+  if (pose === 'type' && c.kind === 'president' && c.armR.userData.tip) typeHands(c, still ? 0 : 0.012 * Math.sin(t * 15 + ph) * (Math.sin(t * 1.3 + ph) > -0.45 ? 1 : 0));
+}
+/* Straight-arm reach for the President at the desk: each fingertip lands ON the keyboard top (desk seat: keys 0.525..0.675 m ahead of the root,
+   top 0.7975 m), whatever the arm length; the typing tap slides the fingertip along the keys instead of lifting it off (QA #430). */
+export const KEYS = { top: 0.7975, near: 0.535, far: 0.665, x: 0.1 };
+const _sv = new THREE.Vector3(), _tv = new THREE.Vector3();
+function typeHands(c, tap) {
+  c.root.updateMatrixWorld(true);
+  const shoulder = a => c.root.worldToLocal(a.parent.localToWorld(_sv.copy(a.position)));
+  const sh = shoulder(c.armR), L = c.armR.userData.tip, dy = KEYS.top - sh.y, dx = KEYS.x - Math.abs(sh.x), reach = Math.sqrt(Math.max(0, L * L - dx * dx - dy * dy));
+  const fit = sh.z + reach < KEYS.near ? KEYS.near - sh.z - reach : sh.z + reach > KEYS.far ? KEYS.far - sh.z - reach : 0; /* lean in or sit back so the straight arm ends on the keys */
+  if (fit) { c.body.position.z += fit; c.root.updateMatrixWorld(true); }
+  for (const [a, sx] of [[c.armR, -1], [c.armL, 1]]) {
+    const s = shoulder(a), h = L * L - (sx * KEYS.x - s.x) ** 2 - (KEYS.top - s.y) ** 2;
+    const z = Math.min(KEYS.far, Math.max(KEYS.near, s.z + Math.sqrt(Math.max(0, h)))) + sx * tap;
+    a.parent.worldToLocal(c.root.localToWorld(_tv.set(sx * KEYS.x, KEYS.top, z))).sub(a.position).normalize();
+    a.rotation.set(Math.atan2(-_tv.z, -_tv.y), 0, Math.asin(Math.max(-1, Math.min(1, _tv.x))));
+  }
 }
