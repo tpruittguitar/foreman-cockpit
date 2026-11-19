@@ -1,5 +1,6 @@
-// QA on #395 (Nov 17): Root's monitor was black glass from far away (its mirror is an empty dark desktop drawn at any distance),
-// and name tags covered screens. draw.js is loaded from a temp copy marked "type": "module". Run: node --test tests/office-root-far-screen.test.js
+// Root's monitor draws one face at every distance (the mirror when a grab is present, otherwise the terminal).
+// Name tags still shrink past TAG_FAR_M. draw.js is loaded from a temp copy marked "type": "module".
+// Run: node --test tests/office-root-far-screen.test.js
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('fs'), os = require('os'), path = require('path'), { pathToFileURL } = require('url');
 const L = require('../office/office-logic.js');
@@ -19,27 +20,30 @@ function fakeCtx() {
     moveTo: noop, lineTo: noop, closePath: noop, quadraticCurveTo: noop, arcTo: noop, rect: noop, save: noop, restore: noop, clip: noop, strokeRect: noop };
 }
 const ROOT = { bot: 'Root', bot_id: '70f0889b-ecd4-457b-a69c-304cd2aff540', status: 'idle', task: 'office capture', last_action: 'pushed screens', last_action_at: '2026-11-18T04:00:00Z' };
-function rootScreen(dist) {
-  const img = { width: 640, height: 400 }, image = L.mirrorAt(dist) && img, ctx = fakeCtx();
-  const mode = L.monitorMode(ROOT, '', { image: !!image });
-  D.drawDesk(ctx, 640, 400, { bot: ROOT, lod: L.lodFor(dist), now: Date.parse('2026-11-18T04:30:00Z'), items: [], allItems: [], mode, image: image || null, usageRows: [] });
+const NOW = Date.parse('2026-11-18T04:30:00Z');
+function rootScreen(image) {
+  const ctx = fakeCtx(), mode = L.monitorMode(ROOT, '', { image: !!image });
+  D.drawDesk(ctx, 640, 400, { bot: ROOT, now: NOW, items: [], allItems: [], mode, image: image || null, usageRows: [] });
   return { mode, ctx };
 }
-test('Root draws its name, status and task from far away, like the other monitors; the mirror stays up close', () => {
-  for (const dist of [6, 12, 20, 31]) {
-    const { mode, ctx } = rootScreen(dist);
-    assert.equal(mode, 'terminal', 'at ' + dist + ' m');
-    assert.equal(ctx.images.length, 0); assert.ok(ctx.texts.includes('Root')); assert.ok(ctx.texts.includes('office capture'));
-  }
-  const near = rootScreen(2);
-  assert.equal(near.mode, 'mirror'); assert.equal(near.ctx.images.length, 1);
+test('Root draws the same screen with or without a camera distance: the mirror when a grab is present', () => {
+  const img = { width: 640, height: 400 };
+  const a = rootScreen(img), b = rootScreen(img);
+  assert.equal(a.mode, 'mirror'); assert.equal(b.mode, 'mirror');
+  assert.equal(a.ctx.images.length, 1); assert.equal(b.ctx.images.length, 1);
+  const far = rootScreen(null), near = rootScreen(null);
+  assert.equal(far.mode, 'terminal'); assert.equal(near.mode, 'terminal');
+  assert.equal(far.ctx.images.length, 0);
+  assert.ok(far.ctx.texts.includes('Root')); assert.ok(far.ctx.texts.includes('office capture'));
+  assert.deepEqual(far.ctx.texts, near.ctx.texts);
 });
 test('name tags shrink and drop stale / recent chips past TAG_FAR_M; NEEDS TIM chip stays', () => {
   assert.equal(L.tagFar(L.TAG_FAR_M - 0.1), false); assert.equal(L.tagFar(L.TAG_FAR_M + 0.1), true);
   assert.match(css, /\.tag\.far \{ font-size: 10px;/); assert.match(css, /\.tag\.far \.chip\.stale, \.tag\.far \.chip\.recent \{ display: none; \}/);
   assert.doesNotMatch(css, /\.tag\.far \.chip \{/);
 });
-test('office.js applies the mirror distance and the far tag class', () => {
-  assert.match(office, /image = sc\.show === 'image' && L\.mirrorAt\(dist\) && d\.img;/);
+test('office.js shows a desk mirror at every distance and still marks far name tags', () => {
+  assert.match(office, /image = sc\.show === 'image' && d\.img;/);
+  assert.doesNotMatch(office, /mirrorAt/);
   assert.match(office, /c\.tag\.classList\.toggle\('far', L\.tagFar\(dist\)\);/);
 });

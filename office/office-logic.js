@@ -29,7 +29,6 @@
   const MAX_PER_COLUMN = 5;
   const GLIDE_MS = 800;          // TV desk-to-desk glide (must stay under 1 s)
   const TOUR_IDLE_MS = 60000;
-  const LOD = { near: 32, mid: 40 }; // metres from the monitor: near covers the whole 24 x 20 x 4.4 m room, so every desk screen shows its content from anywhere (Tim, Nov 17)
   const GAME_SLOW_M = 8; // game screens farther than this redraw at 400 ms instead of 120 ms
   const COLORS = { working: '#3ddc84', idle: '#8b9099', alert: '#ff4b4b', stale: '#ffd23f', info: '#4aa3ff', focus: '#c58cff' };
   const FALLBACK_LINK = 'grokbot://app/v1/agent?id=';
@@ -544,11 +543,9 @@
     return Math.max(0, Math.sin((h - 6) / 14 * Math.PI));
   }
   function truncate(text, n) { const t = str(text).replace(/\s+/g, ' ').trim(); return t.length <= n ? t : t.slice(0, Math.max(1, n - 1)).trimEnd() + '…'; }
-  /* Mirrored desktops (Root's live screen) are a 640 x 400 grab: past MIRROR_NEAR_M it reads as black glass (Root's desktop is an
-     empty dark wallpaper), so farther away the monitor draws the bot's own name / status / task like the other 12 (QA on #395).
-     Name tags past TAG_FAR_M drop their stale / recent chips and shrink so they stop covering screens. */
-  const MIRROR_NEAR_M = 4, TAG_FAR_M = 8;
-  const mirrorAt = dist => dist <= MIRROR_NEAR_M, tagFar = dist => dist > TAG_FAR_M;
+  /* Name tags past TAG_FAR_M drop their stale / recent chips and shrink so they stop covering screens. */
+  const TAG_FAR_M = 8;
+  const tagFar = dist => dist > TAG_FAR_M;
   /* Name labels never overlap (card 544b368: 'UsageQA' from the door view). boxes in draw order, each { x: centre, y: bottom, w, h }
      in screen px; a box that overlaps (or comes within pad px of) an earlier placed box moves up one label height (plus the pad), up to cap times.
      Returns each label's new bottom y. */
@@ -572,8 +569,6 @@
       return hit;
     });
   }
-  function lodFor(dist) { return dist <= LOD.near ? 'near' : dist <= LOD.mid ? 'mid' : 'far'; }
-
   /* Pulse brightness 0..1 at about 1 Hz; steady under prefers-reduced-motion. */
   function pulse(tSec, reducedMotion) { return reducedMotion ? 1 : 0.55 + 0.45 * Math.sin(tSec * Math.PI * 2); }
 
@@ -2179,7 +2174,7 @@
   };
 
   /* ---------- Readable boards (GUI review 2026-11-18, findings 2 / 6 / 7) ----------
-     Wall boards show their Detail face only. Desk screens and name chips in the line of sight to a faced board (within
+     Wall boards show their Detail face only. Name chips in the line of sight to a faced board (within
      BOARD_FAR_M and LOS_DEG) fade to LOS_DIM. Phone HUD hides while moving; colliding name labels hide the lower-priority one.
      Sizes on screen are cap heights in CSS px; tests/office-readability.capture.cjs measures them from Standing and Walk-up. */
   const BOARD_FAR_M = 8, LOS_DEG = 30, LOS_DIM = 0.3, HUD_STILL_MS = 2000;
@@ -2229,16 +2224,16 @@
     TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, VR_STICK_DEAD, VR_MOVE_SPEED, VR_SNAP_DEG, VR_SNAP_ON, VR_SNAP_OFF, stickAxes, stickMove, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
-    GLIDE_MS, TOUR_IDLE_MS, LOD, GAME_SLOW_M, COLORS,
+    GLIDE_MS, TOUR_IDLE_MS, GAME_SLOW_M, COLORS,
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle, CARD_TEXT_MAX, cardMessage, cardRecipient, cardBoxHTML, sendCardDirection,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
-    daylight, truncate, lodFor, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
+    daylight, truncate, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
-    RECENT_REPLAY_MIN, mayStartWalk, MIRROR_NEAR_M, TAG_FAR_M, mirrorAt, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
+    RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,

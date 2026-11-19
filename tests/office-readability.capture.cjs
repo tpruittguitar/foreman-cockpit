@@ -98,7 +98,7 @@ function measurePage(opts) {
   return { boards: T.boards().map(b => ({ id: b.id, dist: +b.dist.toFixed(2), detailCanvas: b.detail.width + 'x' + b.detail.height })), runs: out };
 }
 
-/* card rectangles on screen, and what covers them (desk screens, name chips) */
+/* card rectangles on screen, and name chips that cover them. Desk screens do not fade. */
 function coverPage() {
   const T = window.__office, b = T.boards().find(x => x.id === 'project'), los = T.los(), vw = innerWidth, vh = innerHeight;
   const cards = (b.hits || []).filter(h => h.id).map(h => { const a = b.toScreen(h.x, h.y), c = b.toScreen(h.x + h.w, h.y + h.h);
@@ -188,9 +188,9 @@ function coverPage() {
     // checksheet: both Needs Tim cards in full, nothing in the line of sight
     const c0 = await page.evaluate(coverPage);
     crit('4a', 'Both Needs Tim cards fully visible from Standing', c0.needsTim.length === 2 && c0.needsTim.every(c => c.inView), JSON.stringify(c0.needsTim));
-    crit('5', 'Standing: no desk screen or name chip covers a checksheet card (faded to <= 30%)',
-      c0.desks.every(d => d.opacity <= 0.3 + 1e-6) && c0.chips.every(t => t.opacity <= 0.3 + 1e-6),
-      `${c0.desks.length} desk screens and ${c0.chips.length} chips in line, opacities ${c0.desks.map(d => d.name + ' ' + d.opacity).concat(c0.chips.map(t => t.text + ' ' + t.opacity)).join(', ') || 'none'}`);
+    crit('5', 'Standing: a name chip over a checksheet card fades to <= 30%',
+      c0.chips.every(t => t.opacity <= 0.3 + 1e-6),
+      `${c0.chips.length} chips in line, opacities ${c0.chips.map(t => t.text + ' ' + t.opacity).join(', ') || 'none'}`);
     results.spots.desktop_standing.cover = c0;
     await shot(page, 'desktop_standing_after_settle.png');
 
