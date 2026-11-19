@@ -2308,38 +2308,6 @@
     return { arrangement: 'lines', valueSize: v, labelSize: l, scaleX: +k.toFixed(3), runs, boxes: [] };
   }
 
-  /* Checksheet columns without auto-paging (finding 2): a column shows `rows` cards from `offset`; it only moves when someone
-     scrolls it (wheel on hover, or a click / tap on its "more" line). */
-  function columnWindow(cards, rows, offset) {
-    const list = Array.isArray(cards) ? cards : [], per = Math.max(1, Math.floor(rows) || 1);
-    const off = Math.max(0, Math.min(Math.max(0, list.length - per), Math.floor(Number(offset)) || 0));
-    const items = list.slice(off, off + per);
-    return { items, offset: off, above: off, below: list.length - off - items.length };
-  }
-  function scrollColumn(offset, delta, total, rows) { return Math.max(0, Math.min(Math.max(0, total - rows), (Math.floor(offset) || 0) + delta)); }
-  function nextColumnPage(offset, total, rows) { return offset + rows >= total ? 0 : Math.min(offset + rows, Math.max(0, total - rows)); }
-  /* Greedy word wrap. measure(text) -> px. Past maxLines: ellipsis on the last line when `ellipsis`, else every line is kept. */
-  function wrapText(text, maxW, measure, maxLines, ellipsis) {
-    const words = str(text).replace(/\s+/g, ' ').trim().split(' ').filter(Boolean), lines = [];
-    let line = '';
-    for (const w0 of words) {
-      let w = w0;
-      while (measure(w) > maxW && w.length > 1) { // a word wider than the line breaks by characters
-        let k = w.length - 1; while (k > 1 && measure((line ? line + ' ' : '') + w.slice(0, k)) > maxW) k--;
-        if (line && measure(line + ' ' + w.slice(0, k)) > maxW) { lines.push(line); line = ''; continue; }
-        lines.push((line ? line + ' ' : '') + w.slice(0, k)); line = ''; w = w.slice(k);
-      }
-      const t = line ? line + ' ' + w : w;
-      if (line && measure(t) > maxW) { lines.push(line); line = w; } else line = t;
-    }
-    if (line) lines.push(line);
-    if (!(maxLines > 0) || lines.length <= maxLines || !ellipsis) return { lines, truncated: false };
-    const out = lines.slice(0, maxLines); let last = out[maxLines - 1] + ' ' + lines.slice(maxLines).join(' ');
-    while (last.length > 1 && measure(last + '…') > maxW) last = last.slice(0, -1);
-    out[maxLines - 1] = last.trimEnd() + '…';
-    return { lines: out, truncated: true };
-  }
-
   /* Phone name labels (finding 6): never overlapping; on a collision the lower-priority label hides. boxes: { x: centre, y: bottom,
      w, h, prio } in screen px (higher prio wins, then earlier). Returns a visible flag per box. */
   function labelVisibility(boxes, pad) {
@@ -2370,7 +2338,7 @@
 
   return { GAME_EVERY,
     BOARD_FAR_M, BOARD_FADE_S, LOS_DEG, LOS_DIM, HUD_STILL_MS, FAR_DESKTOP, FAR_PHONE, boardLayout, fadeStep, boardDistance, facesBoard, rectsOverlap, checksheetFar, usageFar, constraintFar,
-    automationsFar, writerFar, farLayout, columnWindow, scrollColumn, nextColumnPage, wrapText, labelVisibility, labelPrio, hudHidden, parseColor, luminance, contrastRatio, minContrast,
+    automationsFar, writerFar, farLayout, labelVisibility, labelPrio, hudHidden, parseColor, luminance, contrastRatio, minContrast,
     TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, VR_STICK_DEAD, VR_MOVE_SPEED, VR_SNAP_DEG, VR_SNAP_ON, VR_SNAP_OFF, stickAxes, stickMove, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
