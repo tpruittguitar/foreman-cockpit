@@ -1834,6 +1834,44 @@
   }
 
   /* Seedable RNG (mulberry32). Same seed -> same sequence. */
+  /* ---------- Zach: a visitor, not a bot (Tim, Nov 19, 2026) ----------
+     A young person who wanders the office doing small idle things. No bot_id, desk, status, card, screen, chat or Needs Tim, and
+     no office data moves him. He books one free standing slot at a time (the bots' slot book), so he never shares a spot with a bot.
+     height: at most 3/4 of the President's 1.45 m (Tim): baked to 1.0 m, and the stretch (+5%) peaks at 1.05 m, under maxHeight. */
+  const ZACH = { name: 'Zach', height: 1.0, maxHeight: 1.45 * 0.75, radius: 0.24, walkMps: 1.0 };
+  const ZACH_TASKS = [
+    { act: 'read_board', kinds: ['board'], dwell: [25, 45] },
+    { act: 'waterfall', kinds: ['waterfall'], dwell: [20, 35] },
+    { act: 'browse_shelf', kinds: ['shelf'], dwell: [15, 30] },
+    { act: 'get_drink', kinds: ['coffee', 'fridge'], dwell: [12, 22] },
+    { act: 'look_around', kinds: ['loiter'], dwell: [15, 30] },
+    { act: 'stretch', kinds: ['loiter'], dwell: [10, 18] }
+  ];
+  /* Next task: never the same act twice in a row; rnd() in [0,1). Returns { act, kinds, dwellS }. */
+  function zachPick(prevAct, rnd) {
+    const list = ZACH_TASKS.filter(t => t.act !== prevAct), t = list[Math.floor(rnd() * list.length) % list.length];
+    return { act: t.act, kinds: t.kinds.slice(), dwellS: t.dwell[0] + rnd() * (t.dwell[1] - t.dwell[0]) };
+  }
+  /* Whole-body motion for one frame (the mesh is rigid). mode: 'walk' or a task act; t: seconds in this mode; reduced: prefers
+     reduced motion (walk keeps a small bob, idle fidgets stop). Returns { y, roll, pitch, yaw, sy, sxz }: rig offsets at the feet. */
+  function zachMotion(mode, t, reduced) {
+    const m = { y: 0, roll: 0, pitch: 0, yaw: 0, sy: 1, sxz: 1 }, k = reduced ? 0 : 1, s = Math.sin;
+    if (mode === 'walk') {
+      const ph = t * Math.PI * 2 * 2.1;
+      m.y = 0.022 * Math.abs(s(ph)) * (reduced ? 0.4 : 1); m.roll = 0.07 * s(ph) * (reduced ? 0.3 : 1); m.pitch = 0.04;
+      return m;
+    }
+    m.sy = 1 + 0.008 * s(t * 1.7) * k; m.sxz = 1 / Math.sqrt(m.sy); // breathing
+    if (mode === 'look_around') m.yaw = 0.55 * s(t * 0.45) * k;
+    else if (mode === 'read_board') { m.pitch = -0.07 * k; m.yaw = 0.18 * s(t * 0.3) * k; }
+    else if (mode === 'waterfall') { m.roll = 0.04 * s(t * 0.9) * k; m.pitch = -0.03 * k; }
+    else if (mode === 'browse_shelf') { m.pitch = 0.07 * k; m.yaw = 0.3 * s(t * 0.6) * k; }
+    else if (mode === 'get_drink') { m.pitch = -0.1 * Math.max(0, s(t * 0.8)) * k; }
+    else if (mode === 'stretch') { const u = Math.max(0, s(t * 0.9)); m.sy = 1 + 0.05 * u * k; m.sxz = 1 / Math.sqrt(m.sy); m.pitch = -0.06 * u * k; }
+    const hop = (t % 9) / 9; // a small happy hop now and then
+    if (!reduced && mode !== 'stretch' && hop > 0.95) m.y = 0.07 * s((hop - 0.95) / 0.05 * Math.PI);
+    return m;
+  }
   function makeRng(seed) {
     let a = (seed >>> 0) || 0x9e3779b9;
     return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -2238,7 +2276,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
+    needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine, activityChip,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
