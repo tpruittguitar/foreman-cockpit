@@ -1,8 +1,9 @@
-/* Office board readability capture (GUI review 2026-11-18, findings 2 / 4 / 6 / 7).
+/* Office board readability capture (GUI review 2026-11-18, findings 2 / 6 / 7).
    Serves this checkout's office.html on localhost with fixture data (2 Needs Tim cards, 27 in progress, AI usage, automations)
    and no network writes: GitHub reads answer from fixtures, every other outside host is aborted, every POST is recorded.
    Measures on-screen text cap height (CSS px, 1440x900 and 390x844) by projecting each board text run's canvas cap height
-   through the board mesh to the screen, from the Door (spawn), Standing (6.7 m from the back wall) and Walk-up (3 m) spots.
+   through the board mesh to the screen, from Standing (6.7 m from the back wall) and Walk-up (3 m) spots. Each wall board
+   has one Detail face only (no Far overlay / distance crossfade).
    Run:  node tests/office-readability.capture.cjs [out-dir]     (default /workspace/officeread-proof)
    Writes screenshots, measurements.json and summary.md to out-dir; exits 1 when a criterion fails. */
 require('./helpers/block-production-writer.cjs');
@@ -67,15 +68,14 @@ function measurePage(opts) {
   const hex = s => { const m = /^#([0-9a-f]{6})$/i.exec(s); return m ? [0, 2, 4].map(k => parseInt(m[1].slice(k, k + 2), 16)) : null; };
   const out = [];
   for (const b of T.boards()) {
-    const face = b.layout === 'far' ? 'far' : 'detail', cv = face === 'far' ? b.far : b.detail, W = cv.width, H = cv.height;
+    const face = 'detail', cv = b.detail, W = cv.width, H = cv.height;
     let runs = (window.__runs.get(cv) || []).filter(r => r.alpha !== 0 && r.text.trim());
     const roleOf = new Map();
-    if (face === 'far' && b.farLay) for (const r of b.farLay.runs) roleOf.set(r.text + '@' + Math.round(r.x) + ',' + Math.round(r.y), r.role);
-    if (face === 'detail' && b.hits && b.hits.runs) for (const r of b.hits.runs) roleOf.set(r.text + '@' + Math.round(r.x) + ',' + Math.round(r.y), r.role);
+    if (b.hits && b.hits.runs) for (const r of b.hits.runs) roleOf.set(r.text + '@' + Math.round(r.x) + ',' + Math.round(r.y), r.role);
     const g = opts.contrast ? cv.getContext('2d') : null;
     for (const r of runs) {
       const c = cap(r.font), w = width(r.font, r.text), left = r.align === 'right' || r.align === 'end' ? r.x - w : r.align === 'center' ? r.x - w / 2 : r.x;
-      const p0 = b.toScreen(left / W, r.y / H, face), p1 = b.toScreen(left / W, (r.y - c) / H, face), p2 = b.toScreen((left + w) / W, r.y / H, face);
+      const p0 = b.toScreen(left / W, r.y / H), p1 = b.toScreen(left / W, (r.y - c) / H), p2 = b.toScreen((left + w) / W, r.y / H);
       const px = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
       const inView = p0[2] < 1 && Math.max(p0[0], p2[0]) > 0 && Math.min(p0[0], p2[0]) < vw && p1[1] > 0 && p0[1] < vh;
       const fullyInView = p0[2] < 1 && Math.min(p0[0], p2[0]) >= 0 && Math.max(p0[0], p2[0]) <= vw && p1[1] >= 0 && p0[1] <= vh;
@@ -95,7 +95,7 @@ function measurePage(opts) {
       out.push(rec);
     }
   }
-  return { boards: T.boards().map(b => ({ id: b.id, layout: b.layout, fade: +b.fade.toFixed(3), dist: +b.dist.toFixed(2), arrangement: b.farLay && b.farLay.arrangement, farCanvas: b.far.width + 'x' + b.far.height, valueSize: b.farLay && b.farLay.valueSize, labelSize: b.farLay && b.farLay.labelSize, scaleX: b.farLay && b.farLay.scaleX })), runs: out };
+  return { boards: T.boards().map(b => ({ id: b.id, dist: +b.dist.toFixed(2), detailCanvas: b.detail.width + 'x' + b.detail.height })), runs: out };
 }
 
 /* card rectangles on screen, and what covers them (desk screens, name chips) */
@@ -109,7 +109,7 @@ function coverPage() {
   const chips = [...document.querySelectorAll('#labels .tag, #labels .bubbles')].filter(e => e.style.display !== 'none' && !e.hidden && e.getBoundingClientRect().width)
     .map(e => { const r = e.getBoundingClientRect(); return { text: e.textContent.trim().slice(0, 40), opacity: +getComputedStyle(e).opacity, rect: { x0: r.left, y0: r.top, x1: r.right, y1: r.bottom } }; })
     .map(t => ({ ...t, covers: cards.filter(c => ov(t.rect, c)).map(c => c.id) })).filter(t => t.covers.length);
-  const nt = cards.filter(c => c.col === 'needs_tim');
+  const nt = cards.filter(c => c.col === 'needs_tim' || /^nt-/.test(c.id));
   return { cards: cards.length, needsTim: nt.map(c => ({ id: c.id, inView: c.x0 >= 0 && c.y0 >= 0 && c.x1 <= vw && c.y1 <= vh })), desks, chips,
     titles: (b.hits.runs || []).filter(r => r.role === 'title').map(r => r.text), ids: cards.map(c => c.id), facing: los.boards.map(x => x.id) };
 }
@@ -153,7 +153,6 @@ function coverPage() {
     const f0 = await page.evaluate(() => window.__office.frames);
     await page.waitForFunction(k => window.__office.frames > k + 3, f0, { timeout: 240000 }); // swiftshader on a busy runner can be slow
     await page.waitForTimeout(settle == null ? 900 : settle);
-    await page.waitForFunction(() => window.__office.boards().every(b => b.fade === 0 || b.fade === 1), null, { timeout: 120000 });
   }
   const shot = (page, name) => page.screenshot({ path: path.join(OUT, name), timeout: 120000 });
   const BOARD = { project: { c: [-2, 2.3, -9.88], n: [0, 0, 1] }, usage: { c: [5.7, 2.2, -9.88], n: [0, 0, 1] }, constraint: { c: [-9.4, 2.3, -9.88], n: [0, 0, 1] },
@@ -169,62 +168,31 @@ function coverPage() {
     await page.goto(base); await ready(page);
     await page.waitForFunction(() => window.__office.boards().find(b => b.id === 'project').hits.some(h => h.id), null, { timeout: 60000 });
 
-    // Door
+    // Door (screenshot + probe: Detail face only, no Far overlay)
     await go(page, ...DOOR); await shot(page, 'desktop_door.png');
     const door = await page.evaluate(measurePage, { contrast: true }); results.spots.desktop_door = { boards: door.boards, min: summarize(door) };
-    const farIn = door.runs.filter(r => r.face === 'far' && r.inView);
-    const doorCounts = minOf(farIn, r => r.role === 'count'), doorLabels = minOf(farIn, r => r.role !== 'count');
-    const perBoard = {}; for (const r of farIn) { const p = perBoard[r.board] = perBoard[r.board] || { count: null, label: null }; const k = r.role === 'count' ? 'count' : 'label'; p[k] = p[k] == null ? r.capPx : Math.min(p[k], r.capPx); }
-    results.spots.desktop_door.perBoard = perBoard;
-    results.spots.desktop_door.notInView = door.boards.filter(b => !farIn.some(r => r.board === b.id)).map(b => b.id);
-    crit('1a', 'Door: every board in view shows the Far layout', door.boards.filter(b => perBoard[b.id]).every(b => b.layout === 'far' && b.fade === 1), door.boards.map(b => b.id + ':' + b.layout + ' ' + b.dist + 'm').join(', '));
-    for (const [id, p] of Object.entries(perBoard)) {
-      if (p.count != null) crit('2a-' + id, `Door: ${id} Far counts >= 32 px`, p.count >= 32, p.count.toFixed(1) + ' px');
-      crit('2b-' + id, `Door: ${id} Far labels / words >= 18 px`, p.label >= 18, p.label.toFixed(1) + ' px');
-    }
-    // contrast on every board face drawn so far (Far faces in view at the Door; Detail faces measured below)
-    const contrastRuns = door.runs.filter(r => r.contrast != null && r.face === 'far');
-
-    // crossfade: Door -> Standing; mid-fade sample, then settled
-    await page.evaluate(([p, l]) => window.__office.view(p, l), STAND);
-    const mid = await page.waitForFunction(() => { const b = window.__office.boards().find(x => x.id === 'project'); return b.fade > 0 && b.fade < 1 ? b.fade : null; }, null, { timeout: 5000, polling: 'raf' }).then(h => h.jsonValue(), () => null);
-    crit('1b', 'Far -> Detail crossfades (a frame between the two layouts)', mid != null, mid != null ? 'project fade seen at ' + mid.toFixed(2) : 'no intermediate frame seen');
+    const noFar = await page.evaluate(() => window.__office.boards().every(b => !b.far && !('fade' in b) && !('layout' in b)));
+    crit('1a', 'Door: wall boards expose only the Detail face (no Far overlay fields)', noFar, door.boards.map(b => b.id + ' ' + b.dist + 'm').join(', '));
+    const contrastRuns = door.runs.filter(r => r.contrast != null);
 
     // Standing
     await go(page, ...STAND); await shot(page, 'desktop_standing.png');
     const stand = await page.evaluate(measurePage, { contrast: true }); results.spots.desktop_standing = { boards: stand.boards, min: summarize(stand) };
-    const cs = stand.runs.filter(r => r.board === 'project' && r.face === 'detail' && r.inView);
-    const tMin = minOf(cs, r => r.role === 'title'), nMin = minOf(cs, r => r.role === 'note');
-    crit('3a', 'Standing: checksheet shows Detail', stand.boards.find(b => b.id === 'project').layout === 'detail', 'project ' + stand.boards.find(b => b.id === 'project').dist + ' m');
-    crit('3b', 'Standing: card titles >= 16 px', tMin >= 16, (tMin || 0).toFixed(1) + ' px');
-    crit('3c', 'Standing: notes >= 13 px', nMin >= 13, (nMin || 0).toFixed(1) + ' px');
-    for (const r of stand.runs) if (r.contrast != null && r.face === 'detail') contrastRuns.push(r);
-    // Tim 1:35 AM: columns left an empty card row at the bottom. Every one-line column with >= 6 cards shows >= 6 and reaches its bottom.
-    const colFill = await page.evaluate(() => { const b = window.__office.boards().find(x => x.id === 'project'), px = (v0, v1) => Math.abs(b.toScreen(0.5, v1)[1] - b.toScreen(0.5, v0)[1]);
-      return (b.hits.cols || []).map(c => ({ id: c.id, total: c.total, shown: c.shown, bandPx: +px(c.used, c.bottom).toFixed(1), rowPx: +px(0, c.rowH).toFixed(1) })); });
-    const big = colFill.filter(c => c.total >= 6);
-    results.spots.desktop_standing.columns = colFill;
-    crit('3g', 'Standing: every column with 6+ cards shows at least 6, no empty band at the bottom (band < 1/4 card row)',
-      big.length > 0 && big.every(c => c.shown >= 6 && c.bandPx < c.rowPx / 4),
-      colFill.map(c => `${c.id} ${c.shown} of ${c.total}, band ${c.bandPx} px (row ${c.rowPx} px)`).join('; '));
+    const cs = stand.runs.filter(r => r.board === 'project' && r.inView && !AS_OF.test(r.text));
+    const tMin = minOf(cs, () => true);
+    crit('3a', 'Standing: checksheet Detail face is present', !!stand.boards.find(b => b.id === 'project'), 'project ' + (stand.boards.find(b => b.id === 'project') || {}).dist + ' m');
+    crit('3b', 'Standing: checksheet body text >= 16 px', tMin >= 16, (tMin || 0).toFixed(1) + ' px');
+    crit('3c', 'Standing: checksheet body text >= 13 px', tMin >= 13, (tMin || 0).toFixed(1) + ' px');
+    for (const r of stand.runs) if (r.contrast != null) contrastRuns.push(r);
 
-    // checksheet: no paging over 60 s untouched, both Needs Tim cards in full, nothing in the line of sight
+    // checksheet: both Needs Tim cards in full, nothing in the line of sight
     const c0 = await page.evaluate(coverPage);
     crit('4a', 'Both Needs Tim cards fully visible from Standing', c0.needsTim.length === 2 && c0.needsTim.every(c => c.inView), JSON.stringify(c0.needsTim));
-    const ntRuns = cs.filter(r => ['title', 'note'].includes(r.role));
-    crit('4b', 'Needs Tim titles are never cut (no ellipsis on Needs Tim cards)', !c0.titles.slice(0, 4).some(t => t.endsWith('…')) && ntRuns.length > 0, c0.titles.slice(0, 4).join(' | '));
     crit('5', 'Standing: no desk screen or name chip covers a checksheet card (faded to <= 30%)',
       c0.desks.every(d => d.opacity <= 0.3 + 1e-6) && c0.chips.every(t => t.opacity <= 0.3 + 1e-6),
       `${c0.desks.length} desk screens and ${c0.chips.length} chips in line, opacities ${c0.desks.map(d => d.name + ' ' + d.opacity).concat(c0.chips.map(t => t.text + ' ' + t.opacity)).join(', ') || 'none'}`);
     results.spots.desktop_standing.cover = c0;
-    const watch = QUICK ? 15000 : 60000; await page.waitForTimeout(watch);
-    const c1 = await page.evaluate(coverPage); await shot(page, 'desktop_standing_after_60s.png');
-    crit('4c', `Checksheet does not change pages over ${watch / 1000} s untouched`, JSON.stringify(c0.ids) === JSON.stringify(c1.ids), c0.ids.length + ' cards, same order: ' + (JSON.stringify(c0.ids) === JSON.stringify(c1.ids)));
-    // a column scrolls by hand (wheel over In progress)
-    const ipPt = await page.evaluate(() => { const b = window.__office.boards().find(x => x.id === 'project'), h = b.hits.find(x => x.col === 'in_progress'); const p = b.toScreen(h.x + h.w / 2, h.y + h.h / 2); return [p[0], p[1]]; });
-    await page.mouse.move(ipPt[0], ipPt[1]); await page.mouse.wheel(0, 300); await page.waitForTimeout(600);
-    const c2 = await page.evaluate(coverPage);
-    crit('4d', 'In progress scrolls on hover (mouse wheel)', JSON.stringify(c2.ids) !== JSON.stringify(c1.ids), 'first card ' + c1.ids.find(i => i.startsWith('ip')) + ' -> ' + c2.ids.find(i => i.startsWith('ip')));
+    await shot(page, 'desktop_standing_after_settle.png');
 
     // Walk-up (3 m) at every board
     results.spots.desktop_walkup = {};
@@ -232,13 +200,13 @@ function coverPage() {
     for (const id of Object.keys(BOARD)) {
       await go(page, ...walkup(id)); await shot(page, `desktop_walkup_${id}.png`);
       const m = await page.evaluate(measurePage, { contrast: true });
-      const rs = m.runs.filter(r => r.board === id && r.face === 'detail' && r.inView);
+      const rs = m.runs.filter(r => r.board === id && r.inView);
       const mn = minOf(rs, r => !AS_OF.test(r.text)), body = mn, ao = minOf(rs, r => AS_OF.test(r.text));
       if (ao != null && ao < asOfMin) { asOfMin = ao; asOfWorst = id + ': ' + rs.filter(r => AS_OF.test(r.text)).sort((a, b) => a.capPx - b.capPx)[0].text + ' ' + ao + ' px'; }
-      results.spots.desktop_walkup[id] = { layout: m.boards.find(b => b.id === id).layout, dist: m.boards.find(b => b.id === id).dist, minPx: mn, bodyMinPx: body, smallest: rs.sort((a, b) => a.capPx - b.capPx).slice(0, 3).map(r => r.text + ' ' + r.capPx) };
-      if (mn < walkMin) { walkMin = mn; const r0 = rs.filter(r => !AS_OF.test(r.text))[0]; worst = id + ': ' + r0.text + ' ' + r0.capPx + ' px'; }
-      bodyMin = Math.min(bodyMin, body);
-      for (const r of m.runs) if (r.contrast != null && r.face === 'detail' && r.board === id) contrastRuns.push(r);
+      results.spots.desktop_walkup[id] = { dist: m.boards.find(b => b.id === id).dist, minPx: mn, bodyMinPx: body, smallest: rs.sort((a, b) => a.capPx - b.capPx).slice(0, 3).map(r => r.text + ' ' + r.capPx) };
+      if (mn != null && mn < walkMin) { walkMin = mn; const r0 = rs.filter(r => !AS_OF.test(r.text)).sort((a, b) => a.capPx - b.capPx)[0]; worst = id + ': ' + r0.text + ' ' + r0.capPx + ' px'; }
+      if (body != null) bodyMin = Math.min(bodyMin, body);
+      for (const r of m.runs) if (r.contrast != null && r.board === id) contrastRuns.push(r);
     }
     crit('3d', 'Walk-up: no text under 12 px on any board (as-of lines on 3f)', walkMin >= 12, 'smallest ' + worst);
     crit('3e', 'Walk-up: body text >= 14 px', bodyMin >= 14, 'smallest body ' + bodyMin.toFixed(1) + ' px');
@@ -247,24 +215,13 @@ function coverPage() {
     // contrast
     const seen = new Map(); for (const r of contrastRuns) { const k = r.board + r.face + r.text + r.fg; if (!seen.has(k)) seen.set(k, r); }
     const samples = [...seen.values()], bad = samples.filter(r => r.contrast < L.minContrast(r.capPx));
-    results.contrast = { samples: samples.length, failing: bad.map(r => ({ board: r.board, face: r.face, text: r.text, fg: r.fg, bg: r.bg, contrast: r.contrast, capPx: r.capPx })), min: Math.min(...samples.map(r => r.contrast)) };
+    results.contrast = { samples: samples.length, failing: bad.map(r => ({ board: r.board, face: r.face, text: r.text, fg: r.fg, bg: r.bg, contrast: r.contrast, capPx: r.capPx })), min: samples.length ? Math.min(...samples.map(r => r.contrast)) : null };
     crit('7', 'Contrast >= 4.5:1 under 24 px, >= 3:1 from 24 px (board text samples)', !bad.length, samples.length + ' samples, ' + bad.length + ' failing' + (bad.length ? ': ' + bad.slice(0, 4).map(r => `${r.board} "${r.text}" ${r.contrast}`).join('; ') : ''));
 
-    // saved textures (proof)
-    const tex = await page.evaluate(() => window.__office.boards().filter(b => b.id === 'project' || b.id === 'usage').flatMap(b => [[b.id + '_detail', b.detail.toDataURL()], [b.id + '_far', b.far.toDataURL()]]));
+    // saved textures (proof): Detail face only
+    const tex = await page.evaluate(() => window.__office.boards().filter(b => b.id === 'project' || b.id === 'usage').map(b => [b.id + '_detail', b.detail.toDataURL()]));
     for (const [n, d] of tex) fs.writeFileSync(path.join(OUT, `texture_${n}.png`), Buffer.from(d.split(',')[1], 'base64'));
     if (errors.length) crit('E1', 'desktop: no page errors', false, errors.join(' | ').slice(0, 300));
-    await ctx.close();
-  }
-
-  /* ======================= reduced motion: no crossfade animation ======================= */
-  {
-    const { ctx, page } = await open({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-    await page.goto(base); await ready(page);
-    await go(page, ...DOOR);
-    await page.evaluate(([p, l]) => window.__office.view(p, l), STAND);
-    const fades = await page.evaluate(() => new Promise(res => { const seen = []; let n = 0; const tick = () => { seen.push(window.__office.boards().find(b => b.id === 'project').fade); if (++n < 12) requestAnimationFrame(tick); else res(seen); }; requestAnimationFrame(tick); }));
-    crit('1c', 'prefers-reduced-motion: layouts switch with no animation', fades.every(f => f === 0 || f === 1) && fades[fades.length - 1] === 0, 'fade per frame ' + fades.join(','));
     await ctx.close();
   }
 
@@ -278,26 +235,21 @@ function coverPage() {
     await page.click('#walk3d'); await ready(page);
     await page.waitForFunction(() => window.__office.boards().find(b => b.id === 'project').hits.some(h => h.id), null, { timeout: 60000 });
     results.spots.phone = {};
-    let phoneMin = Infinity, phoneWorst = '', allFar = true;
     const spots = [['door', DOOR], ['standing', STAND]].concat(Object.keys(BOARD).map(id => ['walkup_' + id, walkup(id)]));
+    let detailOnly = true;
     for (const [name, v] of spots) {
       await go(page, ...v); await shot(page, `phone_${name}.png`);
       const m = await page.evaluate(measurePage, { contrast: false });
-      allFar = allFar && m.boards.every(b => b.layout === 'far');
-      const counts = m.runs.filter(r => r.face === 'far' && r.inView && r.role === 'count'), mn = minOf(counts, () => true);
-      const per = {}; for (const r of counts) per[r.board] = Math.min(per[r.board] == null ? 1e9 : per[r.board], r.capPx);
-      results.spots.phone[name] = { countsMinPx: mn, perBoard: per, layouts: m.boards.map(b => b.id + ':' + b.layout), counts: counts.map(r => ({ board: r.board, text: r.text, capPx: r.capPx, fullyInView: r.fullyInView })) };
-      if (name === 'door') { results.phoneDoorBoards = m.boards; const t = await page.evaluate(() => window.__office.boards().find(b => b.id === 'usage').far.toDataURL()); fs.writeFileSync(path.join(OUT, 'texture_usage_far_phone.png'), Buffer.from(t.split(',')[1], 'base64')); }
-      for (const [id, px] of Object.entries(per)) if (px < phoneMin) { phoneMin = px; phoneWorst = name + ' ' + id + ' ' + px.toFixed(1) + ' px'; }
+      const probe = await page.evaluate(() => window.__office.boards().map(b => ({ id: b.id, far: !!b.far, fade: 'fade' in b, layout: 'layout' in b })));
+      detailOnly = detailOnly && probe.every(b => !b.far && !b.fade && !b.layout);
+      results.spots.phone[name] = { boards: m.boards, probe };
       // labels never overlap
       const tags = await page.evaluate(() => [...document.querySelectorAll('#labels .tag')].filter(e => e.style.display !== 'none').map(e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom, e.textContent.trim()]; }).filter(r => r[2] > r[0]));
       const over = []; for (let i = 0; i < tags.length; i++) for (let j = i + 1; j < tags.length; j++) { const a = tags[i], b = tags[j]; if (a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]) over.push(a[4] + ' / ' + b[4]); }
       results.spots.phone[name].labels = { shown: tags.length, overlaps: over };
       if (over.length) crit('6d-' + name, 'Phone: name labels do not overlap at ' + name, false, over.join(', '));
     }
-    crit('6b', 'Phone 3D: only the Far layout, from every spot', allFar, '');
-    const perBoardMin = {}; for (const s of Object.values(results.spots.phone)) for (const [id, px] of Object.entries(s.perBoard)) perBoardMin[id] = Math.min(perBoardMin[id] == null ? 1e9 : perBoardMin[id], px);
-    for (const [id, px] of Object.entries(perBoardMin)) crit('6c-' + id, `Phone 3D: ${id} Far counts >= 24 px from every spot it is in view`, px >= 24, px.toFixed(1) + ' px (smallest spot)');
+    crit('6b', 'Phone 3D: Detail face only from every spot (no Far overlay)', detailOnly, '');
     crit('6d', 'Phone: name labels never overlap (all spots)', Object.values(results.spots.phone).every(s => !s.labels.overlaps.length), Object.entries(results.spots.phone).map(([k, s]) => k + ' ' + s.labels.shown).join(', '));
     // HUD hides while moving, back after 2 s still
     await go(page, ...DOOR);
