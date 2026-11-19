@@ -20,6 +20,7 @@ const attention={schema:'forge.needs-tim.v1',builtAt:ago(12),counts:{},lanes:[
   {id:'pr:foreman-cockpit#66',section:'UPKEEP',level:'ACTION',title:'foreman-cockpit PR #66: Scoring audit repair',sourceUrl:'https://github.com/tpruittguitar/foreman-cockpit/pull/66',at:'2026-10-06T00:00:00Z'}]};
 const writerStatus={ok:true,level:'warn',warnings:[{code:'QUEUE_BACKLOG',level:'warn',message:'9 waiting, oldest 15 min'}],queue:{pending:9,processing:[],hold:['FORGE-WEB-CHATGPT-B02.json']},triggerInstalled:true,recentRuns:[],recentHolds:[],recentFailed:[],unverified:{count:0}};
 const operations={ok:true,store:{obligations:{}},summary:{open:[{id:'OB-1',state:'FAILED_UNVERIFIED',source:'email',runId:'FORGE-EMAIL-CHATGPT-20261018-1502ET'}],counts:{},total:1,done:0}};
+const opsReads=[];
 (async()=>{
   const server=require('http').createServer((req,res)=>{const u=new URL(req.url,'http://localhost'),f=repo+u.pathname;try{res.setHeader('Content-Type',MIME[path.extname(f)]||'text/plain');res.end(fs.readFileSync(f))}catch(e){res.statusCode=404;res.end('')}});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
@@ -32,7 +33,7 @@ const operations={ok:true,store:{obligations:{}},summary:{open:[{id:'OB-1',state
     // registered last so it wins over the generic GitHub mock (Playwright matches the newest route first)
     await page.route('**/api.github.com/repos/tpruittguitar/forge-coordination/contents/attention/**',r=>r.fulfill({json:attention}));
     await page.route('**/raw.githubusercontent.com/**',r=>r.fulfill({body:''}));
-    await page.route('**/writer*',r=>{const req=r.request();if(req.method()==='POST'){posts.push(req.postData());return r.fulfill({json:{ok:true}})}const a=new URL(req.url()).searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?writerStatus:a==='operations'?operations:{ok:true}})});
+    await page.route('**/writer*',r=>{const req=r.request();if(req.method()==='POST'){posts.push(req.postData());return r.fulfill({json:{ok:true}})}const a=new URL(req.url()).searchParams.get('action');if(a==='operations')opsReads.push(req.url());return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?writerStatus:a==='operations'?operations:{ok:true}})});
     await page.goto(base+'/pipeline.html?src=writer&open=jobs'+(hash||''));await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(600);
     return {ctx,page,errors,posts};
   }
@@ -48,7 +49,9 @@ const operations={ok:true,store:{obligations:{}},summary:{open:[{id:'OB-1',state
   await page.locator('#bell').click();await page.waitForSelector('#view-needs-tim.on .nt-page');await page.waitForTimeout(300);
   const view=await page.evaluate(()=>({stats:[...document.querySelectorAll('#view-needs-tim .nt-stat span')].map(h=>h.textContent),items:[...document.querySelectorAll('#view-needs-tim .nt-item')].map(a=>a.getAttribute('data-nt-id')),hash:decodeURIComponent(location.hash.slice(1)),tab:document.querySelector('#section-tabs button[aria-selected="true"]')&&document.querySelector('#section-tabs button[aria-selected="true"]').textContent,object:document.body.textContent.indexOf('[object Object]')}));
   assert.deepStrictEqual(view.stats,['My decisions','AI work','Incidents','History']);
-  ['ask:ASK-20261018-01','ask:ASK-20261018-09','live:queue-held','live:writer-warning:QUEUE_BACKLOG','live:obligation:OB-1','lane-overdue:POSTVAL','pr:foreman-cockpit#66'].forEach(id=>assert.ok(view.items.indexOf(id)>=0,'shows '+id));
+  ['ask:ASK-20261018-01','ask:ASK-20261018-09','live:queue-held','live:writer-warning:QUEUE_BACKLOG','lane-overdue:POSTVAL','pr:foreman-cockpit#66'].forEach(id=>assert.ok(view.items.indexOf(id)>=0,'shows '+id));
+  assert.ok(view.items.indexOf('live:obligation:OB-1')<0,'Needs you does not list operations obligations');
+  assert.strictEqual(opsReads.length,0,'Needs you does not fetch action=operations');
   assert.match(view.hash,/"t":"needs-tim"/);assert.strictEqual(view.tab,'Needs you','System section tab is highlighted');
   assert.strictEqual(view.object,-1,'no literal [object Object]');
   // 3. Copy answer puts a ready-to-paste ruling on the clipboard; nothing is posted to the Writer.
