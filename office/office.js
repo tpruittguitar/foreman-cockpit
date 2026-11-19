@@ -53,10 +53,18 @@ function openBuildPopup() {
   var b = L.buildPrPopup(buildInfo);
   showPanel('<h2 id="panel-title">Build details</h2>' + ((b.summary || b.when || b.url || b.desc) ? '<p><b>' + esc(b.title || '') + '</b></p><p>' + esc(b.summary || b.desc || '') + '</p><p>' + esc(b.when || '') + '</p>' + (b.url ? '<p><a href="' + esc(b.url) + '" target="_blank" rel="noopener">Open PR</a></p>' : '') : '<p class="tip">' + esc(b.desc || 'No description for this build') + '</p>'));
 }
+// Mobile start page (flat view): the "Walk in 3D" button also carries the latest PR number, short description and ET time.
+function renderWalk3dBuild() {
+  const b = $('walk3d'); if (!b) return;
+  const s = L.buildLaunchLine(buildInfo);
+  b.innerHTML = '<span class="walk3d-main">Walk in 3D</span>' + (s ? '<span class="walk3d-build"><span class="walk3d-desc"><b>' + esc(s.pr) + '</b>' + (s.desc ? ' ' + esc(s.desc) : '') + '</span>' + (s.when ? '<span class="walk3d-when">' + esc(s.when) + '</span>' : '') + '</span>' : '');
+  b.title = s ? 'Walk in 3D · latest release: ' + s.text : 'Walk in 3D';
+}
 fetch('build-info.json', { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).catch(() => null).then(info => {
   buildInfo = info; if (onBuildInfo) onBuildInfo();
   const line = L.buildBadge(info), el = document.getElementById('build-badge');
   if (el) { el.textContent = line; L.wireBuildBadge(el, openBuildPopup); }
+  renderWalk3dBuild();
   console.info(line);
 });
 const gate = L.createGate(); // one GitHub API budget shared by status, PR list and asks
@@ -689,6 +697,7 @@ function buildWorld() {
 
   /* ---------- obstacles ---------- */
   const obstacles = [];
+  let releasePlate = null; // FORGE release plate mesh (set below); in pickables() so a click / tap opens openBuildPopup
   const block = (cx, cz, hx, hz, viewerOnly, tag) => obstacles.push({ x0: cx - hx, x1: cx + hx, z0: cz - hz, z1: cz + hz, viewerOnly, tag });
 
   /* ---------- decoration: Forge holo sign (original mark), wall art, planters, shelves, bonsai ---------- */
@@ -714,7 +723,8 @@ function buildWorld() {
         g.font = "600 44px 'Inter PE', system-ui, sans-serif"; g.fillStyle = '#b4eef7'; g.fillText(d.detail, 512, 230, 960); pl.t.needsUpdate = true;
       };
       onBuildInfo = paint; if (buildInfo !== undefined) paint();
-      add(new THREE.PlaneGeometry(2.7, 0.76), new THREE.MeshBasicMaterial({ map: pl.t, transparent: true, depthWrite: false, toneMapped: false }), 10.1, 2.52, -RD / 2 + 0.2);
+      releasePlate = add(new THREE.PlaneGeometry(2.7, 0.76), new THREE.MeshBasicMaterial({ map: pl.t, transparent: true, depthWrite: false, toneMapped: false }), 10.1, 2.52, -RD / 2 + 0.2);
+      releasePlate.userData.board = L.RELEASE_PLATE_BOARD; // pickable: click / tap opens the same Build details popup as the corner badge
     }
     const art = (cx, cz, rot, seed) => {
       const a = canvasTex(256, 320), g = a.ctx, gr = g.createLinearGradient(0, 0, 256, 320);
@@ -1535,7 +1545,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, pipe.mesh]; desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, pipe.mesh]; if (releasePlate) a.push(releasePlate); desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1560,6 +1570,7 @@ function buildWorld() {
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
+    else if (p.board === L.RELEASE_PLATE_BOARD) openBuildPopup();
     else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
   }
@@ -1572,12 +1583,12 @@ function buildWorld() {
   if (pipe.css) { $('browse-exit').onclick = () => setBrowse(false); pipe.css.r.domElement.addEventListener('pointerdown', e => { if (e.target === pipe.css.r.domElement) setBrowse(false); }); }
   function setHover(p) {
     const nb = p && p.bot || null, ni = p && p.item || null;
+    if (!down && !dimDrag) renderer.domElement.style.cursor = p ? 'pointer' : 'grab'; // boards and the release plate too, not only bots / cards
     if (nb === hoverBot && ni === hoverItem) return;
     hoverBot = nb; hoverItem = ni;
     const owner = ni ? (items().find(i => i.id === ni) || {}).owner : null;
     desks.forEach(d => (d.hover.visible = d.name === nb || d.name === owner));
     boardDirty = true;
-    renderer.domElement.style.cursor = p ? 'pointer' : 'grab';
   }
   const canvas = renderer.domElement;
   const look = new THREE.Euler(0, 0, 0, 'YXZ');

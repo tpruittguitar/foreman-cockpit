@@ -1801,6 +1801,20 @@
       open();
     };
   }
+  /* Pick id for the release plate under the FORGE sign: office.js tags the plate mesh with it and activate() opens openBuildPopup. */
+  const RELEASE_PLATE_BOARD = 'release';
+  /* Mobile start page "Walk in 3D" button: latest PR number, short description and its ET time, from the same build-info.json
+     and formatters the corner badge and the Build details popup use. null when build-info is missing or says nothing useful. */
+  function buildLaunchLine(info, max) {
+    const pop = buildPrPopup(info), parts = buildParts(info), lim = max > 0 ? max : 48;
+    const pr = pop.url ? '#' + pop.url.split('/').pop() : '';
+    let desc = pop.title || (pop.summary.split(/(?<=[.!?])\s/)[0] || '');
+    if (desc.length > lim) desc = desc.slice(0, lim - 1).trimEnd() + '…';
+    const when = pop.when || (parts && parts.when !== 'time unknown' ? parts.when : '');
+    if (!pr && !desc && !when) return null;
+    const head = pr || 'PR —';
+    return { pr: head, desc, when, text: [head + (desc ? ' ' + desc : ''), when].filter(Boolean).join(' · ') };
+  }
   /* Wall plate under the FORGE sign: same data as the corner badge, as big lines [title, release time, commit, version details]. */
   function buildPlate(info) {
     const p = buildParts(info);
@@ -2276,7 +2290,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
+    needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, buildLaunchLine, RELEASE_PLATE_BOARD, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine, activityChip,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
