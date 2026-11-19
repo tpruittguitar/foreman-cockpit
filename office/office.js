@@ -934,8 +934,8 @@ function buildWorld() {
     for (const [lx, lz] of [[-0.75, -0.35], [0.75, -0.35], [-0.75, 0.35], [0.75, 0.35]]) add(deskGeo.leg, MAT.metal, lx, 0.36, lz, g);
     add(deskGeo.kb, MAT.dark, 0, 0.785, 0.12, g); add(deskGeo.mouse, MAT.dark, 0.36, 0.79, 0.14, g).rotation.x = Math.PI / 2;
     const scr = canvasTex(monW, monH);
-    const monDark = MAT.dark.clone(), monScr = screenMat(scr.t); monDark.transparent = monScr.transparent = true; // fades to LOS_DIM in front of a board
-    const mon = add(deskGeo.mon, [monDark, monDark, monDark, monDark, monScr, monDark], 0, 1.2, -0.22, g);
+    const monScr = screenMat(scr.t);
+    const mon = add(deskGeo.mon, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, monScr, MAT.dark], 0, 1.2, -0.22, g);
     add(deskGeo.stand, MAT.metal, 0, 0.9, -0.25, g); add(deskGeo.base, MAT.metal, 0, 0.78, -0.24, g);
     const ledMat = new THREE.MeshStandardMaterial({ color: 0x888888, emissive: 0x888888, emissiveIntensity: 1 });
     add(deskGeo.led, ledMat, 0, 0.893, -0.195, g);
@@ -959,7 +959,7 @@ function buildWorld() {
     g.traverse(o => { if (o.isMesh && o !== hover && o !== focus) o.userData.deskBot = name; });
     mon.userData.monitor = name;
     block(x, z, 0.8, 0.4, false, 'desk:' + name); block(x, z + 0.85, 0.3, 0.3, false, 'desk:' + name);
-    return { name, x, z, g, mon, monMats: [monDark, monScr], monFade: 1, scr, ledMat, shadeMat, bulbMat, hover, focus, stack, cardsKey: null, lod: '', drawnKey: '', img: null, imgAt: 0,
+    return { name, x, z, g, mon, scr, ledMat, shadeMat, bulbMat, hover, focus, stack, cardsKey: null, drawnKey: '', img: null, imgAt: 0,
       seat: { x, z: z + 0.72, face: Math.PI }, stand: { x: x + 1.12, z: z + 0.15 + CL, face: 0 }, visit: { x: x - 1.12, z: z + 0.15 + CL, face: Math.PI / 2 },
       cans: hasMug ? [] : [[x - 0.6, z + 0.05, name]].concat(L.hash('can2:' + name) % 4 === 1 ? [[x - 0.48, z - 0.1, name + '2']] : []), linkPoint: new THREE.Vector3(x, 0.78, z - 0.4) };
   }
@@ -1391,8 +1391,8 @@ function buildWorld() {
     boardDirty = false;
   }
   let pagesN = 1;
-  /* per frame: desk screens and name chips between the camera and a board it faces fade to LOS_DIM (finding 7) */
-  const tmpL = new THREE.Vector3(), tmpF = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpP = new THREE.Vector3(), eye = new THREE.Vector3(), boxTmp = new THREE.Box3();
+  /* per frame: name chips between the camera and a board it faces fade to LOS_DIM (finding 7) */
+  const tmpL = new THREE.Vector3(), tmpF = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpP = new THREE.Vector3(), eye = new THREE.Vector3();
   let losRects = [];
   function screenRect(pts) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, front = false;
     for (const p of pts) { tmpP.copy(p).project(camera); if (tmpP.z < 1) front = true; const x = (tmpP.x * 0.5 + 0.5) * innerWidth, y = (-tmpP.y * 0.5 + 0.5) * innerHeight; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
@@ -1405,13 +1405,6 @@ function buildWorld() {
       tmpL.copy(eye); b.g.worldToLocal(tmpL);
       const dist = L.boardDistance(tmpL.x, tmpL.y, tmpL.z, b.w, b.h); b.g.getWorldPosition(tmpC);
       if (tmpL.z > 0 && L.facesBoard(tmpF, tmpC.sub(eye), dist)) { const r = screenRect(corners(b, 0.07)); if (r) losRects.push(Object.assign(r, { id: b.id, depth: eye.distanceTo(b.g.getWorldPosition(tmpC)) })); }
-    }
-    for (const d of desks) {
-      let k = 1; d.monRect = null;
-      if (losRects.length) { boxTmp.setFromObject(d.mon); const pts = [], { min, max } = boxTmp; for (const x of [min.x, max.x]) for (const y of [min.y, max.y]) for (const z of [min.z, max.z]) pts.push(new THREE.Vector3(x, y, z));
-        const r = screenRect(pts), near = eye.distanceTo(d.mon.getWorldPosition(tmpC));
-        if (r && losRects.some(b => near < b.depth && L.rectsOverlap(r, b))) k = L.LOS_DIM; d.monRect = r; }
-      if (d.monFade !== k) { d.monFade = k; for (const m of d.monMats) m.opacity = k; }
     }
   }
   /* Physical cards (Tim, Nov 17): each desk shows its bot's open checksheet cards (not the ones still in a bot's hand), laid out
@@ -1450,14 +1443,14 @@ function buildWorld() {
   }
   function drawDeskIf(d, force) {
     const b = botByName(d.name) || { bot: d.name, bot_id: '', status: 'idle', task: '', last_action: '', last_action_at: '', question: '' };
-    const now = Date.now(), dist = camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2)), lod = L.lodFor(dist);
-    const sc = mirrorFor(d, b, now), image = sc.show === 'image' && L.mirrorAt(dist) && d.img;
+    const now = Date.now(), dist = camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2));
+    const sc = mirrorFor(d, b, now), image = sc.show === 'image' && d.img;
     const mine = L.sortItems(items().filter(i => i.owner === d.name && L.columnFor(i) !== 'done'));
     const oc = chars.get(d.name), sched = (plan.plans[d.name] || {}).act || '', act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (oc ? L.actionLabel(oc.goalNow, oc.pose, sched) : sched), mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
-    const key = lod + mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + (sc.offline ? 'off' : '') + sc.why + Math.floor(now / (mode === 'game' ? (dist > L.GAME_SLOW_M ? 400 : 120) : 30000));
+    const key = mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + (sc.offline ? 'off' : '') + sc.why + Math.floor(now / (mode === 'game' ? (dist > L.GAME_SLOW_M ? 400 : 120) : 30000));
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;
-    drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, lod, now, items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', mode, image: image || null, screenWhy: sc.why, offline: !!sc.offline,
+    drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, now, items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', mode, image: image || null, screenWhy: sc.why, offline: !!sc.offline,
       chat: S.chat, chatErr: S.chatErr, usageRows: L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null), replay: L.replayFor(b, now) });
     d.scr.t.needsUpdate = true;
     const st = L.statusStyle(b.status), col = new THREE.Color(S.state === 'failed' ? '#8b9099' : st.color);
@@ -1891,7 +1884,7 @@ function buildWorld() {
       let facePlanes = 0; b.g.traverse(o => { if (o.isMesh && o.geometry && o.geometry.type === 'PlaneGeometry') facePlanes++; });
       return { id: b.id, w: b.w, h: b.h, dist: L.boardDistance(tmpL.x, tmpL.y, tmpL.z, b.w, b.h), detail: b.tex.c, facePlanes, hits: b === project ? project.hits : null,
         toScreen(u, v) { const p = b.g.localToWorld(new THREE.Vector3((u - 0.5) * b.w, (0.5 - v) * b.h, 0.07)).project(camera); return [(p.x * 0.5 + 0.5) * innerWidth, (-p.y * 0.5 + 0.5) * innerHeight, p.z]; } }; }); },
-    losProbe() { return { boards: losRects.map(r => ({ ...r })), desks: desks.map(d => ({ name: d.name, rect: d.monRect || null, opacity: d.monFade, depth: camera.position.distanceTo(d.mon.getWorldPosition(new THREE.Vector3())) })),
+    losProbe() { return { boards: losRects.map(r => ({ ...r })), desks: desks.map(d => ({ name: d.name, depth: camera.position.distanceTo(d.mon.getWorldPosition(new THREE.Vector3())) })),
       tags: [...chars.values()].map(c => ({ name: c.name, depth: camera.position.distanceTo(c.root.position) })) }; },
     forceNap(name, which) { const c = chars.get(name); if (!c) return null; const s = which ? SIT.find(p => p.kind === 'nap' && p.sofa === which) : null; c.forceNap = s || null;
       return s ? { bot: name, sofa: which, lie: { x: s.lie.x, z: s.lie.z }, seat: s.lie.seat, fit: L.napFit(c, s.lie.seat) } : null; },

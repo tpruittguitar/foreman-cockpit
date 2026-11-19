@@ -108,12 +108,8 @@ test('board: bitcoin row hidden until an item uses that project', () => {
   assert.deepEqual(b.map(r => r.project), ['Job pipeline', '3D office', 'Bitcoin', 'Other'], 'unknown projects land on Other, never a hidden tab');
 });
 
-test('LOD thresholds: far = glyph, mid = name + status, near = all three lines', () => {
-  assert.equal(L.lodFor(1), 'near');
-  assert.equal(L.lodFor(L.LOD.near), 'near');
-  assert.equal(L.lodFor(L.LOD.near + 0.01), 'mid');
-  assert.equal(L.lodFor(L.LOD.mid), 'mid');
-  assert.equal(L.lodFor(L.LOD.mid + 0.01), 'far');
+test('desk screens have no distance-based content variant', () => {
+  for (const k of ['lodFor', 'LOD', 'mirrorAt', 'MIRROR_NEAR_M']) assert.equal(L[k], undefined, k);
 });
 
 test('stale and failed data states; no idle animation when data is missing', () => {

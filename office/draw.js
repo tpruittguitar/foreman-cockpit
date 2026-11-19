@@ -1,5 +1,6 @@
-/* Canvas drawing for screen faces: desk monitors (3 LOD levels), the project board, the AI usage wall and the
-   Needs Tim board. Text only from the data; colour only for state, always with a glyph and a word. */
+/* Canvas drawing for screen faces: desk monitors, the project board, the AI usage wall and the
+   Needs Tim board. Text only from the data; colour only for state, always with a glyph and a word.
+   A desk monitor has one face, drawn the same at every camera distance. */
 import { drawAvatar } from './avatars.js';
 const L = window.OfficeLogic;
 const C = L.COLORS;
@@ -28,7 +29,7 @@ function exampleTag(ctx, x, y, s) {
 
 /* ---------- desk monitor ---------- */
 export function drawDesk(ctx, W, H, o) {
-  // o: { bot, lod, now, items, demo, frozen, usage, state, allItems, mode: L.monitorMode(bot, activity) }
+  // o: { bot, now, items, demo, frozen, usage, state, allItems, mode: L.monitorMode(bot, activity) }
   const b = o.bot, st = L.statusStyle(b.status), tone = o.frozen ? C.idle : toneOf(st);
   const s = W / 640;
   ctx.fillStyle = '#0c0d0f'; ctx.fillRect(0, 0, W, H);
@@ -39,27 +40,14 @@ export function drawDesk(ctx, W, H, o) {
   const mode = o.mode || 'terminal';
   if (mode === 'game') return drawGame(ctx, W, H, s, o.now, b.bot);
   if (mode === 'mirror' && o.image) { drawImageFit(ctx, o.image, 0, 0, W, H); shadeOffline(ctx, 0, 0, W, H, o.offline); return stamp(ctx, W, H, s, o.screenWhy); }
-  if (mode === 'president' && o.lod !== 'far') return presidentSplit(ctx, W, H, s, o);
-  if (mode === 'routine' && o.lod !== 'far') { ctx.fillStyle = C.working; ctx.font = `800 ${46 * s}px ${SANS}`; ctx.fillText(fit(ctx, '▶ ' + b.routine.name, W - 44 * s), 22 * s, H / 2 - 10 * s);
+  if (mode === 'president') return presidentSplit(ctx, W, H, s, o);
+  if (mode === 'routine') { ctx.fillStyle = C.working; ctx.font = `800 ${46 * s}px ${SANS}`; ctx.fillText(fit(ctx, '▶ ' + b.routine.name, W - 44 * s), 22 * s, H / 2 - 10 * s);
     ctx.fillStyle = '#c9ccd2'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText('running' + (b.routine.started_at ? ' · started ' + L.etClock(Date.parse(b.routine.started_at)) + ' ET' : ''), 22 * s, H / 2 + 40 * s); return; }
   const app = { checksheet: 'Forge checksheet', usage: 'Usage board', screen: (b.screen && b.screen.title) || 'app' }[mode] || 'terminal';
   ctx.fillText(fit(ctx, b.bot.toLowerCase().replace(/\s+/g, '-') + ' — ' + app, 420 * s), 74 * s, 22 * s);
   if (o.demo) { ctx.textAlign = 'left'; exampleTag(ctx, W - 150 * s, 23 * s, 13 * s); }
-  // state strip
+  // state strip, then the three fixed lines (name, task, last action)
   ctx.fillStyle = tone; ctx.fillRect(0, H - 8 * s, W, 8 * s);
-  if (o.lod === 'far') {
-    ctx.fillStyle = tone; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = `800 ${200 * s}px ${SANS}`; ctx.fillText(o.frozen ? '?' : st.glyph, W / 2, H / 2 + 14 * s);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; return;
-  }
-  if (o.lod === 'mid') {
-    ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${62 * s}px ${SANS}`; ctx.textAlign = 'center';
-    ctx.fillText(fit(ctx, b.bot, W - 40 * s), W / 2, H / 2 - 4 * s);
-    ctx.fillStyle = tone; ctx.font = `800 ${50 * s}px ${SANS}`;
-    ctx.fillText((o.frozen ? '? ' : st.glyph + ' ') + (o.frozen ? 'NO DATA' : st.word), W / 2, H / 2 + 66 * s);
-    ctx.textAlign = 'left'; return;
-  }
-  // near: 3 fixed lines
   const x0 = 22 * s, maxW = W - 44 * s;
   ctx.font = `800 ${38 * s}px ${SANS}`; ctx.fillStyle = '#f1f2f4';
   const nm = fit(ctx, b.bot, 300 * s); ctx.fillText(nm, x0, 80 * s);
