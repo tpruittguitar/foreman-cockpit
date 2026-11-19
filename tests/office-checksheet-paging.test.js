@@ -54,9 +54,14 @@ test('empty column stays empty without errors', () => {
   assert.deepEqual(L.columnPage(ex(2), 3, undefined).page, 0);
 });
 
-test('wall Detail layout caps each column at 6 card rows and pages the rest', () => {
+test('wall Detail layout shows exactly 6 card rows per column and pages the rest', () => {
   const draw = require('fs').readFileSync(require('path').join(__dirname, '../office/draw.js'), 'utf8');
-  assert.match(draw, /Math\.min\(\s*6\s*,\s*Math\.max\(1,\s*Math\.floor/, 'drawBoard uses min(fit, 6)');
+  assert.match(draw, /cardH = 92 \* s, fit = 6;/, 'drawBoard always shows 6 rows (Tim 6:16 PM; #475 showed 5)');
+  assert.match(draw, /gap = Math\.max\(2 \* s, \(H - top - headH - 44 \* s\) \/ fit - cardH\)/, 'the gap shrinks so 6 rows fit');
+  for (const [W, H] of [[2048, 832], [1280, 520]]) { // desktop and LOW (phone) board canvases
+    const s = W / 2048, avail = H - (86 + 46 + 18) * s - 48 * s - 44 * s, gap = avail / 6 - 92 * s;
+    assert.ok(gap >= 2 * s, W + 'x' + H + ': 6 rows of 92 px cards fit with a gap of at least 2 px');
+  }
   assert.match(draw, /L\.columnPage\(c\.cards,\s*fit,\s*o\.page/, 'drawBoard pages via L.columnPage');
   assert.match(draw, /'p '\s*\+\s*\(pg\.page\s*\+\s*1\)\s*\+\s*'\/'\s*\+\s*pg\.pages/, 'p N/M page label');
   assert.doesNotMatch(draw, /columnWindow|o\.scroll|SHARE\s*=/, 'no #426 scroll / unequal-column Detail layout');

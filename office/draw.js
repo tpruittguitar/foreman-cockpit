@@ -256,7 +256,7 @@ function resetText(iso, now) {
 }
 
 /* ---------- Forge checksheet board: project tabs, Needs Tim | In progress | Queued | Done (collapsed), paged columns ----------
-   Pre-#426 Detail layout (four equal columns, cardH 92, L.columnPage + p N/M). Cap: at most 6 card rows per column. */
+   Pre-#426 Detail layout (four equal columns, cardH 92, L.columnPage + p N/M). Exactly 6 card rows per column. */
 export function drawBoard(ctx, W, H, o) {
   // o: { cols: L.boardView(...), tabs, tab, page, state, ageText, demo, highlight, glow, focusId }
   const s = W / 2048, hits = [];
@@ -276,8 +276,9 @@ export function drawBoard(ctx, W, H, o) {
     ctx.fillStyle = on ? '#dffaff' : '#b6bac1'; ctx.fillText(t, tx + 17 * s, ty + 32 * s);
     hits.push({ x: tx / W, y: ty / H, w: tw / W, h: th / H, tab: t }); tx += tw + 12 * s;
   }
-  const top = ty + th + 18 * s, colW = (W - 72 * s) / 4, headH = 48 * s, cardH = 92 * s, gap = 10 * s;
-  const fit = Math.min(6, Math.max(1, Math.floor((H - top - headH - 44 * s) / (cardH + gap))));
+  // Tim 6:16 PM: exactly 6 card rows per column; the gap shrinks to fit them (fonts and card height unchanged)
+  const top = ty + th + 18 * s, colW = (W - 72 * s) / 4, headH = 48 * s, cardH = 92 * s, fit = 6;
+  const gap = Math.max(2 * s, (H - top - headH - 44 * s) / fit - cardH);
   // Each column pages on its own cycle (L.columnPage); hits.pages = the longest cycle, so the caller knows to keep ticking.
   let pages = 1;
   o.cols.forEach((c, ci) => {
