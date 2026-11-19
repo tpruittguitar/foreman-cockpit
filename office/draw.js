@@ -319,22 +319,6 @@ export function drawBoard(ctx, W, H, o) {
   hits.pages = pages;
   return hits;
 }
-/* ---------- Far layout (any board): headline counts, each with a word (finding 4). Returns the layout runs with roles. ---------- */
-const FAR_TONE = { alert: '#ff6b6b', working: '#3ddc84', idle: '#c9ccd2', info: '#6cb6ff', stale: '#ffd23f' };
-export function drawFar(ctx, W, H, entries, opts) {
-  ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  const weight = { count: 800, value: 800, label: 600, word: 800 }; // labels at 600: narrower, so they fit larger in their column
-  const lay = L.farLayout(entries, W, H, (t, size, role) => { ctx.font = `${weight[role] || 800} ${size}px ${SANS}`; return ctx.measureText(t).width; }, opts);
-  for (const b of lay.boxes) { ctx.lineWidth = Math.max(3, lay.valueSize * 0.05); ctx.strokeStyle = FAR_TONE[b.tone] || '#ccc'; rr(ctx, b.x, b.y, b.w, b.h, lay.valueSize * 0.12); ctx.stroke(); }
-  for (const r of lay.runs) {
-    const e = entries[r.entry], tone = FAR_TONE[e.tone] || '#f1f2f4';
-    ctx.font = `${weight[r.role]} ${r.size}px ${SANS}`;
-    ctx.fillStyle = r.role === 'label' ? (e.tone === 'alert' && e.outline ? tone : '#d4d7dc') : r.role === 'word' ? tone : e.tone === 'alert' || e.tone === 'stale' ? tone : '#f6f7f9';
-    if (r.scaleX < 1) ctx.fillText(r.text, r.x, r.y, r.maxW); else ctx.fillText(r.text, r.x, r.y); // maxWidth: the browser condenses the run to fit
-    r.font = ctx.font; r.color = ctx.fillStyle;
-  }
-  return lay;
-}
 const fitText = (ctx, t, w) => fit(ctx, t, w);
 function wrap(ctx, text, x, y, maxW, lh) {
   const words = String(text).split(/\s+/); let line = '', n = 0;
