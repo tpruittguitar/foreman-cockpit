@@ -6,25 +6,41 @@
 import * as THREE from 'three';
 
 const ZACH_GLB = new URL('./assets/zach.glb', import.meta.url).href;
-let asset = null;
-function loadZachAsset() {
-  return asset || (asset = import('./vendor/three/addons/GLTFLoader.js')
+
+/* Lazy: nothing here runs at import. The Zach switch (office-logic createZachSwitch) calls loadZachMesh only while he is shown,
+   so a browser with him hidden never fetches zach.glb. Each call loads afresh (after disposeZachMesh nothing is kept). */
+export function loadZachMesh(name) {
+  return import('./vendor/three/addons/GLTFLoader.js')
     .then(({ GLTFLoader }) => new GLTFLoader().loadAsync(ZACH_GLB))
-    .then(gltf => { let m = null; gltf.scene.traverse(o => { if (o.isMesh && !m) m = o; }); return m; }));
+    .then(gltf => {
+      let m = null; gltf.scene.traverse(o => { if (o.isMesh && !m) m = o; });
+      if (!m) return null;
+      const mat = new THREE.MeshStandardMaterial({ map: m.material.map, roughness: 0.8, metalness: 0 });
+      m.material.map = null; m.material.dispose(); // the glTF's own material is never drawn
+      const mesh = new THREE.Mesh(m.geometry, mat); mesh.userData.charName = name; mesh.castShadow = false;
+      return mesh;
+    });
 }
 
-/* root: floor position and heading. rig: the motion pivot at the feet (bob, waddle, lean, squash). */
+/* Switched off: free everything the model holds on the GPU and in memory. */
+export function disposeZachMesh(mesh) {
+  if (!mesh) return;
+  if (mesh.parent) mesh.parent.remove(mesh);
+  const mat = mesh.material, map = mat && mat.map;
+  if (mesh.geometry) mesh.geometry.dispose();
+  if (map) { map.dispose(); if (map.image && typeof map.image.close === 'function') map.image.close(); }
+  if (mat) mat.dispose();
+}
+
+/* root: floor position and heading. rig: the motion pivot at the feet (bob, waddle, lean, squash). The mesh is attached by the
+   switch (attachZachMesh) once loaded, so makeZach itself loads nothing. */
 export function makeZach(L) {
   const Z = L.ZACH, root = new THREE.Group(), rig = new THREE.Group();
   root.add(rig); root.name = Z.name;
-  const z = { name: Z.name, root, rig, top: Z.height, radius: Z.radius, pose: 'stand', path: [], task: null, mesh: null, kind: 'visitor' };
-  z.ready = loadZachAsset().then(m => {
-    const mat = new THREE.MeshStandardMaterial({ map: m.material.map, roughness: 0.8, metalness: 0 });
-    const mesh = new THREE.Mesh(m.geometry, mat); mesh.userData.charName = Z.name; mesh.castShadow = false;
-    rig.add(mesh); z.mesh = mesh; return z;
-  }).catch(e => { console.warn('Zach model failed to load', e); return z; });
-  return z;
+  return { name: Z.name, root, rig, top: Z.height, radius: Z.radius, pose: 'stand', path: [], task: null, mesh: null, kind: 'visitor' };
 }
+export function attachZachMesh(z, mesh) { z.rig.add(mesh); z.mesh = mesh; }
+export function detachZachMesh(z, mesh) { z.rig.remove(mesh); if (z.mesh === mesh) z.mesh = null; }
 
 /* Apply one frame of motion from office-logic zachMotion: m = { y, roll, pitch, yaw, sy, sxz }. */
 export function poseZach(z, m) {
