@@ -1,9 +1,8 @@
 'use strict';
-// Card P2 (Pipeline Explorer desktop): Writer-off banner + disabled decisions, Back closes the drawer, Act Now title opens it.
+// Card P2 (Pipeline Explorer desktop): Writer-off banner + disabled decisions, Back closes the drawer.
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const W = require('../pipeline-writer-off.js');
-const A = require('../pipeline-act-now.js');
 const html = fs.readFileSync(path.join(__dirname, '..', 'pipeline.html'), 'utf8');
 
 function btn(title) {
@@ -23,23 +22,16 @@ test('Writer off disables decision buttons with a reason and restores them exact
   W.gate([other], false); assert.equal(other.disabled, true);
 });
 
-test('Writer-off gate covers Act Now and drawer decisions, not Snooze', () => {
-  for (const s of ['[data-an-pursue]', '[data-an-research]', '[data-an-decline]', '[data-an-applied]', '[data-an-reason]', '[data-decide-key]', '#save-decision']) assert.ok(W.SELECTOR.includes(s), s);
-  assert.ok(!W.SELECTOR.includes('data-an-later'));
+test('Writer-off gate covers drawer decisions', () => {
+  for (const s of ['[data-decide-key]', '#save-decision']) assert.ok(W.SELECTOR.includes(s), s);
   assert.match(W.bannerHtml(), /Writer not connected · decisions can’t be sent from this device/);
 });
 
 test('desktop wiring: banner in #writer-alert, gate after every decision render', () => {
   assert.ok(html.includes('<script src="pipeline-writer-off.js"></script>'));
   assert.match(html, /else if\(lvl==='off'&&typeof PipelineWriterOff!=='undefined'\)\{al\.className='on writer-off';al\.innerHTML=PipelineWriterOff\.bannerHtml\(\);\}/);
-  assert.ok((html.match(/writerGate_\(\);/g) || []).length >= 5);
+  assert.ok((html.match(/writerGate_\(\);/g) || []).length >= 4);
   assert.match(html, /b\.title=lvl==='off'\?'Writer not connected on this device/);
-});
-
-test('Act Now title is a one-click opener for the job drawer', () => {
-  const card = A.html({ items: [{ r: { id: 'J1', TITLE: 'Director of Quality', COMPANY: 'Acme', LOCATION: 'Austin, TX', payload: {} }, rule: { back: '', changes: [] }, score: 80 }], counts: { everythingElse: 0, unscored: 0, decided: 0 } }, { posting: () => '', collapsed: false });
-  assert.match(card, /<b class="an-title" role="button" tabindex="0" data-an-open="J1"/);
-  assert.match(html, /querySelectorAll\('\[data-an-open\]'\)\.forEach\(function\(t\)\{function go\(\)\{var id=t\.getAttribute\('data-an-open'\);if\(!rowById\(id\)\)return;if\(S\.tab!=='pipeline'\)switchTab\('pipeline'\);openRow\(id\);ntNavSync_\(\)\}/);
 });
 
 function runSheet(phone) {

@@ -19,7 +19,7 @@ test('batch, single ruling and intake lock refusals emit the same contract befor
 });
 
 test('actual live outbox retains single and multiple unknown rulings on unreadable or absent results',async()=>{
- const vm=require('node:vm'),html=fs.readFileSync(path.join(__dirname,'../pipeline.html'),'utf8'),start=html.indexOf('var OUTBOX_RETRY_RE_='),end=html.indexOf('/* ---------- Act Now',start),code=html.slice(start,end);
+ const vm=require('node:vm'),html=fs.readFileSync(path.join(__dirname,'../pipeline.html'),'utf8'),start=html.indexOf('var OUTBOX_RETRY_RE_='),end=html.indexOf('function saveTimDecision',start),code=html.slice(start,end);
  for(const count of [1,2])for(const unreadable of [true,false]){
   let posts=0;const rulings=Object.fromEntries(Array.from({length:count},(_,n)=>['ROW'+n,{requestId:'REQ'+n,writeStatus:'RESULT_UNKNOWN',error:'network timeout'}]));
   const c={PipelineWriterOutcome:O,S:{rulings,load:{freshness:'LIVE'}},RULING_BATCH_:{MAX:25},canSend:()=>true,rowById:id=>({id}),gsGet:async()=>{if(unreadable)throw Error('network');return{ok:true,found:false};},rulingEnqueue_:()=>{posts++;return Promise.resolve();},rulingFlush_:()=>{},LS:{set(){}},render(){},setTimeout:()=>0,clearTimeout(){}};

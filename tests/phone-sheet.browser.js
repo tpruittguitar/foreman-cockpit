@@ -51,7 +51,7 @@ const JOB='V2X-A4CCD49EE686';
         topHit:at(innerWidth/2,60),midHit:at(innerWidth/2,innerHeight/2),bbHit:at(innerWidth/2,b.top+b.height/2),dec:dec&&dec.getBoundingClientRect().toJSON(),ring:ring&&ring.getBoundingClientRect().toJSON(),hs:history.state,hl:history.length,scrollTop:d.scrollTop,ih:innerHeight}});
     // REV-094 (Tim 02:16 ET): the phone opens on the pipeline list: no job shown, no sheet, the queue at the top of the screen
     let s0=await st();assert.equal(s0.on,false,t+'no job open on load');assert.equal(s0.sheet,false,t+'no sheet on load');
-    // Simplify PR 1: a cold start opens on Act now (tests/act-now.browser.js); ?open=jobs opens this job list directly.
+    // ?open=jobs opens this job list directly.
     const q0=await page.evaluate(()=>{const tr=document.querySelector('#grid tbody tr[data-id]'),r=tr.getBoundingClientRect();return {top:r.top,bottom:r.bottom,ih:innerHeight,sy:scrollY,hash:location.hash}});
     assert(q0.top>0&&q0.bottom<q0.ih,t+'first queue row on screen: '+JSON.stringify(q0));assert.equal(q0.sy,0,t+'page not scrolled');assert.doesNotMatch(decodeURIComponent(q0.hash),/"j":/,t+'no job in the URL');
     const hl0=s0.hl;

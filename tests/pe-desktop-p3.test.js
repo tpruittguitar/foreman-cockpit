@@ -30,7 +30,7 @@ test('a search makes Jobs the current Pipeline tab, whatever the preset', () => 
     const st = { tab: 'pipeline', preset, map: false, search: 'quality' };
     assert.equal(nav.groupFor(st), 'pipeline');
     assert.equal(nav.matches(item(nav, 'Jobs'), st), true, preset);
-    for (const other of ['Act now', 'Review queue', 'Decline candidates', 'My rulings', 'Map', 'Compare']) assert.equal(nav.matches(item(nav, other), st), false, other + ' ' + preset);
+    for (const other of ['Review queue', 'Decline candidates', 'My rulings', 'Map', 'Compare']) assert.equal(nav.matches(item(nav, other), st), false, other + ' ' + preset);
   }
 });
 
@@ -38,7 +38,7 @@ test('with no search the tab rules are unchanged', () => {
   const nav = loadNav('');
   assert.equal(nav.matches(item(nav, 'Review queue'), { tab: 'pipeline', preset: 'NEEDS_TIM', map: false, search: '' }), true);
   assert.equal(nav.matches(item(nav, 'Jobs'), { tab: 'pipeline', preset: 'NEEDS_TIM', map: false, search: '' }), false);
-  assert.equal(nav.matches(item(nav, 'Act now'), { tab: 'act-now', preset: '', map: false, search: '' }), true);
+  assert.equal(nav.matches(item(nav, 'Jobs'), { tab: 'pipeline', preset: '', map: false, search: '' }), true);
 });
 
 test('search input re-marks the current tab', () => {
@@ -63,7 +63,6 @@ test('desktop header: one refresh control (countdown chip) and shrinkable middle
   assert.match(html, /<button type="button" class="writer-countdown" data-writer-countdown data-refresh-now>/);
   assert.match(css, /header #search\{flex-shrink:50\}/);
   assert.match(css, /@media\(min-width:1400px\)\{header \.brand,header \.writer-identity,header \.hstat,header \[data-refresh-now\]\{flex:none\}\}/);
-  assert.match(html, /openRow\(id\);ntNavSync_\(\)/);
   assert.match(fs.readFileSync(path.join(__dirname, '..', 'pipeline-mobile.js'), 'utf8'), /\$\('m-search'\)\.onclick = function \(\) \{ jobsFilter = 'all';/);
   assert.match(html, /querySelector\('header \[data-refresh-now\]'\);if\(!c\)return;function go\(\)\{load\(\);loadWriterStatus_\(true\)\}/);
 });
