@@ -104,6 +104,10 @@ a.needlink .kind { color: var(--info); font-weight: 700; white-space: nowrap; }
 .flat-head { display: flex; align-items: center; justify-content: space-between; gap: 1em; margin: 2.6em 0 .6em; }
 .flat-head h1 { font-size: 1.4em; margin: 0; }
 #walk3d { background: #2d2340; border-color: var(--focus); font-weight: 700; padding: .65em 1em; }
+#walk3d { display: flex; flex-direction: column; align-items: flex-start; gap: .15em; max-width: min(62vw, 300px); min-width: 0; text-align: left; }
+#walk3d .walk3d-build { display: block; max-width: 100%; font: 400 .72em/1.3 system-ui, sans-serif; color: var(--dim); }
+#walk3d .walk3d-desc, #walk3d .walk3d-when { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#walk3d .walk3d-build b { color: var(--text); font-weight: 700; }
 .flat section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: .8em 1em; margin: .8em 0; }
 .flat h2 { margin: 0 0 .5em; font-size: 1.05em; text-transform: uppercase; letter-spacing: .05em; color: var(--dim); }
 .flat .row { display: flex; gap: .7em; align-items: flex-start; padding: .65em 0; border-top: 1px solid #2a2c30; min-height: 44px; }
