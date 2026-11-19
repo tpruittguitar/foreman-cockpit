@@ -588,7 +588,7 @@ function buildWorld() {
   if (!(canvasTest.getContext('webgl2') || canvasTest.getContext('webgl'))) throw new Error('no WebGL');
   const renderer = new THREE.WebGLRenderer({ antialias: !LOW, powerPreference: 'high-performance', alpha: true });
   renderer.setClearColor(0x0e1013, 0);
-  const fitRatio = () => Math.min(devicePixelRatio || 1, LOW ? 1.5 : 2, 2880 / Math.max(innerWidth, innerHeight));
+  const fitRatio = () => Math.min(devicePixelRatio || 1, 1.25, 2880 / Math.max(innerWidth, innerHeight)); /* lag fix: about 1.25x pixels (was 2x, 1.5x on phones) */
   renderer.setPixelRatio(fitRatio());
   renderer.setSize(innerWidth, innerHeight);
   // Tim 1:54 AM: overall lighting about 10% down from the v2 build (exposure 1.45 -> 1.305; light rig unchanged)
