@@ -248,7 +248,7 @@ test('renamed bots are matched by bot_id first', () => {
   assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
 });
 
-test('Hermes avatar (card cs-d390e7b5): matches Tim\'s picture, a teal rounded hexagon with two white slanted eyes right of centre', async () => {
+test('Hermes avatar (card cs-d390e7b5): matches Tim\'s picture, a teal rounded hexagon with two black slanted eyes right of centre', async () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const id = '15ab4cfb-2d51-4809-9ae3-f1285ebd829f', a = A.avatarFor('Hermes', id);

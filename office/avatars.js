@@ -102,9 +102,9 @@ export const AVATARS = {
   '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
   'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' },         // GUI: red clover
   'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'hexagon', rot: 0.15, color: '#f2389b' },         // Archive: pink soft hexagon
-  /* Hermes (card cs-d390e7b5), matched to Tim's picture: a teal rounded hexagon (corners at -10 deg + 60k) with two white slanted
-     oval eyes set right of centre. face: the eye pair is tilted 15 deg, shifted dx right and dy up (centred, not low), each eye leaning tilt rad, in eye colour. */
-  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'hexpuck', rot: 0.35, color: '#1ec4b2', face: { rot: 0.26, dx: 0.085, dy: 0.035, tilt: 0.21, color: '#ffffff' } }
+  /* Hermes (card cs-d390e7b5), matched to Tim's picture: a teal rounded hexagon (corners at -10 deg + 60k) with two black slanted
+     oval eyes set right of centre. face: the eye pair is tilted 15 deg, shifted dx right and dy up (centred, not low), each eye leaning tilt rad, in eye colour. Eyes black like the other bots (Tim, Nov 18). */
+  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'hexpuck', rot: 0.35, color: '#1ec4b2', face: { rot: 0.26, dx: 0.085, dy: 0.035, tilt: 0.21, color: '#0b0b0e' } }
 };
 /* bot_id -> short tag, used only when the full name does not fit the label. */
 export const SHORT_TAGS = { 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive' };
