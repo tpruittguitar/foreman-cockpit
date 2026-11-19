@@ -248,7 +248,7 @@ test('renamed bots are matched by bot_id first', () => {
   assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
 });
 
-test('Hermes avatar (card cs-d390e7b5): matches Tim\'s picture, a teal rounded hexagon with two white slanted eyes right of centre', async () => {
+test('Hermes avatar (card cs-d390e7b5): matches Tim\'s picture, a teal rounded hexagon with two black slanted eyes right of centre', async () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const id = '15ab4cfb-2d51-4809-9ae3-f1285ebd829f', a = A.avatarFor('Hermes', id);
@@ -256,8 +256,8 @@ test('Hermes avatar (card cs-d390e7b5): matches Tim\'s picture, a teal rounded h
   assert.deepEqual([a.shape, a.color], ['hexpuck', '#1ec4b2']);
   assert.ok(!a.generic && !a.prop, 'no wings, helmet or halo');
   for (const [k, o] of Object.entries(A.AVATARS)) if (k !== id) assert.notEqual(o.color.toLowerCase(), a.color, 'colour not used by another bot');
-  // white eyes, the pair tilted about 15 deg and set right of centre, each eye leaning (top toward the left)
-  assert.equal(a.face.color, '#ffffff');
+  // black eyes like the other bots (Tim, Nov 18), the pair tilted about 15 deg and set right of centre, each eye leaning (top toward the left)
+  assert.equal(a.face.color, '#0b0b0e');
   assert.ok(Math.abs(a.face.rot - 15 * Math.PI / 180) < 0.05 && a.face.dx > 0.05 && a.face.tilt > 0.1);
   // a hexagon with rounded corners: six radius peaks 60 deg apart, flat sides between them, no sharp corner
   const pts = A.shapePoints(a), at = th => { let best = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length];
