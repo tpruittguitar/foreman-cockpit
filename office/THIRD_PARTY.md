@@ -11,6 +11,8 @@ Everything is vendored here and pinned. Nothing loads from a CDN at runtime, and
 
 The President model `office/assets/president.glb` is Tim's own textured 3D model (his files, baked by `tools/president-glb/bake.py`). The "Tim" print and the round VW-style badge stand-in on its shirt are drawn in code (`office/chars.js`); no logo artwork file is used.
 
+The Zach model `office/assets/zach.glb` is Tim's own model (a Tripo-generated chibi figure he supplied on Nov 19, 2026, file `survey-corps-chibi-compat.glb`), baked by `tools/zach-glb/bake.py`: decimated to 40k triangles, 1.0 m tall, color map only. Its uniform is styled after an anime costume; no third-party model or artwork file is used. Zach is a visitor, not a bot (`office/zach.js`).
+
 Fonts come from the repo's existing `fonts/` folder (Inter, IBM Plex Mono), which is already covered by `licenses/`.
 
 Not used:

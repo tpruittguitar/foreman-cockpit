@@ -52,6 +52,7 @@ a { color: var(--info); }
 .tag .chip { background: #b3161c; color: #fff; padding: 0 5px; border-radius: 3px; font-weight: 800; font-size: 11px; }
 .tag .chip.stale { background: var(--stale); color: #111; }
 .tag.frozen { color: var(--dim); }
+.tag.visitor { color: #d9e6ff; font-weight: 500; } /* Zach: a visitor, not a bot */
 .tag.far { font-size: 10px; padding: 1px 5px; opacity: .85; }
 .tag.far .chip.stale, .tag.far .chip.recent { display: none; }
 .tag.hl { outline: 2px solid var(--focus); }
