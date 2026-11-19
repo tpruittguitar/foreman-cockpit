@@ -31,7 +31,7 @@ test('desktop settings untouched: original renderer/effects lines remain and VR 
   const js = fs.readFileSync(__dirname + '/../office/office.js', 'utf8');
   for (const line of [
     "new THREE.WebGLRenderer({ antialias: !LOW, powerPreference: 'high-performance', alpha: true })",
-    "Math.min(devicePixelRatio || 1, LOW ? 1.5 : 2, 2880 / Math.max(innerWidth, innerHeight))",
+    "Math.min(devicePixelRatio || 1, 1.25, 2880 / Math.max(innerWidth, innerHeight))",
     "renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.45 * 0.9;",
     "renderer.shadowMap.enabled = false;",
     "renderer.setClearColor(0x0e1013, 0);",
