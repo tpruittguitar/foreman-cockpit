@@ -58,42 +58,23 @@ const RANGE='$108K'+F.DASH+'$205K';
       return r.fulfill({json:{ok:true}});
     });
     await page.goto(base+'/pipeline.html?src=writer');
-    if(!opts.blockMaster) await page.waitForFunction(()=>document.querySelectorAll('#act-now .an-card, #m-pane-decide .m-card').length>0,{timeout:20000});
+    if(!opts.blockMaster) await page.waitForFunction(()=>document.querySelectorAll('#grid tbody tr[data-id], #m-pane-decide .m-card, #m-pane-decide [data-m-retry-queue]').length>0,{timeout:20000});
     else await page.waitForTimeout(1200);
     return {ctx,page,errors,posts};
   }
   const rulings=list=>list.flatMap(b=>b.action==='ruling'?[b.ruling]:b.action==='batch'?(b.requests||[]).map(q=>q.ruling):[]);
 
-  // 1. Desktop 1440: labels, Pratt range, snooze writes nothing, Mark applied writes APPLIED, Pursue writes APPLY_NOW YES.
+  // 1. Desktop 1440: drawer labels, Pratt range, and the same decisions from the job drawer.
   let {ctx,page,errors,posts}=await open({ctx:{viewport:{width:1440,height:900}}});
-  const desk=await page.evaluate(()=>{
-    const card=[...document.querySelectorAll('#act-now .an-card')].find(c=>/Pratt & Whitney/.test(c.textContent))||document.querySelector('#act-now .an-card');
-    const btns=[...card.querySelectorAll('.an-act button, .an-sec button, .an-sec .an-link')].map(b=>b.textContent.trim());
-    const pay=card.querySelector('.an-pay').textContent.trim();
-    const forbidden=[...document.querySelectorAll('#act-now button, #act-now a, #act-now .an-link')].map(b=>b.textContent.trim()).filter(t=>t==='Applied'||t==='Hold'||t==='Later');
-    return {btns,pay,forbidden,company:card.querySelector('.an-sub').textContent,id:card.getAttribute('data-an-id')};
-  });
-  assert.deepStrictEqual(desk.forbidden,[],'desktop Act Now has no Applied/Hold/Later labels: '+JSON.stringify(desk.forbidden));
-  assert.ok(desk.btns.includes('Pursue')&&desk.btns.includes('Research')&&desk.btns.includes('Decline')&&desk.btns.includes('Mark applied'),'desktop buttons '+JSON.stringify(desk.btns));
-  assert.ok(desk.btns.includes('Snooze 3 days (this device)'),'desktop snooze link');
-  const idxP=desk.btns.indexOf('Pursue'),idxR=desk.btns.indexOf('Research'),idxD=desk.btns.indexOf('Decline');
-  assert.ok(idxP<idxR&&idxR<idxD,'desktop order Pursue · Research · Decline');
-  assert.ok(desk.pay.indexOf(RANGE)>=0,'desktop Act Now Pratt range: '+desk.pay);
-  await shot(page,'desktop-1440-act-now-pay.png');
-  const nav=await page.evaluate(id=>{
-    const jobs=document.querySelector('#section-tabs button[data-go="pipeline"]:not([data-preset]):not([data-action])')||document.querySelector('#rail [data-tab="pipeline"]');
-    if(jobs) jobs.click();
-    return {clicked:!!jobs};
-  },desk.id);
-  if(!nav.clicked) throw new Error('Jobs tab not found');
-  await page.waitForFunction(()=>document.querySelector('#view-pipeline.on #grid tbody tr[data-id]'),null,{timeout:8000});
-  const rowOk=await page.evaluate(id=>{
-    const row=document.querySelector('#grid tbody tr[data-id="'+id+'"]');
-    if(!row) return {ok:false,ids:[...document.querySelectorAll('#grid tbody tr[data-id]')].map(r=>r.getAttribute('data-id'))};
+  await page.waitForSelector('#view-pipeline.on #grid tbody tr[data-id]');
+  assert.strictEqual(await page.locator('[data-go="act-now"], #view-act-now, #act-now').count(), 0, 'no Act Now tab');
+  const opened=await page.evaluate(()=>{
+    const row=[...document.querySelectorAll('#grid tbody tr[data-id]')].find(r=>/Pratt & Whitney/.test(r.textContent));
+    if(!row) return {ok:false,ids:[...document.querySelectorAll('#grid tbody tr[data-id]')].slice(0,8).map(r=>r.textContent.slice(0,40))};
     row.scrollIntoView();row.click();
-    return {ok:true};
-  },desk.id);
-  if(!rowOk.ok) throw new Error('Pratt row not in Jobs table: '+JSON.stringify(rowOk));
+    return {ok:true,id:row.getAttribute('data-id')};
+  });
+  if(!opened.ok) throw new Error('Pratt row not in Jobs table: '+JSON.stringify(opened));
   await page.waitForFunction(()=>document.querySelector('#view-pipeline.on #drawer.on #d-body .wh-decide'),null,{timeout:8000});
   await page.waitForTimeout(200);
   const footer=await page.evaluate(()=>{
@@ -136,36 +117,35 @@ const RANGE='$108K'+F.DASH+'$205K';
     assert.ok(p.fully&&p.overlap<=0.5,p.id+' fully visible above the footer: '+JSON.stringify(p));
   });
   await shot(page,'desktop-1440-buttons-pay.png');
-  const tabOk=await page.evaluate(()=>{
-    const b=document.querySelector('#section-tabs [data-go="act-now"]')||document.querySelector('[data-go="act-now"]');
-    if(!b) return false;
-    b.click();
-    return true;
-  });
-  if(!tabOk) throw new Error('Act now tab not found');
-  await page.waitForFunction(()=>!!document.querySelector('#view-act-now.on #act-now .an-card'),null,{timeout:8000});
-
-  const prattId=await page.evaluate(()=>{const c=[...document.querySelectorAll('#act-now .an-card')].find(x=>/Pratt & Whitney/.test(x.textContent));return c&&c.getAttribute('data-an-id')});
-  const otherId=await page.evaluate((skip)=>{const c=[...document.querySelectorAll('#act-now .an-card')].find(x=>x.getAttribute('data-an-id')!==skip);return c&&c.getAttribute('data-an-id')},prattId);
-  await page.locator('[data-an-later="'+otherId+'"]').click();
-  await page.waitForTimeout(300);
-  assert.strictEqual(rulings(posts).length,0,'snooze does not post a Writer ruling');
-  const applyId=await page.evaluate(()=>document.querySelector('#act-now .an-card')&&document.querySelector('#act-now .an-card').getAttribute('data-an-id'));
-  await page.locator('[data-an-applied="'+applyId+'"]').click();
+  await page.click('[data-decide-key="applied"]');
+  await page.click('#save-decision');
   await page.waitForTimeout(600);
   let r=rulings(posts);
   assert.ok(r.length>=1,'Mark applied posted');
   assert.strictEqual(r[r.length-1].kind,'APPLIED');
   assert.strictEqual(r[r.length-1].value,'');
-  assert.strictEqual(r[r.length-1].note,'Applied (Act now)');
-  const pursueId=await page.evaluate(()=>document.querySelector('#act-now .an-card [data-an-pursue]')&&document.querySelector('#act-now .an-card [data-an-pursue]').getAttribute('data-an-pursue'));
-  await page.locator('[data-an-pursue="'+pursueId+'"]').click();
+  async function openOther(){
+    await page.click('#d-close');
+    await page.waitForTimeout(200);
+    const id=await page.evaluate(skip=>{
+      const row=[...document.querySelectorAll('#grid tbody tr[data-id]')].find(tr=>tr.getAttribute('data-id')!==skip);
+      if(!row) return '';
+      row.scrollIntoView();row.click();
+      return row.getAttribute('data-id');
+    }, opened.id);
+    await page.waitForSelector('#drawer.on #save-decision');
+    return id;
+  }
+  await openOther();
+  await page.click('[data-decide-key="1"]');
+  await page.click('#save-decision');
   await page.waitForTimeout(600);
   r=rulings(posts);
   assert.strictEqual(r[r.length-1].kind,'APPLY_NOW');
   assert.strictEqual(r[r.length-1].value,'YES');
-  const researchId=await page.evaluate(()=>document.querySelector('#act-now .an-card [data-an-research]')&&document.querySelector('#act-now .an-card [data-an-research]').getAttribute('data-an-research'));
-  await page.locator('[data-an-research="'+researchId+'"]').click();
+  await openOther();
+  await page.click('[data-decide-key="4"]');
+  await page.click('#save-decision');
   await page.waitForTimeout(600);
   r=rulings(posts);
   assert.strictEqual(r[r.length-1].kind,'MANUAL_RESEARCH');
@@ -200,12 +180,12 @@ const RANGE='$108K'+F.DASH+'$205K';
   assert.ok(pIdx.p<pIdx.r&&pIdx.r<pIdx.d,'phone order Pursue · Research · Decline '+JSON.stringify(phoneBtns.labels));
   assert.deepStrictEqual(phoneBtns.forbidden,[],'phone has no Applied/Hold/Later button labels');
   // Open Pratt detail if on decide, else Jobs search
-  const opened=await page.evaluate(()=>{
+  const phoneOpened=await page.evaluate(()=>{
     const row=[...document.querySelectorAll('#m-pane-decide .m-card')].find(c=>/Pratt & Whitney/.test(c.textContent));
     if(row){row.querySelector('[data-m-open]').click();return true}
     return false;
   });
-  if(opened){await page.waitForSelector('#m-detail:not([hidden])');}
+  if(phoneOpened){await page.waitForSelector('#m-detail:not([hidden])');}
   else {
     await page.click('#m-tab-jobs');await page.waitForSelector('#m-q');
     await page.fill('#m-q','Pratt');await page.waitForTimeout(400);
@@ -215,7 +195,7 @@ const RANGE='$108K'+F.DASH+'$205K';
   const phonePay=await page.evaluate(()=>document.querySelector('#m-detail .m-pay, #m-detail .m-b')&&document.body.innerText);
   assert.ok(phonePay.indexOf(RANGE)>=0,'phone Pratt range matches desktop figure: missing '+RANGE);
   await shot(page,'phone-390-buttons-pay.png');
-  if(opened){await page.click('#m-d-back').catch(()=>{});await page.waitForTimeout(200)}
+  if(phoneOpened){await page.click('#m-d-back').catch(()=>{});await page.waitForTimeout(200)}
   else {await page.click('#m-d-back').catch(()=>{});await page.waitForTimeout(200)}
 
   // search quality, All selected
@@ -271,25 +251,21 @@ const RANGE='$108K'+F.DASH+'$205K';
   assert.deepStrictEqual(errors,[],'phone page errors');
   await ctx.close();
 
-  // 3. Queue snapshot blocked: phone Decide shows Act Now list + the unavailable line.
+  // 3. Queue snapshot blocked: Decide says so, and there is no Act Now list to fall back to.
   ({ctx,page,errors}=await open({blockQueue:true,ctx:{viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true,userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'}}));
-  await page.waitForFunction(()=>/Showing Act Now list · decision queue snapshot unavailable/.test((document.querySelector('#m-pane-decide')||{}).textContent||''),null,{timeout:20000}).catch(async()=>{
+  await page.waitForFunction(()=>/Decision queue snapshot unavailable/.test((document.querySelector('#m-pane-decide')||{}).textContent||'')&&!document.querySelector('[data-go="act-now"], #act-now'),null,{timeout:20000}).catch(async()=>{
     const t=await page.evaluate(()=>({text:(document.querySelector('#m-pane-decide')||{}).textContent||'',state:window.PEMobileBridge&&window.PEMobileBridge.decideState&&window.PEMobileBridge.decideState()}));
-    throw new Error('fallback line missing: '+JSON.stringify(t).slice(0,800));
+    throw new Error('unavailable line missing: '+JSON.stringify(t).slice(0,800));
   });
-  const deskIds=await page.evaluate(()=>{
+  const blocked=await page.evaluate(()=>{
     const line=(document.querySelector('#m-pane-decide')||{}).textContent||'';
-    const ids=[...document.querySelectorAll('#m-pane-decide .m-card')].map(c=>c.getAttribute('data-m-card'));
-    return {line,ids,hasLine:/Showing Act Now list · decision queue snapshot unavailable/.test(line)};
+    return {hasLine:/Decision queue snapshot unavailable/.test(line),act:document.querySelectorAll('[data-go="act-now"], #act-now, [data-m-filter="act"]').length};
   });
-  assert.ok(deskIds.hasLine,'fallback line present');
-  // Compare to desktop Act Now on a second context with queue also blocked (Act Now does not need the queue).
-  const d2=await open({blockQueue:true,ctx:{viewport:{width:1440,height:900}}});
-  const actNowIds=await d2.page.evaluate(()=>[...document.querySelectorAll('#act-now .an-card')].map(c=>c.getAttribute('data-an-id')));
-  assert.deepStrictEqual(deskIds.ids,actNowIds,'phone fallback list matches desktop Act Now');
+  assert.ok(blocked.hasLine,'unavailable line present');
+  assert.strictEqual(blocked.act,0,'no Act Now tab or filter');
   await shot(page,'phone-390-decide-queue-blocked.png');
-  assert.deepStrictEqual(errors,[]);assert.deepStrictEqual(d2.errors,[]);
-  await d2.ctx.close();await ctx.close();
+  assert.deepStrictEqual(errors,[]);
+  await ctx.close();
 
   // 4. Both sources blocked: ⚠ — and Retry, never an empty list of cards presented as success.
   ({ctx,page,errors}=await open({blockQueue:true,blockMaster:true,ctx:{viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true}}));

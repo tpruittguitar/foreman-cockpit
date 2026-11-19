@@ -60,7 +60,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
     return {view:c(v),head:c(h),same:v.innerHTML===h.innerHTML.replace(/\s+$/,'')||v.innerHTML.replace(/\s/g,'')===h.innerHTML.replace(/\s/g,'')}});
   assert.strictEqual(icons.view,icons.head,'the empty view and the header use the same orange for queue down '+JSON.stringify(icons));
   assert.ok(icons.same,'and the same ⚠ glyph '+JSON.stringify(icons));
-  assert.strictEqual(s.count,'—','"— need you", not "0 need you"');assert.deepStrictEqual(s.chips,['All · —','Act now · —'],'chip counts read —');
+  assert.strictEqual(s.count,'—','"— need you", not "0 need you"');assert.deepStrictEqual(s.chips,[],'no Act Now filter chip');
 
   // 2. A retry in flight is disabled and says "Retrying…"; when it fails it is "Retry" again, with the reason and "never".
   s=await retry();

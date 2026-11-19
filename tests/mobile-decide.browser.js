@@ -95,8 +95,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   const clipped=await page.$$eval('#m-pane-decide .m-actions .m-btn',bs=>bs.filter(b=>b.scrollWidth>b.clientWidth+1).map(b=>b.textContent.trim()+' '+b.scrollWidth+'>'+b.clientWidth));
   assert.deepStrictEqual(clipped,[],'no action button label is clipped');
   assert.deepStrictEqual(sizes.small,[],'no text under 12px');assert.deepStrictEqual(sizes.taps,[],'buttons >= 44px');
-  const chip=await page.textContent('[data-m-filter="act"]'),actN=parseInt(chip.replace(/\D+/g,' ').trim().split(' ').pop(),10);
-  assert.match(chip,/^Act now · \d+$/,'Act Now chip shows its own count ('+chip+')');assert.ok(actN<=c0.length,'Act Now count never exceeds the full list');
+  assert.strictEqual(await page.locator('[data-m-filter="act"], [data-go="act-now"]').count(),0,'no Act Now filter or tab');
   assert.ok(await page.evaluate(()=>[...document.querySelectorAll('#m-pane-decide .m-card')].every(c=>!/Aging/.test(c.querySelector('.m-reason').textContent)||![...c.querySelectorAll('.m-b')].some(b=>/^\?\s*\d+d$/.test(b.textContent.trim())))),'no age badge when the reason line already gives the age');
   assert.ok(sizes.gap>=8,'Decline sits >= 8px from its neighbour ('+sizes.gap+')');assert.ok(sizes.sw<=sizes.cw,'no horizontal scroll');
   if(shots)await page.screenshot({path:path.join(shots,'stage3-decide-390x844.png')});
@@ -169,14 +168,6 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
   // A decision from the detail sheet closes it and queues like the card buttons.
   await page.click('.m-card.m-top [data-m-open]');await page.click('#m-detail [data-m-do="research"]');await page.waitForSelector('#m-toast:not([hidden])');
   assert.ok(await page.isHidden('#m-detail'),'deciding in the sheet closes it');r=rulings(posts);await page.waitForTimeout(500);r=rulings(posts);assert.strictEqual(r[r.length-1].primaryId,d1);
-  // 8. Act Now 10 chip narrows the list.
-  const all8=await cards(page),chip8=parseInt((await page.textContent('[data-m-filter="act"]')).replace(/\D+/g,' ').trim().split(' ').pop(),10);
-  assert.ok(all8.some(c=>c.id===MEMPHIS),'the Memphis job (not Act Now) is in All');
-  await page.click('[data-m-filter="act"]');await page.waitForTimeout(150);const act=await cards(page);assert.ok(act.length<=10,'Act Now shows at most 10');
-  assert.strictEqual(await page.getAttribute('[data-m-filter="act"]','aria-pressed'),'true');
-  assert.ok(!act.some(c=>c.id===MEMPHIS),'Act now leaves the Memphis job out');assert.ok(act.length<all8.length,'Act now narrows the list ('+act.length+' of '+all8.length+')');
-  assert.strictEqual(act.length,chip8,'the chip count is the number of cards Act now shows');
-  if(shots)await page.screenshot({path:path.join(shots,'stage3-decide-act-now-390x844.png')});
   assert.deepStrictEqual(errors,[],'no page errors');await ctx.close();
 
   // 9. No Writer: nothing is queued, no success toast, the card stays and says why.
