@@ -770,28 +770,47 @@ function buildWorld() {
   const WALL_BOARDS = [project, usage, constraint, autos, writer]; // readability probe / LOS targets (whiteboard keeps its own layout)
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
-     Desktop: the live page (https://foreman-cockpit.pages.dev/pipeline) in an iframe on a CSS3D plane that sits behind the WebGL
-     canvas and shows through a transparent "hole" in the wall plane. Click it to browse it like a browser (Esc / the bar to
-     leave). Phone / TV / no-embed: a plain wall face; click opens the page in a new tab. */
+     The wall shows a painted face. Desktop: clicking it loads the live page (https://foreman-cockpit.pages.dev/pipeline) in an
+     iframe on a CSS3D plane that sits behind the WebGL canvas and shows through a transparent "hole" in the wall plane, so it
+     can be browsed like a browser (Esc / the bar to leave). Leaving unloads the page and puts the painted face back.
+     Phone / TV / no-embed: click opens the page in a new tab.
+     Lag fix (Tim 2026-11-19, "the 3d office is sluggish"): the embed used to load on every office visit. Measured in Tim's
+     Chrome (RTX 4060 laptop): the embedded page holds ~83,000 elements and ~49 MB of job data, and the office idled at 11 fps
+     with it shown and 69 fps with it hidden. It now exists only while Tim is browsing it. */
   const PW = 3.4, PH = 1.91, PX = RW / 2 - 0.1, PY = 3.05, PZ = 5.4, PK = 100, PFRAME = [1280, 720];
   const pipe = { live: !LOW && !TV && !touch && !NO_APP && !Q.has('nopipeline'), css: null, browsing: false };
   { const g = new THREE.Group(); g.position.set(PX, PY, PZ); g.rotation.y = -Math.PI / 2; scene.add(g);
     add(box(PW + 0.16, PH + 0.16, 0.06), MAT.trim, 0, 0, 0, g); add(box(PW + 0.18, 0.02, 0.05), MAT.cyan, 0, -PH / 2 - 0.1, 0.03, g);
-    if (pipe.live) pipe.mesh = add(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, side: THREE.DoubleSide, blending: THREE.NoBlending }), 0, 0, 0.035, g);
-    else { const t = canvasTex(1024, 574); drawPipelineWall(t.ctx, 1024, 574, {}); t.t.needsUpdate = true; pipe.mesh = add(new THREE.PlaneGeometry(PW, PH), screenMat(t.t), 0, 0, 0.035, g); }
+    const t = canvasTex(1024, 574); drawPipelineWall(t.ctx, 1024, 574, { live: pipe.live }); t.t.needsUpdate = true; pipe.face = screenMat(t.t);
+    if (pipe.live) pipe.hole = new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0, side: THREE.DoubleSide, blending: THREE.NoBlending });
+    pipe.mesh = add(new THREE.PlaneGeometry(PW, PH), pipe.face, 0, 0, 0.035, g);
     pipe.mesh.userData.board = 'pipeline'; }
-  if (pipe.live) try {
-    const cssScene = new THREE.Scene(), cssCam = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.05 * PK, 60 * PK), r = new CSS3DRenderer();
-    r.setSize(innerWidth, innerHeight); r.domElement.className = 'css3d'; $('stage').insertBefore(r.domElement, renderer.domElement);
-    const wrap = document.createElement('div'); wrap.style.cssText = `width:${PFRAME[0]}px;height:${PFRAME[1]}px;background:#0d1014`;
-    const fr = document.createElement('iframe'); fr.src = PIPELINE_URL; fr.title = 'Pipeline Explorer (live)'; fr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox');
-    fr.style.cssText = 'width:100%;height:100%;border:0;background:#fff'; wrap.appendChild(fr);
-    const obj = new CSS3DObject(wrap); obj.position.set((PX - 0.035) * PK, PY * PK, PZ * PK); obj.rotation.y = -Math.PI / 2; obj.scale.setScalar(PW * PK / PFRAME[0]); cssScene.add(obj);
-    const bar = document.createElement('div'); bar.id = 'browse-bar'; bar.hidden = true;
-    bar.innerHTML = '<span>Pipeline Explorer · browsing live</span><a href="' + PIPELINE_URL + '" target="_blank" rel="noopener">Open in new tab ↗</a><button type="button" id="browse-exit">Back to the office (Esc)</button>';
-    document.body.appendChild(bar);
-    pipe.css = { r, cssScene, cssCam, obj, bar, frame: fr };
-  } catch (e) { console.warn('pipeline embed unavailable:', e && e.message); pipe.css = null; pipe.live = false; pipe.mesh.visible = true; }
+  function openPipelineEmbed() { // builds the live embed on demand; false = not available, open a new tab instead
+    if (pipe.css) return true;
+    if (!pipe.live) return false;
+    try {
+      const cssScene = new THREE.Scene(), cssCam = new THREE.PerspectiveCamera(camera.fov, camera.aspect, 0.05 * PK, 60 * PK), r = new CSS3DRenderer();
+      r.setSize(innerWidth, innerHeight); r.domElement.className = 'css3d'; $('stage').insertBefore(r.domElement, renderer.domElement);
+      const wrap = document.createElement('div'); wrap.style.cssText = `width:${PFRAME[0]}px;height:${PFRAME[1]}px;background:#0d1014`;
+      const fr = document.createElement('iframe'); fr.src = PIPELINE_URL; fr.title = 'Pipeline Explorer (live)'; fr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox');
+      fr.style.cssText = 'width:100%;height:100%;border:0;background:#fff'; wrap.appendChild(fr);
+      const obj = new CSS3DObject(wrap); obj.position.set((PX - 0.035) * PK, PY * PK, PZ * PK); obj.rotation.y = -Math.PI / 2; obj.scale.setScalar(PW * PK / PFRAME[0]); cssScene.add(obj);
+      const bar = document.createElement('div'); bar.id = 'browse-bar'; bar.hidden = true;
+      bar.innerHTML = '<span>Pipeline Explorer · browsing live</span><a href="' + PIPELINE_URL + '" target="_blank" rel="noopener">Open in new tab ↗</a><button type="button" id="browse-exit">Back to the office (Esc)</button>';
+      document.body.appendChild(bar);
+      bar.querySelector('#browse-exit').onclick = () => setBrowse(false);
+      r.domElement.addEventListener('pointerdown', e => { if (e.target === r.domElement) setBrowse(false); });
+      pipe.css = { r, cssScene, cssCam, obj, bar, frame: fr };
+      pipe.mesh.material = pipe.hole;
+      return true;
+    } catch (e) { console.warn('pipeline embed unavailable:', e && e.message); closePipelineEmbed(); pipe.live = false; return false; }
+  }
+  function closePipelineEmbed() { // unloads the live page so it costs nothing while Tim is in the room
+    const c = pipe.css; pipe.css = null; pipe.mesh.material = pipe.face;
+    if (!c) { const stray = document.getElementById('browse-bar'); if (stray) stray.remove(); return; }
+    try { c.frame.src = 'about:blank'; } catch (e) { /* ignore */ }
+    c.r.domElement.remove(); c.bar.remove();
+  }
 
   /* ---------- lounge: corner sectional, couch, futon, coffee table, exercise bike, plants, waterfall, bonsai ---------- */
   const SIT = []; // lounge sit / nap spots {id, kind:'sit'|'nap'|'bike', x, z, face, lie}
@@ -1571,16 +1590,19 @@ function buildWorld() {
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === L.RELEASE_PLATE_BOARD) openBuildPopup();
-    else if (p.board === 'pipeline') { if (pipe.css) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
+    else if (p.board === 'pipeline') { if (pipe.live) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
   }
   /* item 8: browse mode. The canvas stops catching the mouse so the iframe underneath is a normal, clickable web page. */
   function setBrowse(on) {
-    if (!pipe.css || pipe.browsing === on) return; pipe.browsing = on; keys.clear();
-    renderer.domElement.style.pointerEvents = on ? 'none' : ''; pipe.css.r.domElement.style.pointerEvents = on ? 'auto' : 'none'; pipe.css.bar.hidden = !on; $('labels').style.display = on ? 'none' : '';
+    if (pipe.browsing === on) return;
+    if (on && !openPipelineEmbed()) { window.open(PIPELINE_URL, '_blank', 'noopener'); return; }
+    pipe.browsing = on; keys.clear();
+    renderer.domElement.style.pointerEvents = on ? 'none' : ''; $('labels').style.display = on ? 'none' : '';
+    if (pipe.css) { pipe.css.r.domElement.style.pointerEvents = on ? 'auto' : 'none'; pipe.css.bar.hidden = !on; }
     if (on) { $('start').hidden = true; glideTo([[PX - 3.3, PY - 0.25, PZ], [PX, PY, PZ]], 700); }
+    else closePipelineEmbed();
   }
-  if (pipe.css) { $('browse-exit').onclick = () => setBrowse(false); pipe.css.r.domElement.addEventListener('pointerdown', e => { if (e.target === pipe.css.r.domElement) setBrowse(false); }); }
   function setHover(p) {
     const nb = p && p.bot || null, ni = p && p.item || null;
     if (!down && !dimDrag) renderer.domElement.style.cursor = p ? 'pointer' : 'grab'; // boards and the release plate too, not only bots / cards
