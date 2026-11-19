@@ -2,7 +2,6 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { prSummaryFromBody } = require('../scripts/write-build-info.cjs');
 
 const css = fs.readFileSync(path.join(__dirname, '..', 'office/office.css'), 'utf8');
 assert(css.includes('#build-badge'), 'build badge rule missing');
@@ -17,5 +16,4 @@ vm.runInContext(`function buildPrPopup(info) {${m[1]}\n  }`, ctx);
 const popup = ctx.buildPrPopup({ pr: 12, prTitle: '', prSummary: '', mergedAt: '' });
 assert.strictEqual(popup.desc, '');
 assert.strictEqual(popup.fallback, 'No description for this build');
-assert.strictEqual(prSummaryFromBody(''), '');
 console.log('fix398 tests passed');

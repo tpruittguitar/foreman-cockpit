@@ -1787,12 +1787,12 @@
   function buildPrPopup(info) {
     const i = info && typeof info === 'object' ? info : null;
     const title = str(i && i.prTitle).trim();
-    const summary = str(i && i.prSummary).trim();
-    const when = str(i && i.mergedAt).trim() ? new Date(i.mergedAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET' : '';
+    const at = [i && i.builtAt, i && i.mergedAt].map(v => str(v).trim()).find(v => v && !Number.isNaN(Date.parse(v))) || '';
+    const when = at ? new Date(at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET' : '';
     const pr = Number(i && i.pr) > 0 ? Math.floor(Number(i.pr)) : 0;
     const url = pr ? 'https://github.com/tpruittguitar/foreman-cockpit/pull/' + pr : '';
-    const desc = title || summary || when || url ? '' : 'No description for this build';
-    return { title, summary, when, url, desc, fallback: 'No description for this build' };
+    const desc = title || when || url ? '' : 'No description for this build';
+    return { title, when, url, desc, fallback: 'No description for this build' };
   }
   function wireBuildBadge(el, open) {
     if (!el) return;
@@ -1803,12 +1803,12 @@
   }
   /* Pick id for the release plate under the FORGE sign: office.js tags the plate mesh with it and activate() opens openBuildPopup. */
   const RELEASE_PLATE_BOARD = 'release';
-  /* Mobile start page "Walk in 3D" button: latest PR number, short description and its ET time, from the same build-info.json
+  /* Mobile start page "Walk in 3D" button: latest PR number, its title and ET deploy time, from the same build-info.json
      and formatters the corner badge and the Build details popup use. null when build-info is missing or says nothing useful. */
   function buildLaunchLine(info, max) {
     const pop = buildPrPopup(info), parts = buildParts(info), lim = max > 0 ? max : 48;
     const pr = pop.url ? '#' + pop.url.split('/').pop() : '';
-    let desc = pop.title || (pop.summary.split(/(?<=[.!?])\s/)[0] || '');
+    let desc = pop.title;
     if (desc.length > lim) desc = desc.slice(0, lim - 1).trimEnd() + '…';
     const when = pop.when || (parts && parts.when !== 'time unknown' ? parts.when : '');
     if (!pr && !desc && !when) return null;
