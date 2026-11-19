@@ -32,6 +32,7 @@ if (q.get('hr')) { // trainer on the training-room chair, facing the table
   bx(0.5, 0.07, 0.48, x, 0.46, 0.13 + 1.6, cm); bx(0.48, 0.5, 0.06, x, 0.78, 0.37 + 1.6, cm); bx(0.06, 0.38, 0.06, x, 0.24, 1.73);
   c.root.position.set(x, 0, 1.6); c.root.rotation.y = Math.PI; scene.add(c.root); chars.push([c, 'lead']);
 }
+await Promise.all(chars.map(([c]) => c.ready)); /* the President's model loads asynchronously */
 for (const [c, p] of chars) { for (let i = 0; i < 60; i++) animate(c, p === 'lead' ? 'talk' : p, 0, 0.1, { reduced: true, perch: p !== 'lead', chair: p === 'lead' }); c.updateFace(0.1, 0); }
 const cam = new THREE.PerspectiveCamera(30, W / H, 0.1, 50);
 const d = 7.5 / zoom, ty = +q.get('ty') || 0.7;

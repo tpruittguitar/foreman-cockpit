@@ -22,6 +22,7 @@ const key = new THREE.DirectionalLight(0xfff2e6, 2.1); key.position.set(2, 3.5, 
 const fill = new THREE.DirectionalLight(0xaec4ff, 0.7); fill.position.set(-3, 1.5, 2); scene.add(fill);
 const rim = new THREE.DirectionalLight(0xffffff, 0.8); rim.position.set(0, 3, -4); scene.add(rim);
 const bot = q.get('bot') || 'president', c = bot === 'president' ? makeBot('President', true, '431e8cf1-f077-4548-82b7-46c1959dc4c9') : makeBot('Bot ' + bot.slice(0, 4), true, bot);
+if (c.ready) await c.ready; /* the President's model loads asynchronously */
 scene.add(c.root);
 const pose = q.get('pose') || 'stand';
 if (pose === 'nap') { const gm = new THREE.MeshStandardMaterial({ color: 0x59606d, roughness: 0.6 }), m = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.3, 0.7), gm); m.position.set(0.5, 0.15, 0); scene.add(m); c.rig.position.y += 0.3; }

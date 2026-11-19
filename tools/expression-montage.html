@@ -16,7 +16,7 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color(0x3c3f44);
 scene.add(new THREE.HemisphereLight(0xdfe6f0, 0x4a4540, 1.1));
 const key = new THREE.DirectionalLight(0xfff2e6, 2.1); key.position.set(1.5, 2.5, 4); scene.add(key);
 const fill = new THREE.DirectionalLight(0xaec4ff, 0.7); fill.position.set(-3, 1.5, 2); scene.add(fill);
-const c = makeBot(q.get('bot') || 'Edgar', true); scene.add(c.root);
+const c = makeBot(q.get('bot') || 'Edgar', true); if (c.ready) await c.ready; scene.add(c.root);
 const cam = new THREE.PerspectiveCamera(24, CW / CH, 0.1, 20); cam.position.set(0, c.top * 0.55 + 0.02, 2.3); cam.lookAt(0, c.top * 0.55, 0);
 L.STUDIO_FACES.forEach((f, i) => {
   c.exprTarget = f.id; c.expr = L.exprParams(f.id); c.blinker.at = 1e9;
