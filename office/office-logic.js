@@ -1886,6 +1886,36 @@
     if (!reduced && mode !== 'stretch' && hop > 0.95) m.y = 0.07 * s((hop - 0.95) / 0.05 * Math.PI);
     return m;
   }
+  /* Show / hide Zach (Tim, Nov 19, 2026: his 40k-triangle model may add to the lag). One switch per browser (localStorage),
+     default shown. Hidden means not loaded at all: zach.glb is never fetched until he is switched on, and switching him off
+     detaches and disposes his mesh (geometry, material, texture). Anything but a stored '0' reads as shown. */
+  const ZACH_KEY = 'office.zach';
+  const zachShownFrom = v => String(v) !== '0';
+  function readZachShown(store) { try { return zachShownFrom(store ? store.getItem(ZACH_KEY) : null); } catch (e) { return true; } }
+  function saveZachShown(store, on) { try { if (store) store.setItem(ZACH_KEY, on ? '1' : '0'); } catch (e) { /* private mode: this page only */ } }
+  /* The gate between the switch and the model. io: { store, load() -> Promise<mesh>, attach(mesh), detach(mesh), dispose(mesh),
+     onChange(on) }. load() runs only while shown and only once per show; a load that finishes after he was switched off is
+     disposed, never attached. A failed load is not retried until he is switched off and on again. */
+  function createZachSwitch(io) {
+    let on = readZachShown(io.store), mesh = null, pending = null, failed = false;
+    function sync() {
+      if (on && !mesh && !pending && !failed) {
+        pending = Promise.resolve().then(io.load).then(m => {
+          pending = null;
+          if (!m) { failed = true; return; }
+          if (on && !mesh) { mesh = m; io.attach(m); } else io.dispose(m);
+        }, e => { pending = null; failed = true; if (typeof console !== 'undefined') console.warn('Zach model failed to load', e); });
+      }
+      if (!on && mesh) { const m = mesh; mesh = null; io.detach(m); io.dispose(m); }
+    }
+    function set(v, save) {
+      v = !!v; if (save !== false) saveZachShown(io.store, v);
+      if (v === on) return on;
+      on = v; if (!on) failed = false; sync(); if (io.onChange) io.onChange(on); return on;
+    }
+    sync();
+    return { get on() { return on; }, get loaded() { return !!mesh; }, get loading() { return !!pending; }, set, toggle: () => set(!on), ready: () => pending || Promise.resolve() };
+  }
   function makeRng(seed) {
     let a = (seed >>> 0) || 0x9e3779b9;
     return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -2290,7 +2320,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, buildLaunchLine, RELEASE_PLATE_BOARD, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
+    needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, ZACH_KEY, zachShownFrom, readZachShown, saveZachShown, createZachSwitch, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, buildLaunchLine, RELEASE_PLATE_BOARD, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine, activityChip,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };

@@ -3,7 +3,7 @@
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from './chars.js';
-import { makeZach, poseZach } from './zach.js';
+import { makeZach, poseZach, loadZachMesh, disposeZachMesh, attachZachMesh, detachZachMesh } from './zach.js';
 import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
@@ -1055,7 +1055,27 @@ function buildWorld() {
   zach.mode = 'stand'; zach.modeT = 0; zach.until = 0; zach.facing = 0;
   zach.tag = document.createElement('div'); zach.tag.className = 'tag visitor'; zach.tag.textContent = L.ZACH.name; zach.tag.title = 'Visitor';
   zach.bub = document.createElement('div'); zach.bub.hidden = true; // labels code fades a tag and its bubble together; Zach never speaks
-  scene.add(zach.root);
+  /* Show / hide switch (HUD 'Zach' button, remembered per browser). Hidden: not in the scene, no walking, slot, separation or tag,
+     and zach.glb is never fetched; switched on it loads then; switched off its mesh is removed and disposed. */
+  const zachSw = L.createZachSwitch({
+    store: (() => { try { return localStorage; } catch (e) { return null; } })(),
+    load: () => loadZachMesh(L.ZACH.name),
+    attach: m => attachZachMesh(zach, m),
+    detach: m => detachZachMesh(zach, m),
+    dispose: disposeZachMesh,
+    onChange: on => { zachPresence(on); zachButton(); }
+  });
+  function zachPresence(on) {
+    if (on) { if (!zach.root.parent) scene.add(zach.root); zach.until = 0; }
+    else { scene.remove(zach.root); book.release(L.ZACH.name); zach.task = null; zach.path = []; zach.mode = 'stand'; zach.tag.remove(); }
+  }
+  function zachButton() {
+    const b = $('zach-btn'), on = zachSw.on; b.hidden = false;
+    b.setAttribute('aria-pressed', String(on)); b.title = on ? 'Hide Zach (saved in this browser)' : 'Show Zach (saved in this browser)';
+    $('zach-state').textContent = on ? 'on' : 'off';
+  }
+  $('zach-btn').onclick = () => { zachSw.toggle(); toast(zachSw.on ? 'Zach is back in the office.' : 'Zach is hidden. His model is unloaded and stays off in this browser.'); };
+  zachPresence(zachSw.on); zachButton();
   function zachNextTask() {
     book.release(L.ZACH.name);
     for (let tries = 0; tries < 6; tries++) {
@@ -1336,7 +1356,7 @@ function buildWorld() {
   }
   /* separation: no two upright bots closer than MIN_SEP (seated / lying bots are fixed points) */
   function separateChars() {
-    const list = [...chars.values(), zach], pts = list.map(c => ({ x: c.pos.x, z: c.pos.y, fixed: seated(c.pose) || c.pose === 'wave', r: c.radius || 0.3 })); // Zach keeps his distance like a standing bot
+    const list = zachSw.on ? [...chars.values(), zach] : [...chars.values()], pts = list.map(c => ({ x: c.pos.x, z: c.pos.y, fixed: seated(c.pose) || c.pose === 'wave', r: c.radius || 0.3 })); // Zach keeps his distance like a standing bot
     if (pts.length < 2) return;
     L.separateWalkers(pts, L.MIN_SEP * 0.9, (x, z) => free(...toCell(x, z)));
     list.forEach((c, i) => { if (!pts[i].fixed && (pts[i].x !== c.pos.x || pts[i].z !== c.pos.y)) { c.pos.set(pts[i].x, pts[i].z); c.root.position.x = c.pos.x; c.root.position.z = c.pos.y; } });
@@ -1397,7 +1417,7 @@ function buildWorld() {
       c.bub.style.pointerEvents = lines.length ? '' : 'none';
       if (show && vis) c.bub.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy - (TV ? 46 : 26)}px)`;
     }
-    { /* Zach: a plain name tag, no status word or chips (he is a visitor, not a bot) */
+    if (zachSw.on) { /* Zach: a plain name tag, no status word or chips (he is a visitor, not a bot); none while he is hidden */
       if (!zach.tag.parentNode) $('labels').appendChild(zach.tag);
       tmpV.set(zach.root.position.x, zach.top + 0.18 + zach.rig.position.y, zach.root.position.z).project(camera);
       const dist = camera.position.distanceTo(zach.root.position), vis = tmpV.z < 1 && dist < max && Math.abs(tmpV.x) < 1.2 && Math.abs(tmpV.y) < 1.2;
@@ -1836,7 +1856,7 @@ function buildWorld() {
     fridgeRefill += dt; if (fridgeRefill > L.FRIDGE_REFILL_S) { fridgeRefill = 0; const n = L.fridgeAutoRefill(fridgeStock, !!S.restocker); if (n !== fridgeStock) { fridgeStock = n; layoutCans(lastDeskCans); } } // no idle bot to restock: it refills itself, never empty
     shelfRefill += dt; if (shelfRefill > L.SHELF_REFILL_S) { shelfRefill = 0; const n = L.shelfAutoRefill(shelfStock); if (n !== shelfStock) { shelfStock = n; layoutCans(lastDeskCans); } }
     for (const c of chars.values()) updateChar(c, dt);
-    updateZach(dt);
+    if (zachSw.on) updateZach(dt);
     separateChars();
     if (Q.labels) updateLabels();
     renderer.render(scene, camera);
@@ -1970,7 +1990,7 @@ function buildWorld() {
       tags: [...chars.values()].map(c => ({ name: c.name, depth: camera.position.distanceTo(c.root.position) })) }; },
     forceNap(name, which) { const c = chars.get(name); if (!c) return null; const s = which ? SIT.find(p => p.kind === 'nap' && p.sofa === which) : null; c.forceNap = s || null;
       return s ? { bot: name, sofa: which, lie: { x: s.lie.x, z: s.lie.z }, seat: s.lie.seat, fit: L.napFit(c, s.lie.seat) } : null; },
-    zach() { return { x: zach.pos.x, z: zach.pos.y, mode: zach.mode, slot: zach.task && zach.task.slot ? zach.task.slot.id : null, loaded: !!zach.mesh, height: zach.mesh ? new THREE.Box3().setFromObject(zach.mesh).getSize(new THREE.Vector3()).y : 0, inChars: chars.has(L.ZACH.name) }; },
+    zach() { return { shown: zachSw.on, loading: zachSw.loading, inScene: !!zach.root.parent, x: zach.pos.x, z: zach.pos.y, mode: zach.mode, slot: zach.task && zach.task.slot ? zach.task.slot.id : null, loaded: !!zach.mesh, height: zach.mesh ? new THREE.Box3().setFromObject(zach.mesh).getSize(new THREE.Vector3()).y : 0, inChars: chars.has(L.ZACH.name) }; },
     spotlight(name, x, z) { const c = chars.get(name); if (c) c.spot = x == null || Number.isNaN(x) ? null : { x, z, face: Math.atan2(camera.position.x - x, camera.position.z - z) }; },
     pickAt(x, y) { camera.updateMatrixWorld(); return pick(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1); },
     refresh() { syncDesks(); ensureChars(); updateConvos(); boardDirty = true; desks.forEach(d => drawDeskIf(d, true)); },
