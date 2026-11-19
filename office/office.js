@@ -1488,13 +1488,13 @@ function buildWorld() {
     const open = new Set(items().filter(i => L.columnFor(i) !== 'done').map(i => i.id));
     for (const [id, e] of cardTex) if (!open.has(id)) { e.tex.t.dispose(); e.mats[2].dispose(); cardTex.delete(id); }
   }
-  /* monitor mirror images: small, refreshed every 60 s with ?t= (popup loads its own full-size copy) */
+  /* monitor mirror images: small, refreshed every 60 s with ?t= (popup loads its own full-size copy); a failed load (404) waits 5 min before trying again, and the text screen shows meanwhile */
   function mirrorFor(d, b, now) {
     const id = idFor(b.bot, b.bot_id), sc = L.screenState(S.screens, id, now);
     if (sc.show !== 'image') { d.img = null; return sc; }
-    if (!d.img || now - d.imgAt > 60000) {
+    if (!(now - d.imgAt <= (d.imgBad ? 300000 : 60000))) {
       const im = new Image(); im.crossOrigin = 'anonymous'; d.imgAt = now;
-      im.onload = () => { d.img = im; d.drawnKey = ''; }; im.onerror = () => { d.img = null; };
+      im.onload = () => { d.img = im; d.imgBad = false; d.drawnKey = ''; }; im.onerror = () => { d.img = null; d.imgBad = true; };
       im.src = SCREENS_BASE + encodeURIComponent(id) + '.jpg?t=' + Math.floor(now / 60000);
     }
     return sc;
