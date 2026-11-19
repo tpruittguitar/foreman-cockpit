@@ -1,7 +1,7 @@
 // Office revision badge: pure formatter + PR-number parsing. Run: node --test tests/office-build-badge.test.js
 const test = require('node:test'), assert = require('node:assert/strict');
 const L = require('../office/office-logic.js');
-const { prFromSubject, prTitleFromSubject, prSummaryFromBody, parseGitLog } = require('../scripts/write-build-info.cjs');
+const { prFromSubject, prTitleFromSubject, parseGitLog } = require('../scripts/write-build-info.cjs');
 
 test('badge renders PR, short SHA and ET build time', () => {
   const info = { commit: 'c1c7628aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', commitShort: 'c1c7628', pr: 321, builtAt: '2026-11-17T03:05:00Z' };
@@ -24,11 +24,11 @@ test('PR number parsed from commit subject', () => {
   assert.equal(prFromSubject('Fix issue #12 in parser'), null);
   assert.equal(prFromSubject(''), null);
 });
-test('git log parser extracts pr title summary and mergedAt', () => {
+test('git log parser extracts pr title and mergedAt, no summary', () => {
   const parsed = parseGitLog('Fix thing (#42)', 'First sentence. Second sentence.\n\nMore detail.', '2026-11-17T03:05:00-05:00');
   assert.equal(parsed.pr, 42);
   assert.equal(parsed.prTitle, 'Fix thing');
-  assert.equal(parsed.prSummary, 'First sentence. Second sentence.');
+  assert.equal(parsed.prSummary, undefined);
   assert.equal(parsed.mergedAt, '2026-11-17T08:05:00.000Z');
 });
 test('wall plate shows PR, ET release time, short SHA and version details', () => {

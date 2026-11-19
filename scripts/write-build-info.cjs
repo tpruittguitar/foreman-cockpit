@@ -12,23 +12,14 @@ function prFromSubject(subject) {
 function prTitleFromSubject(subject) {
   return String(subject || '').replace(/\s*\(#\d+\)\s*$/, '').trim();
 }
-function prSummaryFromBody(body) {
-  const text = String(body || '').trim();
-  if (!text) return '';
-  const flat = text.replace(/^\s*[-*]\s+/gm, '').replace(/\s+/g, ' ').trim();
-  const sentences = flat.match(/[^.!?]+[.!?]+(\s|$)/g) || [flat];
-  const out = sentences.slice(0, 2).join('').trim();
-  return out.length > 300 ? out.slice(0, 297).trimEnd() + '...' : out;
-}
 function parseGitLog(subject, body, commitAt) {
   return {
     pr: prFromSubject(subject),
     prTitle: prTitleFromSubject(subject),
-    prSummary: prSummaryFromBody(body),
     mergedAt: commitAt && !Number.isNaN(Date.parse(commitAt)) ? new Date(commitAt).toISOString() : ''
   };
 }
-module.exports = { prFromSubject, prTitleFromSubject, prSummaryFromBody, parseGitLog };
+module.exports = { prFromSubject, prTitleFromSubject, parseGitLog };
 if (require.main !== module) return;
 
 const commit = process.env.CF_PAGES_COMMIT_SHA || 'local';
@@ -47,13 +38,6 @@ try {
   mergedAt = '';
 }
 const parsed = parseGitLog(subject, body, mergedAt);
-if (parsed.pr && !parsed.prSummary) {
-  try {
-    const url = 'https://api.github.com/repos/tpruittguitar/foreman-cockpit/pulls/' + parsed.pr;
-    const res = execSync('node -e "const u=process.argv[1];const ac=new AbortController();const t=setTimeout(()=>ac.abort(),5000);fetch(u,{signal:ac.signal,headers:{Accept:\'application/vnd.github+json\',\'User-Agent\':\'foreman-cockpit\'}}).then(r=>r.ok?r.json():null).then(j=>{clearTimeout(t);process.stdout.write(j&&j.body?j.body:\'\')}).catch(()=>{clearTimeout(t)})" ' + JSON.stringify(url), { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-    parsed.prSummary = prSummaryFromBody(res);
-  } catch (e) {}
-}
 const branch = process.env.CF_PAGES_BRANCH || 'local';
 const info = {
   app: 'Pipeline Explorer',
@@ -64,7 +48,6 @@ const info = {
   pr: parsed.pr,
   prSource: parsed.pr === null ? '' : 'merge-commit',
   prTitle: parsed.prTitle,
-  prSummary: parsed.prSummary,
   mergedAt: parsed.mergedAt,
   subject: subject.slice(0, 160),
   context: commit === 'local' ? 'source' : branch === 'main' ? 'production' : 'preview',

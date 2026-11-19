@@ -2,11 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const L = require('../office/office-logic.js');
 
-test('build PR popup renders title summary time and link', () => {
-  const p = L.buildPrPopup({ pr: 12, prTitle: 'Add build badge popup', prSummary: 'Adds the popup for build badge. Reuses the existing card dialog style.', mergedAt: '2026-11-17T03:05:00Z' });
+test('build PR popup renders title, ET deploy time and link, no summary', () => {
+  const p = L.buildPrPopup({ pr: 12, prTitle: 'Add build badge popup', prSummary: 'Adds the popup for build badge. Reuses the existing card dialog style.', mergedAt: '2026-11-17T03:05:00Z', builtAt: '2026-11-17T03:09:00Z' });
   assert.equal(p.title, 'Add build badge popup');
-  assert.equal(p.summary, 'Adds the popup for build badge. Reuses the existing card dialog style.');
-  assert.equal(p.when, 'Nov 16, 10:05 PM ET');
+  assert.equal(p.summary, undefined);
+  assert.equal(p.when, 'Nov 16, 10:09 PM ET');
   assert.equal(p.url, 'https://github.com/tpruittguitar/foreman-cockpit/pull/12');
   assert.equal(p.desc, '');
 });

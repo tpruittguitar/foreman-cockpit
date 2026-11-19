@@ -26,19 +26,19 @@ test('pickRay maps a userData.board hit to { board } so the hover cursor turns t
   assert.ok(cur > 0 && cur < early, 'pointer cursor is set before the bot/item early return so board hits get it');
 });
 
-const info = { pr: 480, prTitle: 'Office: release plate opens the latest PR popup', prSummary: 'Clicking the plate opens the popup. More.', mergedAt: '2026-11-19T01:42:00Z', commitShort: 'abc1234', builtAt: '2026-11-19T01:45:00Z' };
+const info = { pr: 480, prTitle: 'Office: release plate opens the latest PR popup', mergedAt: '2026-11-19T01:42:00Z', commitShort: 'abc1234', builtAt: '2026-11-19T01:45:00Z' };
 test('start-page button line has PR number, short description and ET time', () => {
   const s = L.buildLaunchLine(info);
   assert.equal(s.pr, '#480');
   assert.equal(s.desc, 'Office: release plate opens the latest PR popup');
-  assert.equal(s.when, 'Nov 18, 8:42 PM ET');
-  assert.equal(s.text, '#480 Office: release plate opens the latest PR popup · Nov 18, 8:42 PM ET');
+  assert.equal(s.when, 'Nov 18, 8:45 PM ET');
+  assert.equal(s.text, '#480 Office: release plate opens the latest PR popup · Nov 18, 8:45 PM ET');
 });
-test('start-page button line truncates long titles and falls back to summary / build time', () => {
+test('start-page button line truncates long titles and shows no summary text', () => {
   assert.ok(L.buildLaunchLine({ pr: 1, prTitle: 'x'.repeat(80) }, 20).desc.endsWith('…'));
   assert.equal(L.buildLaunchLine({ pr: 1, prTitle: 'x'.repeat(80) }, 20).desc.length, 20);
   const s = L.buildLaunchLine({ pr: 7, prSummary: 'First sentence. Second.', commitShort: 'abc1234', builtAt: '2026-07-04T16:00:00Z' });
-  assert.equal(s.text, '#7 First sentence. · Jul 4, 12:00 PM ET');
+  assert.equal(s.text, '#7 · Jul 4, 12:00 PM ET');
 });
 test('start-page button line is null when build-info is missing or empty', () => {
   for (const v of [null, undefined, 'x', {}, { commit: 'local', commitShort: 'local', builtAt: '' }]) assert.equal(L.buildLaunchLine(v), null);
