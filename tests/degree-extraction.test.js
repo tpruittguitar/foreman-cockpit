@@ -22,3 +22,8 @@ test('Apps Script globals resolve the shared parser lazily regardless of file ev
  for(const file of ['PipelineAts.gs','PipelineQualification.gs'])vm.runInContext(fs.readFileSync(__dirname+'/../apps-script/'+file,'utf8'),ctx);
  assert.equal(ctx.PipelineAts.degreeFromText(fixtures[0].input),fixtures[0].text);
 });
+test('stored high school degree text scores as no degree requirement; its required does not harden a preferred degree (Tim 2026-11-20)',()=>{
+ for(const t of ['High School Diploma or GED required.','High school diploma or general education degree (GED) is required.','High school diploma or equivalent degree','High School Degree or GED'])assert.equal(P.flex({DEGREE_TEXT:t},policy).class,'HIGH_FLEX',t);
+ for(const t of ["High school diploma required; bachelor's degree preferred.","Bachelor's degree preferred, high school diploma required.",'High school diploma or equivalent required, college degree preferred'])assert.equal(P.flex({DEGREE_TEXT:t},policy).class,'SOFT_FLEX',t);
+ assert.equal(P.flex({DEGREE_TEXT:"Bachelor's degree in Mechanical Engineering required."},policy).class,'NO_FLEX');
+});
