@@ -17,10 +17,10 @@ const PULLS = 'repos/tpruittguitar/foreman-cockpit/pulls?state=all&sort=updated&
 test('allowlist: only the office reads pass; other paths, repos, owners and query keys are refused before upstream', async () => {
   let calls = 0; const c = load(async () => { calls++; return new Response('[]'); });
   for (const p of ['users/tpruittguitar', 'repos/someone/foreman-cockpit/pulls', 'repos/tpruittguitar/other/pulls', 'repos/tpruittguitar/forge-coordination/contents/control/SECRET.json',
-    'repos/tpruittguitar/foreman-cockpit/commits/abc/check-runs', 'repos/tpruittguitar/foreman-cockpit/pulls?access_token=x', 'repos/tpruittguitar/foreman-cockpit/issues'])
+    'repos/tpruittguitar/foreman-cockpit/commits/abc/check-runs', 'repos/tpruittguitar/forge-coordination/actions/workflows/other.yml/runs', 'repos/tpruittguitar/foreman-cockpit/actions/workflows/automations-status.yml/runs', 'repos/tpruittguitar/foreman-cockpit/pulls?access_token=x', 'repos/tpruittguitar/foreman-cockpit/issues'])
     assert.equal((await call(c, p)).status, 403, p);
   assert.equal(calls, 0);
-  for (const p of [PULLS, 'repos/tpruittguitar/forge-policy/commits/' + 'a'.repeat(40) + '/check-runs?per_page=50', 'repos/tpruittguitar/forge-coordination/contents/asks/open', 'repos/tpruittguitar/forge-coordination/contents/control?ref=main', 'repos/tpruittguitar/forge-coordination/contents/control/OFFICE_TRAINING.json?ref=main'])
+  for (const p of [PULLS, 'repos/tpruittguitar/forge-policy/commits/' + 'a'.repeat(40) + '/check-runs?per_page=50', 'repos/tpruittguitar/forge-coordination/contents/asks/open', 'repos/tpruittguitar/forge-coordination/contents/control?ref=main', 'repos/tpruittguitar/forge-coordination/contents/control/OFFICE_TRAINING.json?ref=main', 'repos/tpruittguitar/forge-coordination/actions/workflows/automations-status.yml/runs?status=success&per_page=1'])
     assert.equal((await call(c, p)).status, 200, p);
 });
 test('upstream status, body and rate-limit headers pass through; success is edge-cached 60 s and served from cache', async () => {

@@ -508,11 +508,28 @@
   }
 
   /* Data health. failed: the last fetch failed or never worked; stale: updated_at older than STALE_MIN. */
-  function dataState(parsed, fetchOk, now) {
+  /* OFFICE_STATUS.json updated_at moves only when a bot row or usage changes, so a quiet board is not a dead one.
+     checkedAt = the publisher's last successful run (automations-status.yml, every 10 min, commits only on a change).
+     Fresh within PUBLISHER_STALE_MIN means the data is current even when nothing changed (Tim 2026-11-19). */
+  const PUBLISHER_STALE_MIN = 30; // cron every 10 min; GitHub often starts scheduled runs 10-15 min late
+  function dataState(parsed, fetchOk, now, checkedAt) {
     if (!fetchOk || !parsed || !parsed.ok) return 'failed';
     const t = time(parsed.updatedAt);
-    if (t == null || now - t > STALE_MIN * MIN) return 'stale';
-    return 'live';
+    if (t != null && now - t <= STALE_MIN * MIN) return 'live';
+    const c = time(checkedAt);
+    if (c != null && now - c <= PUBLISHER_STALE_MIN * MIN) return 'live';
+    return 'stale';
+  }
+  /* Newest successful run time from GET .../actions/workflows/<file>/runs?status=success; null when unreadable. */
+  function publisherCheckedAt(runs) {
+    const list = runs && Array.isArray(runs.workflow_runs) ? runs.workflow_runs : [];
+    let best = null;
+    for (const r of list) {
+      if (!r || r.conclusion !== 'success') continue;
+      const at = r.updated_at || r.run_started_at, t = time(at);
+      if (t != null && (best == null || t > time(best))) best = at;
+    }
+    return best;
   }
   /* What a character does. With failed data nobody idles at the pool: they freeze, greyed, where they stand. */
   function behaviorFor(status, state) {
@@ -2305,10 +2322,10 @@
     BOARD_FAR_M, LOS_DEG, LOS_DIM, HUD_STILL_MS, boardDistance, facesBoard, rectsOverlap, labelVisibility, labelPrio, hudHidden, parseColor, luminance, contrastRatio, minContrast,
     TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, VR_STICK_DEAD, VR_MOVE_SPEED, VR_SNAP_DEG, VR_SNAP_ON, VR_SNAP_OFF, stickAxes, stickMove, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
-    STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
+    STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, PUBLISHER_STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
     GLIDE_MS, TOUR_IDLE_MS, GAME_SLOW_M, COLORS,
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle, CARD_TEXT_MAX, cardMessage, cardRecipient, cardBoxHTML, sendCardDirection,
-    priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, behaviorFor, relTime, waitingMinutes, hhmm,
+    priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, publisherCheckedAt, behaviorFor, relTime, waitingMinutes, hhmm,
     daylight, truncate, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,

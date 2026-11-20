@@ -21,6 +21,7 @@ const API_FILE = p => `${GH_API}repos/${OWNER}/forge-coordination/contents/${p}?
 const RAW_FILE = p => `https://raw.githubusercontent.com/${OWNER}/forge-coordination/main/${p}`;
 const PR_REPOS = ['foreman-cockpit', 'forge-coordination', 'forge-policy'];
 const ASKS_URL = `${GH_API}repos/${OWNER}/forge-coordination/contents/asks/open`;
+const PUBLISHER_RUNS_URL = `${GH_API}repos/${OWNER}/forge-coordination/actions/workflows/automations-status.yml/runs?status=success&per_page=1`;
 const READINGS_URL = RAW_FILE('usage/AI_USAGE_READINGS.jsonl');
 const CHAT_FEED_URL = RAW_FILE('control/PRESIDENT_CHAT_FEED.jsonl');
 /* Desk screen mirrors: one downscaled JPEG per bot plus index.json. NOTE: the publisher is not live yet, so every
@@ -45,7 +46,7 @@ const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
   pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), merges: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
   readings: [], cons: { health: null, activity: null, err: '', tried: 0, at: 0 }, readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '', fetched: {}, refreshedAt: 0,
-  glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null, invite: null, hrFree: false
+  checkedAt: null, checkedAtTried: 0, glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null, invite: null, hrFree: false
 };
 // Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
 let buildInfo, onBuildInfo = null; // buildInfo === undefined until the fetch settles; the wall plate repaints from it
@@ -117,6 +118,10 @@ function slowLoads(now) {
       e => { S.asksErr = e.status === 404 ? 'asks/open not found' : e.message; }).then(refreshAll);
   }
   if (!DEMO && now - S.cons.tried >= SLOW_MS) { S.cons.tried = now; loadConstraint(now); }
+  if (now - S.checkedAtTried >= SLOW_MS) { /* publisher heartbeat: a quiet board stays "live" while its builder keeps running */
+    S.checkedAtTried = now;
+    api(PUBLISHER_RUNS_URL).then(j => { const at = L.publisherCheckedAt(j); if (at) S.checkedAt = at; }, () => { /* unknown: fall back to updated_at alone */ }).then(refreshAll);
+  }
   if (now - S.readingsAt >= SLOW_MS) {
     S.readingsAt = now;
     rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsText = t; S.readingsErr = ''; S.fetched.readings = Date.now(); }, e => { S.readingsErr = e.message; }).then(refreshAll);
@@ -253,14 +258,17 @@ function needsCount() { return needsData().needs.length; }
 
 function refreshAll() {
   const now = Date.now();
-  S.state = L.dataState(S.parsed, S.fetchOk, now);
+  S.state = L.dataState(S.parsed, S.fetchOk, now, S.checkedAt);
   T.state = S.state;
   const asof = $('asof');
   asof.className = 'asof ' + S.state;
   const age = S.parsed ? L.dataAge(S.parsed.updatedAt, now) : null;
+  const quiet = S.state === 'live' && age && age.stale && !!S.checkedAt; // live by heartbeat, nothing changed lately
   asof.textContent = S.state === 'failed' ? (S.everOk ? '⚠ Data feed down · last data ' + L.hhmm(S.parsed.updatedAt) : '⚠ No office data')
-    : (S.state === 'stale' ? '? ' : '') + age.text + (S.state === 'stale' ? ' (stale: over ' + L.STALE_MIN + ' min old)' : '') + (S.source === 'raw' ? ' · via raw (API rate limit)' : '');
-  asof.title = S.state === 'stale' ? 'OFFICE_STATUS.json updated_at is more than ' + L.STALE_MIN + ' minutes old' : '';
+    : (S.state === 'stale' ? '? ' : '') + (quiet ? 'checked ' + L.dataAge(S.checkedAt, now).text.replace(/^updated /, '') + ' · last change ' + age.text.replace(/^updated /, '') : age.text)
+      + (S.state === 'stale' ? ' (stale: no publisher run in ' + L.PUBLISHER_STALE_MIN + ' min)' : '') + (S.source === 'raw' ? ' · via raw (API rate limit)' : '');
+  asof.title = S.state === 'stale' ? 'OFFICE_STATUS.json is over ' + L.STALE_MIN + ' min old and its publisher has not run in ' + L.PUBLISHER_STALE_MIN + ' min'
+    : quiet ? 'No bot row or usage changed since the last change; the publisher last ran ' + L.dataAge(S.checkedAt, now).text.replace(/^updated /, '') : '';
   $('demo-badge').hidden = !DEMO;
   const banner = $('banner');
   if (S.state === 'failed') { banner.hidden = false; banner.textContent = '⚠ Office data unavailable: ' + (S.error || 'no data') + '. Bots are greyed out where they stand.'; }
