@@ -1,11 +1,16 @@
 /* Shared qualification parser: keep byte-identical to foreman-cockpit/apps-script/PipelineQualification.gs. */
 (function (root, factory) { if (typeof module === 'object' && module.exports) module.exports = factory(); else root.PipelineQualification = factory(); })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
 'use strict';
-const VERSION='20261110-degree-abbreviations-v2',MAX_EVIDENCE_LENGTH=1200;
+const VERSION='20261120-high-school-not-degree-v3',MAX_EVIDENCE_LENGTH=1200;
 // Qualification facts retain the governing section and adjacent alternatives.
 // Joined department names such as MS&T are not standalone academic credentials.
 // Generic uses of "degree", "Master" and office-software abbreviations are not credentials.
 const credential=/\b(?:bachelor'?s?|master(?:'?s|(?=\s+(?:degree|of|in)\b))|b\.?\s*[sa]\.?|m\.?\s*s\.?(?!\s*(?:office|excel|word|project|teams|visio|access|powerpoint)\b|\.?\s*&\s*[a-z])|mba|ph\.?\s?d\.?|associate'?s?\s+degree|(?:advanced|graduate|undergraduate|college|university|four[- ]year|4[- ]year)\s+degree|diploma|ged)\b|\bdegree\s+in\s+[a-z]/i;
+// A high school diploma or GED is not a degree (Tim's standing rule). A clause that names only
+// a high school level credential is skipped; a college credential in the same line still counts.
+const highSchool=/\bhigh[- ]school\b|\bsecondary\s+(?:school|education)\b|\bG\.?E\.?D\.?(?![A-Za-z])/i;
+const college=/\b(?:bachelor'?s?|master(?:'?s|(?=\s+(?:degree|of|in)\b))|b\.?\s*[sa]\.?|m\.?\s*s\.?(?!\s*(?:office|excel|word|project|teams|visio|access|powerpoint)\b|\.?\s*&\s*[a-z])|mba|ph\.?\s?d\.?|associate'?s?\s+degree|(?:advanced|graduate|undergraduate|college|university|four[- ]year|4[- ]year)\s+degree)\b|\bdegree\s+in\s+[a-z]/i;
+function degreeCredential(c){return credential.test(c)&&!(highSchool.test(c)&&!college.test(c));}
 const negatedEquivalent=/\b(?:no|not|without)\s+(?:\w+\s+){0,3}equivalent\s+(?:work\s+)?experience\b|equivalent\s+(?:work\s+)?experience\s+(?:(?:(?:is|will|may|can)\s+)?not\s+(?:be\s+)?|cannot\s+(?:be\s+)?)(?:accepted|allowed|considered)/i;
 const alternate=/\bor\s+(?:(?:an?|at least|minimum of)\s+)?(?:\d+\+?\s*years?\b|(?:extensive|relevant|additional|professional)\s+experience\b)/i;
 const equivalent=/\bequivalent\s+(?:(?!(?:field|discipline|major|degree|area|program|programme|qualification)\b)[\w'-]+\s+){0,5}?(?:experience|education\s+(?:and|&|\/|or)\s+experience)\b|\bin lieu of (?:a |the )?(?:bachelor'?s? )?degree\b/i;
@@ -24,7 +29,7 @@ function parse(input){
   if(/^(?:qualifications?|education(?: and experience)?|requirements?|what you bring)\s*:?$/i.test(heading)){section=null;sectionHeading='';continue;}
   if(/^(?:responsibilities|benefits|about us|what we offer|equal opportunity)\s*:?$/i.test(heading)){section='NON_QUALIFICATION';continue;}
   if(section==='NON_QUALIFICATION')continue;
-  if(!credential.test(line)||/\b(?:without|regardless of|no college|no university)\s+(?:a |an? )?(?:college |university )?degree\b/i.test(line))continue;
+  if(!degreeCredential(line)||/\b(?:without|regardless of|no college|no university)\s+(?:a |an? )?(?:college |university )?degree\b/i.test(line))continue;
   let quote=line,following=lines[i+1]||'';
   // Join only an explicit adjacent alternative, never an unrelated experience bullet
   // or a new section. A wrapped 'or' belongs to the next clause.
@@ -34,7 +39,7 @@ function parse(input){
   // A mandatory master's must survive a preceding preferred bachelor's.
   const scoped=quote.replace(/\([^)]*(?:advanced|graduate|master|mba|ph\.?d)[^)]*\b(?:preferred|desired|a plus)[^)]*\)/gi,'').replace(/\(\s*(?:strongly )?preferred\s*\)(?=\s+or\s+(?:a |an? )?(?:closely )?related)/gi,'');
   const segments=[];for(const part of scoped.split(/;\s*/)){if(segments.length&&alternative(part))segments[segments.length-1]+='; '+part;else segments.push(part);}
-  const clauses=segments.flatMap(scoped=>(/[,;]\s*or\b/i.test(scoped)&&/\b(?:preferred|desired)|a plus|nice to have\b/i.test(scoped)&&!/\brequired|must (?:have|hold)|mandatory\b/i.test(scoped)?[scoped]:scoped.split(/,\s*(?=with\s+technical\s+education)|,\s*(?=(?:an?\s+)?(?:bachelor|master|mba|m\.\s?s|ms|ph\.?\s?d|advanced|graduate))|\s+(?:and|but)\s+(?=(?:an?\s+)?(?:bachelor|master|mba|advanced|graduate))/i))).filter(c=>credential.test(c));
+  const clauses=segments.flatMap(scoped=>(/[,;]\s*or\b/i.test(scoped)&&/\b(?:preferred|desired)|a plus|nice to have\b/i.test(scoped)&&!/\brequired|must (?:have|hold)|mandatory\b/i.test(scoped)?[scoped]:scoped.split(/,\s*(?=with\s+technical\s+education)|,\s*(?=(?:an?\s+)?(?:high[- ]school|secondary\s+(?:school|education)|G\.?E\.?D))|,\s*(?=(?:an?\s+)?(?:bachelor|master|mba|m\.\s?s|ms|ph\.?\s?d|advanced|graduate))|\s+(?:and|but)\s+(?=(?:an?\s+)?(?:bachelor|master|mba|advanced|graduate))/i))).filter(degreeCredential);
   const requirements=[];
   for(const base of clauses){
    const negated=/\b(?:not (?:strictly )?(?:required|necessary|mandatory)|optional|(?:do not|don't|does not|doesn't) require|no requirement for)\b/i.test(base)||/^\s*no\s+(?:bachelor'?s?\s+)?(?:college\s+)?degree\b[^.]{0,40}\brequired\b/i.test(base);

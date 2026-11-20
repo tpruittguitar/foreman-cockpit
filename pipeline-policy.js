@@ -40,7 +40,8 @@ var PipelinePolicy = (function () {
     // substitute for a certification or another requirement is not.
     equiv=equiv||/\bexperience\s+(?:(?:may|can|will)\s+(?:be\s+)?|is\s+)(?:substituted?\s+for|accepted\s+in\s+lieu\s+of|considered\s+in\s+lieu\s+of)\s+(?:(?:a|an|the)\s+)?(?:bachelor'?s?\s+|master'?s?\s+|college\s+|university\s+)?degree\b|\bexperience may substitute(?=\s*(?:[.)]|$))/i.test(text);
     var negated=/\b(?:no|not|without)\s+(?:\w+\s+){0,3}equivalent\s+(?:work\s+)?experience\b|equivalent\s+(?:work\s+)?experience\s+(?:(?:(?:is|will|may|can)\s+)?not\s+(?:be\s+)?|cannot\s+(?:be\s+)?)(?:accepted|allowed|considered)/i.test(text);
-    var required=/\brequired\b|\bmust have\b|\bminimum\b/i.test(text);
+    var hsRe=/\bhigh[- ]school\b|\bsecondary\s+(?:school|education)\b|\bG\.?E\.?D\.?(?![A-Za-z])/i,clDeg=/\b(degree|bachelor\w*|master\w*|doctorate|ph\.?d)\b/i;
+    var required=text.split(/(?<=[.;,])\s+|\n/).some(function(cl){return /\brequired\b|\bmust have\b|\bminimum\b/i.test(cl)&&!(hsRe.test(cl)&&!clDeg.test(cl))}); // Tim 2026-11-20: a high school diploma or GED is not a degree, so its 'required' does not make a preferred degree hard.
     var prefRe=/\bpreferred\b|\ba plus\b|\bnice[- ]to[- ]have\b|\bdesired\b|\bdesirable\b|\bideally\b/i,degRe=/\b(degree|bachelor\w*|master\w*|doctorate|ph\.?d)\b/i;var preferredOnly=prefRe.test(text)&&!text.split(/(?<=[.;])\s+|\n/).some(function(cl){return !prefRe.test(cl)&&degRe.test(cl)}); // Tim 2026-10-12 (REV-006): a degree named only in preferred wording is SOFT_FLEX. A degree stated outside the preferred clause stays a hard requirement.
     var alternate=/\balternatively\b|\bor\s+(?:(?:an?|at least|minimum of)\s+)?(?:\d+\+?\s*years?\b|(?:extensive|relevant|additional|professional)\s+experience\b|(?:certification|diploma)\b)/i.test(text); // Tim 2026-10-12 (b): another degree (Bachelor's or Master's, BS/MS/PhD tiers) is not an alternative to a degree.
     if(!unavailable){

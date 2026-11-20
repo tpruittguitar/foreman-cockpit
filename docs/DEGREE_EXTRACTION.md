@@ -19,6 +19,11 @@ mirrored Writer/Explorer parser recognizes explicit experience substitution for
 the degree as equivalence, while rejecting negated substitutions and substitutions
 for unrelated certifications.
 
+A high school diploma or GED is not a degree (Tim, 2026-11-20). The shared parser
+skips a clause that names only a high school level credential, and the FLEX policy's
+`required` test ignores such a clause, so "High school diploma required; bachelor's
+degree preferred" is SOFT_FLEX. A technical diploma in a named field still counts.
+
 The regression suite exercises shared fixtures through extraction and FLEX, a
 late alternative beyond the old 400/500-character limits, existing-field
 protection, oversized input, and Apps Script global loading without CommonJS.
