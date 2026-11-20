@@ -119,6 +119,13 @@ test('stale and failed data states; no idle animation when data is missing', () 
   assert.equal(L.dataState(old, true, NOW), 'stale');
   assert.equal(L.dataState(fresh, false, NOW), 'failed');
   assert.equal(L.dataState(null, true, NOW), 'failed');
+  // quiet board: updated_at only moves on a change; a recent publisher run keeps it live (Tim 2026-11-19)
+  assert.equal(L.dataState(old, true, NOW, ago(8)), 'live', 'publisher ran 8 min ago: quiet, not stale');
+  assert.equal(L.dataState(old, true, NOW, ago(L.PUBLISHER_STALE_MIN + 1)), 'stale', 'publisher silent too long');
+  assert.equal(L.dataState(old, true, NOW, null), 'stale', 'heartbeat unknown: updated_at alone decides');
+  assert.equal(L.dataState(fresh, false, NOW, ago(1)), 'failed', 'a heartbeat never hides a failed fetch');
+  assert.equal(L.publisherCheckedAt({ workflow_runs: [{ conclusion: 'failure', updated_at: ago(1) }, { conclusion: 'success', updated_at: ago(9) }, { conclusion: 'success', updated_at: ago(30) }] }), ago(9));
+  for (const bad of [null, {}, { workflow_runs: 'x' }, { workflow_runs: [{ conclusion: 'success', updated_at: 'nope' }] }]) assert.equal(L.publisherCheckedAt(bad), null);
   assert.equal(L.behaviorFor('idle', 'live'), 'roam');
   assert.equal(L.behaviorFor('idle', 'stale'), 'roam');
   for (const s of L.STATUSES) assert.equal(L.behaviorFor(s, 'failed'), 'frozen');
