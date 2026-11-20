@@ -8,7 +8,7 @@ const VERSION='20261120-high-school-not-degree-v3',MAX_EVIDENCE_LENGTH=1200;
 const credential=/\b(?:bachelor'?s?|master(?:'?s|(?=\s+(?:degree|of|in)\b))|b\.?\s*[sa]\.?|m\.?\s*s\.?(?!\s*(?:office|excel|word|project|teams|visio|access|powerpoint)\b|\.?\s*&\s*[a-z])|mba|ph\.?\s?d\.?|associate'?s?\s+degree|(?:advanced|graduate|undergraduate|college|university|four[- ]year|4[- ]year)\s+degree|diploma|ged)\b|\bdegree\s+in\s+[a-z]/i;
 // A high school diploma or GED is not a degree (Tim's standing rule). A clause that names only
 // a high school level credential is skipped; a college credential in the same line still counts.
-const highSchool=/\bhigh[- ]school\b|\bsecondary\s+(?:school|education)\b|\bG\.?E\.?D\.?(?![A-Za-z])/i;
+const highSchool=/\bhigh[- ]school\b|\bsecondary\s+(?:school|education)\b|\bgeneral\s+education\s+(?:degree|diploma|development)\b|\bG\.?E\.?D\.?(?![A-Za-z])/i;
 const college=/\b(?:bachelor'?s?|master(?:'?s|(?=\s+(?:degree|of|in)\b))|b\.?\s*[sa]\.?|m\.?\s*s\.?(?!\s*(?:office|excel|word|project|teams|visio|access|powerpoint)\b|\.?\s*&\s*[a-z])|mba|ph\.?\s?d\.?|associate'?s?\s+degree|(?:advanced|graduate|undergraduate|college|university|four[- ]year|4[- ]year)\s+degree)\b|\bdegree\s+in\s+[a-z]/i;
 function degreeCredential(c){return credential.test(c)&&!(highSchool.test(c)&&!college.test(c));}
 const negatedEquivalent=/\b(?:no|not|without)\s+(?:\w+\s+){0,3}equivalent\s+(?:work\s+)?experience\b|equivalent\s+(?:work\s+)?experience\s+(?:(?:(?:is|will|may|can)\s+)?not\s+(?:be\s+)?|cannot\s+(?:be\s+)?)(?:accepted|allowed|considered)/i;
@@ -39,11 +39,11 @@ function parse(input){
   // A mandatory master's must survive a preceding preferred bachelor's.
   const scoped=quote.replace(/\([^)]*(?:advanced|graduate|master|mba|ph\.?d)[^)]*\b(?:preferred|desired|a plus)[^)]*\)/gi,'').replace(/\(\s*(?:strongly )?preferred\s*\)(?=\s+or\s+(?:a |an? )?(?:closely )?related)/gi,'');
   const segments=[];for(const part of scoped.split(/;\s*/)){if(segments.length&&alternative(part))segments[segments.length-1]+='; '+part;else segments.push(part);}
-  const clauses=segments.flatMap(scoped=>(/[,;]\s*or\b/i.test(scoped)&&/\b(?:preferred|desired)|a plus|nice to have\b/i.test(scoped)&&!/\brequired|must (?:have|hold)|mandatory\b/i.test(scoped)?[scoped]:scoped.split(/,\s*(?=with\s+technical\s+education)|,\s*(?=(?:an?\s+)?(?:high[- ]school|secondary\s+(?:school|education)|G\.?E\.?D))|,\s*(?=(?:an?\s+)?(?:bachelor|master|mba|m\.\s?s|ms|ph\.?\s?d|advanced|graduate))|\s+(?:and|but)\s+(?=(?:an?\s+)?(?:bachelor|master|mba|advanced|graduate))/i))).filter(degreeCredential);
+  const clauses=segments.flatMap(scoped=>(/[,;]\s*or\b/i.test(scoped)&&/\b(?:preferred|desired)|a plus|nice to have\b/i.test(scoped)&&!/\brequired|must (?:have|hold)|mandatory\b/i.test(scoped)?[scoped]:scoped.split(/,\s*(?=with\s+technical\s+education)|,\s*(?=(?:an?\s+)?(?:high[- ]school|secondary\s+(?:school|education)|G\.?E\.?D))|,\s*(?=(?:an?\s+)?(?:bachelor|master|mba|m\.\s?s|ms|ph\.?\s?d|advanced|graduate))|\s+(?:and|but)\s+(?=(?:an?\s+)?(?:bachelor|master|mba|advanced|graduate))/i))).flatMap(c=>{const m=c.match(/^([^,;]*),\s*(.+)$/);return m&&highSchool.test(m[1])&&!college.test(m[1])?[m[1],m[2]]:[c];}).filter(degreeCredential);
   const requirements=[];
   for(const base of clauses){
    const negated=/\b(?:not (?:strictly )?(?:required|necessary|mandatory)|optional|(?:do not|don't|does not|doesn't) require|no requirement for)\b/i.test(base)||/^\s*no\s+(?:bachelor'?s?\s+)?(?:college\s+)?degree\b[^.]{0,40}\brequired\b/i.test(base);
-   const required=!negated&&/\brequired|must (?:have|hold)|mandatory\b/i.test(base),preferred=/\bpreferred|a plus|nice to have|desired\b/i.test(base)||/^(?:preferred|desired) qualifications?\s*:/i.test(line);
+   const required=!negated&&/\brequired|must (?:have|hold)|mandatory\b/i.test(base),preferred=/\bpreferred|a plus|nice to have|desired|desirable\b/i.test(base)||/^(?:preferred|desired) qualifications?\s*:/i.test(line);
    if(required&&preferred&&base.search(/\b(?:preferred|desired)|a plus|nice to have\b/i)<base.search(/\brequired|must (?:have|hold)|mandatory\b/i))return null;
    if(negated&&!preferred&&section!=='PREFERRED'&&!equivalent.test(base)&&!substitution.test(base)){optionalWithoutPreference=true;continue;}
    requirements.push((hasAlternative(base)&&!negatedEquivalent.test(base))?'PREFERRED':required?'REQUIRED':preferred||section==='PREFERRED'?'PREFERRED':'REQUIRED');
@@ -58,7 +58,8 @@ function parse(input){
  }
  if(unresolved)return null;
  if(facts.length)return facts.find(f=>f.req==='REQUIRED')||facts[0];
- return optionalWithoutPreference||/\bdegree\b/i.test(text)?null:{text:'NOT_STATED',req:'NOT_STATED'};
+ // A high school 'degree' or 'equivalent degree' is not a college degree.
+ return optionalWithoutPreference||/\bdegree\b/i.test(lines.filter(l=>!(highSchool.test(l)&&!college.test(l))).join('\n'))?null:{text:'NOT_STATED',req:'NOT_STATED'};
 }
 return {parse,plain,VERSION,MAX_EVIDENCE_LENGTH};
 });
