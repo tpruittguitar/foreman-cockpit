@@ -251,6 +251,23 @@ test('renamed bots are matched by bot_id first', () => {
   assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
 });
 
+test('ChatGPT avatar (Tim, Nov 21): a complete glossy black sphere with the white logo on the front, arms and legs, no slot eyes', async () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../office/avatars.js'), 'utf8');
+  const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
+  const id = '7bcb0d85-ec55-4e17-907f-3e71688e8799', a = A.avatarFor('ChatGPT', id);
+  assert.deepEqual([a.shape, a.color, a.icon], ['sphere', '#18181b', 'chatgpt']);
+  assert.ok(!a.generic && !a.prop && !a.face, 'no props and no slot eyes: the logo is the face');
+  for (const [k, o] of Object.entries(A.AVATARS)) if (k !== id) assert.notEqual(o.color.toLowerCase(), a.color, 'colour not used by another bot');
+  const pts = A.shapePoints(a), r = pts.map(([x, y]) => Math.hypot(x, y));
+  assert.ok(Math.max(...r) - Math.min(...r) < 1e-9 && r[0] <= 0.4, 'a round outline about the size of the other bots');
+  const png = fs.readFileSync(path.join(__dirname, '../office/assets/chatgpt-logo.png'));
+  assert.equal(png.slice(1, 4).toString(), 'PNG'); assert.ok(png.length < 80000, 'small texture');
+  const chars = fs.readFileSync(path.join(__dirname, '../office/chars.js'), 'utf8');
+  assert.match(chars, /assets\/chatgpt-logo\.png/); assert.match(chars, /new THREE\.SphereGeometry\(SPHERE_R/);
+  assert.match(chars, /const armR = limb\(/, 'the sphere keeps the arms and legs every bot has');
+});
+
 test('Hermes avatar (Tim, Nov 21): a white icon tile with the girl artwork on the front, plain white back, no slot eyes', async () => {
   const fs = require('node:fs'), path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '../office/avatars.js'), 'utf8');
@@ -417,7 +434,7 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['starburst', '#a8733f'],
-    ChatGPT: ['wedge', '#f79a1d'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['cloud', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
+    ChatGPT: ['sphere', '#18181b'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['cloud', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
     Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'],
     Hermes: ['icontile', '#cdcbc6'] };
   for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }

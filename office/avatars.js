@@ -40,7 +40,9 @@ const SHAPES = {
   blob: rot => polar(t => 0.38 + 0.03 * Math.cos(3 * t) + 0.02 * Math.sin(2 * t), rot),
   dial: rot => polar(() => 0.4, rot),                                                        // round gauge face
   /* Hermes (Tim, Nov 21): a white app-icon tile, a rounded square like his "Meshy_AI_Button" picture; built as a bevelled box in chars.js */
-  icontile: rot => roundedPoly([[-0.38, -0.38], [0.38, -0.38], [0.38, 0.38], [-0.38, 0.38]], 0.18, rot, 12)
+  icontile: rot => roundedPoly([[-0.38, -0.38], [0.38, -0.38], [0.38, 0.38], [-0.38, 0.38]], 0.18, rot, 12),
+  /* ChatGPT (Tim, Nov 21): a complete glossy black sphere with the white logo on the front; built as a sphere in chars.js */
+  sphere: rot => polar(() => 0.36, rot, 64)
 };
 /* Sidebar shape names (profile.json avatarShape) -> our shapes. */
 const SHAPE_ALIAS = { square: 'roundsquare', tablet: 'pill', sparkle: 'star4', star: 'cookie6', clover: 'clover4', teardrop: 'teardrop', wedge: 'wedge', blob: 'blob', flower: 'flower', pentagon: 'pentagon', dial: 'dial', circle: 'blob', hexagon: 'hexagon', cloud: 'cloud', starburst: 'starburst' };
@@ -92,7 +94,7 @@ export const AVATARS = {
   '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'blob', rot: 0, color: '#e8423f' },               // HR: red round blob
   'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'blob', rot: 0.3, color: '#22b8a2' },             // Cursor: teal round blob
   'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'starburst', rot: 0.2, color: '#a8733f' },          // Claude: brown starburst
-  '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'wedge', rot: -0.18, color: '#f79a1d' },          // ChatGPT: orange wedge blob
+  '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'sphere', rot: 0, color: '#18181b', icon: 'chatgpt' },  // ChatGPT (Tim, Nov 21): black glossy sphere, white logo on the front (office/assets/chatgpt-logo.png)
   '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' },     // Root: gray rounded square
   'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'wedge', rot: 0.6, color: '#7c7b79' },            // Usage: gray tilted wedge
   '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'cloud', rot: 0.1, color: '#2f7cf0', prop: 'quill' }, // Edgar: blue cloud + quill
@@ -139,8 +141,8 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * size, -y * size) : ctx.moveTo(x * size, -y * size)));
     ctx.closePath(); ctx.fill();
   }
-  if (a.icon) { // icon tiles (Hermes): a thin dark edge so the white tile reads on the board, no slot eyes
-    ctx.lineWidth = Math.max(1, size * 0.06); ctx.strokeStyle = '#2a2a2e'; ctx.stroke(); ctx.restore(); return;
+  if (a.icon) { // icon bots (Hermes tile, ChatGPT sphere): a thin edge so the mark reads on the board, no slot eyes
+    ctx.lineWidth = Math.max(1, size * 0.06); ctx.strokeStyle = a.shape === 'sphere' ? '#d8d8dc' : '#2a2a2e'; ctx.stroke(); ctx.restore(); return;
   }
   const fc = a.face || {}, fr = fc.rot || 0;
   ctx.fillStyle = fc.color || '#111'; ctx.rotate(-fr); // canvas y points down, so a CCW face tilt is a negative canvas rotation

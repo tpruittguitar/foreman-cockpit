@@ -314,7 +314,7 @@ function tileMat(a, hiQ) {
     : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.72, bumpMap: g, bumpScale: 0.6 });
 }
 
-const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href };
+const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href, chatgpt: new URL('./assets/chatgpt-logo.png', import.meta.url).href };
 // The girl spans 75% of the PNG's width. Tim (Nov 21): padding between her and the tile's edge cut 15% (0.150 -> 0.1275).
 const ICON_ART_FRAC = 0.75, ICON_PAD = 0.1275;
 function iconArt(key, size) {
@@ -323,14 +323,28 @@ function iconArt(key, size) {
   return new THREE.Mesh(geo('iconPlane:' + size.toFixed(3), () => new THREE.PlaneGeometry(size, size)), m); // single-sided: seen from the front only
 }
 
+/* Icon sphere (ChatGPT, Tim Nov 21): a complete glossy black ball, one sphere mesh. The logo is a thin spherical cap just above the
+   front of the ball with a flat front projection of office/assets/chatgpt-logo.png, so it follows the curve; the back stays plain black. */
+const SPHERE_R = 0.36, LOGO_SPAN = 0.7 * 2 * SPHERE_R; // the PNG spans 70% of the ball's width, as in Tim's picture
+function sphereBody(hi) { const g = new THREE.SphereGeometry(SPHERE_R, hi ? 48 : 32, hi ? 32 : 20); g.computeBoundingBox(); return g; }
+function sphereLogo(key) {
+  const m = mat('sphereLogo:' + key, () => { const t = new THREE.TextureLoader().load(ICON_ART[key]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return new THREE.MeshPhysicalMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, polygonOffset: true, polygonOffsetFactor: -2 }); });
+  const g = geo('sphereLogoCap', () => { const A = 0.82, c = new THREE.SphereGeometry(SPHERE_R * 1.004, 40, 40, Math.PI / 2 - A, 2 * A, Math.PI / 2 - A, 2 * A);
+    const P = c.attributes.position, U = c.attributes.uv; for (let i = 0; i < P.count; i++) U.setXY(i, P.getX(i) / LOGO_SPAN + 0.5, P.getY(i) / LOGO_SPAN + 0.5);
+    U.needsUpdate = true; return c; });
+  return new THREE.Mesh(g, m);
+}
+
 /* ---------- jelly bot ---------- */
 export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const bodyG = geo(key, () => a.icon ? tileBody(a) : puffBody(a, hiQuality));
+  const ball = a.shape === 'sphere';
+  const bodyG = geo(key + (ball ? ':' + hiQuality : ''), () => ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : jelly(a.color, hiQuality);
+  const bodyM = ball ? jelly(a.color, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
@@ -375,7 +389,8 @@ export function makeBot(name, hiQuality, botId, override) {
     face.rotation.z = rot; }
   if (a.icon) { // the artwork is the face: no slot eyes, brows or mouth on an icon tile
     face.userData.studio = () => {}; face.visible = false;
-    const art = iconArt(a.icon, ((bb.max.x - bb.min.x) - 2 * ICON_PAD) / ICON_ART_FRAC); art.position.z = bb.max.z + 0.002; body.add(art);
+    if (ball) body.add(sphereLogo(a.icon));
+    else { const art = iconArt(a.icon, ((bb.max.x - bb.min.x) - 2 * ICON_PAD) / ICON_ART_FRAC); art.position.z = bb.max.z + 0.002; body.add(art); }
   }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
@@ -391,7 +406,7 @@ export function makeBot(name, hiQuality, botId, override) {
     const needle = new THREE.Mesh(geo('gNeedle', () => new THREE.BoxGeometry(0.012, 0.17, 0.01)), mat('needle', () => new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0x6a5200 })));
     needle.position.set(0.05, 0.19, bb.max.z); needle.rotation.z = -0.6; body.add(needle);
   }
-  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(0xffffff), new THREE.Color(a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic });
+  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(ball ? a.color : 0xffffff), new THREE.Color(a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic });
   if (a.prop === 'quill') {
     const q = new THREE.Group(), feather = new THREE.Mesh(geo('quill', () => { const g = new THREE.SphereGeometry(0.05, 10, 8); g.scale(0.35, 1.6, 0.12); return g; }), white());
     feather.position.y = 0.08; const nib = new THREE.Mesh(geo('nib', () => new THREE.ConeGeometry(0.008, 0.05, 6)), black()); nib.rotation.x = Math.PI; nib.position.y = -0.02;
