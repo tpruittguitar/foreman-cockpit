@@ -277,10 +277,10 @@ function puffBody(a, hi) {
 
 /* Icon tile (Hermes, Tim Nov 21): a white rounded-square tile, a bevelled extrusion of the avatar outline (one cheap mesh, low poly),
    front at +z. The front artwork is a separate plane laid on the front face, so the back stays plain white. */
-const TILE_DEPTH = 0.12, TILE_BEVEL = 0.06; // Tim (Nov 21): edges about 20% rounder (bevel 0.05 -> 0.06, corner radius 0.15 -> 0.18)
+const TILE_DEPTH = 0.12, TILE_BEVEL = 0.072; // Tim (Nov 21): corner radius 0.15 -> 0.18, then rim bevel 20% rounder twice (0.05 -> 0.06 -> 0.072)
 function tileBody(a) {
   const s = new THREE.Shape(); shapePoints(a).forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath();
-  const g = new THREE.ExtrudeGeometry(s, { depth: TILE_DEPTH, curveSegments: 6, bevelEnabled: true, bevelThickness: TILE_BEVEL, bevelSize: TILE_BEVEL * 0.8, bevelSegments: 6 });
+  const g = new THREE.ExtrudeGeometry(s, { depth: TILE_DEPTH, curveSegments: 6, bevelEnabled: true, bevelThickness: TILE_BEVEL, bevelSize: TILE_BEVEL * 0.8, bevelSegments: 8 });
   g.center(); g.scale(0.9, 0.9, 0.9); g.computeVertexNormals(); g.computeBoundingBox();
   /* Tim (Nov 21): plain white read too bright and flat. Bake soft shading into vertex colours: an off-white base, lighter toward the
      top, darker toward the bottom and on the rounded sides, so the tile reads as a solid object. */
@@ -315,6 +315,8 @@ function tileMat(a, hiQ) {
 }
 
 const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href };
+// The girl spans 75% of the PNG's width. Tim (Nov 21): padding between her and the tile's edge cut 15% (0.150 -> 0.1275).
+const ICON_ART_FRAC = 0.75, ICON_PAD = 0.1275;
 function iconArt(key, size) {
   const m = mat('iconArt:' + key, () => { const t = new THREE.TextureLoader().load(ICON_ART[key]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
     return new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.45, polygonOffset: true, polygonOffsetFactor: -2 }); });
@@ -373,7 +375,7 @@ export function makeBot(name, hiQuality, botId, override) {
     face.rotation.z = rot; }
   if (a.icon) { // the artwork is the face: no slot eyes, brows or mouth on an icon tile
     face.userData.studio = () => {}; face.visible = false;
-    const art = iconArt(a.icon, (bb.max.x - bb.min.x) - TILE_BEVEL * 2.4); art.position.z = bb.max.z + 0.002; body.add(art);
+    const art = iconArt(a.icon, ((bb.max.x - bb.min.x) - 2 * ICON_PAD) / ICON_ART_FRAC); art.position.z = bb.max.z + 0.002; body.add(art);
   }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
