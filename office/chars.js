@@ -1,5 +1,5 @@
 /* Fully 3D characters from Three.js primitives: glossy jelly-blob bots extruded from each bot's sidebar avatar mark,
-   with stubby arms and legs and simple expressive 3D faces. The President is Tim's own textured 3D model (office/assets/president.glb),
+   with stubby arms and legs and simple expressive 3D faces (Hermes is a white icon tile with artwork instead of eyes). The President is Tim's own textured 3D model (office/assets/president.glb),
    skinned at load time to the same bone handles, so it shares the procedural poses. Procedural animation only. */
 import * as THREE from 'three';
 import { avatarFor, shapePoints } from './avatars.js';
@@ -239,7 +239,7 @@ function starSDF(rot) {
   };
 }
 /* Wide face shapes read as fat from the side, so they are thinner front to back (Tim, Nov 17, 2026). Applies to every bot with that shape. */
-const SHAPE_THICK = { clover4: 0.55, pill: 0.5, hexpuck: 0.52 }; // hexpuck: Hermes's flat hexagonal puck
+const SHAPE_THICK = { clover4: 0.55, pill: 0.5 };
 function puffBody(a, hi) {
   const NT = hi ? 160 : 96, NP = hi ? 64 : 40, star = a.shape === 'starburst';
   let ringAt, W, D, hbar, zFront;
@@ -275,14 +275,62 @@ function puffBody(a, hi) {
   return g;
 }
 
+/* Icon tile (Hermes, Tim Nov 21): a white rounded-square tile, a bevelled extrusion of the avatar outline (one cheap mesh, low poly),
+   front at +z. The front artwork is a separate plane laid on the front face, so the back stays plain white. */
+const TILE_DEPTH = 0.12, TILE_BEVEL = 0.072; // Tim (Nov 21): corner radius 0.15 -> 0.18, then rim bevel 20% rounder twice (0.05 -> 0.06 -> 0.072)
+function tileBody(a) {
+  const s = new THREE.Shape(); shapePoints(a).forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: TILE_DEPTH, curveSegments: 6, bevelEnabled: true, bevelThickness: TILE_BEVEL, bevelSize: TILE_BEVEL * 0.8, bevelSegments: 8 });
+  g.center(); g.scale(0.9, 0.9, 0.9); g.computeVertexNormals(); g.computeBoundingBox();
+  /* Tim (Nov 21): plain white read too bright and flat. Bake soft shading into vertex colours: an off-white base, lighter toward the
+     top, darker toward the bottom and on the rounded sides, so the tile reads as a solid object. */
+  const base = new THREE.Color(a.color), hi = new THREE.Color(0xffffff), lo = new THREE.Color(0x8d8f94), c = new THREE.Color(), P = g.attributes.position, N = g.attributes.normal;
+  const bx = g.boundingBox, hx = (bx.max.x - bx.min.x) / 2, col = new Float32Array(P.count * 3);
+  for (let i = 0; i < P.count; i++) {
+    const d = P.getY(i) / hx, side = 1 - Math.abs(N.getZ(i)); // d: -1 bottom .. +1 top
+    c.copy(base); if (d > 0) c.lerp(hi, 0.3 * d); else c.lerp(lo, 0.45 * -d);
+    c.lerp(lo, 0.42 * side * side);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
+}
+/* Matte plastic grain (Tim, Nov 21: stronger grain, then softer and finer so it is not too noticeable): one shared 256 px texture of fine speckle over soft mottling, used as a light
+   colour map (multiplies the shading by about 0.82..1) and as the bump and roughness map, so the tile reads as textured plastic from
+   normal viewing distance and the light breaks up instead of sliding off as one uniform sheen. */
+function grainTex() {
+  return mat('tileGrain', () => { const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N; const x = cv.getContext('2d'), im = x.createImageData(N, N);
+    const C = 24, coarse = Array.from({ length: C * C }, () => Math.random()), at = (i, j) => coarse[((j + C) % C) * C + (i + C) % C];
+    const soft = (u, v) => { const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, su = fu * fu * (3 - 2 * fu), sv = fv * fv * (3 - 2 * fv);
+      return (at(i, j) * (1 - su) + at(i + 1, j) * su) * (1 - sv) + (at(i, j + 1) * (1 - su) + at(i + 1, j + 1) * su) * sv; };
+    for (let y = 0; y < N; y++) for (let xx = 0; xx < N; xx++) {
+      const v = 255 - 6 * soft(xx / N * C, y / N * C) - 12 * Math.random(), k = (y * N + xx) * 4;
+      im.data[k] = im.data[k + 1] = im.data[k + 2] = v; im.data[k + 3] = 255;
+    }
+    x.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4); t.colorSpace = THREE.SRGBColorSpace; return t; });
+}
+function tileMat(a, hiQ) {
+  const g = grainTex();
+  return hiQ ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.7, roughnessMap: g, bumpMap: g, bumpScale: 0.6, clearcoat: 0.12, clearcoatRoughness: 0.6 })
+    : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.72, bumpMap: g, bumpScale: 0.6 });
+}
+
+const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href };
+// The girl spans 75% of the PNG's width. Tim (Nov 21): padding between her and the tile's edge cut 15% (0.150 -> 0.1275).
+const ICON_ART_FRAC = 0.75, ICON_PAD = 0.1275;
+function iconArt(key, size) {
+  const m = mat('iconArt:' + key, () => { const t = new THREE.TextureLoader().load(ICON_ART[key]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.45, polygonOffset: true, polygonOffsetFactor: -2 }); });
+  return new THREE.Mesh(geo('iconPlane:' + size.toFixed(3), () => new THREE.PlaneGeometry(size, size)), m); // single-sided: seen from the front only
+}
+
 /* ---------- jelly bot ---------- */
 export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const bodyG = geo(key, () => puffBody(a, hiQuality));
+  const bodyG = geo(key, () => a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = clayMat(hiQuality), limbM = jelly(a.color, hiQuality);
+  const bodyM = a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
@@ -292,7 +340,7 @@ export function makeBot(name, hiQuality, botId, override) {
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   /* a.face (Hermes): its own eye colour, the eye pair tilted by face.rot instead of the body rot, shifted dx/dy, each eye leaning by tilt */
-  { const fc = a.face || {}, eyeHex = fc.color || '#0b0b0e', eyeM = mat('eyeClay' + eyeHex, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(eyeHex), roughness: 1, metalness: 0 }));
+  if (!a.icon) { const fc = a.face || {}, eyeHex = fc.color || '#0b0b0e', eyeM = mat('eyeClay' + eyeHex, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(eyeHex), roughness: 1, metalness: 0 }));
     const rot = fc.rot ?? (a.rot || 0), EDX = fc.dx || 0, ETILT = fc.tilt || 0, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004, ZV = new THREE.Vector3(0, 0, 1);
     const EY = -0.02 + (fc.dy || 0), tmpQ = new THREE.Quaternion(), qz = new THREE.Quaternion();
     /* sit each eye ON the curved skin: sample the surface where the eye really lands (the face is rotated by rot and lifted 0.02), then
@@ -325,6 +373,10 @@ export function makeBot(name, hiQuality, botId, override) {
       face.userData.slotKey = key;
     };
     face.rotation.z = rot; }
+  if (a.icon) { // the artwork is the face: no slot eyes, brows or mouth on an icon tile
+    face.userData.studio = () => {}; face.visible = false;
+    const art = iconArt(a.icon, ((bb.max.x - bb.min.x) - 2 * ICON_PAD) / ICON_ART_FRAC); art.position.z = bb.max.z + 0.002; body.add(art);
+  }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
   armR.position.set(-ax, -0.06, 0.02); armL.position.set(ax, -0.06, 0.02);
