@@ -39,9 +39,8 @@ const SHAPES = {
   starburst: rot => polar(t => 0.31 + 0.11 * Math.sign(-Math.cos(6 * t)) * Math.pow(Math.abs(Math.cos(6 * t)), 0.6), rot, 120), // Claude: 6 rounded rays (3D body is an SDF in chars.js; this outline is for the 2D owner icon)
   blob: rot => polar(t => 0.38 + 0.03 * Math.cos(3 * t) + 0.02 * Math.sin(2 * t), rot),
   dial: rot => polar(() => 0.4, rot),                                                        // round gauge face
-  /* Hermes: a soft hexagonal puck traced from Tim's avatar (/workspace/hermes/avatar.png): fuller corners than Archive's hexagon;
-     built thin front to back like the other flat bots (SHAPE_THICK.hexpuck in chars.js) */
-  hexpuck: rot => roundedPoly(regular(6, 0.44), 0.1, rot)
+  /* Hermes (Tim, Nov 21): a white app-icon tile, a rounded square like his "Meshy_AI_Button" picture; built as a bevelled box in chars.js */
+  icontile: rot => roundedPoly([[-0.38, -0.38], [0.38, -0.38], [0.38, 0.38], [-0.38, 0.38]], 0.15, rot)
 };
 /* Sidebar shape names (profile.json avatarShape) -> our shapes. */
 const SHAPE_ALIAS = { square: 'roundsquare', tablet: 'pill', sparkle: 'star4', star: 'cookie6', clover: 'clover4', teardrop: 'teardrop', wedge: 'wedge', blob: 'blob', flower: 'flower', pentagon: 'pentagon', dial: 'dial', circle: 'blob', hexagon: 'hexagon', cloud: 'cloud', starburst: 'starburst' };
@@ -102,9 +101,10 @@ export const AVATARS = {
   '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
   'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' },         // GUI: red clover
   'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'hexagon', rot: 0.15, color: '#f2389b' },         // Archive: pink soft hexagon
-  /* Hermes (card cs-d390e7b5), matched to Tim's picture: a teal rounded hexagon (corners at -10 deg + 60k) with two black slanted
-     oval eyes set right of centre. face: the eye pair is tilted 15 deg, shifted dx right and dy up (centred, not low), each eye leaning tilt rad, in eye colour. Eyes black like the other bots (Tim, Nov 18). */
-  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'hexpuck', rot: 0.35, color: '#1ec4b2', face: { rot: 0.26, dx: 0.085, dy: 0.035, tilt: 0.21, color: '#0b0b0e' } }
+  /* Hermes (Tim, Nov 21): a glossy white 3D icon tile in place of the teal hexagon bot. The front shows the black-and-white girl with
+     headphones from Tim's icon picture (office/assets/hermes-icon.png, line art only, the tile itself is the white); the back is plain white.
+     No slot eyes: the artwork is the face. */
+  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'icontile', rot: 0, color: '#f4f4f2', icon: 'hermes' }
 };
 /* bot_id -> short tag, used only when the full name does not fit the label. */
 export const SHORT_TAGS = { 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive' };
@@ -138,6 +138,9 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     ctx.fillStyle = a.color; ctx.beginPath();
     pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * size, -y * size) : ctx.moveTo(x * size, -y * size)));
     ctx.closePath(); ctx.fill();
+  }
+  if (a.icon) { // icon tiles (Hermes): a thin dark edge so the white tile reads on the board, no slot eyes
+    ctx.lineWidth = Math.max(1, size * 0.06); ctx.strokeStyle = '#2a2a2e'; ctx.stroke(); ctx.restore(); return;
   }
   const fc = a.face || {}, fr = fc.rot || 0;
   ctx.fillStyle = fc.color || '#111'; ctx.rotate(-fr); // canvas y points down, so a CCW face tilt is a negative canvas rotation

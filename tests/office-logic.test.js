@@ -251,27 +251,23 @@ test('renamed bots are matched by bot_id first', () => {
   assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
 });
 
-test('Hermes avatar (card cs-d390e7b5): matches Tim\'s picture, a teal rounded hexagon with two black slanted eyes right of centre', async () => {
-  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
+test('Hermes avatar (Tim, Nov 21): a white icon tile with the girl artwork on the front, plain white back, no slot eyes', async () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const id = '15ab4cfb-2d51-4809-9ae3-f1285ebd829f', a = A.avatarFor('Hermes', id);
   assert.equal(A.BOT_IDS.Hermes, id);
-  assert.deepEqual([a.shape, a.color], ['hexpuck', '#1ec4b2']);
-  assert.ok(!a.generic && !a.prop, 'no wings, helmet or halo');
+  assert.deepEqual([a.shape, a.color, a.icon], ['icontile', '#f4f4f2', 'hermes']);
+  assert.ok(!a.generic && !a.prop && !a.face, 'no props and no slot eyes: the artwork is the face');
   for (const [k, o] of Object.entries(A.AVATARS)) if (k !== id) assert.notEqual(o.color.toLowerCase(), a.color, 'colour not used by another bot');
-  // black eyes like the other bots (Tim, Nov 18), the pair tilted about 15 deg and set right of centre, each eye leaning (top toward the left)
-  assert.equal(a.face.color, '#0b0b0e');
-  assert.ok(Math.abs(a.face.rot - 15 * Math.PI / 180) < 0.05 && a.face.dx > 0.05 && a.face.tilt > 0.1);
-  // a hexagon with rounded corners: six radius peaks 60 deg apart, flat sides between them, no sharp corner
-  const pts = A.shapePoints(a), at = th => { let best = 0; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length];
-    const dx = Math.cos(th), dy = Math.sin(th), den = dx * (q[1] - p[1]) - dy * (q[0] - p[0]); if (!den) continue;
-    const t = (p[0] * (q[1] - p[1]) - p[1] * (q[0] - p[0])) / den, u = (p[0] * dy - p[1] * dx) / den; if (t > 0 && u >= 0 && u <= 1) best = Math.max(best, t); } return best; };
-  const prof = Array.from({ length: 360 }, (_, d) => at(d * Math.PI / 180)), peaks = prof.map((r, d) => r > prof[(d + 359) % 360] && r >= prof[(d + 1) % 360] ? d : -1).filter(d => d >= 0);
-  assert.equal(peaks.length, 6, 'six corners: ' + peaks);
-  const lo = Math.min(...prof), hi = Math.max(...prof); assert.ok(lo / hi > 0.86 && lo / hi < 0.95, 'rounded hexagon, not a circle or a star: ' + (lo / hi).toFixed(3));
-  // about the size of the other bots, so it stays short and stands in its chair like them
-  const ys = pts.map(p => p[1]), xs = pts.map(p => p[0]);
+  // a rounded square about the size of the other bots, so it stays short and stands in its chair like them
+  const pts = A.shapePoints(a), ys = pts.map(p => p[1]), xs = pts.map(p => p[0]);
   assert.ok(Math.max(...ys) - Math.min(...ys) <= 0.9 && Math.max(...xs) - Math.min(...xs) <= 0.95);
+  // the artwork ships with the office and the 3D body puts it on the front only (a single-sided plane), so the back is plain white
+  const png = fs.readFileSync(path.join(__dirname, '../office/assets/hermes-icon.png'));
+  assert.equal(png.slice(1, 4).toString(), 'PNG'); assert.ok(png.length < 80000, 'small texture');
+  const chars = fs.readFileSync(path.join(__dirname, '../office/chars.js'), 'utf8');
+  assert.match(chars, /assets\/hermes-icon\.png/); assert.match(chars, /if \(!a\.icon\) \{ const fc = a\.face/);
 });
 
 test('avatars are keyed by bot_id; HR has a normal shape; Archive has a short tag', async () => {
@@ -423,7 +419,7 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['starburst', '#a8733f'],
     ChatGPT: ['wedge', '#f79a1d'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['cloud', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
     Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'],
-    Hermes: ['hexpuck', '#1ec4b2'] };
+    Hermes: ['icontile', '#f4f4f2'] };
   for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
   assert.equal(Object.keys(A.AVATARS).length, 15, '14 sidebar bots + Hermes');
   assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');

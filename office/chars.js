@@ -1,5 +1,5 @@
 /* Fully 3D characters from Three.js primitives: glossy jelly-blob bots extruded from each bot's sidebar avatar mark,
-   with stubby arms and legs and simple expressive 3D faces. The President is Tim's own textured 3D model (office/assets/president.glb),
+   with stubby arms and legs and simple expressive 3D faces (Hermes is a white icon tile with artwork instead of eyes). The President is Tim's own textured 3D model (office/assets/president.glb),
    skinned at load time to the same bone handles, so it shares the procedural poses. Procedural animation only. */
 import * as THREE from 'three';
 import { avatarFor, shapePoints } from './avatars.js';
@@ -239,7 +239,7 @@ function starSDF(rot) {
   };
 }
 /* Wide face shapes read as fat from the side, so they are thinner front to back (Tim, Nov 17, 2026). Applies to every bot with that shape. */
-const SHAPE_THICK = { clover4: 0.55, pill: 0.5, hexpuck: 0.52 }; // hexpuck: Hermes's flat hexagonal puck
+const SHAPE_THICK = { clover4: 0.55, pill: 0.5 };
 function puffBody(a, hi) {
   const NT = hi ? 160 : 96, NP = hi ? 64 : 40, star = a.shape === 'starburst';
   let ringAt, W, D, hbar, zFront;
@@ -275,14 +275,30 @@ function puffBody(a, hi) {
   return g;
 }
 
+/* Icon tile (Hermes, Tim Nov 21): a white rounded-square tile, a bevelled extrusion of the avatar outline (one cheap mesh, low poly),
+   front at +z. The front artwork is a separate plane laid on the front face, so the back stays plain white. */
+const TILE_DEPTH = 0.13, TILE_BEVEL = 0.05;
+function tileBody(a) {
+  const s = new THREE.Shape(); shapePoints(a).forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: TILE_DEPTH, curveSegments: 4, bevelEnabled: true, bevelThickness: TILE_BEVEL, bevelSize: TILE_BEVEL * 0.8, bevelSegments: 4 });
+  g.center(); g.scale(0.9, 0.9, 0.9); g.computeVertexNormals(); g.computeBoundingBox(); return g;
+}
+const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href };
+function iconArt(key, size) {
+  const m = mat('iconArt:' + key, () => { const t = new THREE.TextureLoader().load(ICON_ART[key]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+    return new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.3, polygonOffset: true, polygonOffsetFactor: -2 }); });
+  return new THREE.Mesh(geo('iconPlane:' + size.toFixed(3), () => new THREE.PlaneGeometry(size, size)), m); // single-sided: seen from the front only
+}
+
 /* ---------- jelly bot ---------- */
 export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const bodyG = geo(key, () => puffBody(a, hiQuality));
+  const bodyG = geo(key, () => a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = clayMat(hiQuality), limbM = jelly(a.color, hiQuality);
+  const bodyM = a.icon ? (hiQuality ? new THREE.MeshPhysicalMaterial({ color: a.color, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.06 })
+    : new THREE.MeshStandardMaterial({ color: a.color, roughness: 0.22 })) : clayMat(hiQuality), limbM = jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
@@ -292,7 +308,7 @@ export function makeBot(name, hiQuality, botId, override) {
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   /* a.face (Hermes): its own eye colour, the eye pair tilted by face.rot instead of the body rot, shifted dx/dy, each eye leaning by tilt */
-  { const fc = a.face || {}, eyeHex = fc.color || '#0b0b0e', eyeM = mat('eyeClay' + eyeHex, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(eyeHex), roughness: 1, metalness: 0 }));
+  if (!a.icon) { const fc = a.face || {}, eyeHex = fc.color || '#0b0b0e', eyeM = mat('eyeClay' + eyeHex, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(eyeHex), roughness: 1, metalness: 0 }));
     const rot = fc.rot ?? (a.rot || 0), EDX = fc.dx || 0, ETILT = fc.tilt || 0, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004, ZV = new THREE.Vector3(0, 0, 1);
     const EY = -0.02 + (fc.dy || 0), tmpQ = new THREE.Quaternion(), qz = new THREE.Quaternion();
     /* sit each eye ON the curved skin: sample the surface where the eye really lands (the face is rotated by rot and lifted 0.02), then
@@ -325,6 +341,10 @@ export function makeBot(name, hiQuality, botId, override) {
       face.userData.slotKey = key;
     };
     face.rotation.z = rot; }
+  if (a.icon) { // the artwork is the face: no slot eyes, brows or mouth on an icon tile
+    face.userData.studio = () => {}; face.visible = false;
+    const art = iconArt(a.icon, (bb.max.x - bb.min.x) - TILE_BEVEL * 2.4); art.position.z = bb.max.z + 0.002; body.add(art);
+  }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
   armR.position.set(-ax, -0.06, 0.02); armL.position.set(ax, -0.06, 0.02);
