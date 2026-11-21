@@ -388,3 +388,30 @@ test('Claude 5-hr window line is text only, exact wording, hidden after reset', 
   assert.equal(L.fiveHourLine(by.Claude, Date.parse('2026-11-16T06:00:00.000Z')), '');
   assert.equal(L.fiveHourLine(by.ChatGPT, now), '');
 });
+
+test('usage wall API credit: a newer ChatGPT reading without a credit keeps the last one, with its date (Tim, Nov 20)', () => {
+  const credit = { est_left_usd: 37.699371, grant_usd: 41, expires: '2026-11-30', verified_left_usd: 38, at: '2026-11-19T15:54:05.910Z' };
+  const old = { at: '2026-11-19T15:54:00.000Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly', usedPct: 80, resetsAt: '2026-11-20T21:59:00.000Z', status: 'OK', openaiCredit: credit };
+  const newer = { at: '2026-11-20T05:20:37.000Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly', usedPct: 92, resetsAt: '2026-11-20T21:59:00.000Z', status: 'WATCH' };
+  const now = Date.parse('2026-11-20T06:00:00Z');
+  const row = L.usageRows(L.parseReadings([old, newer].map(r => JSON.stringify(r)).join('\n')), now, null)[0];
+  assert.equal(row.pct_used, 92, 'the bar still uses the newest reading');
+  assert.equal(L.creditLine(row), 'API credit as of Nov 19: $38.00 of $41 left · exp Nov 30');
+  // An explicit null credit on the newer reading carries the same way; the credit's reading time is used when the credit has no at.
+  const noAt = Object.assign({}, credit); delete noAt.at;
+  const row2 = L.usageRows(L.parseReadings([Object.assign({}, old, { openaiCredit: noAt }), Object.assign({}, newer, { openaiCredit: null })].map(r => JSON.stringify(r)).join('\n')), now, null)[0];
+  assert.equal(L.creditLine(row2), 'API credit as of Nov 19: $38.00 of $41 left · exp Nov 30');
+  // A credit on the newest reading shows with no date, as before.
+  const row3 = L.usageRows(L.parseReadings([old, Object.assign({}, newer, { openaiCredit: Object.assign({}, credit, { verified_left_usd: 37.5 }) })].map(r => JSON.stringify(r)).join('\n')), now, null)[0];
+  assert.equal(L.creditLine(row3), 'API credit: $37.50 of $41 left · expires Nov 30');
+  // Once the carried credit's expiry day has ended (ET), it is no longer shown.
+  const afterExpiry = Date.parse('2026-12-01T05:00:00Z');
+  const row4 = L.usageRows(L.parseReadings([old, newer].map(r => JSON.stringify(r)).join('\n')), afterExpiry, null)[0];
+  assert.equal(L.creditLine(row4), '');
+  const lastDay = Date.parse('2026-12-01T04:59:00Z');
+  assert.match(L.creditLine(L.usageRows(L.parseReadings([old, newer].map(r => JSON.stringify(r)).join('\n')), lastDay, null)[0]), /^API credit as of Nov 19: /);
+  // Another provider's credit is never borrowed.
+  const grok = { at: '2026-11-20T05:00:00Z', provider: 'GROK', meter: 'weekly', label: 'weekly', usedPct: 97, resetsAt: '2026-11-22T21:41:00Z', status: 'OK' };
+  const rows = L.usageRows(L.parseReadings([old, newer, grok].map(r => JSON.stringify(r)).join('\n')), now, null);
+  assert.equal(L.creditLine(rows.find(r => r.name === 'Grok')), '');
+});
