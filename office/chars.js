@@ -277,10 +277,10 @@ function puffBody(a, hi) {
 
 /* Icon tile (Hermes, Tim Nov 21): a white rounded-square tile, a bevelled extrusion of the avatar outline (one cheap mesh, low poly),
    front at +z. The front artwork is a separate plane laid on the front face, so the back stays plain white. */
-const TILE_DEPTH = 0.13, TILE_BEVEL = 0.05;
+const TILE_DEPTH = 0.12, TILE_BEVEL = 0.06; // Tim (Nov 21): edges about 20% rounder (bevel 0.05 -> 0.06, corner radius 0.15 -> 0.18)
 function tileBody(a) {
   const s = new THREE.Shape(); shapePoints(a).forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath();
-  const g = new THREE.ExtrudeGeometry(s, { depth: TILE_DEPTH, curveSegments: 4, bevelEnabled: true, bevelThickness: TILE_BEVEL, bevelSize: TILE_BEVEL * 0.8, bevelSegments: 4 });
+  const g = new THREE.ExtrudeGeometry(s, { depth: TILE_DEPTH, curveSegments: 6, bevelEnabled: true, bevelThickness: TILE_BEVEL, bevelSize: TILE_BEVEL * 0.8, bevelSegments: 6 });
   g.center(); g.scale(0.9, 0.9, 0.9); g.computeVertexNormals(); g.computeBoundingBox();
   /* Tim (Nov 21): plain white read too bright and flat. Bake soft shading into vertex colours: an off-white base, lighter toward the
      top, darker toward the bottom and on the rounded sides, so the tile reads as a solid object. */
@@ -294,7 +294,7 @@ function tileBody(a) {
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
 }
-/* Matte plastic grain (Tim, Nov 21: "stronger grain"): one shared 256 px texture of fine speckle over soft mottling, used as a light
+/* Matte plastic grain (Tim, Nov 21: stronger grain, then softer and finer so it is not too noticeable): one shared 256 px texture of fine speckle over soft mottling, used as a light
    colour map (multiplies the shading by about 0.82..1) and as the bump and roughness map, so the tile reads as textured plastic from
    normal viewing distance and the light breaks up instead of sliding off as one uniform sheen. */
 function grainTex() {
@@ -303,15 +303,15 @@ function grainTex() {
     const soft = (u, v) => { const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, su = fu * fu * (3 - 2 * fu), sv = fv * fv * (3 - 2 * fv);
       return (at(i, j) * (1 - su) + at(i + 1, j) * su) * (1 - sv) + (at(i, j + 1) * (1 - su) + at(i + 1, j + 1) * su) * sv; };
     for (let y = 0; y < N; y++) for (let xx = 0; xx < N; xx++) {
-      const v = 255 - 14 * soft(xx / N * C, y / N * C) - 24 * Math.random(), k = (y * N + xx) * 4;
+      const v = 255 - 6 * soft(xx / N * C, y / N * C) - 12 * Math.random(), k = (y * N + xx) * 4;
       im.data[k] = im.data[k + 1] = im.data[k + 2] = v; im.data[k + 3] = 255;
     }
-    x.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); t.colorSpace = THREE.SRGBColorSpace; return t; });
+    x.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 4); t.colorSpace = THREE.SRGBColorSpace; return t; });
 }
 function tileMat(a, hiQ) {
   const g = grainTex();
-  return hiQ ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.7, roughnessMap: g, bumpMap: g, bumpScale: 1.2, clearcoat: 0.12, clearcoatRoughness: 0.6 })
-    : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.72, bumpMap: g, bumpScale: 1.2 });
+  return hiQ ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.7, roughnessMap: g, bumpMap: g, bumpScale: 0.6, clearcoat: 0.12, clearcoatRoughness: 0.6 })
+    : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.72, bumpMap: g, bumpScale: 0.6 });
 }
 
 const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href };
@@ -328,7 +328,7 @@ export function makeBot(name, hiQuality, botId, override) {
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
   const bodyG = geo(key, () => a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 1.2 }) : jelly(a.color, hiQuality);
+  const bodyM = a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
