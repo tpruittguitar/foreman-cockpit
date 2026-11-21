@@ -28,11 +28,6 @@ a { color: var(--info); }
 .hud { position: fixed; z-index: 5; display: flex; gap: .5em; align-items: center; }
 #hud-tl { top: var(--safe); left: var(--safe); flex-direction: column; align-items: flex-start; }
 #hud-tr { top: var(--safe); right: var(--safe); }
-/* Zach show / hide switch: a HUD toggle like the rest; off reads dim and struck through */
-.zach-btn[aria-pressed="true"] { border-color: #5a5d65; }
-.zach-btn[aria-pressed="false"] { color: var(--dim); }
-.zach-btn[aria-pressed="false"] .ico { filter: grayscale(1); opacity: .55; }
-.zach-btn[aria-pressed="false"] .zach-state { text-decoration: line-through; }
 #refresh-btn.busy .ico { display: inline-block; animation: refresh-spin 0.9s linear infinite; }
 @keyframes refresh-spin { to { transform: rotate(360deg); } }
 .badge-example { background: var(--stale); color: #111; font-weight: 800; letter-spacing: .06em; padding: .25em .6em; border-radius: 4px; font-size: .9em; }
@@ -140,9 +135,7 @@ html.tv .hint { bottom: calc(var(--safe) + 3.2em); }
 /* Narrow / portrait phones in 3D: stack the HUD, keep the hint clear of the joystick */
 @media (max-width: 600px) {
   #hud-tr { top: calc(var(--safe) + 4.6em); right: auto; left: var(--safe); flex-wrap: wrap; font-size: .9em; }
-  .zach-btn { padding: .45em .6em; }
-  .zach-btn[aria-pressed="false"] { text-decoration: line-through; }
-  .zach-btn .zach-state { display: none; } /* compact at phone widths: the icon greys out when he is hidden */
+  #hud-tr button { padding: .18em .6em; line-height: 1.2; } /* Tim, Nov 20: thinner top buttons on phones (Zach is now the wall switch) */
   .hint { bottom: calc(var(--safe) + 150px); white-space: normal; text-align: center; max-width: 88vw; }
   #banner { top: calc(var(--safe) + 7.6em); }
 }

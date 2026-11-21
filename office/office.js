@@ -685,6 +685,23 @@ function buildWorld() {
   const dimKnob = add(box(0.1, 0.06, 0.035), new THREE.MeshStandardMaterial({ color: 0x2f3744, roughness: 0.35, emissive: 0x37e0ff, emissiveIntensity: 0.12 }), 0, 0, 0.045, dimPlate);
   add(box(0.08, 0.008, 0.004), MAT.cyan, 0, 0, 0.064, dimKnob);
   dimPlate.traverse(o => { o.userData.dim = true; });
+  // Tim, Nov 20: Zach on/off as a light switch on the wall right beside the dimmer (L.ZACH_SWITCH); a tap toggles him
+  const ZS = L.ZACH_SWITCH, zachPlate = new THREE.Group(); zachPlate.position.set(1.55 + ZS.gap, 1.3, RD / 2 - 0.06); zachPlate.rotation.y = Math.PI; scene.add(zachPlate);
+  add(box(ZS.plateW, ZS.plateH, 0.025), new THREE.MeshStandardMaterial({ color: 0xe9edf2, roughness: 0.5 }), 0, 0, 0.0125, zachPlate);
+  add(box(0.06, 0.11, 0.012), new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.6 }), 0, 0, 0.026, zachPlate);
+  const zachRocker = add(box(0.05, 0.05, 0.03), new THREE.MeshStandardMaterial({ color: 0xf6f7f9, roughness: 0.4 }), 0, 0, 0.042, zachPlate);
+  const zachLedMat = new THREE.MeshStandardMaterial({ color: 0x59606b, emissive: 0x000000 });
+  add(box(0.018, 0.018, 0.006), zachLedMat, 0, -0.085, 0.028, zachPlate);
+  const zachLbl = canvasTex(128, 32), zachLblMesh = add(new THREE.PlaneGeometry(0.13, 0.0325), new THREE.MeshBasicMaterial({ map: zachLbl.t, transparent: true }), 0, 0.09, 0.027, zachPlate);
+  zachLblMesh.name = 'zach-switch-label';
+  function poseZachSwitch(on) {
+    const p = L.zachSwitchPose(on);
+    zachRocker.position.y = p.y; zachRocker.rotation.x = p.tilt;
+    zachLedMat.color.set(p.led); zachLedMat.emissive.set(p.led); zachLedMat.emissiveIntensity = p.ledGlow;
+    const x = zachLbl.ctx; x.clearRect(0, 0, 128, 32); x.fillStyle = '#2b3038'; x.font = "800 22px 'Inter PE', system-ui, sans-serif";
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(p.label, 64, 17); zachLbl.t.needsUpdate = true;
+  }
+  zachPlate.traverse(o => { o.userData.zachSwitch = true; });
   // Tim item 5: the window looks out on a small town whose sky, sun / moon and lit windows follow America/New_York time (L.skyState)
   const town = canvasTex(640, 360);
   add(box(0.12, 2.0, 3.2), MAT.trim, -RW / 2 + 0.05, 2.2, -2.2);
@@ -1063,7 +1080,7 @@ function buildWorld() {
   zach.mode = 'stand'; zach.modeT = 0; zach.until = 0; zach.facing = 0;
   zach.tag = document.createElement('div'); zach.tag.className = 'tag visitor'; zach.tag.textContent = L.ZACH.name; zach.tag.title = 'Visitor';
   zach.bub = document.createElement('div'); zach.bub.hidden = true; // labels code fades a tag and its bubble together; Zach never speaks
-  /* Show / hide switch (HUD 'Zach' button, remembered per browser). Hidden: not in the scene, no walking, slot, separation or tag,
+  /* Show / hide switch (wall light switch beside the dimmer, remembered per browser). Hidden: not in the scene, no walking, slot, separation or tag,
      and zach.glb is never fetched; switched on it loads then; switched off its mesh is removed and disposed. */
   const zachSw = L.createZachSwitch({
     store: (() => { try { return localStorage; } catch (e) { return null; } })(),
@@ -1071,19 +1088,14 @@ function buildWorld() {
     attach: m => attachZachMesh(zach, m),
     detach: m => detachZachMesh(zach, m),
     dispose: disposeZachMesh,
-    onChange: on => { zachPresence(on); zachButton(); }
+    onChange: on => { zachPresence(on); poseZachSwitch(on); }
   });
   function zachPresence(on) {
     if (on) { if (!zach.root.parent) scene.add(zach.root); zach.until = 0; }
     else { scene.remove(zach.root); book.release(L.ZACH.name); zach.task = null; zach.path = []; zach.mode = 'stand'; zach.tag.remove(); }
   }
-  function zachButton() {
-    const b = $('zach-btn'), on = zachSw.on; b.hidden = false;
-    b.setAttribute('aria-pressed', String(on)); b.title = on ? 'Hide Zach (saved in this browser)' : 'Show Zach (saved in this browser)';
-    $('zach-state').textContent = on ? 'on' : 'off';
-  }
-  $('zach-btn').onclick = () => { zachSw.toggle(); toast(zachSw.on ? 'Zach is back in the office.' : 'Zach is hidden. His model is unloaded and stays off in this browser.'); };
-  zachPresence(zachSw.on); zachButton();
+  function toggleZach() { zachSw.toggle(); toast(zachSw.on ? 'Zach is back in the office.' : 'Zach is hidden. His model is unloaded and stays off in this browser.'); }
+  zachPresence(zachSw.on); poseZachSwitch(zachSw.on);
   function zachNextTask() {
     book.release(L.ZACH.name);
     for (let tries = 0; tries < 6; tries++) {
@@ -1592,13 +1604,14 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, pipe.mesh]; if (releasePlate) a.push(releasePlate); desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, pipe.mesh]; if (releasePlate) a.push(releasePlate); a.push(zachPlate); desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
     const hit = hits[0];
     if (!hit || hit.distance > 45) return null;
     const o = hit.object;
+    if (o.userData.zachSwitch) return { zachSwitch: true };
     if (o.userData.board) {
       if (o.userData.board !== 'project') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
@@ -1612,6 +1625,7 @@ function buildWorld() {
   }
   function activate(p) {
     if (!p) return false;
+    if (p.zachSwitch) { toggleZach(); return true; }
     if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
     else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
@@ -1987,6 +2001,7 @@ function buildWorld() {
     botPoint(name) { const c = chars.get(name); if (!c) return null; camera.updateMatrixWorld(); const v = c.root.position.clone().setY(c.top * 0.55 + c.rig.position.y).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     dimLevel: () => ({ target: dimTarget, shown: dimCur }), setDim: v => setDim(v, true),
     dimKnobPoint() { camera.updateMatrixWorld(); const v = dimKnob.getWorldPosition(new THREE.Vector3()).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
+    zachSwitchPoint() { camera.updateMatrixWorld(); const v = zachRocker.getWorldPosition(new THREE.Vector3()).project(camera); return [(v.x * 0.5 + 0.5) * innerWidth, (-v.y * 0.5 + 0.5) * innerHeight]; },
     view(p, l) { tour = null; glideTo([p, l], 1); },
     /* readability capture (tests/office-readability.capture.cjs): each board's detail face and a texture -> screen projection.
        facePlanes counts PlaneGeometry meshes on the board group (the removed Far overlay was one); Detail uses a BoxGeometry screen. */
@@ -2032,6 +2047,7 @@ T.layout = () => (world ? world.layout() : null); // test hook: tools/office-col
 T.poll = () => poll(); // test hook: poll now (demo: next example step; the example meeting toggles each poll)
 T.screenPoint = (n, dx, dy) => (world ? world.screenPoint(n, dx, dy) : null);
 T.dimLevel = () => (world ? world.dimLevel() : null); T.setDim = v => world && world.setDim(v); T.dimKnobPoint = () => (world ? world.dimKnobPoint() : null); // tests / screenshots
+T.zachSwitchPoint = () => (world ? world.zachSwitchPoint() : null); // tests / screenshots: the Zach wall switch on screen
 T.view = (p, l) => world && world.view(p, l);
 T.boards = () => (world ? world.boardProbe() : null); T.los = () => (world ? world.losProbe() : null); // readability capture
 T.pickAt = (x, y) => (world ? world.pickAt(x, y) : null);

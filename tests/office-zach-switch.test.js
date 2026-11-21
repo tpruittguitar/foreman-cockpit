@@ -88,5 +88,31 @@ test('office wiring: zach.js loads nothing at import; office.js gates load, walk
   assert.match(oj, /if \(zachSw\.on\) updateZach\(dt\)/);
   assert.match(oj, /if \(zachSw\.on\) \{ \/\* Zach: a plain name tag/);
   assert.match(oj, /zachSw\.on \? \[\.\.\.chars\.values\(\), zach\]/);
-  assert.match(html, /<button id="zach-btn"[^>]*aria-pressed="true"/);
+  assert.ok(!/zach-btn|zach-state/.test(html), 'no Zach button in the HUD bar (Tim, Nov 20: it is a wall switch now)');
+});
+
+test('wall switch (Tim, Nov 20): light-switch pose, beside the dimmer, tap toggles the same switch', () => {
+  const on = L.zachSwitchPose(true), off = L.zachSwitchPose(false);
+  assert.ok(on.y > 0 && off.y < 0, 'rocker up = on, down = off');
+  assert.ok(on.tilt === -off.tilt && on.tilt !== 0, 'rocker tilts the other way when off');
+  assert.equal(on.label, 'ZACH ON'); assert.equal(off.label, 'ZACH OFF');
+  assert.ok(on.ledGlow > 0 && off.ledGlow === 0, 'LED lit only when on');
+  assert.ok(L.ZACH_SWITCH.gap > L.ZACH_SWITCH.plateW / 2 + 0.1 && L.ZACH_SWITCH.gap <= 0.4, 'next to the 0.2 m dimmer plate, not overlapping it');
+  const oj = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
+  assert.match(oj, /zachPlate\.position\.set\(1\.55 \+ ZS\.gap, 1\.3, RD \/ 2 - 0\.06\)/, 'same wall, height and depth as the dimmer (1.55, 1.3)');
+  assert.match(oj, /dimPlate\.position\.set\(1\.55, 1\.3, RD \/ 2 - 0\.06\)/);
+  assert.match(oj, /a\.push\(zachPlate\)/, 'switch is pickable (click, tap and VR ray)');
+  assert.match(oj, /if \(o\.userData\.zachSwitch\) return \{ zachSwitch: true \}/);
+  assert.match(oj, /if \(p\.zachSwitch\) \{ toggleZach\(\); return true; \}/);
+  assert.match(oj, /function toggleZach\(\) \{ zachSw\.toggle\(\)/, 'the wall switch drives the same createZachSwitch (localStorage, lazy load)');
+  assert.match(oj, /onChange: on => \{ zachPresence\(on\); poseZachSwitch\(on\); \}/);
+  assert.ok(!/zach-btn/.test(oj), 'office.js no longer looks for the HUD button');
+});
+
+test('phone HUD buttons are thinner (Tim, Nov 20)', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../office/office.css'), 'utf8');
+  const phone = css.slice(css.indexOf('@media (max-width: 600px)'));
+  const m = phone.match(/#hud-tr button \{ padding: ([\d.]+)em/);
+  assert.ok(m && +m[1] < 0.45, 'vertical padding below the default .45em');
+  assert.ok(!/zach-btn/.test(css));
 });
