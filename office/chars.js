@@ -281,12 +281,34 @@ const TILE_DEPTH = 0.13, TILE_BEVEL = 0.05;
 function tileBody(a) {
   const s = new THREE.Shape(); shapePoints(a).forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath();
   const g = new THREE.ExtrudeGeometry(s, { depth: TILE_DEPTH, curveSegments: 4, bevelEnabled: true, bevelThickness: TILE_BEVEL, bevelSize: TILE_BEVEL * 0.8, bevelSegments: 4 });
-  g.center(); g.scale(0.9, 0.9, 0.9); g.computeVertexNormals(); g.computeBoundingBox(); return g;
+  g.center(); g.scale(0.9, 0.9, 0.9); g.computeVertexNormals(); g.computeBoundingBox();
+  /* Tim (Nov 21): plain white read too bright and flat. Bake soft shading into vertex colours: an off-white base, lighter toward the
+     top, darker toward the bottom and on the rounded sides, so the tile reads as a solid object. */
+  const base = new THREE.Color(a.color), hi = new THREE.Color(0xffffff), lo = new THREE.Color(0x8d8f94), c = new THREE.Color(), P = g.attributes.position, N = g.attributes.normal;
+  const bx = g.boundingBox, hx = (bx.max.x - bx.min.x) / 2, col = new Float32Array(P.count * 3);
+  for (let i = 0; i < P.count; i++) {
+    const d = P.getY(i) / hx, side = 1 - Math.abs(N.getZ(i)); // d: -1 bottom .. +1 top
+    c.copy(base); if (d > 0) c.lerp(hi, 0.3 * d); else c.lerp(lo, 0.45 * -d);
+    c.lerp(lo, 0.42 * side * side);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
+}
+/* A faint satin grain (one shared 128 px noise texture) so the light breaks up instead of sliding off the tile as one uniform sheen. */
+function grainTex() {
+  return mat('tileGrain', () => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), im = x.createImageData(128, 128);
+    for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (Math.random() - 0.5) * 70; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
+    x.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); return t; });
+}
+function tileMat(a, hiQ) {
+  const g = grainTex();
+  return hiQ ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55, roughnessMap: g, bumpMap: g, bumpScale: 0.35, clearcoat: 0.25, clearcoatRoughness: 0.45 })
+    : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.6, bumpMap: g, bumpScale: 0.35 });
 }
 const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href };
 function iconArt(key, size) {
   const m = mat('iconArt:' + key, () => { const t = new THREE.TextureLoader().load(ICON_ART[key]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-    return new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.3, polygonOffset: true, polygonOffsetFactor: -2 }); });
+    return new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.45, polygonOffset: true, polygonOffsetFactor: -2 }); });
   return new THREE.Mesh(geo('iconPlane:' + size.toFixed(3), () => new THREE.PlaneGeometry(size, size)), m); // single-sided: seen from the front only
 }
 
@@ -297,8 +319,7 @@ export function makeBot(name, hiQuality, botId, override) {
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
   const bodyG = geo(key, () => a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = a.icon ? (hiQuality ? new THREE.MeshPhysicalMaterial({ color: a.color, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.06 })
-    : new THREE.MeshStandardMaterial({ color: a.color, roughness: 0.22 })) : clayMat(hiQuality), limbM = jelly(a.color, hiQuality);
+  const bodyM = a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon ? new THREE.MeshStandardMaterial({ color: a.color, roughness: 0.6, bumpMap: grainTex(), bumpScale: 0.35 }) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;

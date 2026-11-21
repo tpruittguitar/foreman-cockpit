@@ -257,7 +257,7 @@ test('Hermes avatar (Tim, Nov 21): a white icon tile with the girl artwork on th
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const id = '15ab4cfb-2d51-4809-9ae3-f1285ebd829f', a = A.avatarFor('Hermes', id);
   assert.equal(A.BOT_IDS.Hermes, id);
-  assert.deepEqual([a.shape, a.color, a.icon], ['icontile', '#f4f4f2', 'hermes']);
+  assert.deepEqual([a.shape, a.color, a.icon], ['icontile', '#cdcbc6', 'hermes']);
   assert.ok(!a.generic && !a.prop && !a.face, 'no props and no slot eyes: the artwork is the face');
   for (const [k, o] of Object.entries(A.AVATARS)) if (k !== id) assert.notEqual(o.color.toLowerCase(), a.color, 'colour not used by another bot');
   // a rounded square about the size of the other bots, so it stays short and stands in its chair like them
@@ -419,7 +419,7 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['starburst', '#a8733f'],
     ChatGPT: ['wedge', '#f79a1d'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['cloud', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
     Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'],
-    Hermes: ['icontile', '#f4f4f2'] };
+    Hermes: ['icontile', '#cdcbc6'] };
   for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
   assert.equal(Object.keys(A.AVATARS).length, 15, '14 sidebar bots + Hermes');
   assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');

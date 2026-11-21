@@ -104,7 +104,7 @@ export const AVATARS = {
   /* Hermes (Tim, Nov 21): a glossy white 3D icon tile in place of the teal hexagon bot. The front shows the black-and-white girl with
      headphones from Tim's icon picture (office/assets/hermes-icon.png, line art only, the tile itself is the white); the back is plain white.
      No slot eyes: the artwork is the face. */
-  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'icontile', rot: 0, color: '#f4f4f2', icon: 'hermes' }
+  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'icontile', rot: 0, color: '#cdcbc6', icon: 'hermes' }
 };
 /* bot_id -> short tag, used only when the full name does not fit the label. */
 export const SHORT_TAGS = { 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive' };
