@@ -33,7 +33,14 @@ const near=(a,b,t,msg)=>assert(Math.abs(a-b)<=t,msg+': '+a+' vs '+b);
     await page.route('**/geocoding-api.open-meteo.com/**',r=>r.fulfill({json:{results:[]}}));
     await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');return r.fulfill({json:a==='master'?{ok:true,id:'m',text:fixture,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}:a==='writer_status'?{ok:true,level:'ok',warnings:[],queue:{processing:[]}}:{ok:true}})});
     if(master)await page.route('**/writer*',r=>{const a=new URL(r.request().url()).searchParams.get('action');return a==='master'?r.fulfill({json:{ok:true,id:'m',text:master,fetchedAt:new Date().toISOString(),modifiedTime:'2026-10-02T03:00:00Z'}}):r.fallback()});
-    await page.goto(base+'/pipeline.html?src=writer&open=jobs');await page.waitForSelector('#grid tbody tr[data-id]');await page.waitForTimeout(1200);
+    await page.goto(base+'/pipeline.html?src=writer&open=jobs');
+    if(touch){
+      // The native phone shell intentionally hides the populated desktop grid.
+      await page.locator('html.m-shell:not(.m-legacy) #m-tab-jobs').click();
+      await page.locator('#m-pane-jobs [data-m-jf="all"]').click();
+      await page.waitForSelector('#m-jobs-list [data-m-open]',{state:'visible'});
+    }else await page.waitForSelector('#grid tbody tr[data-id]');
+    await page.waitForTimeout(1200);
     return {ctx,page,errors};
   }
   const tableFit=page=>page.evaluate(()=>{const w=document.getElementById('gridwrap'),cols={};document.querySelectorAll('#grid thead th[data-c]').forEach(t=>cols[t.dataset.c]=Math.round(t.getBoundingClientRect().width));return {client:w.clientWidth,scroll:w.scrollWidth,cols}});
