@@ -23,7 +23,12 @@
         return {start:tb.left+hw/2,total:totalX,min:Math.max(.2,minX),max:Math.min(.85,maxX)};}
       var box=view.getBoundingClientRect(),style=getComputedStyle(view);
       var top=tb.top,total=box.bottom-parseFloat(style.paddingBottom)-top-10;
-      var min=.25,max=.8;if(total>=390){min=Math.max(min,160/total);max=Math.min(max,230/total>1?min:1-230/total);}
+      var min=.25,max=.8;
+      if(total>=390){
+        min=Math.max(min,160/total);
+        // Keep the 230 px map reserve when it fits, but never let it squeeze out the 55/45 reset.
+        max=Math.min(max,Math.max(DEFAULTS.y,1-230/total));
+      }
       if(max<min){min=.25;max=.8;}return {start:top,total:Math.max(1,total),min:min,max:max};}
     function apply(){frame=0;setAxis(wantAxis());if(!active())return;var g=geometry(),ratio=Math.max(g.min,Math.min(g.max,preferred));
       view.style.setProperty('--list-track',ratio+'fr');view.style.setProperty('--map-track',(1-ratio)+'fr');
