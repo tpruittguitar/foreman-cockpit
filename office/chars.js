@@ -294,17 +294,26 @@ function tileBody(a) {
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
 }
-/* A faint satin grain (one shared 128 px noise texture) so the light breaks up instead of sliding off the tile as one uniform sheen. */
+/* Matte plastic grain (Tim, Nov 21: "stronger grain"): one shared 256 px texture of fine speckle over soft mottling, used as a light
+   colour map (multiplies the shading by about 0.82..1) and as the bump and roughness map, so the tile reads as textured plastic from
+   normal viewing distance and the light breaks up instead of sliding off as one uniform sheen. */
 function grainTex() {
-  return mat('tileGrain', () => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d'), im = x.createImageData(128, 128);
-    for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (Math.random() - 0.5) * 70; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; }
-    x.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(5, 5); return t; });
+  return mat('tileGrain', () => { const N = 256, cv = document.createElement('canvas'); cv.width = cv.height = N; const x = cv.getContext('2d'), im = x.createImageData(N, N);
+    const C = 24, coarse = Array.from({ length: C * C }, () => Math.random()), at = (i, j) => coarse[((j + C) % C) * C + (i + C) % C];
+    const soft = (u, v) => { const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, su = fu * fu * (3 - 2 * fu), sv = fv * fv * (3 - 2 * fv);
+      return (at(i, j) * (1 - su) + at(i + 1, j) * su) * (1 - sv) + (at(i, j + 1) * (1 - su) + at(i + 1, j + 1) * su) * sv; };
+    for (let y = 0; y < N; y++) for (let xx = 0; xx < N; xx++) {
+      const v = 255 - 14 * soft(xx / N * C, y / N * C) - 24 * Math.random(), k = (y * N + xx) * 4;
+      im.data[k] = im.data[k + 1] = im.data[k + 2] = v; im.data[k + 3] = 255;
+    }
+    x.putImageData(im, 0, 0); const t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 2); t.colorSpace = THREE.SRGBColorSpace; return t; });
 }
 function tileMat(a, hiQ) {
   const g = grainTex();
-  return hiQ ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.55, roughnessMap: g, bumpMap: g, bumpScale: 0.35, clearcoat: 0.25, clearcoatRoughness: 0.45 })
-    : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.6, bumpMap: g, bumpScale: 0.35 });
+  return hiQ ? new THREE.MeshPhysicalMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.7, roughnessMap: g, bumpMap: g, bumpScale: 1.2, clearcoat: 0.12, clearcoatRoughness: 0.6 })
+    : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.72, bumpMap: g, bumpScale: 1.2 });
 }
+
 const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href };
 function iconArt(key, size) {
   const m = mat('iconArt:' + key, () => { const t = new THREE.TextureLoader().load(ICON_ART[key]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
@@ -319,7 +328,7 @@ export function makeBot(name, hiQuality, botId, override) {
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
   const bodyG = geo(key, () => a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon ? new THREE.MeshStandardMaterial({ color: a.color, roughness: 0.6, bumpMap: grainTex(), bumpScale: 0.35 }) : jelly(a.color, hiQuality);
+  const bodyM = a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 1.2 }) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
