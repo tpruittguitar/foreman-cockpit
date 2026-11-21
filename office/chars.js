@@ -323,13 +323,18 @@ function iconArt(key, size) {
   return new THREE.Mesh(geo('iconPlane:' + size.toFixed(3), () => new THREE.PlaneGeometry(size, size)), m); // single-sided: seen from the front only
 }
 
-/* Icon sphere (ChatGPT, Tim Nov 21): a complete glossy black ball, one sphere mesh. The logo is a thin spherical cap just above the
+/* Icon sphere (ChatGPT, Tim Nov 21): a complete glossy black ball, one sphere mesh in a satin finish. The logo is a thin spherical cap just above the
    front of the ball with a flat front projection of office/assets/chatgpt-logo.png, so it follows the curve; the back stays plain black. */
 const SPHERE_R = 0.36, LOGO_SPAN = 0.7 * 2 * SPHERE_R; // the PNG spans 70% of the ball's width, as in Tim's picture
+// Tim (Nov 21): the glossy ball was too shiny, so the ball and its limbs use a soft satin finish (rough, light clearcoat).
+function satinMat(color, hi) {
+  return hi ? new THREE.MeshPhysicalMaterial({ color, roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.55 })
+    : new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0 });
+}
 function sphereBody(hi) { const g = new THREE.SphereGeometry(SPHERE_R, hi ? 48 : 32, hi ? 32 : 20); g.computeBoundingBox(); return g; }
 function sphereLogo(key) {
   const m = mat('sphereLogo:' + key, () => { const t = new THREE.TextureLoader().load(ICON_ART[key]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-    return new THREE.MeshPhysicalMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.1, polygonOffset: true, polygonOffsetFactor: -2 }); });
+    return new THREE.MeshPhysicalMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 }); });
   const g = geo('sphereLogoCap', () => { const A = 0.82, c = new THREE.SphereGeometry(SPHERE_R * 1.004, 40, 40, Math.PI / 2 - A, 2 * A, Math.PI / 2 - A, 2 * A);
     const P = c.attributes.position, U = c.attributes.uv; for (let i = 0; i < P.count; i++) U.setXY(i, P.getX(i) / LOGO_SPAN + 0.5, P.getY(i) / LOGO_SPAN + 0.5);
     U.needsUpdate = true; return c; });
@@ -344,7 +349,7 @@ export function makeBot(name, hiQuality, botId, override) {
   const ball = a.shape === 'sphere';
   const bodyG = geo(key + (ball ? ':' + hiQuality : ''), () => ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = ball ? jelly(a.color, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : jelly(a.color, hiQuality);
+  const bodyM = ball ? satinMat(a.color, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : ball ? satinMat(a.color, hiQuality) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
