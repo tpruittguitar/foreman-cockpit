@@ -1508,6 +1508,11 @@
       if (r.resets_expire !== undefined) row.resets_expire = r.resets_expire;
       if (r.extra_usd !== undefined) row.extra_usd = r.extra_usd;
       if (r.openaiCredit !== undefined) row.openaiCredit = r.openaiCredit;
+      if (!creditUsable(row.openaiCredit)) {
+        /* Tim, Nov 20: a newer reading without the API credit keeps the last one, shown with its date. */
+        const carried = lastCredit(readings || [], p.id, now);
+        if (carried) { row.openaiCredit = carried.credit; row.openaiCreditAsOf = carried.asOf; }
+      }
       if (p.id === 'CLAUDE') {
         const f = latestFiveHour(readings || [], 'CLAUDE') || fiveHourFromReading(r);
         if (f) row.fiveHour = f;
@@ -1536,6 +1541,30 @@
     if (!m) return '';
     return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m[2] - 1] + ' ' + String(+m[3]);
   }
+  /* An openaiCredit object with a grant and a left figure the board can show. */
+  function creditUsable(c) {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) return false;
+    const verified = c.verified_left_usd != null && c.verified_left_usd !== '';
+    return isFinite(+c.grant_usd) && c.grant_usd !== null && c.grant_usd !== '' && isFinite(verified ? +c.verified_left_usd : +c.est_left_usd) && (verified || (c.est_left_usd != null && c.est_left_usd !== ''));
+  }
+  /* Newest usable credit for a provider, skipped once its expiry day has ended (ET). asOf is the credit's own at, else its reading's at (ms). */
+  function lastCredit(readings, provider, now) {
+    let best = null;
+    for (const r of readings) {
+      if (str(r.provider).toUpperCase() !== provider || !creditUsable(r.openaiCredit)) continue;
+      const t = time(r.at);
+      if (t == null || (best && t <= best.t)) continue;
+      best = { t, credit: r.openaiCredit };
+    }
+    if (!best) return null;
+    const exp = String(best.credit.expires || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (exp && now != null) {
+      const endEt = Date.UTC(+exp[1], +exp[2] - 1, +exp[3] + 1) + etOffsetMin(Date.UTC(+exp[1], +exp[2] - 1, +exp[3], 12)) * MIN;
+      if (now >= endEt) return null;
+    }
+    const own = time(best.credit.at);
+    return { credit: best.credit, asOf: own != null ? own : best.t };
+  }
   function creditLine(u) {
     const c = u && u.openaiCredit;
     if (!c) return '';
@@ -1546,6 +1575,11 @@
     const approx = verified ? '' : '~';
     const grantStr = (grant % 1) ? grant.toFixed(2) : String(Math.round(grant));
     const exp = monthDay(c.expires);
+    /* A credit carried from an older reading leads with its date (ET), so the wall's 600 px line keeps the date if it has to cut. */
+    if (u.openaiCreditAsOf != null) {
+      const day = monthDay(new Date(u.openaiCreditAsOf - etOffsetMin(u.openaiCreditAsOf) * MIN).toISOString());
+      return 'API credit as of ' + day + ': ' + approx + '$' + left.toFixed(2) + ' of $' + grantStr + ' left' + (exp ? ' · exp ' + exp : '');
+    }
     return 'API credit: ' + approx + '$' + left.toFixed(2) + ' of $' + grantStr + ' left' + (exp ? ' · expires ' + exp : '');
   }
   function resetsLine(u) {
