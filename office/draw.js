@@ -623,7 +623,8 @@ export function drawPipelineWall(ctx, W, H, o) {
 
 /* ---------- Agent chat wall (front wall, where the swirl poster hung over Gauge; Tim Nov 21) ----------
    Typed straight into the board (no popup): an input line, To chips, attach / paste / drop files, newest message first.
-   o = { locked, code, msgs:[{day,time,from,to,text,files}], err, note, queued, demo, to, draft, focused, caret, files:[{name}] }.
+   o = { locked, code, msgs:[{day,time,from,to,text,files}], err, note, queued, demo, to, draft, focused, caret, files:[{name}], scroll }.
+   scroll is shared across repaints: {offset,height,view,max}, measured at a 1024px board width.
    Locked: no chat text at all, only the code line. Returns hit boxes normalised 0..1: [{x,y,w,h,act,to?,i?}]. */
 const AGENT_COL = { Claude: '#d97757', Hermes: '#e9eef5', Dot: '#3ddc84', Grok: '#9aa7ff', Tim: '#37e0ff', System: '#8b9099' };
 const clock12 = t => { const [h, m] = String(t || '').split(':').map(Number); return Number.isFinite(h) ? ((h % 12) || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM') : ''; };
@@ -631,10 +632,16 @@ function wrapLines(ctx, text, maxW) {
   const out = [];
   for (const para of String(text || '').split('\n')) {
     let line = '';
-    for (const w of para.split(/\s+/)) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width <= maxW || !line) line = t; else { out.push(line); line = w; } }
-    if (line) out.push(line);
+    for (const w of para.split(/\s+/)) {
+      const t = line ? line + ' ' + w : w;
+      if (ctx.measureText(t).width <= maxW) { line = t; continue; }
+      if (line) out.push(line);
+      line = '';
+      for (const c of w) { if (line && ctx.measureText(line + c).width > maxW) { out.push(line); line = ''; } line += c; }
+    }
+    out.push(line);
   }
-  return out.map(l => fit(ctx, l, maxW));
+  return out;
 }
 export function drawAgentChat(ctx, W, H, o) {
   const s = W / 1024, hits = [], hit = (x, y, w, h, act, extra) => hits.push(Object.assign({ x: x / W, y: y / H, w: w / W, h: h / H, act }, extra || {}));
@@ -697,27 +704,53 @@ export function drawAgentChat(ctx, W, H, o) {
     y += 46 * s;
   }
   ctx.fillStyle = '#20262e'; ctx.fillRect(16 * s, y, W - 32 * s, 2 * s); y += 10 * s;
-  // messages, newest first
-  const msgs = o.msgs || [], x0 = 24 * s, tw = W - 48 * s, fs = 23 * s, lh = 30 * s, bottom = H - 40 * s;
-  if (!msgs.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${24 * s}px ${SANS}`; ctx.fillText(o.err || 'No messages yet', x0, y + 34 * s); }
+  // Full messages, newest first, inside a clipped scrolling viewport. Offsets use 1024-wide board units.
+  const msgs = o.msgs || [], x0 = 24 * s, tw = W - 72 * s, fs = 23 * s, lh = 30 * s, bottom = H - 48 * s, top = y;
+  const rows = [];
+  ctx.font = `500 ${fs}px ${SANS}`;
   for (let i = msgs.length - 1; i >= 0; i--) {
-    const m = msgs[i]; ctx.font = `500 ${fs}px ${SANS}`;
-    const body = wrapLines(ctx, m.text, tw).slice(0, 4).concat((m.files || []).map(f => '📎 ' + f));
-    const room = Math.floor((bottom - y - lh) / lh); if (room < 1) break;
-    const show = body.slice(0, room), yy = y + lh;
+    const m = msgs[i], body = wrapLines(ctx, m.text, tw).concat((m.files || []).map(f => '📎 ' + f));
+    const height = lh * (body.length + 1) + 8 * s + (m.draftUrl ? lh + 8 * s : 0);
+    rows.push({ m, body, y, height }); y += height;
+  }
+  const scroll = o.scroll || {}, height = (y - top) / s, view = Math.max(1, (bottom - top) / s);
+  // Keep the same text in view when a new reply is prepended while reading older messages.
+  if (scroll.offset > 0 && scroll.height != null) scroll.offset += height - scroll.height;
+  scroll.height = height; scroll.view = view; scroll.max = Math.max(0, height - view);
+  scroll.offset = Math.max(0, Math.min(scroll.max, scroll.offset || 0));
+  ctx.save(); ctx.beginPath(); ctx.rect(16 * s, top, W - 32 * s, bottom - top); ctx.clip();
+  if (!msgs.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${24 * s}px ${SANS}`; ctx.fillText(o.err || 'No messages yet', x0, y + 34 * s); }
+  for (const row of rows) {
+    const { m, body } = row, ry = row.y - scroll.offset * s, yy = ry + lh;
+    if (ry + row.height <= top || ry >= bottom) continue;
     ctx.font = `800 ${fs}px ${SANS}`; ctx.fillStyle = AGENT_COL[m.from] || '#c9ccd2';
     const head = L.agentName(m.from) + ' → ' + L.agentName(m.to), hw = ctx.measureText(head).width; ctx.fillText(head, x0, yy);
     ctx.fillStyle = '#7d838c'; ctx.font = `600 ${18 * s}px ${SANS}`; ctx.fillText(clock12(m.time), x0 + hw + 12 * s, yy);
     ctx.font = `500 ${fs}px ${SANS}`;
-    show.forEach((l, k) => { ctx.fillStyle = l.startsWith('📎 ') && k >= body.length - (m.files || []).length ? '#9fd6e8' : '#e3e5e9'; ctx.fillText(fit(ctx, l, tw), x0, yy + lh * (k + 1)); });
-    y += lh * (show.length + 1) + 8 * s;
-    if (m.draftUrl && y + lh < bottom) {
-      ctx.fillStyle = '#37e0ff'; ctx.fillText('Open draft PR ↗', x0, y + lh);
-      hit(x0, y, 240 * s, lh, 'draft', { url: m.draftUrl }); y += lh + 8 * s;
+    body.forEach((l, k) => { ctx.fillStyle = l.startsWith('📎 ') && k >= body.length - (m.files || []).length ? '#9fd6e8' : '#e3e5e9'; ctx.fillText(l, x0, yy + lh * (k + 1)); });
+    if (m.draftUrl) {
+      const dy = ry + lh * (body.length + 1) + 8 * s;
+      ctx.fillStyle = '#37e0ff'; ctx.fillText('Open draft PR ↗', x0, dy + lh);
+      const hy = Math.max(top, dy), hb = Math.min(bottom, dy + lh);
+      if (hb > hy) hit(x0, hy, 240 * s, hb - hy, 'draft', { url: m.draftUrl });
     }
+  }
+  ctx.restore();
+  hit(16 * s, top, W - 32 * s, bottom - top, 'history'); // after links, so visible draft links win
+  if (scroll.max > 0) {
+    const track = bottom - top, thumb = Math.max(24 * s, track * view / height);
+    ctx.fillStyle = '#20262e'; ctx.fillRect(W - 32 * s, top, 8 * s, track);
+    ctx.fillStyle = '#6c737c'; ctx.fillRect(W - 32 * s, top + (track - thumb) * scroll.offset / scroll.max, 8 * s, thumb);
+    const controls = [['Newer', -1, scroll.offset > 0], ['Older', 1, scroll.offset < scroll.max], ['Latest', 0, scroll.offset > 0]];
+    controls.forEach(([label, dir, enabled], i) => {
+      const bx = W - (336 - i * 108) * s, by = H - 40 * s;
+      ctx.fillStyle = enabled ? '#263b48' : '#1b222b'; rr(ctx, bx, by, 100 * s, 34 * s, 6 * s); ctx.fill();
+      ctx.fillStyle = enabled ? '#e3e5e9' : '#6c737c'; ctx.font = `700 ${20 * s}px ${SANS}`; ctx.fillText(label, bx + 12 * s, by + 24 * s);
+      hit(bx, by, 100 * s, 34 * s, 'scroll', { dir });
+    });
   }
   ctx.fillStyle = o.err && msgs.length ? '#ff8a7a' : '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`;
   const foot = o.note || (o.err && msgs.length ? o.err : '') || (o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY' : 'Chat · /code requests coding · Not connected');
-  ctx.fillText(fit(ctx, foot, W - 260 * s), x0, H - 12 * s);
+  ctx.fillText(fit(ctx, foot, W - (scroll.max > 0 ? 384 : 260) * s), x0, H - 12 * s);
   return hits;
 }
