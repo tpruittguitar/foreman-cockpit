@@ -2,7 +2,7 @@
 // All network stays on this ephemeral loopback fixture. No owner data or agent calls.
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const {chromium}=require(process.env.PIPELINE_PLAYWRIGHT_MODULE||'playwright');
-const {setup}=require('./fixtures/office-image-service.cjs');
+const setup=process.env.OFFICE_RELAY_BROWSER==='1'?require('./fixtures/office-relay-service.cjs').browserFixture:require('./fixtures/office-image-service.cjs').setup;
 (async()=>{
  const root=path.resolve(__dirname,'..');let fixture,base;const chatPosts=[];
  const server=http.createServer(async(req,res)=>{
@@ -34,7 +34,7 @@ const {setup}=require('./fixtures/office-image-service.cjs');
   await click('to','Dot');await page.waitForTimeout(900);await click('input');
   await page.setInputFiles('#ac-file',{name:'marked.png',mimeType:'image/png',buffer:png});
   await page.fill('#ac-input','/code Explain the highlighted button in this dummy screenshot.');await click('send');
-  await page.waitForFunction(()=>document.querySelector('#ac-input').value==='');await fixture.adapter.queue;
+  await page.waitForFunction(()=>document.querySelector('#ac-input').value==='');await fixture.workerRun;await fixture.adapter.queue;
   assert.equal(fixture.rpc.inputs.length,1);const input=fixture.rpc.inputs[0];assert.equal(input[0].text,'Explain the highlighted button in this dummy screenshot.');assert.equal(input[1].type,'image');assert.deepEqual(Buffer.from(input[1].url.split(',')[1],'base64'),png);assert.equal(chatPosts.length,0);
   await page.waitForFunction(()=>fixtureText.some(t=>t.includes('Inspected the synthetic screenshot.')),null,{timeout:20000});
   // Expired owner scope must preserve both prompt and image, without chat fallback.
