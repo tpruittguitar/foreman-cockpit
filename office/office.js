@@ -2,7 +2,7 @@
    polled every 2 min straight from the browser (status files read from the raw URL directly; ⟳ Refresh re-fetches now) (all three repos are public; no proxy, no token, no new secret).
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
-import { codingText, createCodingClient, CODING_SIGN_IN } from './coding-client.mjs';
+import { codingText, createCodingClient, CODING_SIGN_IN, CODING_STORE, keepCodingJobs, restoreCodingJobs, etClock } from './coding-client.mjs';
 import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from './chars.js';
 import { makeZach, poseZach, loadZachMesh, disposeZachMesh, attachZachMesh, detachZachMesh } from './zach.js';
 import { makeWeldRobot } from './weld-robot.js';
@@ -430,8 +430,10 @@ const AC = { token: '', exp: 0, msgs: [], err: '', note: '', queued: 0, to: 'ALL
 const codingClient = createCodingClient((...args) => fetch(...args));
 const codingJobs = new Map();
 let codingGeneration = 0;
+function codingSave() { try { localStorage.setItem(CODING_STORE, JSON.stringify(keepCodingJobs(codingJobs.values()))); } catch (e) { /* kept for this page only */ } }
 let onAgentChat = null; // repaints the wall screen + lock button (set in the scene)
 try { const j = JSON.parse(localStorage.getItem(AGENT_STORE) || 'null'); if (j && j.exp > Date.now()) { AC.token = j.token; AC.exp = j.exp; } } catch (e) { /* none */ }
+try { if (AC.token) for (const j of restoreCodingJobs(localStorage.getItem(CODING_STORE))) codingJobs.set(j.requestId, j); } catch (e) { /* none */ }
 const agentUnlocked = () => !!AC.token && AC.exp > Date.now();
 const acRepaint = () => { if (onAgentChat) onAgentChat(); };
 function agentScroll(delta) {
@@ -452,7 +454,7 @@ function agentLock(why) {
   codingGeneration++; codingClient.clear(); codingJobs.clear(); AC.codingSignIn = false;
   AC.token = ''; AC.exp = 0; AC.msgs = []; AC.queued = 0; AC.err = why || ''; AC.note = ''; AC.draft = ''; AC.files = [];
   AC.scroll = { offset: 0 };
-  try { localStorage.removeItem(AGENT_STORE); } catch (e) { /* ignore */ }
+  try { localStorage.removeItem(AGENT_STORE); localStorage.removeItem(CODING_STORE); } catch (e) { /* ignore */ }
   acSyncInput(); acRepaint();
 }
 async function agentApi(body) {
@@ -484,7 +486,7 @@ async function agentUnlock() {
   acSyncInput(); acRepaint();
 }
 function codingMessage(job) {
-  return { from: job.provider, to: 'Tim', time: '', text: 'Coding: ' + (job.message || job.status) + (job.approach ? '\nApproach: ' + job.approach.summary : '') + (job.outcome ? '\nResult: ' + job.outcome.summary : '') + '\n' + job.text,
+  return { from: job.provider, to: 'Tim', time: etClock(job.at || Date.now()), text: 'Coding: ' + (job.message || job.status) + (job.approach ? '\nApproach: ' + job.approach.summary : '') + (job.outcome ? '\nResult: ' + job.outcome.summary : '') + '\n' + job.text,
     draftUrl: job.status === 'completed' ? job.draftUrl : null };
 }
 async function codingRefresh() {
@@ -494,9 +496,13 @@ async function codingRefresh() {
     if (!['submitting', 'queued', 'running', 'awaiting_approval'].includes(job.status)) continue;
     const update = await codingClient.status(job);
     if (generation !== codingGeneration || !agentUnlocked()) return;
-    if (update) { codingJobs.set(id, { ...job, ...update }); if (update.signIn !== undefined && job.provider === AC.to) AC.codingSignIn = update.signIn; }
+    if (update) {
+      const next = { ...job, ...update, at: job.at }; codingJobs.set(id, next);
+      if (update.signIn !== undefined && job.provider === AC.to) AC.codingSignIn = update.signIn;
+      if (AC.note.startsWith('Coding: ') && next.status) AC.note = 'Coding: ' + next.status; // footer follows the newest request
+    }
   }
-  acRepaint();
+  codingSave(); acRepaint();
 }
 setInterval(codingRefresh, 2000);
 async function agentSend() {
@@ -505,11 +511,12 @@ async function agentSend() {
   if (code !== null) {
     if (!agentUnlocked() || DEMO) return;
     const generation = codingGeneration;
-    AC.sending = true; AC.note = 'Checking coding session…'; acRepaint();
+    AC.sending = true; AC.note = AC.files.length ? 'Sending your coding request and screenshot…' : 'Sending your coding request…'; acRepaint();
     const job = await codingClient.send(AC.to, code, AC.files.map(({name,type,data})=>({name,type,data}))); AC.sending = false;
-    if (generation !== codingGeneration || !agentUnlocked() || !job) return;
+    if (generation !== codingGeneration || !agentUnlocked()) return;
+    if (!job) { AC.note = '⚠ Not sent; your draft is kept. Press Send again.'; acRepaint(); return; }
     AC.note = job.message || ('Coding: ' + job.status); AC.codingSignIn = !!job.signIn;
-    if (job.requestId) codingJobs.set(job.requestId, job);
+    if (job.requestId) { codingJobs.set(job.requestId, { ...job, at: Date.now() }); codingSave(); }
     if (['queued', 'running', 'completed', 'finished'].includes(job.status)) { AC.draft = ''; AC.files = []; acSyncInput(); }
     acRepaint(); return;
   }
@@ -933,7 +940,7 @@ function buildWorld() {
     const t = agentchat.tex, open = agentUnlocked();
     agentchat.hits = drawAgentChat(t.ctx, t.c.width, t.c.height, DEMO
       ? { demo: true, to: 'ALL', msgs: L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> ALL: Example line', '[2026-11-21 19:40:30 ET] Claude -> Tim: Example reply']), scroll: AC.scroll }
-      : open ? { msgs: AC.msgs.concat([...codingJobs.values()].filter(j => j.provider === AC.to).map(codingMessage)), err: AC.err, note: AC.note, signIn: AC.codingSignIn, queued: AC.queued, to: AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret, scroll: AC.scroll }
+      : open ? { msgs: AC.msgs.concat([...codingJobs.values()].filter(j => AC.to === 'ALL' || j.provider === AC.to).map(codingMessage)), err: AC.err, note: AC.note, signIn: AC.codingSignIn, queued: AC.queued, to: AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret, scroll: AC.scroll }
         : { locked: true, code: AC.code, err: AC.err, note: AC.note, focused: AC.focused, caret: AC.caret });
     t.t.needsUpdate = true;
     const g = agentLockBtn.lt.ctx; g.clearRect(0, 0, 128, 160); g.fillStyle = '#0d1014'; g.fillRect(0, 0, 128, 160);
