@@ -454,9 +454,34 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['qaDrop', '#ff309b'], HR: ['sphere', '#ff263c'], Cursor: ['blob', '#22b8a2'], Claude: ['sphere', '#d46b4e'],
     ChatGPT: ['sphere', '#18181b'], Root: ['rootSquare', '#777777'], Usage: ['usageCone', '#777777'], Edgar: ['edgarCloud', '#1084fe'], Comp: ['usageCone', '#00c972'],
-    Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['guiClover', '#ff263c'], Archive: ['archiveHex', '#ff309b'],
+    Gauge: ['gaugePill', '#ff309b'], Sniffer: ['snifferPill', '#1084fe'], GUI: ['guiClover', '#ff263c'], Archive: ['archiveHex', '#ff309b'],
     Hermes: ['sphere', '#cdcbc6'] };
   for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
   assert.equal(Object.keys(A.AVATARS).length, 15, '14 sidebar bots + Hermes');
   assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');
+});
+
+test('Sniffer and Gauge retain independent reference proportions and flat vertical owner-icon eyes', async () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
+  const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
+  for (const [name, expectedRatio] of [['Sniffer', 1.493], ['Gauge', 211 / 141]]) {
+    const a = A.avatarFor(name), outline = A.shapePoints(a);
+    const span = axis => Math.max(...outline.map(p => p[axis])) - Math.min(...outline.map(p => p[axis]));
+    assert.ok(Math.abs(span(0) / span(1) - expectedRatio) < 0.025, name);
+    if (name === 'Sniffer') {
+      outline.forEach(([x, y], i) => {
+        const acrossY = outline[(outline.length / 2 - i + outline.length) % outline.length];
+        const acrossX = outline[(outline.length - i) % outline.length];
+        assert.ok(Math.hypot(x + acrossY[0], y - acrossY[1]) < 1e-10);
+        assert.ok(Math.hypot(x - acrossX[0], y + acrossX[1]) < 1e-10);
+      });
+    }
+    const eyes = [];
+    const ctx = new Proxy({ roundRect(...args) { eyes.push(args); } }, { get(o, k) { return o[k] || (() => {}); } });
+    A.drawAvatar(ctx, name, 0, 0, 1);
+    assert.equal(eyes.length, 2);
+    assert.equal(eyes[0][1], eyes[1][1], name + ' eyes share a horizontal row');
+    assert.ok(eyes.every(([, , w, h, r]) => h > w && r === w / 2), name + ' tall stadium eyes');
+  }
+  assert.equal(A.avatarFor('Gauge').prop, 'gauge');
 });
