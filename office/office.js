@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from './chars.js';
 import { makeZach, poseZach, loadZachMesh, disposeZachMesh, attachZachMesh, detachZachMesh } from './zach.js';
-import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched, drawAgentChat } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -418,6 +418,82 @@ function chatBoxHTML(b) {
     <div class="chatrow"><button type="button" class="linkbtn" id="chat-send">Send</button>
     ${href ? `<a class="open" id="chat-open" href="${esc(href)}" data-chat="${esc(id)}">Open chat</a>` : '<span class="fallback">no bot id known</span>'}</div></section>`;
 }
+/* ---------- agent chat wall (functions/api/agent-chat.js): the TIMMAY chat with Claude Duet, Hermes, ChatGPT Dot, President ----------
+   Locked until Tim enters his unlock code (checked by the server, never here); the unlock token is kept in this browser for 12 h
+   or until the lock button is pressed. While locked the page never asks for or shows any chat text. */
+const AGENT_URL = '/api/agent-chat', AGENT_STORE = 'office.agentChatToken';
+const AC = { token: '', exp: 0, msgs: [], err: '', queued: 0, to: 'ALL', at: 0, busy: false };
+let onAgentChat = null; // repaints the wall screen + lock button (set in the scene)
+try { const j = JSON.parse(localStorage.getItem(AGENT_STORE) || 'null'); if (j && j.exp > Date.now()) { AC.token = j.token; AC.exp = j.exp; } } catch (e) { /* none */ }
+const agentUnlocked = () => !!AC.token && AC.exp > Date.now();
+function agentLock(why) {
+  AC.token = ''; AC.exp = 0; AC.msgs = []; AC.queued = 0; AC.err = why || '';
+  try { localStorage.removeItem(AGENT_STORE); } catch (e) { /* ignore */ }
+  if (onAgentChat) onAgentChat();
+}
+async function agentApi(body) {
+  const r = await fetch(AGENT_URL, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Agent-Chat-Token': AC.token }, body: body ? JSON.stringify(body) : undefined }).catch(() => null);
+  const j = r ? await r.json().catch(() => null) : null;
+  return { status: r ? r.status : 0, j: j || {} };
+}
+async function agentRefresh() {
+  if (DEMO || !agentUnlocked() || AC.busy) return;
+  AC.busy = true; const r = await agentApi(); AC.busy = false;
+  if (r.status === 401) return agentLock('Locked again (the unlock ran out)');
+  if (r.status === 200 && r.j.ok) { AC.msgs = L.parseAgentChat(r.j.lines); AC.queued = r.j.queued || 0; AC.err = ''; AC.at = Date.now(); }
+  else AC.err = r.j.error || 'chat unavailable';
+  if (onAgentChat) onAgentChat();
+  const el = $('ac-thread'); if (el) { const end = el.scrollTop + el.clientHeight >= el.scrollHeight - 30; el.innerHTML = agentThreadHTML(); if (end) el.scrollTop = el.scrollHeight; }
+}
+setInterval(() => { if (!document.hidden && agentUnlocked() && !panelOpen) agentRefresh(); }, 60000); // wall stays current while unlocked
+function agentThreadHTML() {
+  if (!AC.msgs.length) return '<p class="fallback">' + esc(AC.err || 'No messages yet') + '</p>';
+  return AC.msgs.slice(-40).map(m => `<div class="msg ${m.from === 'Tim' ? 'me' : 'bot'}"><b>${esc(L.agentName(m.from))} → ${esc(L.agentName(m.to))}</b> <span class="meta">${esc(m.time)} ET</span><div class="ac-text">${esc(m.text).replace(/\n/g, '<br>')}</div></div>`).join('')
+    + (AC.queued ? `<p class="fallback">${AC.queued} message${AC.queued > 1 ? 's' : ''} waiting for TIMMAY to pick up</p>` : '');
+}
+function openAgentUnlock(then) {
+  showPanel(`<h2 id="panel-title">🔒 Agent chat is locked</h2><p>Enter your unlock code.</p>
+    <form id="ac-unlock"><input id="ac-code" type="password" inputmode="numeric" autocomplete="off" maxlength="40" aria-label="Unlock code" style="font-size:20px;width:10em;padding:6px">
+    <button type="submit" class="linkbtn">Unlock</button></form><p id="ac-msg" class="fallback">${esc(AC.err)}</p>`);
+  $('ac-code').focus();
+  $('ac-unlock').onsubmit = async e => {
+    e.preventDefault(); const code = $('ac-code').value.trim(); if (!code) return;
+    $('ac-msg').textContent = 'Checking…';
+    const r = await agentApi({ unlock: code }); $('ac-code').value = '';
+    if (r.status === 200 && r.j.token) {
+      AC.token = r.j.token; AC.exp = r.j.exp; AC.err = '';
+      try { localStorage.setItem(AGENT_STORE, JSON.stringify({ token: AC.token, exp: AC.exp })); } catch (e2) { /* kept for this page only */ }
+      if (onAgentChat) onAgentChat(); return then ? then() : openAgentChat();
+    }
+    $('ac-msg').textContent = r.status === 503 ? 'The unlock code is not set up yet.' : (r.j.error || 'Could not reach the chat');
+  };
+}
+function openAgentChat() {
+  if (DEMO) return toast('Example data: the agent chat is off');
+  if (!agentUnlocked()) return openAgentUnlock();
+  const opts = L.AGENT_TO.map(k => `<button type="button" class="linkbtn ac-to${AC.to === k ? ' on' : ''}" data-acto="${k}" aria-pressed="${AC.to === k}">${esc(L.agentName(k))}</button>`).join(' ');
+  showPanel(`<h2 id="panel-title">Agent chat <button type="button" class="linkbtn" id="ac-lock" title="Lock the chat">🔒 Lock</button></h2>
+    <section class="chatbox agentchat"><div id="ac-thread" class="thread">${agentThreadHTML()}</div>
+    <div class="chatrow ac-tos">To: ${opts}</div>
+    <textarea id="ac-text" maxlength="2000" rows="3" placeholder="Message ${esc(L.agentName(AC.to))}… (Ctrl+Enter sends)"></textarea>
+    <div class="chatrow"><button type="button" class="linkbtn" id="ac-send">Send</button><span id="ac-sent" class="fallback"></span></div></section>`);
+  $('panel').classList.add('wide');
+  const th = $('ac-thread'); th.scrollTop = th.scrollHeight;
+  $('ac-lock').onclick = () => { agentLock(); closePanel(); toast('Agent chat locked'); };
+  $('panel').querySelectorAll('[data-acto]').forEach(b => { b.onclick = () => { AC.to = b.dataset.acto; $('panel').querySelectorAll('[data-acto]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); $('ac-text').placeholder = 'Message ' + L.agentName(AC.to) + '… (Ctrl+Enter sends)'; $('ac-text').focus(); }; });
+  const send = async () => {
+    const ta = $('ac-text'), text = ta.value.trim(), note = $('ac-sent'); if (!text) return ta.focus();
+    note.textContent = 'Sending…';
+    const r = await agentApi({ to: AC.to, text });
+    if (r.status === 401) { agentLock('Locked again (the unlock ran out)'); return openAgentUnlock(); }
+    if (r.status === 200 && r.j.ok) { ta.value = ''; note.textContent = '✓ Sent to ' + L.agentName(AC.to) + '; replies show here'; return agentRefresh(); }
+    note.textContent = '⚠ Not sent: ' + (r.j.error || 'chat unavailable');
+  };
+  $('ac-send').onclick = send;
+  $('ac-text').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } };
+  $('ac-text').focus({ preventScroll: true });
+  agentRefresh(); chatPoll = setInterval(agentRefresh, 15000);
+}
 function openBot(name) {
   const b = botByName(name);
   if (!b) return showPanel(`<h2 id="panel-title">${esc(name)}</h2><p>No data for this bot${S.state === 'failed' ? ' (office data unavailable)' : ''}.</p>`);
@@ -759,7 +835,7 @@ function buildWorld() {
       const fr = new THREE.Group(); fr.position.set(cx, 2.2, cz); fr.rotation.y = rot; scene.add(fr);
       add(box(1.3, 1.6, 0.05), MAT.metal, 0, 0, 0, fr); add(new THREE.PlaneGeometry(1.2, 1.5), screenMat(a.t), 0, 0, 0.03, fr);
     };
-    art(RW / 2 - 0.05, -4.2, -Math.PI / 2, 3); art(-RW / 2 + 0.05, -5.6, Math.PI / 2, 5); art(-5, RD / 2 - 0.05, Math.PI, 7);
+    art(RW / 2 - 0.05, -4.2, -Math.PI / 2, 3); art(-5, RD / 2 - 0.05, Math.PI, 7); // the left-wall swirl (-5.6) is now the agent chat screen (Tim Nov 21)
     // wall shelf with props (right wall)
     const sh = new THREE.Group(); sh.position.set(RW / 2 - 0.18, 0, -2.6); scene.add(sh);
     for (const y of [1.4, 1.9]) { add(box(0.3, 0.03, 1.6), MAT.metal, 0, y, 0, sh); add(box(0.02, 0.012, 1.6), MAT.cyan, -0.15, y - 0.02, 0, sh); }
@@ -791,7 +867,23 @@ function buildWorld() {
   const whiteboard = makeBoard('whiteboard', 4.4, 2.6, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 378 : 605); // big conference whiteboard where Automations hung
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
   const writer = makeBoard('writer', 2.6, 1.7, -RW / 2 + 0.05, 2.3, -8.3, Math.PI / 2, LOW ? 512 : 768, LOW ? 335 : 502); // Tim Nov 17: empty left wall beside the Constraint wall
-  const boards = { project, usage, autos, whiteboard, writer, constraint };
+  const agentchat = makeBoard('agentchat', 2.3, 2.1, -RW / 2 + 0.05, 2.25, -5.2, Math.PI / 2, LOW ? 640 : 1024, LOW ? 584 : 935); // Tim Nov 21: agent chat where the swirl poster hung
+  const agentLockBtn = (() => { // lock button beside the screen (toward the Writer board): closed red lock / open green lock
+    const lt = canvasTex(128, 160), g = new THREE.Group(); g.position.set(-RW / 2 + 0.05, 2.25, -6.68); g.rotation.y = Math.PI / 2; scene.add(g);
+    add(box(0.3, 0.38, 0.05), MAT.trim, 0, 0, 0, g);
+    const face = add(new THREE.PlaneGeometry(0.26, 0.33), screenMat(lt.t), 0, 0, 0.03, g); face.userData.board = 'agentlock';
+    return { face, lt };
+  })();
+  onAgentChat = () => {
+    const t = agentchat.tex, open = agentUnlocked();
+    drawAgentChat(t.ctx, t.c.width, t.c.height, { locked: !open && !DEMO, msgs: DEMO ? L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> ALL: Example line', '[2026-11-21 19:40:30 ET] Claude -> Tim: Example reply']) : AC.msgs, err: AC.err, queued: AC.queued, demo: DEMO }); t.t.needsUpdate = true;
+    const g = agentLockBtn.lt.ctx; g.clearRect(0, 0, 128, 160); g.fillStyle = '#0d1014'; g.fillRect(0, 0, 128, 160);
+    const c = open ? '#3ddc84' : '#ff6b5a'; g.strokeStyle = c; g.lineWidth = 10; g.beginPath(); g.arc(open ? 78 : 64, 62, 24, Math.PI, 0); g.stroke();
+    g.fillStyle = c; g.fillRect(30, 62, 68, 52); g.fillStyle = '#0d1014'; g.fillRect(60, 78, 8, 20);
+    g.fillStyle = '#e3e5e9'; g.font = "800 22px 'Inter PE', system-ui, sans-serif"; g.textAlign = 'center'; g.fillText(open ? 'LOCK' : 'UNLOCK', 64, 146); agentLockBtn.lt.t.needsUpdate = true;
+  };
+  onAgentChat(); if (agentUnlocked()) agentRefresh();
+  const boards = { project, usage, autos, whiteboard, writer, constraint, agentchat };
   const WALL_BOARDS = [project, usage, constraint, autos, writer]; // readability probe / LOS targets (whiteboard keeps its own layout)
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
@@ -1604,7 +1696,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, pipe.mesh]; if (releasePlate) a.push(releasePlate); a.push(zachPlate); desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, agentchat.screen, agentLockBtn.face, pipe.mesh]; if (releasePlate) a.push(releasePlate); a.push(zachPlate); desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1632,6 +1724,8 @@ function buildWorld() {
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === L.RELEASE_PLATE_BOARD) openBuildPopup();
+    else if (p.board === 'agentchat') openAgentChat();
+    else if (p.board === 'agentlock') { if (agentUnlocked()) { agentLock(); if (panelOpen) closePanel(); toast('Agent chat locked'); } else openAgentUnlock(); }
     else if (p.board === 'pipeline') { if (pipe.live) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
   }

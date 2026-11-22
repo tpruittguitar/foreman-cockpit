@@ -620,3 +620,52 @@ export function drawPipelineWall(ctx, W, H, o) {
   ctx.fillStyle = '#37e0ff'; ctx.font = `700 ${H * 0.085}px ${SANS}`; ctx.fillText(o && o.live ? 'Click to browse it live' : 'Click to open the live page', W / 2, H * 0.75);
   ctx.textAlign = 'left';
 }
+
+/* ---------- Agent chat wall (left wall, where the swirl poster hung; Tim Nov 21) ----------
+   o = { locked, msgs:[{day,time,from,to,text}], err, queued, demo }. Locked: no chat text at all, only the lock state. */
+const AGENT_COL = { Claude: '#d97757', Hermes: '#e9eef5', Dot: '#3ddc84', Grok: '#9aa7ff', Tim: '#37e0ff', System: '#8b9099' };
+const clock12 = t => { const [h, m] = String(t || '').split(':').map(Number); return Number.isFinite(h) ? ((h % 12) || 12) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM') : ''; };
+function wrapLines(ctx, text, maxW) {
+  const out = [];
+  for (const para of String(text || '').split('\n')) {
+    let line = '';
+    for (const w of para.split(/\s+/)) { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width <= maxW || !line) line = t; else { out.push(line); line = w; } }
+    if (line) out.push(line);
+  }
+  return out.map(l => fit(ctx, l, maxW));
+}
+export function drawAgentChat(ctx, W, H, o) {
+  const s = W / 1024; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#0d1014'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${38 * s}px ${SANS}`; ctx.fillText('AGENT CHAT', 28 * s, 54 * s);
+  ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`;
+  ctx.fillText(fit(ctx, 'Claude Duet · Hermes (Local) · ChatGPT Dot · Grokbot President', W - 300 * s), 270 * s, 50 * s);
+  ctx.fillStyle = '#20262e'; ctx.fillRect(20 * s, 72 * s, W - 40 * s, 2 * s);
+  if (o.demo) exampleTag(ctx, W - 190 * s, H - 18 * s, 18 * s);
+  if (o.locked) {
+    const cx = W / 2, cy = H * 0.47; ctx.strokeStyle = '#9aa0a8'; ctx.lineWidth = 14 * s;
+    ctx.beginPath(); ctx.arc(cx, cy - 40 * s, 52 * s, Math.PI, 0); ctx.stroke(); // shackle
+    ctx.fillStyle = '#9aa0a8'; rr(ctx, cx - 84 * s, cy - 40 * s, 168 * s, 130 * s, 16 * s); ctx.fill();
+    ctx.fillStyle = '#0d1014'; ctx.beginPath(); ctx.arc(cx, cy + 14 * s, 16 * s, 0, 7); ctx.fill(); ctx.fillRect(cx - 6 * s, cy + 14 * s, 12 * s, 40 * s);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#e3e5e9'; ctx.font = `800 ${40 * s}px ${SANS}`; ctx.fillText('Locked', cx, cy + 150 * s);
+    ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'Tap the screen or the lock to enter the code', cx, cy + 196 * s);
+    ctx.textAlign = 'left'; return;
+  }
+  const msgs = o.msgs || [], x0 = 28 * s, tw = W - 56 * s, fs = 24 * s, lh = 31 * s, top = 92 * s, bottom = H - 44 * s;
+  if (!msgs.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'No messages yet', x0, top + 40 * s); }
+  // newest at the bottom: lay out from the last message upward until the screen is full
+  let y = bottom;
+  for (let i = msgs.length - 1; i >= 0 && y > top + lh; i--) {
+    const m = msgs[i]; ctx.font = `500 ${fs}px ${SANS}`;
+    const body = wrapLines(ctx, m.text, tw).slice(0, 6), blockH = lh * (body.length + 1) + 10 * s;
+    let yy = y - blockH + lh; if (yy < top + lh) break;
+    ctx.font = `800 ${fs}px ${SANS}`; ctx.fillStyle = AGENT_COL[m.from] || '#c9ccd2';
+    const head = L.agentName(m.from) + ' → ' + L.agentName(m.to), hw = ctx.measureText(head).width; ctx.fillText(head, x0, yy);
+    ctx.fillStyle = '#7d838c'; ctx.font = `600 ${20 * s}px ${SANS}`; ctx.fillText(clock12(m.time), x0 + hw + 14 * s, yy);
+    ctx.fillStyle = '#e3e5e9'; ctx.font = `500 ${fs}px ${SANS}`;
+    body.forEach((l, k) => ctx.fillText(l, x0, yy + lh * (k + 1)));
+    y -= blockH;
+  }
+  ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${22 * s}px ${SANS}`;
+  ctx.fillText(o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY · tap to chat' : 'Tap to chat · lock button on the right', x0, H - 14 * s);
+}
