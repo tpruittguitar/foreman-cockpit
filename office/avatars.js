@@ -117,7 +117,7 @@ export function guiCloverRadius(t) {
   return GUI_CLOVER[i] + (GUI_CLOVER[(i + 1) % GUI_CLOVER.length] - GUI_CLOVER[i]) * (f - i);
 }
 // The approved pill proportions, with equal circular end caps and level top/bottom.
-export const PILL_SIZE = { snifferPill: { w: 0.894, h: 0.600, d: 0.447 }, gaugePill: { w: 0.891, h: 0.595, d: 0.446 } };
+export const PILL_SIZE = { snifferPill: { w: 0.894, h: 0.600 }, gaugePill: { w: 0.891, h: 0.595 } };
 function horizontalPill({ w, h }) {
   const r = h / 2, run = (w - h) / 2, points = [];
   for (const side of [1, -1]) for (let i = 0; i <= 48; i++) {

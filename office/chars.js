@@ -437,11 +437,10 @@ function usageConeBody(hi) {
   return g;
 }
 
-/* A straight horizontal barrel with genuinely round end caps, not a puffed radial outline. */
-function pillBody({ w, h, d }, hi) {
+/* A horizontal capsule with a circular cross-section: height and depth share the same radius. */
+function pillBody({ w, h }, hi) {
   const g = new THREE.CapsuleGeometry(h / 2, w - h, hi ? 16 : 8, hi ? 48 : 32);
   g.rotateZ(Math.PI / 2);
-  g.scale(1, 1, d / h);
   g.computeBoundingBox();
   return g;
 }
