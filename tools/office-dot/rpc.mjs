@@ -42,14 +42,14 @@ export class CodexRPC extends EventEmitter {
     else this.child.kill();
   }
 }
-export function launchCodex(command = 'codex') {
+export function launchCodex(command = 'codex', workspace = process.cwd()) {
   // Executable is selected locally by the owner, never by a browser request.
   const windows = process.platform === 'win32';
   const binary = windows ? 'cmd.exe' : command;
   const prefix = windows ? ['/d', '/c', command] : [];
-  const version = execFileSync(binary, [...prefix, '--version'], { encoding: 'utf8', windowsHide: true });
+  const version = execFileSync(binary, [...prefix, '--version'], { cwd: workspace, encoding: 'utf8', windowsHide: true });
   if (!version.trim().endsWith(' ' + CODEX_VERSION)) throw Error('This adapter requires installed Codex ' + CODEX_VERSION);
   const safeEnvironment = new Set(['PATH','HOME','USERPROFILE','APPDATA','LOCALAPPDATA','TEMP','TMP','SYSTEMROOT','COMSPEC','PATHEXT','WINDIR','SYSTEMDRIVE','HOMEDRIVE','HOMEPATH','USERNAME','USER','LOGNAME','LANG','LC_ALL','TERM']);
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => safeEnvironment.has(k.toUpperCase())));
-  return new CodexRPC(spawn(binary, [...prefix, 'app-server', '--stdio'], { env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }));
+  return new CodexRPC(spawn(binary, [...prefix, 'app-server', '--stdio'], { cwd: workspace, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }));
 }

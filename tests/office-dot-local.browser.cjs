@@ -18,7 +18,8 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
   assert.equal(await page.evaluate(()=>__office.webgl),true);
   await page.evaluate(()=>{const z=__office.layout().RD/2;__office.view([-4,2.1,z-3.15],[-4,2.25,z-.05]);});
   await page.waitForTimeout(600);
-  const dot=await page.evaluate(()=>{for(let y=80;y<650;y+=12)for(let x=100;x<1300;x+=12){const p=__office.pickAt(x,y);if(p?.board==='agentchat'&&p.ac?.to==='Dot')return [x,y];}return null;});
+  const dotHandle=await page.waitForFunction(()=>{for(let y=80;y<650;y+=12)for(let x=100;x<1300;x+=12){const p=__office.pickAt(x,y);if(p?.board==='agentchat'&&p.ac?.to==='Dot')return [x,y];}return null;},null,{timeout:15000});
+  const dot=await dotHandle.jsonValue();
   assert.ok(dot,'Dot recipient chip located on the actual 3D wall');await page.mouse.click(...dot);
   const send=async text=>{await page.evaluate(t=>{const e=document.querySelector('#ac-input');e.value=t;e.dispatchEvent(new Event('input'));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));},text);};
   await send('/code first edit');await page.waitForFunction(()=>document.querySelector('#ac-input').value==='');await f.adapter.queue;

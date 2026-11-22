@@ -53,7 +53,7 @@ export class DotAdapter {
     const account=await this.rpc.includedAccount(); if(account.userId!==this.identity.userId || account.accountId!==this.identity.accountId)throw Error('Native account changed');
     const saved=this.store.read('session',this.scope.sessionId);
     const options={modelProvider:'openai',cwd:this.workspace,sandbox:'workspace-write',approvalPolicy:'on-request',approvalsReviewer:'user',config:{
-      'sandbox_workspace_write.network_access':false,'sandbox_workspace_write.exclude_slash_tmp':true,
+      'allow_login_shell':false,'sandbox_workspace_write.network_access':false,'sandbox_workspace_write.exclude_slash_tmp':true,
       'sandbox_workspace_write.exclude_tmpdir_env_var':true,'web_search':'disabled','features.apps':false,'mcp_servers':{}
     }};
     const native=await this.rpc.request(saved?'thread/resume':'thread/start',saved?{...options,threadId:saved.threadId}:{...options,ephemeral:false,developerInstructions:'Work only in this dedicated coding workspace. Do not read credentials or private chat logs. Do not push, publish, merge, deploy, change permissions or use external services. The owner-controlled local bridge handles draft PR publication.'});

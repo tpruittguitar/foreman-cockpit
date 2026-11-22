@@ -15,6 +15,7 @@ module.exports={fixture};
 if(require.main===module || process.env.NODE_TEST_CONTEXT){
  test('local page -> owner session -> 0.169 adapter -> resumed turn -> draft PR; private durable deduplication',async()=>{
   const f=await fixture();try{
+   const threadCalls=[];const request=f.rpc.request.bind(f.rpc);f.rpc.request=(method,params)=>{if(['thread/start','thread/resume'].includes(method)){assert.equal(params.config.allow_login_shell,false);threadCalls.push(method);}return request(method,params);};
    assert.equal((await fetch(f.origin+'/api/agent-coding')).status,401);
    const launched=await fetch(f.launchUrl,{redirect:'manual'});const cookie=launched.headers.get('set-cookie').split(';')[0];assert.equal(launched.status,303);
    assert.equal((await fetch(f.launchUrl,{redirect:'manual'})).status,403);
@@ -26,7 +27,7 @@ if(require.main===module || process.env.NODE_TEST_CONTEXT){
    assert.equal((await send(first,'first edit with approval')).status,200);await f.adapter.queue;assert.equal(fs.readFileSync(path.join(f.workspace,'proof.txt'),'utf8'),'turn-1\n');assert.equal(f.approvals.length,1);
    assert.equal((await send('request_fixture_0002','resume and append')).status,202);await f.adapter.queue;assert.equal(fs.readFileSync(path.join(f.workspace,'proof.txt'),'utf8'),'turn-1\nturn-2\n');
    const q=new URLSearchParams({provider:'Dot',conversationId:f.scope.conversationId,requestId:'request_fixture_0002'});assert.equal((await (await fetch(f.origin+'/api/agent-coding?'+q,{headers})).json()).status,'awaiting_review');
-   await send('request_fixture_0003','/pr');await f.adapter.queue;q.set('requestId','request_fixture_0003');const j=await(await fetch(f.origin+'/api/agent-coding?'+q,{headers})).json();assert.equal(j.status,'completed');assert.equal(j.draftUrl,'https://github.com/example/project/pull/123');assert.equal(f.publications.length,1);
+   await send('request_fixture_0003','/pr');await f.adapter.queue;q.set('requestId','request_fixture_0003');const j=await(await fetch(f.origin+'/api/agent-coding?'+q,{headers})).json();assert.equal(j.status,'completed');assert.equal(j.draftUrl,'https://github.com/example/project/pull/123');assert.equal(f.publications.length,1);assert.deepEqual(threadCalls,['thread/start','thread/resume']);
    assert.equal((await send('request_fixture_0004','attack',{provider:'ALL'})).status,400);
    assert.equal((await send('request_fixture_0004','attack',{repository:'evil/repo'})).status,400);
    assert.equal((await fetch(f.origin+'/api/agent-coding',{headers:{...headers,Origin:'https://evil.example'}})).status,403);
@@ -71,5 +72,24 @@ if(require.main===module || process.env.NODE_TEST_CONTEXT){
   existing=false;calls.length=0;const pr=await publish();assert.equal(pr.draft,true);assert.ok(calls.find(c=>c[0]==='gh'&&c[2]==='create').includes('--draft'));
   assert.ok(calls.some(c=>c[0]==='git'&&c.includes('HEAD:refs/heads/'+branch)));assert.ok(calls.every(c=>!c.includes('merge')&&!c.includes('--force')));
   fs.rmSync(tmp,{recursive:true,force:true});
+ });
+}
+if(require.main===module || process.env.NODE_TEST_CONTEXT){
+ test('native launcher starts inside the bound workspace before initialize', {skip:process.platform==='win32'},async()=>{
+  const {launchCodex}=await import('../tools/office-dot/rpc.mjs');
+  const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'office-launch-cwd-')), workspace=path.join(tmp,'work');fs.mkdirSync(workspace);
+  const command=path.join(tmp,'codex-fixture');
+  fs.writeFileSync(command,'#!/bin/sh\nif [ "$1" = "--version" ]; then echo "codex-cli 0.169.0"; exit 0; fi\nprintf "%s" "$PWD" > launch-cwd.txt\ncat >/dev/null\n',{mode:0o700});
+  const rpc=launchCodex(command,workspace);
+  try {for(let n=0;n<40&&!fs.existsSync(path.join(workspace,'launch-cwd.txt'));n++)await new Promise(r=>setTimeout(r,10));assert.equal(fs.readFileSync(path.join(workspace,'launch-cwd.txt'),'utf8'),workspace);}finally{rpc.close();fs.rmSync(tmp,{recursive:true,force:true});}
+ });
+}
+if(require.main===module || process.env.NODE_TEST_CONTEXT){
+ test('Windows workspace guard rejects profile/temp paths before native startup without rejecting sibling names',async()=>{
+  const {assertWorkspaceLocation}=await import('../tools/office-dot/workspace.mjs');
+  const options={platform:'win32',userProfile:'C:\\Users\\Owner',tempRoot:'D:\\Temp'};
+  for(const workspace of ['c:\\users\\owner\\AppData\\Local\\Temp\\work','C:\\Users\\Owner','D:\\Temp\\work'])assert.throws(()=>assertWorkspaceLocation(workspace,options),/outside the user profile/);
+  for(const workspace of ['C:\\projects\\dedicated','C:\\Users\\Owner-other\\work','D:\\Temporary\\work'])assert.doesNotThrow(()=>assertWorkspaceLocation(workspace,options));
+  assert.doesNotThrow(()=>assertWorkspaceLocation('/tmp/work',{platform:'linux'}));
  });
 }

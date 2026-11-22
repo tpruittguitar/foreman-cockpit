@@ -46,3 +46,11 @@ npm run check:cloudflare
 ```
 
 To make the **hosted** Office address execute work would still require a separately reviewed authenticated transport/deployment. This change does not create that exposure. The useful executable path now is the same Office page served locally by the dedicated CLI bridge.
+
+## Windows shell workspace regression
+
+Use a dedicated Windows worktree outside the user profile and temporary directory, for example under `C:\projects`. The launcher rejects the unsuitable locations before starting Codex. It also starts the native process in the worktree and sets `allow_login_shell=false` for thread creation and resume. No shell profile, ACL, or sandbox permission is changed.
+
+An isolated actual Office-page test on the installed 0.169.0 runtime reproduced a mismatch: the protocol reported the requested temporary-directory cwd, but the native PowerShell process reported `C:\`. This persisted with `-NoProfile`. Absolute-path reads and apply-patch edits could succeed there, so they alone were insufficient proof. The earlier apply-patch-only proof had missed shell startup entirely.
+
+A separate dedicated checkout outside the user profile reported its correct actual shell location. Through the real Office page, Dot recipient selection, local HTTP route and native adapter, it completed a shell read and synthetic edit, then resumed the same thread for a second shell read and edit. Native terminal statuses and exact file bytes were independently verified. The browser used an isolated temporary profile. No native approval, paid fallback, external publication, or original owner-request replay was used. The precise cause inside the Windows runtime remains unconfirmed; relocation is the demonstrated working route, not a claim that disabling profiles fixes the temp-directory cwd mismatch.
