@@ -91,3 +91,10 @@ test('parseAgentChat turns "[attached: path]" into file names on the message', (
   const [m] = L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> Claude: look // [attached: D:\\Hermes\\claude-chat\\attachments\\x\\shot.png]']);
   assert.equal(m.text, 'look'); assert.deepEqual(m.files, ['shot.png']);
 });
+test('explicit coding requests cannot fall through the ordinary mailbox relay', async () => {
+  const now = Date.parse('2026-11-22T02:00:00Z'), tok = (await (await unlock(ENV, '246810', now)).json()).token, f=mockFetch({});
+  for (const body of [{to:'Dot',text:'/code change it'},{to:'ALL',text:'/code change it'},{to:'Dot',text:'change it',intent:'owner_coding_request'}]) {
+    assert.equal((await mod.handle(req('POST',{token:tok,body}),ENV,f,now)).status,409);
+  }
+  assert.equal(f.calls.length,0);
+});

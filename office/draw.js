@@ -711,9 +711,13 @@ export function drawAgentChat(ctx, W, H, o) {
     ctx.font = `500 ${fs}px ${SANS}`;
     show.forEach((l, k) => { ctx.fillStyle = l.startsWith('📎 ') && k >= body.length - (m.files || []).length ? '#9fd6e8' : '#e3e5e9'; ctx.fillText(fit(ctx, l, tw), x0, yy + lh * (k + 1)); });
     y += lh * (show.length + 1) + 8 * s;
+    if (m.draftUrl && y + lh < bottom) {
+      ctx.fillStyle = '#37e0ff'; ctx.fillText('Open draft PR ↗', x0, y + lh);
+      hit(x0, y, 240 * s, lh, 'draft', { url: m.draftUrl }); y += lh + 8 * s;
+    }
   }
   ctx.fillStyle = o.err && msgs.length ? '#ff8a7a' : '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`;
-  const foot = o.note || (o.err && msgs.length ? o.err : '') || (o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY' : 'Enter sends · Shift+Enter new line · lock on the left');
+  const foot = o.note || (o.err && msgs.length ? o.err : '') || (o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY' : 'Chat · /code requests coding · Not connected');
   ctx.fillText(fit(ctx, foot, W - 260 * s), x0, H - 12 * s);
   return hits;
 }

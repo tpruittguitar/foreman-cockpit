@@ -2,6 +2,7 @@
    polled every 2 min straight from the browser (status files read from the raw URL directly; ⟳ Refresh re-fetches now) (all three repos are public; no proxy, no token, no new secret).
    ?demo=1 example data · ?tv=1 10-foot UI · ?view=3d|flat. Three.js r170 is vendored in office/vendor/three. */
 import * as THREE from 'three';
+import { codingText, createCodingClient } from './coding-client.mjs';
 import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from './chars.js';
 import { makeZach, poseZach, loadZachMesh, disposeZachMesh, attachZachMesh, detachZachMesh } from './zach.js';
 import { makeWeldRobot } from './weld-robot.js';
@@ -426,6 +427,9 @@ function chatBoxHTML(b) {
    PC takes typing and paste; the board redraws what is typed. Files: the 📎 button, paste, or drop on the board. */
 const AGENT_URL = '/api/agent-chat', AGENT_STORE = 'office.agentChatToken', AC_MAX_FILES = 4, AC_MAX_FILE = 8 * 1024 * 1024;
 const AC = { token: '', exp: 0, msgs: [], err: '', note: '', queued: 0, to: 'ALL', at: 0, busy: false, sending: false, draft: '', code: '', files: [], focused: false, caret: true };
+const codingClient = createCodingClient((...args) => fetch(...args));
+const codingJobs = new Map();
+let codingGeneration = 0;
 let onAgentChat = null; // repaints the wall screen + lock button (set in the scene)
 try { const j = JSON.parse(localStorage.getItem(AGENT_STORE) || 'null'); if (j && j.exp > Date.now()) { AC.token = j.token; AC.exp = j.exp; } } catch (e) { /* none */ }
 const agentUnlocked = () => !!AC.token && AC.exp > Date.now();
@@ -440,6 +444,7 @@ function acSyncInput() { // one field: the unlock code while locked, the message
   acInput.setAttribute('enterkeyhint', locked ? 'go' : 'send'); acInput.setAttribute('aria-label', locked ? 'Agent chat unlock code' : 'Agent chat message');
 }
 function agentLock(why) {
+  codingGeneration++; codingClient.clear(); codingJobs.clear();
   AC.token = ''; AC.exp = 0; AC.msgs = []; AC.queued = 0; AC.err = why || ''; AC.note = ''; AC.draft = ''; AC.files = [];
   try { localStorage.removeItem(AGENT_STORE); } catch (e) { /* ignore */ }
   acSyncInput(); acRepaint();
@@ -451,7 +456,9 @@ async function agentApi(body) {
 }
 async function agentRefresh() {
   if (DEMO || !agentUnlocked() || AC.busy) return;
+  const token = AC.token;
   AC.busy = true; const r = await agentApi(); AC.busy = false;
+  if (token !== AC.token || !agentUnlocked()) return;
   if (r.status === 401) return agentLock('Locked again (the unlock ran out)');
   if (r.status === 200 && r.j.ok) { AC.msgs = L.parseAgentChat(r.j.lines); AC.queued = r.j.queued || 0; AC.err = ''; AC.at = Date.now(); }
   else AC.err = r.j.error || 'chat unavailable';
@@ -470,8 +477,37 @@ async function agentUnlock() {
   AC.err = r.status === 503 ? 'The unlock code is not set up yet' : (r.j.error || 'Could not reach the chat');
   acSyncInput(); acRepaint();
 }
+function codingMessage(job) {
+  return { from: job.provider, to: 'Tim', time: '', text: 'Coding: ' + (job.message || job.status) + '\n' + job.text,
+    draftUrl: job.status === 'completed' ? job.draftUrl : null };
+}
+async function codingRefresh() {
+  if (!agentUnlocked() || DEMO || document.hidden) return;
+  const generation = codingGeneration;
+  for (const [id, job] of codingJobs) {
+    if (!['submitting', 'queued', 'running'].includes(job.status)) continue;
+    const update = await codingClient.status(job);
+    if (generation !== codingGeneration || !agentUnlocked()) return;
+    if (update) codingJobs.set(id, { ...job, ...update });
+  }
+  acRepaint();
+}
+setInterval(codingRefresh, 15000);
 async function agentSend() {
   const text = AC.draft.trim(); if ((!text && !AC.files.length) || AC.sending) return;
+  const code = codingText(text);
+  if (code !== null) {
+    if (!agentUnlocked() || DEMO) return;
+    if (AC.files.length) { AC.note = 'Coding attachments are not connected; remove files first'; acRepaint(); return; }
+    const generation = codingGeneration;
+    AC.sending = true; AC.note = 'Checking coding session…'; acRepaint();
+    const job = await codingClient.send(AC.to, code); AC.sending = false;
+    if (generation !== codingGeneration || !agentUnlocked() || !job) return;
+    AC.note = job.message || ('Coding: ' + job.status);
+    if (job.requestId) codingJobs.set(job.requestId, job);
+    if (['queued', 'running', 'completed'].includes(job.status)) { AC.draft = ''; acSyncInput(); }
+    acRepaint(); return;
+  }
   if (AC.files.some(f => !f.data)) { AC.note = 'Still reading the file, try Send again in a moment'; acRepaint(); return; }
   AC.sending = true; AC.note = AC.files.length ? 'Sending with ' + AC.files.length + ' file' + (AC.files.length > 1 ? 's' : '') + '…' : 'Sending…'; acRepaint();
   const r = await agentApi({ to: AC.to, text, files: AC.files.map(f => ({ name: f.name, type: f.type, data: f.data })) }); AC.sending = false;
@@ -891,7 +927,7 @@ function buildWorld() {
     const t = agentchat.tex, open = agentUnlocked();
     agentchat.hits = drawAgentChat(t.ctx, t.c.width, t.c.height, DEMO
       ? { demo: true, to: 'ALL', msgs: L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> ALL: Example line', '[2026-11-21 19:40:30 ET] Claude -> Tim: Example reply']) }
-      : open ? { msgs: AC.msgs, err: AC.err, note: AC.note, queued: AC.queued, to: AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret }
+      : open ? { msgs: AC.msgs.concat([...codingJobs.values()].filter(j => j.provider === AC.to).map(codingMessage)), err: AC.err, note: AC.note, queued: AC.queued, to: AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret }
         : { locked: true, code: AC.code, err: AC.err, note: AC.note, focused: AC.focused, caret: AC.caret });
     t.t.needsUpdate = true;
     const g = agentLockBtn.lt.ctx; g.clearRect(0, 0, 128, 160); g.fillStyle = '#0d1014'; g.fillRect(0, 0, 128, 160);
@@ -910,6 +946,7 @@ function buildWorld() {
   function agentBoardHit(h) {
     if (!h) return agentFocus();
     if (h.act === 'to') { AC.to = h.to; acRepaint(); return agentFocus(); }
+    if (h.act === 'draft' && /^https:\/\/github\.com\/[\w-]+\/[\w.-]+\/pull\/[1-9][0-9]*$/.test(h.url || '')) { window.open(h.url, '_blank', 'noopener,noreferrer'); return; }
     if (h.act === 'attach') { if (DEMO) return toast('Example data: the agent chat is off'); if (agentUnlocked()) acFile.click(); return; }
     if (h.act === 'rm') { AC.files.splice(h.i, 1); AC.note = ''; acRepaint(); return; }
     if (h.act === 'send') { agentFocus(); return agentSend(); }
