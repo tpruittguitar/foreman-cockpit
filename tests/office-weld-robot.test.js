@@ -23,7 +23,7 @@ test('the arm IK puts the torch tip on every point of both seams and at home', a
     assert.ok(Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z) < 1e-6, 'every path point is within reach at t=' + t); }
 });
 
-test('it parks when the office is idle and finishes the part it is on first', async () => {
+test('the independent work clock pauses when the office is idle', async () => {
   const [W] = await load();
   const restAt = W.WELD_CYCLE_S - 0.5; assert.equal(W.weldPhase(restAt).phase, 'pause');
   assert.equal(W.advanceClock(restAt, 0.1, false), restAt, 'idle at rest: holds');
@@ -31,6 +31,36 @@ test('it parks when the office is idle and finishes the part it is on first', as
   const mid = 2.0; assert.equal(W.weldPhase(mid).phase, 'weld');
   let t = mid; for (let k = 0; k < 200; k++) t = W.advanceClock(t, 0.05, false);
   assert.equal(W.weldPhase(t).phase, 'pause', 'idle mid-weld: completes the part, then rests');
+});
+
+test('in idle the real arm slowly sweeps overhead without work contact or sparks, and reduced motion holds it still', async () => {
+  const [W, THREE] = await load(), r = W.makeWeldRobot(THREE);
+  const tip = r.group.getObjectByName('weld-tip'), yaw = tip.parent.parent.parent.parent;
+  const p = new THREE.Vector3(), prev = new THREE.Vector3(), startClock = r.state().t;
+  let lo = Infinity, hi = -Infinity, rise = Infinity, crest = -Infinity;
+  for (let i = 0; i < 360; i++) {
+    const status = r.update(1 / 30, { working: false });
+    assert.equal(status.phase, 'pause'); assert.equal(status.welding, false); assert.equal(status.sparks, 0);
+    tip.getWorldPosition(p);
+    assert.ok(p.x < W.CAR.near - 0.07 && p.y > W.carTopAt(0) + 0.12, 'tip stays high and clear of the car');
+    if (i) assert.ok(p.distanceTo(prev) < 0.022, 'idle sweep is smooth frame to frame');
+    prev.copy(p);
+    lo = Math.min(lo, yaw.rotation.y); hi = Math.max(hi, yaw.rotation.y);
+    rise = Math.min(rise, p.y); crest = Math.max(crest, p.y);
+  }
+  const degrees = (hi - lo) * 180 / Math.PI;
+  assert.ok(degrees >= 32 && degrees <= 58, 'visible, plausible idle yaw sweep: ' + degrees);
+  assert.ok(crest - rise > 0.14 && crest - rise < 0.26, 'visible overhead reach variation');
+  assert.equal(r.state().t, startClock, 'idle sweep does not create work or move the work clock');
+  for (let i = 0; i < 60; i++) {
+    r.update(1 / 30, { working: false, reduced: true });
+    assert.ok(tip.getWorldPosition(p).distanceTo(prev) < 1e-9, 'reduced motion holds the idle pose');
+  }
+  let hot = false;
+  for (let i = 0; i < 300; i++) if (r.update(1 / 30, { working: true }).sparks) { hot = true; break; }
+  assert.ok(hot, 'real work still starts the contact cycle');
+  const released = r.update(1 / 30, { working: false });
+  assert.equal(released.welding, false); assert.equal(released.sparks, 0, 'work stopping cuts bursts immediately');
 });
 
 test('only the real torch contact on visible steel produces short, pooled bursts', async () => {
