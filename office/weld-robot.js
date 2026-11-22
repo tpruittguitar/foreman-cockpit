@@ -3,7 +3,7 @@
    A chunky, glossy yellow arm with a plain round head (no eyes), beside a bare-metal car shell (body-in-white, before paint) on a
    yellow jig, and a weld cycle: swing over a seam, lay a glowing bead along it with sparks and an arc glow, lift, rest, then do the
    other seam. Tim, Nov 22 review: no eyes, no safety cones, and a metal-frame car to weld on.
-   It welds while any bot in the office is working (office data), and parks with an amber beacon when the whole office is idle.
+   It welds while any bot in the office is working (office data), and makes non-contact inspection sweeps with an amber beacon when the whole office is idle.
    THREE is passed in so the pure parts (cycle timing, arm IK) load in node tests without the import map. */
 
 export const WELD_PHASES = [['approach', 1.2], ['weld', 4.5], ['lift', 1.0], ['pause', 1.8]];
@@ -47,6 +47,17 @@ export function tipTarget(ph, t) {
   return { x: HOME_TIP.x, y: HOME_TIP.y + 0.02 * Math.sin(t * 1.6), z: HOME_TIP.z };
 }
 
+/* Idle checks stay on the robot side of the car and above its work surface.
+   A separate clock drives the gentle sweep without advancing the work cycle. */
+function idleTip(t) {
+  const a = t * Math.PI * 2 / 8;
+  return lerp3(HOME_TIP, {
+    x: 0.57 + 0.055 * Math.sin(a - 0.6),
+    y: 1.69 + 0.10 * Math.sin(a * 2 - 0.5),
+    z: 0.12 + 0.25 * Math.sin(a)
+  }, smooth(Math.min(1, t / 1.4)));
+}
+
 /* A scheduled weld is not contact: the moving nozzle must actually arrive over the visible steel. */
 export function weldContact(ph, tip) {
   if (ph.phase !== 'weld') return false;
@@ -72,7 +83,7 @@ export function armTip(j) {
   return { x: r * Math.cos(j.yaw), y, z: -r * Math.sin(j.yaw) };
 }
 
-/* The robot's clock moves while the office is working; once the office goes idle it finishes the current part and parks. */
+/* The work clock winds down to its pause when activity stops; idle pose checks use a separate clock. */
 export function advanceClock(t, dt, working) {
   const ph = weldPhase(t);
   if (working || ph.phase !== 'pause') return t + dt;
@@ -185,7 +196,7 @@ export function makeWeldRobot(THREE, opts = {}) {
   let alive = 0, emitAcc = 0;
 
   const J = solveArm(HOME_TIP), cur = Object.assign({}, J);
-  let t = WELD_CYCLE_S - WELD_PHASES[3][1], seed = 1, wasVisible = true; // starts at rest, so it begins with an approach
+  let t = WELD_CYCLE_S - WELD_PHASES[3][1], seed = 1, wasVisible = true, idleTime = 0; // starts at rest, so it begins with an approach
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const tipLocal = new THREE.Vector3(), mid = new THREE.Vector3(), sphere = new THREE.Sphere(), frustum = new THREE.Frustum(), pv = new THREE.Matrix4();
 
@@ -221,6 +232,7 @@ export function makeWeldRobot(THREE, opts = {}) {
   function update(dt, s = {}) {
     const working = !!s.working, reduced = !!s.reduced;
     t = advanceClock(t, dt, working);
+    idleTime = working ? 0 : idleTime + (reduced ? 0 : Math.min(dt, 0.05));
     if (s.camera) { // off screen or far away: keep the clock, skip the posing and the particles
       root.updateWorldMatrix(true, false); sphere.set(mid.set(CAR.x / 2, 1, 0).applyMatrix4(root.matrixWorld), 4);
       pv.multiplyMatrices(s.camera.projectionMatrix, s.camera.matrixWorldInverse); frustum.setFromProjectionMatrix(pv);
@@ -229,11 +241,14 @@ export function makeWeldRobot(THREE, opts = {}) {
       wasVisible = true;
     }
     const ph = weldPhase(t), parked = !working && ph.phase === 'pause';
-    const want = solveArm(parked ? HOME_TIP : tipTarget(ph, t)), f = 1 - Math.exp(-dt * (ph.phase === 'weld' ? 18 : 7));
-    for (const k of ['yaw', 'a1', 'a2', 'a3']) cur[k] += (want[k] - cur[k]) * f;
+    if (working || !reduced) {
+      const want = solveArm(working ? tipTarget(ph, t) : idleTip(idleTime));
+      const f = 1 - Math.exp(-dt * (working && ph.phase === 'weld' ? 18 : 7));
+      for (const k of ['yaw', 'a1', 'a2', 'a3']) cur[k] += (want[k] - cur[k]) * f;
+    }
     pose(cur);
     tip.updateWorldMatrix(true, false); tipLocal.setFromMatrixPosition(tip.matrixWorld); root.worldToLocal(tipLocal);
-    const welding = weldContact(ph, tipLocal);
+    const welding = working && weldContact(ph, tipLocal);
     const burst = welding && !reduced && (ph.k * WELD_PHASES[1][1]) % SPARKS.burstEvery < SPARKS.burstFor;
     // beads: reset when its part comes round again, grow while welding, then cool
     beads.forEach((b, i) => {
