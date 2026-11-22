@@ -717,7 +717,7 @@ export function drawAgentChat(ctx, W, H, o) {
     }
   }
   ctx.fillStyle = o.err && msgs.length ? '#ff8a7a' : '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`;
-  const foot = o.note || (o.err && msgs.length ? o.err : '') || (o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY' : 'Chat · /code requests coding · Not connected');
+  const foot = o.note || (o.err && msgs.length ? o.err : '') || (o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY' : (o.codingConnected ? 'Chat · /code requests coding · Connected' : 'Chat · /code requests coding · Not connected'));
   ctx.fillText(fit(ctx, foot, W - 260 * s), x0, H - 12 * s);
   return hits;
 }

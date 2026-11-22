@@ -430,6 +430,7 @@ const AC = { token: '', exp: 0, msgs: [], err: '', note: '', queued: 0, to: 'ALL
 const codingClient = createCodingClient((...args) => fetch(...args));
 const codingJobs = new Map();
 let codingGeneration = 0;
+let codingConnectedTo = '';
 let onAgentChat = null; // repaints the wall screen + lock button (set in the scene)
 try { const j = JSON.parse(localStorage.getItem(AGENT_STORE) || 'null'); if (j && j.exp > Date.now()) { AC.token = j.token; AC.exp = j.exp; } } catch (e) { /* none */ }
 const agentUnlocked = () => !!AC.token && AC.exp > Date.now();
@@ -444,7 +445,7 @@ function acSyncInput() { // one field: the unlock code while locked, the message
   acInput.setAttribute('enterkeyhint', locked ? 'go' : 'send'); acInput.setAttribute('aria-label', locked ? 'Agent chat unlock code' : 'Agent chat message');
 }
 function agentLock(why) {
-  codingGeneration++; codingClient.clear(); codingJobs.clear();
+  codingGeneration++; codingConnectedTo = ''; codingClient.clear(); codingJobs.clear();
   AC.token = ''; AC.exp = 0; AC.msgs = []; AC.queued = 0; AC.err = why || ''; AC.note = ''; AC.draft = ''; AC.files = [];
   try { localStorage.removeItem(AGENT_STORE); } catch (e) { /* ignore */ }
   acSyncInput(); acRepaint();
@@ -478,14 +479,14 @@ async function agentUnlock() {
   acSyncInput(); acRepaint();
 }
 function codingMessage(job) {
-  return { from: job.provider, to: 'Tim', time: '', text: 'Coding: ' + (job.message || job.status) + '\n' + job.text,
+  return { from: job.provider, to: 'Tim', time: '', text: 'Coding: ' + (job.message || ({awaiting_approval:'approval needed in local terminal',awaiting_review:'edit finished · /code /pr opens a draft'}[job.status] || job.status)) + '\n' + job.text,
     draftUrl: job.status === 'completed' ? job.draftUrl : null };
 }
 async function codingRefresh() {
   if (!agentUnlocked() || DEMO || document.hidden) return;
   const generation = codingGeneration;
   for (const [id, job] of codingJobs) {
-    if (!['submitting', 'queued', 'running'].includes(job.status)) continue;
+    if (!['submitting', 'queued', 'running', 'awaiting_approval'].includes(job.status)) continue;
     const update = await codingClient.status(job);
     if (generation !== codingGeneration || !agentUnlocked()) return;
     if (update) codingJobs.set(id, { ...job, ...update });
@@ -503,6 +504,7 @@ async function agentSend() {
     AC.sending = true; AC.note = 'Checking coding session…'; acRepaint();
     const job = await codingClient.send(AC.to, code); AC.sending = false;
     if (generation !== codingGeneration || !agentUnlocked() || !job) return;
+    if(['queued','running','completed','awaiting_review'].includes(job.status)) codingConnectedTo = job.provider;
     AC.note = job.message || ('Coding: ' + job.status);
     if (job.requestId) codingJobs.set(job.requestId, job);
     if (['queued', 'running', 'completed'].includes(job.status)) { AC.draft = ''; acSyncInput(); }
@@ -927,7 +929,7 @@ function buildWorld() {
     const t = agentchat.tex, open = agentUnlocked();
     agentchat.hits = drawAgentChat(t.ctx, t.c.width, t.c.height, DEMO
       ? { demo: true, to: 'ALL', msgs: L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> ALL: Example line', '[2026-11-21 19:40:30 ET] Claude -> Tim: Example reply']) }
-      : open ? { msgs: AC.msgs.concat([...codingJobs.values()].filter(j => j.provider === AC.to).map(codingMessage)), err: AC.err, note: AC.note, queued: AC.queued, to: AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret }
+      : open ? { msgs: AC.msgs.concat([...codingJobs.values()].filter(j => j.provider === AC.to).map(codingMessage)), err: AC.err, note: AC.note, queued: AC.queued, to: AC.to, codingConnected: codingConnectedTo === AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret }
         : { locked: true, code: AC.code, err: AC.err, note: AC.note, focused: AC.focused, caret: AC.caret });
     t.t.needsUpdate = true;
     const g = agentLockBtn.lt.ctx; g.clearRect(0, 0, 128, 160); g.fillStyle = '#0d1014'; g.fillRect(0, 0, 128, 160);

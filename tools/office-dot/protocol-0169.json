@@ -1,0 +1,19 @@
+{
+  "codexVersion": "0.169.0",
+  "source": "Installed codex app-server generate-json-schema (without --experimental), 2026-11-22",
+  "transport": "stdio JSON lines; initialize then initialized; numeric client request IDs; preserve native server request IDs",
+  "methods": ["initialize", "account/read", "account/rateLimits/read", "thread/start", "thread/resume", "turn/start"],
+  "notifications": ["turn/completed"],
+  "approvals": ["item/commandExecution/requestApproval", "item/fileChange/requestApproval"],
+  "decisions": ["accept", "decline", "cancel"],
+  "schemaSha256": {
+    "v1/InitializeParams.json": "c608ff6bdd94e661423dca9b44cd1dcea7eac610f74e1310284c61eab64280bc",
+    "v2/ThreadStartParams.json": "e9c6d3cc18d049bfbc0249add3808fb8e5a27e1a0b5a423767aafbc3859a9428",
+    "v2/ThreadResumeParams.json": "cb2daef3e452f9dcb6cdd7a7a389b866ac486614558a46f3ec5538f3fe3b3ea1",
+    "v2/TurnStartParams.json": "7306e8a95152f1071b0fb8bcc22da20a798ae34c1c57b6d26dfafc2c2b47ee9e",
+    "v2/GetAccountResponse.json": "588bac1dacbcf8d0676f2c31d9d5750e8baaee5c3062ef820ae4e6ee68687418",
+    "v2/GetAccountRateLimitsResponse.json": "9c0def7f8ab2396122af939dffbf01b34b8d66082fe4129dd20917bfd4313fdc",
+    "CommandExecutionRequestApprovalResponse.json": "6d0767113e22f311381809b6b236b0dde2b99b01992879c26bf7b1ea0e003cb7",
+    "FileChangeRequestApprovalResponse.json": "b95b03ee6be674e25cee2e863cc135a28620e1070addd2f34685aadee27cde08"
+  }
+}

@@ -1,5 +1,7 @@
 # Office coding requests — prerequisite, not activated
 
+Update: the [Dot local CLI pilot](OFFICE_DOT_LOCAL.md) now implements and tests a loopback path, including native edit/resume proofs. Hosted execution remains disconnected. The native-proof-outstanding section below describes the original prerequisite stage; see the linked pilot for current evidence.
+
 This branch does **not** make any live agent writable. Choose an agent on the existing Agent Chat wall and prefix an explicit request with `/code`. Production answers **Not connected**. Ordinary messages still use `/api/agent-chat`; `/code` is never copied into its private mailbox or the shared log. `All` cannot receive a coding request. The panel dimensions are unchanged.
 
 ## Verified interfaces (2026-11-22)
