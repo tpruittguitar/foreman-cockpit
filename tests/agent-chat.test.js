@@ -67,3 +67,27 @@ test('parseAgentChat reads chat.log lines and names the agents', () => {
   const m = L.parseAgentChat(['[2026-11-21 19:40:00 ET] Dot -> Tim: a // b', 'garbage', '[2026-11-21 19:41:00 ET] Tim -> Grok: hi']);
   assert.equal(m.length, 2); assert.equal(m[0].text, 'a\nb'); assert.equal(L.agentName(m[0].from), 'ChatGPT Dot'); assert.equal(L.agentName(m[1].to), 'Grokbot President');
 });
+test('POST with files: each file goes to agent-chat/files/<id>/<name> before the inbox message lists it', async () => {
+  const now = Date.parse('2026-11-22T02:00:00Z'), env = Object.assign({}, ENV), tok = (await (await unlock(env, '246810', now)).json()).token;
+  const f = mockFetch({}), png = Buffer.from('fake-png').toString('base64');
+  const r = await mod.handle(req('POST', { token: tok, body: { to: 'Claude', text: '', files: [{ name: '..\\evil name?.png', type: 'image/png', data: 'data:image/png;base64,' + png }, { name: '', type: 'image/png', data: png }] } }), env, f, now);
+  assert.equal(r.status, 200);
+  const puts = f.calls.filter(c => c.method === 'PUT'); assert.equal(puts.length, 3);
+  assert.match(puts[0].url, /agent-chat\/files\/20261122T020000000Z-[0-9a-f]{8}\/evil_name_.png$/); assert.equal(JSON.parse(puts[0].body).content, png);
+  assert.match(puts[1].url, /\/pasted-2\.png$/); assert.match(puts[2].url, /agent-chat\/inbox\//);
+  const msg = JSON.parse(Buffer.from(JSON.parse(puts[2].body).content, 'base64').toString());
+  assert.deepEqual(msg.files.map(x => x.name), ['evil_name_.png', 'pasted-2.png']); assert.equal(msg.files[0].size, 8);
+  assert.ok(msg.files.every(x => x.path.startsWith('agent-chat/files/' + msg.id + '/') && !('data' in x)));
+});
+test('POST files: limits and bad data -> 400 and nothing written', async () => {
+  const now = Date.parse('2026-11-22T02:00:00Z'), env = Object.assign({}, ENV), tok = (await (await unlock(env, '246810', now)).json()).token, f = mockFetch({});
+  const big = 'A'.repeat(Math.ceil(8 * 1024 * 1024 / 3) * 4 + 8);
+  for (const files of [[{ name: 'a', data: 'not base64!' }], [{ name: 'a', data: big }], Array(5).fill({ name: 'a', data: 'QQ==' })])
+    assert.equal((await mod.handle(req('POST', { token: tok, body: { to: 'ALL', text: 'x', files } }), env, f, now)).status, 400);
+  assert.equal(f.calls.length, 0);
+});
+test('parseAgentChat turns "[attached: path]" into file names on the message', () => {
+  const L = require('../office/office-logic.js');
+  const [m] = L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> Claude: look // [attached: D:\\Hermes\\claude-chat\\attachments\\x\\shot.png]']);
+  assert.equal(m.text, 'look'); assert.deepEqual(m.files, ['shot.png']);
+});

@@ -196,7 +196,6 @@ canvas { cursor: grab; }
 .hud, .hint, #build-badge { transition: opacity .25s; }
 body.hud-moving .hud, body.hud-moving .hint, body.hud-moving #build-badge { opacity: 0; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .hud, .hint, #build-badge { transition: none; } }
-.agentchat .thread { max-height: 52vh; }
-.agentchat .ac-tos { flex-wrap: wrap; gap: 6px; margin: 6px 0; }
-.ac-to.on { background: #13303a; outline: 2px solid #37e0ff; }
-.ac-text { white-space: normal; overflow-wrap: anywhere; }
+/* agent chat wall: a real textarea the board draws (Tim Nov 21: type straight into the board). Kept on screen, near-invisible,
+   16px so iOS does not zoom when it takes focus. */
+#ac-input { position: fixed; left: 8px; bottom: 8px; width: 2px; height: 2px; padding: 0; border: 0; opacity: 0.01; font-size: 16px; resize: none; background: transparent; color: transparent; caret-color: transparent; z-index: 1; }

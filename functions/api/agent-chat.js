@@ -4,13 +4,15 @@
 //   and moves agent-chat/inbox/*.json into chat.log as "Tim -> <to>" lines.
 //   POST /api/agent-chat {unlock: "<code>"}  -> {ok, token, exp}   (the lock button; code checked here, never in the page)
 //   GET  /api/agent-chat                     -> {ok, at, lines:[...], queued:n}        X-Agent-Chat-Token required
-//   POST /api/agent-chat {to, text}          -> agent-chat/inbox/<ts>-<rand>.json      X-Agent-Chat-Token required
+//   POST /api/agent-chat {to, text, files}   -> agent-chat/inbox/<ts>-<rand>.json      X-Agent-Chat-Token required
+//        files: [{name, type, data: base64}] (attach / paste on the wall); each goes to agent-chat/files/<id>/<name>, and
+//        TIMMAY saves it to D:\Hermes\claude-chat\attachments\<id>\ and adds "[attached: <path>]" to the chat line.
 // Secrets (Cloudflare Pages env): AGENT_CHAT_CODE (Tim's unlock code) and OFFICE_MAILBOX_TOKEN (shared with /api/office-chat).
 // Wrong codes: global lockout after FAIL_MAX misses in a FAIL_WINDOW (KV when bound, so it holds across IPs and isolates).
 // Self-contained on purpose (tests load each function on its own).
 const API = 'https://api.github.com/repos/tpruittguitar/office-mailbox/contents/agent-chat/';
 export const TO = ['ALL', 'Claude', 'Hermes', 'Dot', 'Grok']; // chat.log names: Claude Duet, Hermes (Local), ChatGPT Dot, Grokbot President
-export const MAX_TEXT = 2000, MAX_LINES = 80, RATE_PER_MIN = 30, FAIL_MAX = 5, FAIL_WINDOW = 15 * 60000, TOKEN_MS = 12 * 3600000;
+export const MAX_FILES = 4, MAX_FILE = 8 * 1024 * 1024, MAX_TEXT = 2000, MAX_LINES = 80, RATE_PER_MIN = 30, FAIL_MAX = 5, FAIL_WINDOW = 15 * 60000, TOKEN_MS = 12 * 3600000;
 const JSON_H = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
 const out = (status, body) => new Response(JSON.stringify(body), { status, headers: JSON_H });
 const enc = new TextEncoder();
@@ -29,6 +31,11 @@ async function sign(env, exp) { // token = exp.hmac; changing the code (or the m
 }
 async function tokenOk(env, tok, now) { const exp = Number(String(tok || '').split('.')[0]); return exp > now && exp - now <= TOKEN_MS && sameKey(tok, await sign(env, exp)); }
 
+function safeName(name, type, n) { // basename, plain characters only; pasted pictures come in unnamed
+  let s = String(name || '').split(/[\\/]/).pop().replace(/[^\w.\-]/g, '_').replace(/^[.\s]+/, '').slice(-80);
+  if (!s) s = 'pasted-' + n + ({ 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp', 'text/plain': '.txt' }[type] || '');
+  return s;
+}
 const hits = new Map(), mem = { fails: [] }; // per-isolate fallbacks
 export function resetCaches() { hits.clear(); mem.fails = []; }
 function limited(ip, now) {
@@ -65,10 +72,26 @@ export async function handle(request, env, fetcher = fetch, now = Date.now()) {
     if (body) {
       const to = String(body.to || '').trim(), text = String(body.text || '').trim();
       if (!TO.includes(to)) return out(400, { ok: false, error: 'to must be one of ' + TO.join(', ') });
-      if (!text) return out(400, { ok: false, error: 'empty message' });
+      const att = Array.isArray(body.files) ? body.files : [];
+      if (!text && !att.length) return out(400, { ok: false, error: 'empty message' });
       if (text.length > MAX_TEXT) return out(400, { ok: false, error: 'message over ' + MAX_TEXT + ' characters' });
+      if (att.length > MAX_FILES) return out(400, { ok: false, error: 'up to ' + MAX_FILES + ' files per message' });
       const rand = Array.from(crypto.getRandomValues(new Uint8Array(4)), x => x.toString(16).padStart(2, '0')).join('');
-      const id = new Date(now).toISOString().replace(/[-:.]/g, '') + '-' + rand, msg = { id, at: new Date(now).toISOString(), to, text };
+      const id = new Date(now).toISOString().replace(/[-:.]/g, '') + '-' + rand, files = [], used = new Set();
+      for (const f of att) {
+        const data = String((f && f.data) || '').replace(/^data:[^,]*,/, '').replace(/\s/g, '');
+        if (!data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) return out(400, { ok: false, error: 'a file could not be read' });
+        const size = Math.floor(data.length * 3 / 4) - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0);
+        if (size > MAX_FILE) return out(400, { ok: false, error: 'files are limited to 8 MB each' });
+        let name = safeName(f.name, f.type, files.length + 1); while (used.has(name)) name = '1-' + name; used.add(name);
+        files.push({ name, path: 'agent-chat/files/' + id + '/' + name, size, type: String(f.type || '').slice(0, 80), data });
+      }
+      for (const f of files) { // files first: the inbox message only appears once every file is in place
+        const r = await fetcher(API + 'files/' + id + '/' + encodeURIComponent(f.name), { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, h), body: JSON.stringify({ message: 'agent chat: file from Tim', content: f.data }) });
+        if (!r.ok) throw Error('file ' + r.status);
+      }
+      const msg = { id, at: new Date(now).toISOString(), to, text };
+      if (files.length) msg.files = files.map(({ name, path, size, type }) => ({ name, path, size, type }));
       const r = await fetcher(API + 'inbox/' + id + '.json', { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, h), body: JSON.stringify({ message: 'agent chat: Tim -> ' + to, content: b64(JSON.stringify(msg)) }) });
       if (!r.ok) throw Error('write ' + r.status);
       return out(200, { ok: true, message: msg });
