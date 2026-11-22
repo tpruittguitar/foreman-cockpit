@@ -239,7 +239,7 @@ function starSDF(rot) {
   };
 }
 /* Wide face shapes read as fat from the side, so they are thinner front to back (Tim, Nov 17, 2026). Applies to every bot with that shape. */
-const SHAPE_THICK = { clover4: 0.55, pill: 0.5, pick: 0.6 };
+const SHAPE_THICK = { clover4: 0.55, pill: 0.5, pick: 0.6, edgarCloud: 0.46656 };
 /* Usage's guitar pick (Tim, Nov 22) reads as a pick when its faces are flatter and its rim rounder than a plain ellipsoid. */
 const SHAPE_FLAT = { pick: 2.6 };
 function puffBody(a, hi) {
@@ -256,7 +256,29 @@ function puffBody(a, hi) {
     let wmax = 0, wmin = 0; for (let k = 0; k < NT; k++) { const x = Math.cos(k / NT * Math.PI * 2) * prof[k]; wmax = Math.max(wmax, x); wmin = Math.min(wmin, x); }
     D = (wmax - wmin) * (SHAPE_THICK[a.shape] || BOT_THICK) / 2; // wide shapes get a thinner front-to-back depth
     ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, sp = Math.sin(ph), cp = Math.cos(ph), r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.pow(Math.abs(sp), 2 / FL); return [Math.cos(t) * r, Math.sin(t) * r, Math.sign(cp) * Math.pow(Math.abs(cp), 2 / FL) * D]; };
-    zFront = (x, y) => { const rho = Math.hypot(x, y), th = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2), f = th / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, R = prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f));
+    if (a.shape === 'edgarCloud') {
+      // Flat front and rear caps; ellipse only in the perimeter bevel, then a straight side wall.
+      const band = 0.20111, radius = 0.063882;
+      const outline = t => {
+        const f = ((t % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * NT, k = Math.floor(f);
+        return prof[k] + (prof[(k + 1) % NT] - prof[k]) * (f - k);
+      };
+      ringAt = (ph, t) => {
+        const u = ph / Math.PI, f = Math.min(u, 1 - u);
+        let q, z;
+        if (f < 0.27) { q = (1 - band) * f / 0.27; z = D; }
+        else if (f < 0.4) {
+          const a = (f - 0.27) / 0.13 * Math.PI / 2;
+          q = 1 - band + band * Math.sin(a); z = D - radius + radius * Math.cos(a);
+        } else { q = 1; z = (D - radius) * (1 - (f - 0.4) / 0.1); }
+        const r = q * outline(t);
+        return [Math.cos(t) * r, Math.sin(t) * r, u < 0.5 ? z : -z];
+      };
+      zFront = (x, y) => {
+        const q = Math.min(1, Math.hypot(x, y) / outline(Math.atan2(y, x)));
+        return q <= 1 - band ? D : D - radius + radius * Math.sqrt(1 - ((q - (1 - band)) / band) ** 2);
+      };
+    } else zFront = (x, y) => { const rho = Math.hypot(x, y), th = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2), f = th / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, R = prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f));
       return Math.pow(Math.max(0, 1 - Math.min(1, rho / R) ** FL), 1 / FL) * D; };
   }
   const pos = [], idx = [], P0 = ringAt(1e-4, 0), P1 = ringAt(Math.PI - 1e-4, 0);
@@ -371,14 +393,49 @@ function flatStar() {
 }
 
 /* ---------- jelly bot ---------- */
+/* Edgar's eyes change aperture and gaze with the existing studio expression driver. Paint them directly
+   on the front cap in body space: no raised eye mesh, shine, z-fighting, or marks on the rear face. */
+function edgarMaterial(paint, eyePaint, hi, halfDepth, eyes) {
+  const m = new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75,
+    clearcoat: hi ? 0.04 : 0, clearcoatRoughness: 0.75 });
+  m.customProgramCacheKey = () => 'edgar-flat-eye-masks';
+  m.onBeforeCompile = shader => {
+    shader.uniforms.edgarPills = { value: eyes };
+    shader.uniforms.edgarCapZ = { value: halfDepth - 0.001 };
+    shader.uniforms.edgarPaint = { value: new THREE.Color(eyePaint) };
+    shader.vertexShader = 'varying vec3 vEdgarLocal;\n' + shader.vertexShader.replace(
+      '#include <begin_vertex>', '#include <begin_vertex>\nvEdgarLocal = position;');
+    shader.fragmentShader = `
+      varying vec3 vEdgarLocal;
+      uniform vec4 edgarPills[2];
+      uniform float edgarCapZ;
+      uniform vec3 edgarPaint;
+      float edgarPill(vec4 pill) {
+        float radius = min(pill.z, pill.w);
+        vec2 q = max(abs(vEdgarLocal.xy - pill.xy) - (pill.zw - radius), vec2(0.0));
+        float d = length(q) - radius;
+        float aa = max(fwidth(d), 0.0001);
+        return 1.0 - smoothstep(-aa, aa, d);
+      }
+      ` + shader.fragmentShader.replace('#include <opaque_fragment>', `
+        if (vEdgarLocal.z >= edgarCapZ) {
+          outgoingLight = mix(outgoingLight, edgarPaint, max(edgarPill(edgarPills[0]), edgarPill(edgarPills[1])));
+        }
+        #include <opaque_fragment>
+      `);
+  };
+  return m;
+}
+
 export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
+  const edgar = a.shape === 'edgarCloud', flatEyes = edgar ? [new THREE.Vector4(), new THREE.Vector4()] : null;
   const ball = a.shape === 'sphere', satin = ball || !!a.satin, paint = satin && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit; a.satin (Usage pick): a body in the balls' satin finish
-  const bodyG = geo(key + (ball ? ':' + hiQuality : ''), () => ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
+  const bodyG = geo(key + (ball || edgar ? ':' + hiQuality : ''), () => ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
+  const bodyM = edgar ? edgarMaterial(paint, a.face.color, hiQuality, bb.max.z, flatEyes) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : edgar ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
@@ -388,7 +445,21 @@ export function makeBot(name, hiQuality, botId, override) {
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   /* a.face (Hermes): its own eye colour, the eye pair tilted by face.rot instead of the body rot, shifted dx/dy, each eye leaning by tilt */
-  if (!a.icon) { const fc = a.face || {}, eyeHex = fc.color || '#0b0b0e', eyeM = mat('eyeClay' + eyeHex, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(eyeHex), roughness: 1, metalness: 0 }));
+  if (edgar) {
+    const L = window.OfficeLogic, neutral = L.exprParams('neutral');
+    const { dx, dy, gap } = a.face;
+    face.visible = false; // the face group remains an animation target, but all detailing is painted on
+    face.userData.studio = (p, blink, extra) => {
+      const x = extra || {}, g = L.gazeShift(p, x);
+      flatEyes.forEach((eye, i) => {
+        const k = i ? 'e1' : 'e0', sx = (i ? 1 : -1) * 0.1 * gap * g.spread, scale = x.eyeScale || 1;
+        const sz = L.slotSize(0.13 * p[k + 'w'] / neutral[k + 'w'] * scale, 0.24 * p[k + 'h'] / neutral[k + 'h'] * scale);
+        const open = Math.max(0.06, Math.min(p[k + 'o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
+        eye.set(dx + sx * Math.cos(g.roll) + g.x, dy + sx * Math.sin(g.roll) + g.y, sz.w * 0.72, sz.h * open * 0.72);
+      });
+    };
+    face.userData.apply(neutral, 0);
+  } else if (!a.icon) { const fc = a.face || {}, eyeHex = fc.color || '#0b0b0e', eyeM = mat('eyeClay' + eyeHex, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(eyeHex), roughness: 1, metalness: 0 }));
     const rot = fc.rot ?? (a.rot || 0), EDX = fc.dx || 0, ETILT = fc.tilt || 0, GAP = fc.gap || 1, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004, ZV = new THREE.Vector3(0, 0, 1);
     const EY = -0.02 + (fc.dy || 0), tmpQ = new THREE.Quaternion(), qz = new THREE.Quaternion();
     /* sit each eye ON the curved skin: sample the surface where the eye really lands (the face is rotated by rot and lifted 0.02), then

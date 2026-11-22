@@ -27,6 +27,33 @@ const regular = (n, r, start = Math.PI / 2) => Array.from({ length: n }, (_, i) 
 /* Usage's pick outline (Tim, Nov 22): 90 polar radii every 4 degrees from the centre of the pick's bounding box, counter-clockwise from +x,
    traced from his Grok Bot avatar picture and scaled so the pick spans 0.84 units. */
 const USAGE_PICK = [.409,.399,.388,.374,.358,.343,.327,.315,.304,.294,.289,.283,.277,.278,.274,.277,.277,.279,.286,.290,.300,.307,.321,.335,.355,.377,.401,.424,.447,.465,.482,.487,.488,.479,.468,.453,.441,.427,.414,.404,.397,.391,.389,.384,.385,.388,.392,.395,.403,.414,.427,.443,.463,.482,.501,.515,.524,.524,.517,.504,.487,.465,.447,.428,.412,.395,.380,.371,.360,.351,.343,.342,.337,.334,.333,.333,.332,.334,.336,.343,.345,.354,.360,.368,.377,.389,.396,.403,.409,.410];
+/* Edgar's upright six-lobe cloud, sampled from the neutral frame of Tim's reference video. */
+const EDGAR_CLOUD = [
+  .2972895652, .3014316166, .3111297460, .3199500000, .3287730733, .3387155000, .3466748123, .3533368342, .3615503294, .3672285562,
+  .3712978855, .3751892781, .3782748123, .3800630562, .3822241075, .3830285562, .3822241075, .3800630562, .3782741075, .3751292610,
+  .3704348294, .3651875391, .3615503294, .3553778514, .3475378685, .3387741075, .3286523343, .3181010342, .3050794166, .2937137823,
+  .2903161626, .2995833556, .3119920974, .3238378685, .3347633856, .3435278514, .3506248123, .3564237781, .3633985904, .3702540733,
+  .3742640904, .3761730733, .3791985904, .3821040733, .3821640904, .3801230733, .3791992952, .3782147952, .3751885733, .3712985904,
+  .3672892781, .3624748123, .3563623513, .3505640904, .3426655000, .3327830904, .3247630562, .3171193535, .3052587631, .2972288433,
+  .2996440775, .3060031947, .3151969609, .3247637610, .3347647952, .3427248123, .3493861294, .3575403123, .3624147952, .3652468513,
+  .3703748123, .3742040733, .3751878685, .3752500000, .3753100171, .3761137610, .3773503294, .3760530391, .3743848294, .3721630562,
+  .3703133856, .3663040733, .3594485904, .3524730733, .3466155000, .3387748123, .3296375391, .3221103465, .3127958413, .3026074630,
+  .2942040310, .2975416336, .3071804508, .3160000000, .3248237781, .3348255171, .3435892781, .3515485904, .3593878685, .3663033685,
+  .3703140904, .3722237781, .3753093123, .3790785562, .3812396075, .3800623513, .3791992952, .3782755171, .3761123513, .3742647952,
+  .3703748123, .3651868342, .3615503294, .3553778514, .3475378685, .3387748123, .3287123513, .3189640904, .3071190241, .2935937481,
+  .2865469187, .2944575091, .3092807802, .3207516294, .3317371636, .3417403123, .3484630562, .3555593123, .3633385733, .3702533685,
+  .3742640904, .3761730733, .3791992952, .3821647952, .3830878685, .3830885733, .3822241075, .3800030391, .3774103465, .3730268172,
+  .3694503294, .3633392781, .3564223684, .3505647952, .3426655000, .3327830904, .3247630562, .3171186487, .3051987460, .2963643775,
+  .2974844358, .3043964117, .3148241535, .3290265513, .3395171294, .3475364588, .3545147952, .3594485904, .3642630562, .3694503294,
+  .3721030391, .3743841246, .3760530391, .3773510342, .3761737781, .3761737781, .3773517390, .3761130562, .3752485904, .3742647952,
+  .3712385733, .3673478855, .3632785562, .3575996246, .3493268172, .3418610513, .3326637610, .3238985904, .3150183193, .3043964117,
+];
+function tracedOutline(radii, rot) {
+  return polar(t => {
+    const f = t / TAU * radii.length, k = Math.floor(f) % radii.length;
+    return radii[k] + (radii[(k + 1) % radii.length] - radii[k]) * (f - Math.floor(f));
+  }, rot, 180);
+}
 const SHAPES = {
   roundsquare: rot => roundedPoly([[-0.36, -0.36], [0.36, -0.36], [0.36, 0.36], [-0.36, 0.36]], 0.17, rot),
   star4: rot => polar(t => 0.2 + 0.25 * Math.pow(Math.abs(Math.cos(2 * t)), 2.2), rot),
@@ -39,6 +66,7 @@ const SHAPES = {
   flower: rot => polar(t => 0.31 + 0.12 * Math.pow(Math.abs(Math.cos(2.5 * t)), 0.8), rot),   // rounded petal lobes
   hexagon: rot => roundedPoly(regular(6, 0.44), 0.16, rot),                                    // Archive: soft hexagon (Grok "hexagone")
   cloud: rot => polar(t => 0.33 + 0.045 * Math.cos(5 * t + 0.6) + 0.02 * Math.cos(3 * t + 2.1), rot, 90), // Edgar: scalloped cloud (Grok "nuage")
+  edgarCloud: rot => tracedOutline(EDGAR_CLOUD, rot),
   starburst: rot => polar(t => 0.31 + 0.11 * Math.sign(-Math.cos(6 * t)) * Math.pow(Math.abs(Math.cos(6 * t)), 0.6), rot, 120), // Claude: 6 rounded rays (3D body is an SDF in chars.js; this outline is for the 2D owner icon)
   blob: rot => polar(t => 0.38 + 0.03 * Math.cos(3 * t) + 0.02 * Math.sin(2 * t), rot),
   dial: rot => polar(() => 0.4, rot),                                                        // round gauge face
@@ -107,7 +135,7 @@ export const AVATARS = {
   /* Usage (Tim, Nov 22): his Grok Bot avatar, a gray rounded pick in the satin finish of the balls. face: the two dark pill eyes up and right
      of centre, the pair tilted by rot, each eye leaning by tilt, gap = eye spacing vs the usual pair, all measured from his picture. */
   'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'pick', rot: 0, color: '#777777', shade: '#555555', satin: true, face: { rot: 0.122, dx: 0.06, dy: 0.13, tilt: 0.92, gap: 0.81, color: '#1e1e20' } },
-  '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'cloud', rot: 0.1, color: '#2f7cf0', prop: 'quill' }, // Edgar: blue cloud + quill
+  '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'edgarCloud', rot: 0, color: '#1084fe', shade: '#0871e5', satin: true, prop: 'quill', face: { rot: 0, dx: 0.013, dy: -0.029, gap: 0.78, color: '#232325' } }, // Edgar: video cloud + quill
   '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.5, color: '#1cc26d' },            // Comp: green tilted wedge
   '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
   '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
@@ -161,6 +189,13 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     ctx.restore(); return;
   }
 
+  if (a.shape === 'edgarCloud') {
+    ctx.fillStyle = a.face.color;
+    for (const sx of [-1, 1]) {
+      ctx.beginPath(); ctx.roundRect((a.face.dx + sx * 0.078 - 0.034) * size, -0.05 * size, 0.068 * size, 0.164 * size, 0.034 * size); ctx.fill();
+    }
+    ctx.restore(); return;
+  }
   const fc = a.face || {}, fr = fc.rot || 0;
   ctx.fillStyle = fc.color || '#111'; ctx.rotate(-fr); // canvas y points down, so a CCW face tilt is a negative canvas rotation
   for (const dx of [-0.1 * (fc.gap || 1), 0.1 * (fc.gap || 1)]) { ctx.beginPath(); ctx.ellipse((dx + (fc.dx || 0)) * size, (-0.02 - (fc.dy || 0)) * size, size * 0.05, size * 0.09, -(fc.tilt || 0), 0, TAU); ctx.fill(); }
