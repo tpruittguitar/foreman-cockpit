@@ -4,19 +4,21 @@ import {codexImageInput,attachmentBinding} from '../../lib/office-images.mjs';
 import {validRoute} from '../../lib/office-route.mjs';
 const terminal=new Set(['completed','finished','awaiting_review','failed','unknown']);
 // One outbound polling pass; no listener, timer installation, auth bypass or lease reclaim.
-export async function runMailboxOnce({mailbox,config,jobVerificationKey,statusSigningKey,ledger,adapter,now=()=>Math.floor(Date.now()/1000),pollMs=2000}) {
+export async function runMailboxOnce({mailbox,config,jobVerificationKey,statusSigningKey,ledger,adapter:single,adapters,now=()=>Math.floor(Date.now()/1000),pollMs=2000}) {
  await mailbox.verifyPrivate();const lock=ledger.acquireWorkerLock(config.workerId);if(!lock)return {dispatched:0,busy:true};
  try { let dispatched=0;
  for(const id of await mailbox.listReady()) {
   const ready=await mailbox.get('ready/'+id+'.json');if(!ready)continue;
   let value,job;
-  try {value=await open(ready.value,'job',jobVerificationKey);job=checkJob(value,config,now());if(await jobId(job)!==id)continue;const source=await mailbox.get('jobs/'+id+'.json');if(JSON.stringify(source?.value)!==JSON.stringify(ready.value))continue;await codexImageInput(job,relayImages(mailbox));}catch{continue;}
+  try {value=await open(ready.value,'job',jobVerificationKey);job=checkJob(value,config,now());if(await jobId(job)!==id)continue;if(!(adapters?adapters[job.provider]:single))continue;const source=await mailbox.get('jobs/'+id+'.json');if(JSON.stringify(source?.value)!==JSON.stringify(ready.value))continue;await codexImageInput(job,relayImages(mailbox));}catch{continue;}
   // A permanent create-only marker wins once. No expiry/reclaim, even after a crash.
   if(!await mailbox.put('claims/'+id+'.json',{workerId:config.workerId,jobSignature:ready.value.signature}))continue;
   // Trusted local SQLite ledger also prevents replay after a mailbox marker is deleted.
   const claimed=await ledger.claim('outbound:'+id,{status:'claimed',jobSignature:ready.value.signature});if(!claimed.created)continue;
   // Validate expiry and bytes again after the claim and before native dispatch.
   checkJob(value,config,now());await codexImageInput(job,relayImages(mailbox));
+  // Each agent has its own adapter (Codex, Claude Code, Cursor agent, Hermes); a job only ever reaches its own agent.
+  const adapter=adapters?adapters[job.provider]:single;
   let previous='',revision;
   async function publish(event){
    const safe={status:event.status};if(!['queued','running','awaiting_approval',...terminal].includes(safe.status))throw Error('Invalid native status');
@@ -34,5 +36,5 @@ export async function runMailboxOnce({mailbox,config,jobVerificationKey,statusSi
   await work;await publish(await adapter.status(attachmentBinding(job)));
  }
  return {dispatched};
- } finally { await adapter.queue;ledger.releaseWorkerLock(config.workerId,lock); }
+ } finally { for(const a of adapters?Object.values(adapters):[single])await a?.queue;ledger.releaseWorkerLock(config.workerId,lock); }
 }

@@ -1,0 +1,32 @@
+// Office /code for Claude, Grokbot and Hermes, and Hermes /learn (Nov 22). One targeted pass over the new adapter.
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{execFileSync}=require('node:child_process');
+const binding={tenant:'foreman-office-01',owner:'tim-pruitt-owner01',provider:'Dot',conversationId:'office-dot-conversation-01',sessionId:'office-dot-session01',repository:'tpruittguitar/foreman-cockpit',base:'main',branch:'office-coding/dot-office-relay-01'};
+test('each agent gets its own session and branch; jobs route to the right tool; /learn reads the board in order',async()=>{
+ const [{providerBinding},{checkJob},{CliAdapter,parseRoute},{PrivateStore}]=await Promise.all([import('../lib/office-relay/providers.mjs'),import('../lib/office-relay/crypto.mjs'),import('../tools/office-dot/cli-adapter.mjs'),import('../tools/office-dot/store.mjs')]);
+ const c=providerBinding(binding,'Claude');
+ assert.deepEqual([c.conversationId,c.sessionId,c.branch],['office-claude-conversation-01','office-claude-session01','office-coding/claude-office-relay-01']);
+ const config={binding,workerId:'w1'},t=1000,wrap=job=>({job,workerId:'w1',createdAt:t,expiresAt:t+600});
+ const job={...providerBinding(binding,'Hermes'),requestId:'request-000000000001',text:'/learn',attachments:[]};
+ assert.equal(checkJob(wrap(job),config,t).provider,'Hermes');
+ assert.throws(()=>checkJob(wrap({...job,provider:'Claude'}),config,t),/binding/);
+ assert.throws(()=>checkJob(wrap({...providerBinding(binding,'Dot'),requestId:job.requestId,text:'/learn'}),config,t),/Invalid/);
+ assert.deepEqual(parseRoute('done\nROUTE {"route":"draft_pr","summary":"Bigger chat https://x.y"}',1),{route:'draft_pr',summary:'Bigger chat [link]'});
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'office-cli-')),ws=path.join(root,'ws'),state=path.join(root,'state');fs.mkdirSync(ws);
+ const git=a=>execFileSync('git',a,{cwd:ws,stdio:'ignore'});git(['init','-q','-b',c.branch]);git(['remote','add','origin','https://github.com/'+c.repository+'.git']);
+ fs.writeFileSync(path.join(ws,'a.js'),'1');git(['add','.']);git(['-c','user.name=t','-c','user.email=t@t','commit','-qm','init']);
+ const store=new PrivateStore(state),calls=[];
+ const run=async o=>{calls.push(o);if(o.command==='cursor-agent')return {missing:true};if(o.command==='claude.cmd'){fs.writeFileSync(path.join(ws,'a.js'),'2');return {code:0,out:JSON.stringify({result:'ok\nROUTE {"route":"local_change","summary":"Edited a.js"}'})};}return {code:0,out:'LEARNED: Tim wants lean replies.'};};
+ const claude=new CliAdapter({provider:'Claude',store,workspace:ws,stateDir:state,binding,run});
+ const cj={...c,requestId:'request-000000000002',text:'make it 2',attachments:[]};await claude.submit(cj);await claude.queue;
+ assert.deepEqual((await claude.status(cj)).outcome,{route:'local_change',summary:'Edited a.js'});
+ assert.ok(calls[0].args.includes('--disallowedTools')&&calls[0].args.includes('Bash')&&calls[0].input.includes('make it 2'));
+ const grok=new CliAdapter({provider:'Grok',store,workspace:ws,stateDir:state,binding,run}),gj={...providerBinding(binding,'Grok'),requestId:'request-000000000003',text:'x',attachments:[]};
+ grok.verifyWorkspace=()=>{};await grok.submit(gj);await grok.queue;assert.equal((await grok.status(gj)).status,'failed');assert.match((await grok.status(gj)).outcome.summary,/not installed/);
+ const board=path.join(root,'chat.log');fs.writeFileSync(board,'[1] Tim -> Dot: use 5\n[2] Tim -> Dot: correction, use 6\n');
+ const hermes=new CliAdapter({provider:'Hermes',store,workspace:ws,stateDir:state,binding,run,boardLog:board});
+ await hermes.submit(job);await hermes.queue;const h=await hermes.status(job);
+ assert.equal(h.status,'finished');assert.match(h.outcome.summary,/^Learned: Tim wants lean/);
+ const prompt=fs.readFileSync(calls.at(-1).args[2],'utf8');assert.ok(prompt.indexOf('use 5')<prompt.indexOf('use 6')&&/correction wins/.test(prompt)&&calls.at(-1).args.includes('skills'));
+ assert.equal(JSON.parse(fs.readFileSync(path.join(state,'hermes-learn.json'),'utf8')).line,2);
+ store.close();
+});

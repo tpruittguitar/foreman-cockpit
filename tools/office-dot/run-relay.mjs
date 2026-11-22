@@ -12,6 +12,8 @@ import {PrivateStore} from './store.mjs';
 import {DotAdapter} from './adapter.mjs';
 import {launchCodex} from './rpc.mjs';
 import {draftPublisher} from './publish.mjs';
+import {CliAdapter} from './cli-adapter.mjs';
+import {providerBinding} from '../../lib/office-relay/providers.mjs';
 export function ghRequest(execute=execFileSync){return async({method,path:apiPath,accept,body})=>{
  if(!(apiPath==='/repos/'+REPO||apiPath.startsWith('/repos/'+REPO+'/contents/coding-v1/')) || !['GET','PUT'].includes(method))throw Error('Fixed private mailbox only');
  const args=['api','--hostname','github.com','--include','--method',method,apiPath,'-H','Accept: '+(accept||'application/vnd.github+json'),'-H','X-GitHub-Api-Version: 2022-11-28',...(body?['--input','-']:[])];
@@ -33,7 +35,15 @@ export async function runConfiguredRelay(config) {
    if(!process.stdin.isTTY)return 'decline'; // unattended: the step is skipped and the turn continues (cancel aborts the whole turn)
    const answer=await terminal.question('Native approval for this turn: '+JSON.stringify(p)+'\nType accept for this action once, or cancel: ');return answer==='accept'?'accept':'cancel';
   }});
-  return await runMailboxOnce({mailbox,config,jobVerificationKey,statusSigningKey,ledger:store,adapter});
+  // Claude, Grokbot and Hermes: one local copy each (config.agents.<Agent>.workspace), on that agent's own draft branch.
+  const adapters={Dot:adapter};
+  for(const [provider,agent] of Object.entries(config.agents||{})){
+   const b=providerBinding(config.binding,provider),ws=fs.realpathSync(agent.workspace);
+   if(stateDir===ws||stateDir.startsWith(ws+path.sep))throw Error('Private state must be outside project workspace');
+   adapters[provider]=new CliAdapter({provider,store,workspace:ws,stateDir,binding:config.binding,images:relayImages(mailbox),boardLog:agent.boardLog,
+    publishDraft:draftPublisher({workspace:ws,stateDir,repository:b.repository,branch:b.branch,base:b.base,label:provider==='Grok'?'Grokbot':provider})});
+  }
+  return await runMailboxOnce({mailbox,config,jobVerificationKey,statusSigningKey,ledger:store,adapters});
  }finally{terminal.close();rpc.close();store.close();}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
