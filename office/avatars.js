@@ -67,6 +67,7 @@ export function qaDropRadius(t) {
   return Math.sqrt(Math.max(0, t * (1 - t) * sum));
 }
 const SHAPES = {
+  rootSquare: rot => roundedPoly([[-0.3293072, -0.3293072], [0.3293072, -0.3293072], [0.3293072, 0.3293072], [-0.3293072, 0.3293072]], 0.0823268, rot),
   roundsquare: rot => roundedPoly([[-0.36, -0.36], [0.36, -0.36], [0.36, 0.36], [-0.36, 0.36]], 0.17, rot),
   star4: rot => polar(t => 0.2 + 0.25 * Math.pow(Math.abs(Math.cos(2 * t)), 2.2), rot),
   clover4: rot => polar(t => 0.29 + 0.14 * Math.pow(Math.abs(Math.cos(2 * t)), 0.55), rot),
@@ -148,7 +149,7 @@ export const AVATARS = {
   'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'blob', rot: 0.3, color: '#22b8a2' },             // Cursor: teal round blob
   'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'sphere', rot: 0, color: '#d46b4e', shade: '#bf472f', icon: 'claude' }, // Claude (Tim, Nov 21): orange satin ball, flat white starburst (CLAUDE_STAR); color is his picture's orange, shade the deeper 3D paint that reads as that orange under the office lights
   '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'sphere', rot: 0, color: '#18181b', icon: 'chatgpt' },  // ChatGPT (Tim, Nov 21): black glossy sphere, white logo on the front (office/assets/chatgpt-logo.png)
-  '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' },     // Root: gray rounded square
+  '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'rootSquare', rot: 0, color: '#777777', shade: '#555555', satin: true, face: { rot: 0, dx: 0.03, dy: -0.026, gap: 0.78, color: '#232325' } }, // RootCause: satin-gray square
   // Usage: upright satin cone with a generous lower rim and flat vertical eyes.
   'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'usageCone', rot: 0, color: '#777777', shade: '#555555', satin: true, face: { color: '#232325' } },
   '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'edgarCloud', rot: 0, color: '#1084fe', shade: '#0871e5', satin: true, prop: 'quill', face: { rot: 0, dx: 0.013, dy: -0.029, gap: 0.78, color: '#232325' } }, // Edgar: video cloud + quill
@@ -212,7 +213,7 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     }
     ctx.restore(); return;
   }
-  if (a.shape === 'edgarCloud') {
+  if (a.shape === 'edgarCloud' || a.shape === 'rootSquare') {
     ctx.fillStyle = a.face.color;
     for (const sx of [-1, 1]) {
       ctx.beginPath(); ctx.roundRect((a.face.dx + sx * 0.078 - 0.034) * size, -0.05 * size, 0.068 * size, 0.164 * size, 0.034 * size); ctx.fill();
