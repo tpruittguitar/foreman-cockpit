@@ -65,8 +65,8 @@ if(require.main===module || process.env.NODE_TEST_CONTEXT){
   const {draftPublisher}=await import('../tools/office-dot/publish.mjs');const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'office-publish-'));const workspace=path.join(tmp,'work'),stateDir=path.join(tmp,'private');fs.mkdirSync(workspace);fs.mkdirSync(stateDir);fs.writeFileSync(path.join(workspace,'change.txt'),'fixture');
   const branch='office-coding/fixture_branch_01',repository='example/project',calls=[];let isDraft=false,existing=true;
   const execute=(cmd,args)=>{calls.push([cmd,...args]);if(cmd==='git'){
-   const a=args.slice(2);if(a[0]==='branch')return branch;if(a[0]==='remote')return 'https://github.com/'+repository+'.git';if(a[0]==='diff')return 'change.txt';return '';
-  }const pr={number:123,isDraft,headRefName:branch,baseRefName:'main',url:'https://github.com/example/project/pull/123'};if(args[1]==='list')return JSON.stringify(existing?[pr]:[]);if(args[1]==='create'){isDraft=true;return pr.url;}return JSON.stringify(pr);};
+   const a=args.slice(2);if(a[0]==='branch')return branch;if(a[0]==='remote')return 'https://github.com/'+repository+'.git';if(a[0]==='diff')return 'change.txt';if(a[0]==='rev-parse')return 'fixture-head';if(a[0]==='ls-remote')return 'fixture-head refs/heads/'+branch;return '';
+  }const pr={number:123,headRefOid:'fixture-head',isDraft,headRefName:branch,baseRefName:'main',url:'https://github.com/example/project/pull/123'};if(args[1]==='list')return JSON.stringify(existing?[pr]:[]);if(args[1]==='create'){isDraft=true;return pr.url;}return JSON.stringify(pr);};
   const publish=draftPublisher({workspace,stateDir,repository,branch,execute});
   await assert.rejects(publish,/draft/);assert.ok(!calls.some(c=>c[0]==='git'&&c.includes('push')));
   existing=false;calls.length=0;const pr=await publish();assert.equal(pr.draft,true);assert.ok(calls.find(c=>c[0]==='gh'&&c[2]==='create').includes('--draft'));

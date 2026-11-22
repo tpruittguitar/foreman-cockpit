@@ -40,7 +40,7 @@ export function createCodingClient(fetcher, uuid = () => crypto.randomUUID()) {
         const r = await fetcher('/api/agent-coding?' + q, { credentials: 'same-origin', cache: 'no-store' });
         const j = await r.json();
         if (g !== generation || !r.ok || j.provider !== job.provider || j.conversationId !== job.conversationId || j.requestId !== job.requestId) return null;
-        if (['completed', 'failed', 'awaiting_review'].includes(j.status)) pending.delete(JSON.stringify([job.provider, job.text]));
+        if (['completed', 'finished', 'failed', 'awaiting_review'].includes(j.status)) pending.delete(JSON.stringify([job.provider, job.text]));
         return j;
       } catch { return null; }
     }

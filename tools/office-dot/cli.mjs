@@ -30,6 +30,6 @@ try{
   },publishDraft:draftPublisher({workspace,stateDir,repository,branch})});
   server=await startLocalServer({root,adapter,store,identity,scope});
   console.log('Open this one-time local Office link:',server.launchUrl);
-  console.log('Select ChatGPT Dot. /code sends a coding turn. /code /pr explicitly publishes a draft using existing git/gh login. Native approvals appear here. Ctrl+C stops this local pilot.');
+  console.log('Select ChatGPT Dot. /code opens a coding session with a proposed approach; a chosen verified draft is returned automatically. /code /pr remains an explicit publication command. Native approvals appear here. Ctrl+C stops this local pilot.');
   process.once('SIGINT',()=>close().then(()=>process.exit()));process.once('SIGTERM',()=>close().then(()=>process.exit()));
 }catch(e){await close();throw e;}

@@ -20,6 +20,6 @@ export class PrivateStore {
   }
   async get(key) { return this.read('http',key); }
   async update(key, change) { const old=this.read('http',key); if (!old) throw Error('Unknown request'); if (['completed','failed'].includes(old.status)) return; this.set('http',key,{...old,...change}); }
-  hasUncertain() { return this.db.prepare("SELECT value FROM records WHERE space='native'").all().some(r=>JSON.parse(r.value).status==='unknown'); }
+  hasUncertain() { return this.db.prepare("SELECT value FROM records WHERE space IN ('native','publication')").all().some(r=>JSON.parse(r.value).status==='unknown'||JSON.parse(r.value).status==='publishing'); }
   close() { this.db.close(); }
 }

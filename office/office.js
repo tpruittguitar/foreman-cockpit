@@ -479,7 +479,7 @@ async function agentUnlock() {
   acSyncInput(); acRepaint();
 }
 function codingMessage(job) {
-  return { from: job.provider, to: 'Tim', time: '', text: 'Coding: ' + (job.message || ({awaiting_approval:'approval needed in local terminal',awaiting_review:'edit finished · /code /pr opens a draft'}[job.status] || job.status)) + '\n' + job.text,
+  return { from: job.provider, to: 'Tim', time: '', text: 'Coding: ' + (job.message || ({awaiting_approval:'approval needed in local terminal',awaiting_review:'session finished · review local result',finished:'session finished'}[job.status] || job.status)) + (job.approach ? '\nApproach: ' + job.approach.summary : '') + (job.outcome ? '\nResult: ' + job.outcome.summary : '') + '\n' + job.text,
     draftUrl: job.status === 'completed' ? job.draftUrl : null };
 }
 async function codingRefresh() {
@@ -493,7 +493,7 @@ async function codingRefresh() {
   }
   acRepaint();
 }
-setInterval(codingRefresh, 15000);
+setInterval(codingRefresh, 2000); // owner-scoped local status only; never dispatches work
 async function agentSend() {
   const text = AC.draft.trim(); if ((!text && !AC.files.length) || AC.sending) return;
   const code = codingText(text);

@@ -18,7 +18,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='turn/start'){
   if(p.threadId!==thread||p.cwd!==cwd||p.sandboxPolicy.networkAccess!==false||p.input[0].type!=='text')throw Error('Bad turn translation');
   const id='native-turn-'+(++turn),text=p.input[0].text;
-  const finish=accepted=>{if(accepted)fs.appendFileSync(path.join(cwd,'proof.txt'),'turn-'+turn+'\n');send({method:'turn/completed',params:{threadId:thread,turn:{id,status:accepted?'completed':'interrupted'}}});};
+  const finish=accepted=>{if(accepted){fs.appendFileSync(path.join(cwd,'proof.txt'),'turn-'+turn+'\n');send({method:'item/completed',params:{threadId:thread,turnId:id,item:{type:'fileChange',status:'completed',changes:[{path:path.join(cwd,'proof.txt')}]}}});}send({method:'turn/completed',params:{threadId:thread,turn:{id,status:accepted?'completed':'interrupted'}}});};
   reply(m,{turn:{id,status:'inProgress'}});
   if(text.includes('approval')){const aid='approval-'+turn;approvals.set(aid,finish);send({id:aid,method:'item/fileChange/requestApproval',params:{threadId:thread,turnId:id,itemId:'file-'+turn,startedAtMs:Date.now()}});}else setTimeout(()=>finish(true),10);
   return;

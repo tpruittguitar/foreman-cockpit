@@ -27,7 +27,7 @@ export class CodexRPC extends EventEmitter {
     });
   }
   async initialize() {
-    await this.request('initialize', { clientInfo: { name: 'office_dot_local', version: '0.1.0' }, capabilities: { explicitGatewayOauth: true } });
+    await this.request('initialize', { clientInfo: { name: 'office_dot_local', version: '0.1.0' }, capabilities: { explicitGatewayOauth: true, experimentalApi: true } });
     this.send({ method: 'initialized', params: {} });
   }
   async includedAccount() {
