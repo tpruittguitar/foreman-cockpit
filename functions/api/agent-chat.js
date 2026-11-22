@@ -67,6 +67,7 @@ export async function handle(request, env, fetcher = fetch, now = Date.now()) {
     const exp = now + TOKEN_MS; return out(200, { ok: true, token: await sign(env, exp), exp });
   }
   if (!(await tokenOk(env, request.headers.get('X-Agent-Chat-Token'), now))) return out(401, { ok: false, error: 'locked' });
+  if (body && (body.intent || body.mode === 'coding' || /^\/code(?:\s|$)/i.test(String(body.text || '').trim()))) return out(409, { ok: false, error: 'Coding is not connected to this chat relay; use the coding request route' });
   const h = { Authorization: 'Bearer ' + env.OFFICE_MAILBOX_TOKEN, Accept: 'application/vnd.github+json', 'User-Agent': 'office-agent-chat', 'X-GitHub-Api-Version': '2022-11-28' };
   try {
     if (body) {
