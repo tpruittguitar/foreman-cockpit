@@ -713,7 +713,7 @@ export function drawAgentChat(ctx, W, H, o) {
     y += lh * (show.length + 1) + 8 * s;
   }
   ctx.fillStyle = o.err && msgs.length ? '#ff8a7a' : '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`;
-  const foot = o.note || (o.err && msgs.length ? o.err : '') || (o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY' : 'Enter sends · Shift+Enter new line · lock on the right');
+  const foot = o.note || (o.err && msgs.length ? o.err : '') || (o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY' : 'Enter sends · Shift+Enter new line · lock on the left');
   ctx.fillText(fit(ctx, foot, W - 260 * s), x0, H - 12 * s);
   return hits;
 }
