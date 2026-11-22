@@ -239,9 +239,11 @@ function starSDF(rot) {
   };
 }
 /* Wide face shapes read as fat from the side, so they are thinner front to back (Tim, Nov 17, 2026). Applies to every bot with that shape. */
-const SHAPE_THICK = { clover4: 0.55, pill: 0.5 };
+const SHAPE_THICK = { clover4: 0.55, pill: 0.5, pick: 0.6 };
+/* Usage's guitar pick (Tim, Nov 22) reads as a pick when its faces are flatter and its rim rounder than a plain ellipsoid. */
+const SHAPE_FLAT = { pick: 2.6 };
 function puffBody(a, hi) {
-  const NT = hi ? 160 : 96, NP = hi ? 64 : 40, star = a.shape === 'starburst';
+  const NT = hi ? 160 : 96, NP = hi ? 64 : 40, star = a.shape === 'starburst', FL = SHAPE_FLAT[a.shape] || BOT_FLAT;
   let ringAt, W, D, hbar, zFront;
   if (star) {
     const f = starSDF(a.rot || 0);
@@ -253,9 +255,9 @@ function puffBody(a, hi) {
     const pts = shapePoints(a), prof = radialProfile(pts, NT);
     let wmax = 0, wmin = 0; for (let k = 0; k < NT; k++) { const x = Math.cos(k / NT * Math.PI * 2) * prof[k]; wmax = Math.max(wmax, x); wmin = Math.min(wmin, x); }
     D = (wmax - wmin) * (SHAPE_THICK[a.shape] || BOT_THICK) / 2; // wide shapes get a thinner front-to-back depth
-    ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, sp = Math.sin(ph), cp = Math.cos(ph), r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.pow(Math.abs(sp), 2 / BOT_FLAT); return [Math.cos(t) * r, Math.sin(t) * r, Math.sign(cp) * Math.pow(Math.abs(cp), 2 / BOT_FLAT) * D]; };
+    ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, sp = Math.sin(ph), cp = Math.cos(ph), r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.pow(Math.abs(sp), 2 / FL); return [Math.cos(t) * r, Math.sin(t) * r, Math.sign(cp) * Math.pow(Math.abs(cp), 2 / FL) * D]; };
     zFront = (x, y) => { const rho = Math.hypot(x, y), th = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2), f = th / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, R = prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f));
-      return Math.pow(Math.max(0, 1 - Math.min(1, rho / R) ** BOT_FLAT), 1 / BOT_FLAT) * D; };
+      return Math.pow(Math.max(0, 1 - Math.min(1, rho / R) ** FL), 1 / FL) * D; };
   }
   const pos = [], idx = [], P0 = ringAt(1e-4, 0), P1 = ringAt(Math.PI - 1e-4, 0);
   pos.push(0, 0, P0[2]);
@@ -373,10 +375,10 @@ export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const ball = a.shape === 'sphere', paint = ball && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit
+  const ball = a.shape === 'sphere', satin = ball || !!a.satin, paint = satin && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit; a.satin (Usage pick): a body in the balls' satin finish
   const bodyG = geo(key + (ball ? ':' + hiQuality : ''), () => ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = ball ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : ball ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
+  const bodyM = satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
@@ -387,7 +389,7 @@ export function makeBot(name, hiQuality, botId, override) {
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   /* a.face (Hermes): its own eye colour, the eye pair tilted by face.rot instead of the body rot, shifted dx/dy, each eye leaning by tilt */
   if (!a.icon) { const fc = a.face || {}, eyeHex = fc.color || '#0b0b0e', eyeM = mat('eyeClay' + eyeHex, () => new THREE.MeshStandardMaterial({ color: new THREE.Color(eyeHex), roughness: 1, metalness: 0 }));
-    const rot = fc.rot ?? (a.rot || 0), EDX = fc.dx || 0, ETILT = fc.tilt || 0, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004, ZV = new THREE.Vector3(0, 0, 1);
+    const rot = fc.rot ?? (a.rot || 0), EDX = fc.dx || 0, ETILT = fc.tilt || 0, GAP = fc.gap || 1, cr = Math.cos(rot), sr = Math.sin(rot), zAt = bodyG.userData.zAt, fz = bb.max.z - 0.012, H = 0.004, ZV = new THREE.Vector3(0, 0, 1);
     const EY = -0.02 + (fc.dy || 0), tmpQ = new THREE.Quaternion(), qz = new THREE.Quaternion();
     /* sit each eye ON the curved skin: sample the surface where the eye really lands (the face is rotated by rot and lifted 0.02), then
        tilt it to the surface normal so neither end sinks into the body (Tim, Nov 17: Usage's eyes vanished into its slope) */
@@ -398,9 +400,9 @@ export function makeBot(name, hiQuality, botId, override) {
       e.position.set(ex, ey, z - fz).addScaledVector(n, 0.006); e.quaternion.setFromUnitVectors(ZV, n);
       if (tilt) e.quaternion.multiply(qz.setFromAxisAngle(ZV, tilt));
     };
-    face.userData.eyes.forEach((e, i) => { e.material = eyeM; e.geometry = slotGeometry(); setSlot(e.geometry, 0.068, 0.2); placeEye(e, (i ? 1 : -1) * 0.1 + EDX, EY, ETILT);
+    face.userData.eyes.forEach((e, i) => { e.material = eyeM; e.geometry = slotGeometry(); setSlot(e.geometry, 0.068, 0.2); placeEye(e, (i ? 1 : -1) * 0.1 * GAP + EDX, EY, ETILT);
       e.scale.set(1, 1, 1); e.userData.sy = 1; face.userData.shines[i].scale.set(0, 0, 0); });
-    face.userData.brows.forEach((br, i) => { const ex = (i ? 1 : -1) * 0.085 + EDX, ey = 0.15, bx = ex * cr - ey * sr, by = ex * sr + ey * cr + 0.02; br.position.z = zAt(bx, by) - fz + 0.008; });
+    face.userData.brows.forEach((br, i) => { const ex = (i ? 1 : -1) * 0.085 * GAP + EDX, ey = 0.15, bx = ex * cr - ey * sr, by = ex * sr + ey * cr + 0.02; br.position.z = zAt(bx, by) - fz + 0.008; });
     /* studio faces: p = blended expression weights (office-logic EXPR); extra = {yaw, pitch, roll (deg), wink 0..1, eyeScale} from the idle motions.
        Per eye: a stadium (slot) of the studio w x h, tilted by the studio tilt, shifted by the gaze, re-seated on the surface when it moved. */
     const L = window.OfficeLogic;
@@ -410,7 +412,7 @@ export function makeBot(name, hiQuality, botId, override) {
         const w = p[i ? 'e1w' : 'e0w'] * (x.eyeScale || 1), h = p[i ? 'e1h' : 'e0h'] * (x.eyeScale || 1), tilt = p[i ? 'e1t' : 'e0t'], sz = L.slotSize(w, h);
         const open = Math.max(0.06, Math.min(p[i ? 'e1o' : 'e0o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
         if (face.userData.slotKey !== key) {
-          const sx = (i ? 1 : -1) * 0.1 * g.spread, cx = sx * Math.cos(g.roll), cy = sx * Math.sin(g.roll);
+          const sx = (i ? 1 : -1) * 0.1 * GAP * g.spread, cx = sx * Math.cos(g.roll), cy = sx * Math.sin(g.roll);
           placeEye(e, cx + g.x + EDX, EY + cy + g.y, ETILT - tilt * Math.PI / 180 - g.roll);
           setSlot(e.geometry, sz.w, sz.h);
         }
@@ -438,7 +440,7 @@ export function makeBot(name, hiQuality, botId, override) {
     const needle = new THREE.Mesh(geo('gNeedle', () => new THREE.BoxGeometry(0.012, 0.17, 0.01)), mat('needle', () => new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0x6a5200 })));
     needle.position.set(0.05, 0.19, bb.max.z); needle.rotation.z = -0.6; body.add(needle);
   }
-  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(ball ? paint : 0xffffff), new THREE.Color(ball ? paint : a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic });
+  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(satin ? paint : 0xffffff), new THREE.Color(satin ? paint : a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic });
   if (a.prop === 'quill') {
     const q = new THREE.Group(), feather = new THREE.Mesh(geo('quill', () => { const g = new THREE.SphereGeometry(0.05, 10, 8); g.scale(0.35, 1.6, 0.12); return g; }), white());
     feather.position.y = 0.08; const nib = new THREE.Mesh(geo('nib', () => new THREE.ConeGeometry(0.008, 0.05, 6)), black()); nib.rotation.x = Math.PI; nib.position.y = -0.02;
