@@ -192,7 +192,7 @@ test('usage: latest reading per provider, Measured time, countdown to the next s
   assert.equal(L.readingStale(latest.CLAUDE, Date.parse('2026-11-16T13:40:00Z')), true, '8:05 check + 30 min grace missed');
   const rows = L.usageRows(r, NOW, null);
   assert.deepEqual(rows.map(x => [x.name, x.pct_used, x.stale]), [['Claude', 27, false], ['ChatGPT', 76, false], ['Grok', null, true]]);
-  assert.ok(rows.every(x => /^Measured \d{1,2}:\d\d (AM|PM) ET$/.test(x.measured) && !('next' in x)), 'no stale next-check line (card bd3ecea)');
+  assert.ok(rows.every(x => new RegExp('^' + (x.pct_used == null ? 'Attempted' : 'Measured') + ' \\d{1,2}:\\d\\d (AM|PM) ET$').test(x.measured) && !('next' in x)), 'no stale next-check line (card bd3ecea)');
   assert.equal(L.usageLatest(rows), Math.max(...rows.map(x => x.at)), 'one latest time for monitor and wall');
   assert.match(L.usageHeader(rows, NOW), /^Latest reading \d{1,2}:\d\d (AM|PM) ET · /);
   assert.equal(L.usageHeader([], NOW), 'No usage reading yet');
@@ -414,4 +414,16 @@ test('usage wall API credit: a newer ChatGPT reading without a credit keeps the 
   const grok = { at: '2026-11-20T05:00:00Z', provider: 'GROK', meter: 'weekly', label: 'weekly', usedPct: 97, resetsAt: '2026-11-22T21:41:00Z', status: 'OK' };
   const rows = L.usageRows(L.parseReadings([old, newer, grok].map(r => JSON.stringify(r)).join('\n')), now, null);
   assert.equal(L.creditLine(rows.find(r => r.name === 'Grok')), '');
+});
+
+test('Office timestamps weekly failures as attempts and real zeros as measurements', () => {
+  const reading = { at: '2026-11-16T06:37:00Z', provider: 'GROK', meter: 'weekly', label: 'weekly' };
+  for (const sample of [{ usedPct: null, status: 'CHROME_UNAVAILABLE' }, {}, { usedPct: 0, status: 'CHROME_UNAVAILABLE' }]) {
+    const row = L.usageRows(L.parseReadings(JSON.stringify({ ...reading, ...sample })), NOW, null)[0];
+    assert.equal(row.pct_used, null);
+    assert.match(row.measured, /^Attempted .+ ET$/);
+  }
+  const row = L.usageRows(L.parseReadings(JSON.stringify({ ...reading, usedPct: 0, status: 'OK' })), NOW, null)[0];
+  assert.equal(row.pct_used, 0);
+  assert.match(row.measured, /^Measured .+ ET$/);
 });

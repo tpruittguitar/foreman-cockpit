@@ -22,6 +22,10 @@
     return out;
   }
 
+  function weeklyPct(r) {
+    return (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct) ? r.usedPct : null;
+  }
+
   /** One weekly projection per provider; historical short-window meters are ignored. */
   function project(readings, nowMs) {
     nowMs = nowMs || Date.now();
@@ -33,18 +37,18 @@
     var projections = Object.keys(groups).map(function (k) {
       var g = groups[k].slice().sort(function (a, b) { return Date.parse(a.at) - Date.parse(b.at); });
       var last = g[g.length - 1], at = Date.parse(last.at), reset = Date.parse(last.resetsAt) || 0;
-      var p = { provider: last.provider, meter: last.meter, label: last.label || last.meter, usedPct: +last.usedPct, at: at, resetsAt: reset, status: last.status || 'OK', ageH: (nowMs - at) / H, rate: null, runOutAt: null, verdict: 'UNKNOWN', basis: '' };
+      var p = { provider: last.provider, meter: last.meter, label: last.label || last.meter, usedPct: weeklyPct(last), at: at, resetsAt: reset, status: last.status || 'OK', ageH: (nowMs - at) / H, rate: null, runOutAt: null, verdict: 'UNKNOWN', basis: '' };
       if (last.provider === 'CHATGPT' && last.openaiCredit) p.openaiCredit = last.openaiCredit;
       if (last.resets_available !== undefined) p.resets_available = last.resets_available;
       if (last.resets_expire !== undefined) p.resets_expire = last.resets_expire;
       if (last.extra_usd !== undefined) p.extra_usd = last.extra_usd;
-      if (p.status !== 'OK' || !isFinite(p.usedPct)) { p.verdict = 'NO_READING'; return p; }
+      if (p.status !== 'OK' || p.usedPct === null) { p.verdict = 'NO_READING'; return p; }
       if (reset && reset <= nowMs) { p.verdict = 'RESET_PASSED'; return p; }
       if (p.usedPct >= 100) { p.verdict = 'OUT'; p.runOutAt = at; return p; }
-      var same = g.filter(function (r) { return r.status === 'OK' && Date.parse(r.resetsAt) === reset && at - Date.parse(r.at) >= MIN_GAP; });
+      var same = g.filter(function (r) { return r.status === 'OK' && weeklyPct(r) !== null && Date.parse(r.resetsAt) === reset && at - Date.parse(r.at) >= MIN_GAP; });
       if (same.length) {
         var prev = same[same.length - 1], dt = (at - Date.parse(prev.at)) / H;
-        p.rate = (p.usedPct - +prev.usedPct) / dt; p.basis = 'last ' + Math.round(dt) + ' h';
+        p.rate = (p.usedPct - weeklyPct(prev)) / dt; p.basis = 'last ' + Math.round(dt) + ' h';
       } else if (reset && last.windowHours) {
         var start = reset - last.windowHours * H, el = (at - start) / H;
         if (el > 0.5) { p.rate = p.usedPct / el; p.basis = 'average since window start'; }
@@ -123,17 +127,17 @@
     return '<div class="dim">' + esc(resets + ' · ' + extra) + '</div>';
   }
   function rowHtml(p, nowMs) {
-    var v = VERDICT[p.verdict] || VERDICT.UNKNOWN, pct = Math.max(0, Math.min(100, p.usedPct || 0));
-    var detail = p.verdict === 'OUT' ? 'out until reset ' + when(p.resetsAt)
+    var v = VERDICT[p.verdict] || VERDICT.UNKNOWN, known = Number.isFinite(p.usedPct), pct = known ? Math.max(0, Math.min(100, p.usedPct)) : null;
+    var detail = !known ? 'usage unavailable' : p.verdict === 'OUT' ? 'out until reset ' + when(p.resetsAt)
       : p.verdict === 'BEFORE_RESET' ? 'projected out ' + when(p.runOutAt) + ' · resets ' + when(p.resetsAt)
       : p.verdict === 'LASTS' ? 'resets ' + when(p.resetsAt) + (p.runOutAt ? ' · projected out ' + when(p.runOutAt) : '')
       : 'resets ' + when(p.resetsAt);
-    var title = NAMES[p.provider] + ' ' + p.label + ': ' + pct + '% used, ' + v[1].toLowerCase() + ', ' + detail;
+    var title = NAMES[p.provider] + ' ' + p.label + ': ' + (known ? pct + '% used, ' : '') + v[1].toLowerCase() + ', ' + detail;
     return '<div class="aiu-row ' + v[0] + '" title="' + esc(title) + '">' +
-      '<div class="aiu-top"><b>' + esc(NAMES[p.provider] || p.provider) + '</b> <span class="dim">' + esc(p.label) + '</span><span class="aiu-pct">' + esc(String(Math.round(pct))) + '%</span></div>' +
-      '<div class="aiu-track" role="img" aria-label="' + esc(title) + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+      '<div class="aiu-top"><b>' + esc(NAMES[p.provider] || p.provider) + '</b> <span class="dim">' + esc(p.label) + '</span><span class="aiu-pct">' + (known ? esc(String(Math.round(pct))) + '%' : '—') + '</span></div>' +
+      (known ? '<div class="aiu-track" role="img" aria-label="' + esc(title) + '"><i style="width:' + pct.toFixed(1) + '%"></i></div>' : '') +
       fiveHourHtml(p, nowMs) + creditHtml(p) + resetsHtml(p) +
-      '<div class="aiu-foot"><span class="pill ' + v[0] + '">' + esc(v[1]) + '</span> <span class="dim">' + esc(detail) + (p.rate != null && p.rate > 0 ? ' · ' + p.rate.toFixed(2) + '%/h (' + esc(p.basis) + ')' : '') + ' · read ' + esc(p.ageH < 1 ? Math.round(p.ageH * 60) + ' min ago' : Math.round(p.ageH) + ' h ago') + '</span></div></div>';
+      '<div class="aiu-foot"><span class="pill ' + v[0] + '">' + esc(v[1]) + '</span> <span class="dim">' + esc(detail) + (p.rate != null && p.rate > 0 ? ' · ' + p.rate.toFixed(2) + '%/h (' + esc(p.basis) + ')' : '') + (known ? ' · read ' : ' · attempted ') + esc(p.ageH < 1 ? Math.round(p.ageH * 60) + ' min ago' : Math.round(p.ageH) + ' h ago') + '</span></div></div>';
   }
   /* Card 7077752 (Tim, Nov 18): the one short prediction both views print, so the 3D AI USAGE screen and this panel agree. */
   function brief(p) {

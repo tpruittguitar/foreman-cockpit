@@ -1503,7 +1503,8 @@
     if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
     return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => {
       const r = latest[p.id];
-      const row = { name: p.name, pct_used: r.usedPct, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: 'Measured ' + etClock(time(r.at)) + ' ET', stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
+      const measured = (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct);
+      const row = { name: p.name, pct_used: measured ? r.usedPct : null, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: (measured ? 'Measured ' : 'Attempted ') + etClock(time(r.at)) + ' ET', stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
       if (r.resets_available !== undefined) row.resets_available = r.resets_available;
       if (r.resets_expire !== undefined) row.resets_expire = r.resets_expire;
       if (r.extra_usd !== undefined) row.extra_usd = r.extra_usd;
