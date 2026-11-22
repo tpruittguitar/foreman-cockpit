@@ -91,10 +91,36 @@ export function archiveHexRadius(t) {
   const f = ((t % TAU + TAU) % TAU) * ARCHIVE_HEX.length / TAU, i = Math.floor(f);
   return ARCHIVE_HEX[i] + (ARCHIVE_HEX[(i + 1) % ARCHIVE_HEX.length] - ARCHIVE_HEX[i]) * (f - i);
 }
+// GUI’s four-lobed clover, traced from the approved upright red reference.
+const GUI_CLOVER = [
+  .3055083121, .3072738124, .3128487206, .3201261675, .3275843763, .3347506220, .3417457244, .3487518659, .3556629616, .3621465327,
+  .3680435441, .3735415244, .3787409771, .3833712925, .3872259437, .3904907499, .3933501909, .3956472703, .3972557403, .3984674968,
+  .3996222218, .4006388930, .4012222747, .4012194445, .4006124487, .3994777631, .3979678509, .3961508223, .3940517499, .3917396642,
+  .3890731280, .3857686516, .3818528235, .3774878932, .3725647088, .3669939230, .3609932874, .3547745248, .3483152679, .3415890463,
+  .3345975622, .3271824184, .3194344943, .3124285336, .3080882260, .3079523411, .3119506217, .3185172862, .3258445635, .3328971979,
+  .3395437213, .3460547781, .3525669386, .3590119064, .3653115063, .3712550717, .3764372782, .3807300318, .3844106341, .3877518271,
+  .3908390331, .3935800439, .3957441333, .3972226939, .3982555759, .3991681934, .4000119483, .4005635184, .4005635184, .4000118946,
+  .3991674590, .3982493320, .3971896475, .3956347825, .3933487222, .3904906425, .3872261584, .3833744448, .3787691050, .3737016769,
+  .3686377694, .3636308175, .3582960211, .3523450455, .3458876473, .3391034513, .3319876186, .3245937189, .3172272573, .3107898945,
+  .3072675939, .3085310143, .3141918715, .3220107234, .3301743486, .3380374086, .3454234046, .3522097075, .3582708309, .3636278799,
+  .3686375546, .3737016769, .3787693197, .3833776508, .3872550207, .3906568779, .3939736833, .3972077345, .3999355775, .4017381075,
+  .4026083713, .4028605666, .4026871254, .4020490924, .4009678238, .3995924351, .3980527828, .3963697215, .3944941860, .3923006772,
+  .3895154031, .3859853476, .3819188090, .3775003810, .3725661776, .3669940303, .3609932874, .3547745248, .3483150531, .3415860550,
+  .3345718523, .3270442035, .3189681095, .3114356355, .3067450626, .3067874993, .3112992444, .3183048804, .3259437564, .3334563170,
+  .3408856897, .3481934324, .3550091098, .3612331301, .3670978734, .3726216123, .3775619959, .3817066745, .3850992369, .3880798087,
+  .3909382261, .3935986146, .3957439723, .3972019201, .3981378123, .3987434368, .3990172478, .3990253789, .3989471935, .3987758562,
+  .3983184715, .3974108923, .3959561810, .3940101490, .3917647832, .3891808490, .3859926730, .3821585203, .3778441540, .3731346304,
+  .3680720842, .3627183544, .3571458673, .3513251575, .3449928965, .3379292493, .3302690102, .3223550817, .3146757890, .3084049661,
+];
+export function guiCloverRadius(t) {
+  const f = ((t % TAU + TAU) % TAU) * GUI_CLOVER.length / TAU, i = Math.floor(f);
+  return GUI_CLOVER[i] + (GUI_CLOVER[(i + 1) % GUI_CLOVER.length] - GUI_CLOVER[i]) * (f - i);
+}
 const SHAPES = {
   rootSquare: rot => roundedPoly([[-0.3293072, -0.3293072], [0.3293072, -0.3293072], [0.3293072, 0.3293072], [-0.3293072, 0.3293072]], 0.0823268, rot),
   roundsquare: rot => roundedPoly([[-0.36, -0.36], [0.36, -0.36], [0.36, 0.36], [-0.36, 0.36]], 0.17, rot),
   star4: rot => polar(t => 0.2 + 0.25 * Math.pow(Math.abs(Math.cos(2 * t)), 2.2), rot),
+  guiClover: rot => tracedOutline(GUI_CLOVER, rot),
   clover4: rot => polar(t => 0.29 + 0.14 * Math.pow(Math.abs(Math.cos(2 * t)), 0.55), rot),
   teardrop: rot => polar(t => 0.35 + 0.16 * Math.pow(Math.max(0, Math.cos(t - 2.35)), 7), rot),
   pill: rot => polar(t => Math.pow(Math.pow(Math.abs(Math.cos(t) / 0.47), 2.6) + Math.pow(Math.abs(Math.sin(t) / 0.32), 2.6), -1 / 2.6), rot),
@@ -182,7 +208,7 @@ export const AVATARS = {
   '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'usageCone', rot: 0, color: '#00c972', shade: '#00b869', satin: true, face: { color: '#232325' } }, // Comp: same cone as Usage, reference green
   '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
   '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
-  'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' },         // GUI: red clover
+  'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'guiClover', rot: 0, color: '#ff263c', shade: '#e51d35', satin: true, face: { rot: 0, dx: 0.014, dy: 0.021, gap: 0.77, color: '#232325' } }, // GUI: satin-red reference clover
   'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'archiveHex', rot: 0, color: '#ff309b', shade: '#e5238a', satin: true, face: { rot: 0, dx: 0.048, dy: 0.005, gap: 0.82, color: '#232325' } }, // Archive: satin-pink reference hexagon
   /* Hermes (Tim, Nov 21): a glossy white 3D icon tile in place of the teal hexagon bot. The front shows the black-and-white girl with
      headphones from Tim's icon picture (office/assets/hermes-icon.png, line art only, the tile itself is the white); the back is plain white.
@@ -241,7 +267,7 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     }
     ctx.restore(); return;
   }
-  if (a.shape === 'edgarCloud' || a.shape === 'rootSquare' || a.shape === 'archiveHex') {
+  if (a.shape === 'edgarCloud' || a.shape === 'rootSquare' || a.shape === 'archiveHex' || a.shape === 'guiClover') {
     ctx.fillStyle = a.face.color;
     for (const sx of [-1, 1]) {
       ctx.beginPath(); ctx.roundRect((a.face.dx + sx * 0.078 - 0.034) * size, -0.05 * size, 0.068 * size, 0.164 * size, 0.034 * size); ctx.fill();

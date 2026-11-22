@@ -2,7 +2,7 @@
    with stubby arms and legs and simple expressive 3D faces (Hermes is a white icon tile with artwork instead of eyes). The President is Tim's own textured 3D model (office/assets/president.glb),
    skinned at load time to the same bone handles, so it shares the procedural poses. Procedural animation only. */
 import * as THREE from 'three';
-import { avatarFor, shapePoints, CLAUDE_STAR, qaDropRadius, archiveHexRadius } from './avatars.js';
+import { avatarFor, shapePoints, CLAUDE_STAR, qaDropRadius, archiveHexRadius, guiCloverRadius } from './avatars.js';
 import { drawCanLabel } from './draw.js';
 
 const G = {}; // shared geometries
@@ -256,13 +256,14 @@ function puffBody(a, hi) {
     let wmax = 0, wmin = 0; for (let k = 0; k < NT; k++) { const x = Math.cos(k / NT * Math.PI * 2) * prof[k]; wmax = Math.max(wmax, x); wmin = Math.min(wmin, x); }
     D = (wmax - wmin) * (SHAPE_THICK[a.shape] || BOT_THICK) / 2; // wide shapes get a thinner front-to-back depth
     ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, sp = Math.sin(ph), cp = Math.cos(ph), r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.pow(Math.abs(sp), 2 / FL); return [Math.cos(t) * r, Math.sin(t) * r, Math.sign(cp) * Math.pow(Math.abs(cp), 2 / FL) * D]; };
-    if (a.shape === 'edgarCloud' || a.shape === 'rootSquare' || a.shape === 'archiveHex') {
+    if (a.shape === 'edgarCloud' || a.shape === 'rootSquare' || a.shape === 'archiveHex' || a.shape === 'guiClover') {
       // Flat front and rear caps; ellipse only in the perimeter bevel, then a straight side wall.
-      const square = a.shape === 'rootSquare', archive = a.shape === 'archiveHex';
-      const band = square || archive ? 0.2895984 : 0.20111, radius = square || archive ? 0.09199008 : 0.063882;
-      if (square || archive) D = 0.3072831 * 0.5 / 0.95;
+      const square = a.shape === 'rootSquare', archive = a.shape === 'archiveHex', gui = a.shape === 'guiClover';
+      const band = square || archive || gui ? 0.2895984 : 0.20111, radius = square || archive || gui ? 0.09199008 : 0.063882;
+      if (square || archive || gui) D = 0.3072831 * 0.5 / 0.95;
       const outline = t => {
         if (archive) return archiveHexRadius(t);
+        if (gui) return guiCloverRadius(t);
         if (square) {
           // Intersect the ray against a straight edge or a quarter-circle corner.
           const w = 0.6586144 * 0.5 / 0.95, c = w * 0.25, k = w - c;
@@ -473,7 +474,7 @@ export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const edgar = a.shape === 'edgarCloud', rootCause = a.shape === 'rootSquare', archive = a.shape === 'archiveHex', flatSlab = edgar || rootCause || archive, usage = a.shape === 'usageCone', qa = a.shape === 'qaDrop', flatLathe = usage || qa, hr = a.shape === 'sphere' && !a.icon && !!a.face, frontMask = flatLathe || hr, flatEyes = flatSlab || frontMask ? [new THREE.Vector4(), new THREE.Vector4()] : null;
+  const edgar = a.shape === 'edgarCloud', rootCause = a.shape === 'rootSquare', archive = a.shape === 'archiveHex', gui = a.shape === 'guiClover', flatSlab = edgar || rootCause || archive || gui, usage = a.shape === 'usageCone', qa = a.shape === 'qaDrop', flatLathe = usage || qa, hr = a.shape === 'sphere' && !a.icon && !!a.face, frontMask = flatLathe || hr, flatEyes = flatSlab || frontMask ? [new THREE.Vector4(), new THREE.Vector4()] : null;
   const ball = a.shape === 'sphere', satin = ball || !!a.satin, paint = satin && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit; a.satin (Usage pick): a body in the balls' satin finish
   const bodyG = geo(key + (ball || flatSlab || flatLathe ? ':' + hiQuality : ''), () => usage ? usageConeBody(hiQuality) : qa ? qaDropBody(hiQuality) : ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
@@ -510,7 +511,7 @@ export function makeBot(name, hiQuality, botId, override) {
         const k = i ? 'e1' : 'e0', sx = (i ? 1 : -1) * 0.1 * gap * g.spread, scale = x.eyeScale || 1;
         const sz = L.slotSize(0.13 * p[k + 'w'] / neutral[k + 'w'] * scale, 0.24 * p[k + 'h'] / neutral[k + 'h'] * scale);
         const open = Math.max(0.06, Math.min(p[k + 'o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
-        eye.set(dx + sx * Math.cos(g.roll) + g.x, dy + (rootCause || archive ? 0 : sx * Math.sin(g.roll)) + g.y, sz.w * 0.72, sz.h * open * 0.72);
+        eye.set(dx + sx * Math.cos(g.roll) + g.x, dy + (rootCause || archive || gui ? 0 : sx * Math.sin(g.roll)) + g.y, sz.w * 0.72, sz.h * open * 0.72);
       });
     };
     face.userData.apply(neutral, 0);
