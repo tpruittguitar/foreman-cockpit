@@ -24,6 +24,9 @@ function roundedPoly(verts, rad, rot = 0, seg = 8) {
 }
 const regular = (n, r, start = Math.PI / 2) => Array.from({ length: n }, (_, i) => [Math.cos(start + i / n * TAU) * r, Math.sin(start + i / n * TAU) * r]);
 
+/* Usage's pick outline (Tim, Nov 22): 90 polar radii every 4 degrees from the centre of the pick's bounding box, counter-clockwise from +x,
+   traced from his Grok Bot avatar picture and scaled so the pick spans 0.84 units. */
+const USAGE_PICK = [.409,.399,.388,.374,.358,.343,.327,.315,.304,.294,.289,.283,.277,.278,.274,.277,.277,.279,.286,.290,.300,.307,.321,.335,.355,.377,.401,.424,.447,.465,.482,.487,.488,.479,.468,.453,.441,.427,.414,.404,.397,.391,.389,.384,.385,.388,.392,.395,.403,.414,.427,.443,.463,.482,.501,.515,.524,.524,.517,.504,.487,.465,.447,.428,.412,.395,.380,.371,.360,.351,.343,.342,.337,.334,.333,.333,.332,.334,.336,.343,.345,.354,.360,.368,.377,.389,.396,.403,.409,.410];
 const SHAPES = {
   roundsquare: rot => roundedPoly([[-0.36, -0.36], [0.36, -0.36], [0.36, 0.36], [-0.36, 0.36]], 0.17, rot),
   star4: rot => polar(t => 0.2 + 0.25 * Math.pow(Math.abs(Math.cos(2 * t)), 2.2), rot),
@@ -41,6 +44,8 @@ const SHAPES = {
   dial: rot => polar(() => 0.4, rot),                                                        // round gauge face
   /* Hermes (Tim, Nov 21): a white app-icon tile, a rounded square like his "Meshy_AI_Button" picture; built as a bevelled box in chars.js */
   icontile: rot => roundedPoly([[-0.38, -0.38], [0.38, -0.38], [0.38, 0.38], [-0.38, 0.38]], 0.18, rot, 12),
+  /* Usage (Tim, Nov 22): the Grok Bot pick, a rounded tilted triangle traced from his avatar picture (USAGE_PICK); built as a satin pillow in chars.js */
+  pick: rot => polar(t => { const n = USAGE_PICK.length, f = t / TAU * n, k = Math.floor(f) % n; return USAGE_PICK[k] + (USAGE_PICK[(k + 1) % n] - USAGE_PICK[k]) * (f - Math.floor(f)); }, rot, 180),
   /* ChatGPT (Tim, Nov 21): a complete glossy black sphere with the white logo on the front; built as a sphere in chars.js */
   sphere: rot => polar(() => 0.36, rot, 64)
 };
@@ -99,7 +104,9 @@ export const AVATARS = {
   'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'sphere', rot: 0, color: '#d46b4e', shade: '#bf472f', icon: 'claude' }, // Claude (Tim, Nov 21): orange satin ball, flat white starburst (CLAUDE_STAR); color is his picture's orange, shade the deeper 3D paint that reads as that orange under the office lights
   '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'sphere', rot: 0, color: '#18181b', icon: 'chatgpt' },  // ChatGPT (Tim, Nov 21): black glossy sphere, white logo on the front (office/assets/chatgpt-logo.png)
   '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' },     // Root: gray rounded square
-  'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'wedge', rot: 0.6, color: '#7c7b79' },            // Usage: gray tilted wedge
+  /* Usage (Tim, Nov 22): his Grok Bot avatar, a gray rounded pick in the satin finish of the balls. face: the two dark pill eyes up and right
+     of centre, the pair tilted by rot, each eye leaning by tilt, gap = eye spacing vs the usual pair, all measured from his picture. */
+  'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'pick', rot: 0, color: '#777777', shade: '#555555', satin: true, face: { rot: 0.122, dx: 0.06, dy: 0.13, tilt: 0.92, gap: 0.81, color: '#1e1e20' } },
   '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'cloud', rot: 0.1, color: '#2f7cf0', prop: 'quill' }, // Edgar: blue cloud + quill
   '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.5, color: '#1cc26d' },            // Comp: green tilted wedge
   '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
@@ -156,6 +163,6 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
 
   const fc = a.face || {}, fr = fc.rot || 0;
   ctx.fillStyle = fc.color || '#111'; ctx.rotate(-fr); // canvas y points down, so a CCW face tilt is a negative canvas rotation
-  for (const dx of [-0.1, 0.1]) { ctx.beginPath(); ctx.ellipse((dx + (fc.dx || 0)) * size, (-0.02 - (fc.dy || 0)) * size, size * 0.05, size * 0.09, -(fc.tilt || 0), 0, TAU); ctx.fill(); }
+  for (const dx of [-0.1 * (fc.gap || 1), 0.1 * (fc.gap || 1)]) { ctx.beginPath(); ctx.ellipse((dx + (fc.dx || 0)) * size, (-0.02 - (fc.dy || 0)) * size, size * 0.05, size * 0.09, -(fc.tilt || 0), 0, TAU); ctx.fill(); }
   ctx.restore();
 }
