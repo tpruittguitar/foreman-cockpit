@@ -420,16 +420,28 @@ function chatBoxHTML(b) {
 }
 /* ---------- agent chat wall (functions/api/agent-chat.js): the TIMMAY chat with Claude Duet, Hermes, ChatGPT Dot, President ----------
    Locked until Tim enters his unlock code (checked by the server, never here); the unlock token is kept in this browser for 12 h
-   or until the lock button is pressed. While locked the page never asks for or shows any chat text. */
-const AGENT_URL = '/api/agent-chat', AGENT_STORE = 'office.agentChatToken';
-const AC = { token: '', exp: 0, msgs: [], err: '', queued: 0, to: 'ALL', at: 0, busy: false };
+   or until the lock button is pressed. While locked the page never asks for or shows any chat text.
+   Tim Nov 21: no popup. Tapping the board's input line focuses a real (invisible) textarea, so a phone brings up its keyboard and a
+   PC takes typing and paste; the board redraws what is typed. Files: the 📎 button, paste, or drop on the board. */
+const AGENT_URL = '/api/agent-chat', AGENT_STORE = 'office.agentChatToken', AC_MAX_FILES = 4, AC_MAX_FILE = 8 * 1024 * 1024;
+const AC = { token: '', exp: 0, msgs: [], err: '', note: '', queued: 0, to: 'ALL', at: 0, busy: false, sending: false, draft: '', code: '', files: [], focused: false, caret: true };
 let onAgentChat = null; // repaints the wall screen + lock button (set in the scene)
 try { const j = JSON.parse(localStorage.getItem(AGENT_STORE) || 'null'); if (j && j.exp > Date.now()) { AC.token = j.token; AC.exp = j.exp; } } catch (e) { /* none */ }
 const agentUnlocked = () => !!AC.token && AC.exp > Date.now();
+const acRepaint = () => { if (onAgentChat) onAgentChat(); };
+const acInput = document.createElement('textarea'), acFile = document.createElement('input');
+acInput.id = 'ac-input'; acInput.setAttribute('aria-label', 'Agent chat message'); acInput.autocomplete = 'off'; acInput.spellcheck = true; acInput.maxLength = 2000;
+acFile.type = 'file'; acFile.multiple = true; acFile.hidden = true; acFile.id = 'ac-file';
+document.body.append(acInput, acFile);
+function acSyncInput() { // one field: the unlock code while locked, the message once open
+  const locked = !agentUnlocked();
+  acInput.value = locked ? AC.code : AC.draft; acInput.inputMode = locked ? 'numeric' : 'text';
+  acInput.setAttribute('enterkeyhint', locked ? 'go' : 'send'); acInput.setAttribute('aria-label', locked ? 'Agent chat unlock code' : 'Agent chat message');
+}
 function agentLock(why) {
-  AC.token = ''; AC.exp = 0; AC.msgs = []; AC.queued = 0; AC.err = why || '';
+  AC.token = ''; AC.exp = 0; AC.msgs = []; AC.queued = 0; AC.err = why || ''; AC.note = ''; AC.draft = ''; AC.files = [];
   try { localStorage.removeItem(AGENT_STORE); } catch (e) { /* ignore */ }
-  if (onAgentChat) onAgentChat();
+  acSyncInput(); acRepaint();
 }
 async function agentApi(body) {
   const r = await fetch(AGENT_URL, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'X-Agent-Chat-Token': AC.token }, body: body ? JSON.stringify(body) : undefined }).catch(() => null);
@@ -442,58 +454,56 @@ async function agentRefresh() {
   if (r.status === 401) return agentLock('Locked again (the unlock ran out)');
   if (r.status === 200 && r.j.ok) { AC.msgs = L.parseAgentChat(r.j.lines); AC.queued = r.j.queued || 0; AC.err = ''; AC.at = Date.now(); }
   else AC.err = r.j.error || 'chat unavailable';
-  if (onAgentChat) onAgentChat();
-  const el = $('ac-thread'); if (el) { const end = el.scrollTop + el.clientHeight >= el.scrollHeight - 30; el.innerHTML = agentThreadHTML(); if (end) el.scrollTop = el.scrollHeight; }
+  acRepaint();
 }
-setInterval(() => { if (!document.hidden && agentUnlocked() && !panelOpen) agentRefresh(); }, 60000); // wall stays current while unlocked
-function agentThreadHTML() {
-  if (!AC.msgs.length) return '<p class="fallback">' + esc(AC.err || 'No messages yet') + '</p>';
-  return AC.msgs.slice(-40).map(m => `<div class="msg ${m.from === 'Tim' ? 'me' : 'bot'}"><b>${esc(L.agentName(m.from))} → ${esc(L.agentName(m.to))}</b> <span class="meta">${esc(m.time)} ET</span><div class="ac-text">${esc(m.text).replace(/\n/g, '<br>')}</div></div>`).join('')
-    + (AC.queued ? `<p class="fallback">${AC.queued} message${AC.queued > 1 ? 's' : ''} waiting for TIMMAY to pick up</p>` : '');
+setInterval(() => { if (!document.hidden && agentUnlocked() && (AC.focused || Date.now() - AC.at > 55000)) agentRefresh(); }, 15000); // every 15 s while typing, every minute otherwise
+async function agentUnlock() {
+  const code = AC.code.trim(); if (!code || AC.sending) return;
+  AC.sending = true; AC.note = 'Checking…'; AC.err = ''; acRepaint();
+  const r = await agentApi({ unlock: code }); AC.sending = false; AC.note = ''; AC.code = '';
+  if (r.status === 200 && r.j.token) {
+    AC.token = r.j.token; AC.exp = r.j.exp;
+    try { localStorage.setItem(AGENT_STORE, JSON.stringify({ token: AC.token, exp: AC.exp })); } catch (e2) { /* kept for this page only */ }
+    acSyncInput(); acRepaint(); return agentRefresh();
+  }
+  AC.err = r.status === 503 ? 'The unlock code is not set up yet' : (r.j.error || 'Could not reach the chat');
+  acSyncInput(); acRepaint();
 }
-function openAgentUnlock(then) {
-  showPanel(`<h2 id="panel-title">🔒 Agent chat is locked</h2><p>Enter your unlock code.</p>
-    <form id="ac-unlock"><input id="ac-code" type="password" inputmode="numeric" autocomplete="off" maxlength="40" aria-label="Unlock code" style="font-size:20px;width:10em;padding:6px">
-    <button type="submit" class="linkbtn">Unlock</button></form><p id="ac-msg" class="fallback">${esc(AC.err)}</p>`);
-  $('ac-code').focus();
-  $('ac-unlock').onsubmit = async e => {
-    e.preventDefault(); const code = $('ac-code').value.trim(); if (!code) return;
-    $('ac-msg').textContent = 'Checking…';
-    const r = await agentApi({ unlock: code }); $('ac-code').value = '';
-    if (r.status === 200 && r.j.token) {
-      AC.token = r.j.token; AC.exp = r.j.exp; AC.err = '';
-      try { localStorage.setItem(AGENT_STORE, JSON.stringify({ token: AC.token, exp: AC.exp })); } catch (e2) { /* kept for this page only */ }
-      if (onAgentChat) onAgentChat(); return then ? then() : openAgentChat();
-    }
-    $('ac-msg').textContent = r.status === 503 ? 'The unlock code is not set up yet.' : (r.j.error || 'Could not reach the chat');
-  };
+async function agentSend() {
+  const text = AC.draft.trim(); if ((!text && !AC.files.length) || AC.sending) return;
+  if (AC.files.some(f => !f.data)) { AC.note = 'Still reading the file, try Send again in a moment'; acRepaint(); return; }
+  AC.sending = true; AC.note = AC.files.length ? 'Sending with ' + AC.files.length + ' file' + (AC.files.length > 1 ? 's' : '') + '…' : 'Sending…'; acRepaint();
+  const r = await agentApi({ to: AC.to, text, files: AC.files.map(f => ({ name: f.name, type: f.type, data: f.data })) }); AC.sending = false;
+  if (r.status === 401) { agentLock('Locked again (the unlock ran out)'); return; }
+  if (r.status === 200 && r.j.ok) { AC.draft = ''; AC.files = []; acSyncInput(); AC.note = '✓ Sent to ' + (AC.to === 'ALL' ? 'everyone' : L.agentName(AC.to)) + '; replies show here'; acRepaint(); setTimeout(() => { if (AC.note.startsWith('✓')) { AC.note = ''; acRepaint(); } }, 8000); return agentRefresh(); }
+  AC.note = '⚠ Not sent: ' + (r.j.error || 'chat unavailable'); acRepaint();
 }
-function openAgentChat() {
-  if (DEMO) return toast('Example data: the agent chat is off');
-  if (!agentUnlocked()) return openAgentUnlock();
-  const opts = L.AGENT_TO.map(k => `<button type="button" class="linkbtn ac-to${AC.to === k ? ' on' : ''}" data-acto="${k}" aria-pressed="${AC.to === k}">${esc(L.agentName(k))}</button>`).join(' ');
-  showPanel(`<h2 id="panel-title">Agent chat <button type="button" class="linkbtn" id="ac-lock" title="Lock the chat">🔒 Lock</button></h2>
-    <section class="chatbox agentchat"><div id="ac-thread" class="thread">${agentThreadHTML()}</div>
-    <div class="chatrow ac-tos">To: ${opts}</div>
-    <textarea id="ac-text" maxlength="2000" rows="3" placeholder="Message ${esc(L.agentName(AC.to))}… (Ctrl+Enter sends)"></textarea>
-    <div class="chatrow"><button type="button" class="linkbtn" id="ac-send">Send</button><span id="ac-sent" class="fallback"></span></div></section>`);
-  $('panel').classList.add('wide');
-  const th = $('ac-thread'); th.scrollTop = th.scrollHeight;
-  $('ac-lock').onclick = () => { agentLock(); closePanel(); toast('Agent chat locked'); };
-  $('panel').querySelectorAll('[data-acto]').forEach(b => { b.onclick = () => { AC.to = b.dataset.acto; $('panel').querySelectorAll('[data-acto]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); $('ac-text').placeholder = 'Message ' + L.agentName(AC.to) + '… (Ctrl+Enter sends)'; $('ac-text').focus(); }; });
-  const send = async () => {
-    const ta = $('ac-text'), text = ta.value.trim(), note = $('ac-sent'); if (!text) return ta.focus();
-    note.textContent = 'Sending…';
-    const r = await agentApi({ to: AC.to, text });
-    if (r.status === 401) { agentLock('Locked again (the unlock ran out)'); return openAgentUnlock(); }
-    if (r.status === 200 && r.j.ok) { ta.value = ''; note.textContent = '✓ Sent to ' + L.agentName(AC.to) + '; replies show here'; return agentRefresh(); }
-    note.textContent = '⚠ Not sent: ' + (r.j.error || 'chat unavailable');
-  };
-  $('ac-send').onclick = send;
-  $('ac-text').onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } };
-  $('ac-text').focus({ preventScroll: true });
-  agentRefresh(); chatPoll = setInterval(agentRefresh, 15000);
+function agentAddFiles(list) { // from 📎, paste or drop; read in the browser and sent with the next message
+  if (DEMO || !agentUnlocked()) return;
+  for (const f of [...(list || [])]) {
+    if (AC.files.length >= AC_MAX_FILES) { AC.note = 'Up to ' + AC_MAX_FILES + ' files per message'; break; }
+    if (f.size > AC_MAX_FILE) { AC.note = f.name + ' is over 8 MB'; continue; }
+    const rd = new FileReader(), item = { name: f.name || '', type: f.type || '', data: '' };
+    AC.files.push(item);
+    rd.onload = () => { item.data = String(rd.result || ''); acRepaint(); };
+    rd.onerror = () => { AC.files = AC.files.filter(x => x !== item); AC.note = 'Could not read ' + (f.name || 'that file'); acRepaint(); };
+    rd.readAsDataURL(f);
+  }
+  acRepaint();
 }
+acInput.addEventListener('input', () => { if (agentUnlocked()) AC.draft = acInput.value; else { AC.code = acInput.value; AC.err = ''; } AC.caret = true; acRepaint(); });
+acInput.addEventListener('focus', () => { AC.focused = true; AC.caret = true; acRepaint(); });
+acInput.addEventListener('blur', () => { AC.focused = false; acRepaint(); });
+acInput.addEventListener('keydown', e => {
+  e.stopPropagation(); // typing never walks the camera or hits the office shortcuts
+  if (e.key === 'Escape') { e.preventDefault(); acInput.blur(); }
+  else if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (agentUnlocked()) agentSend(); else agentUnlock(); }
+});
+acInput.addEventListener('keyup', e => e.stopPropagation());
+acInput.addEventListener('paste', e => { const fs = e.clipboardData && e.clipboardData.files; if (fs && fs.length && agentUnlocked()) { e.preventDefault(); agentAddFiles(fs); } });
+acFile.addEventListener('change', () => { agentAddFiles(acFile.files); acFile.value = ''; });
+setInterval(() => { if (AC.focused) { AC.caret = !AC.caret; acRepaint(); } }, 530);
+acSyncInput();
 function openBot(name) {
   const b = botByName(name);
   if (!b) return showPanel(`<h2 id="panel-title">${esc(name)}</h2><p>No data for this bot${S.state === 'failed' ? ' (office data unavailable)' : ''}.</p>`);
@@ -835,7 +845,7 @@ function buildWorld() {
       const fr = new THREE.Group(); fr.position.set(cx, 2.2, cz); fr.rotation.y = rot; scene.add(fr);
       add(box(1.3, 1.6, 0.05), MAT.metal, 0, 0, 0, fr); add(new THREE.PlaneGeometry(1.2, 1.5), screenMat(a.t), 0, 0, 0.03, fr);
     };
-    art(RW / 2 - 0.05, -4.2, -Math.PI / 2, 3); art(-5, RD / 2 - 0.05, Math.PI, 7); // the left-wall swirl (-5.6) is now the agent chat screen (Tim Nov 21)
+    art(RW / 2 - 0.05, -4.2, -Math.PI / 2, 3); // both swirls are gone: the left-wall one (-5.6) then the front-wall one over Gauge (-5) became the agent chat screen (Tim Nov 21)
     // wall shelf with props (right wall)
     const sh = new THREE.Group(); sh.position.set(RW / 2 - 0.18, 0, -2.6); scene.add(sh);
     for (const y of [1.4, 1.9]) { add(box(0.3, 0.03, 1.6), MAT.metal, 0, y, 0, sh); add(box(0.02, 0.012, 1.6), MAT.cyan, -0.15, y - 0.02, 0, sh); }
@@ -867,21 +877,46 @@ function buildWorld() {
   const whiteboard = makeBoard('whiteboard', 4.4, 2.6, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 378 : 605); // big conference whiteboard where Automations hung
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
   const writer = makeBoard('writer', 2.6, 1.7, -RW / 2 + 0.05, 2.3, -8.3, Math.PI / 2, LOW ? 512 : 768, LOW ? 335 : 502); // Tim Nov 17: empty left wall beside the Constraint wall
-  const agentchat = makeBoard('agentchat', 2.3, 2.1, -RW / 2 + 0.05, 2.25, -5.2, Math.PI / 2, LOW ? 640 : 1024, LOW ? 584 : 935); // Tim Nov 21: agent chat where the swirl poster hung
-  const agentLockBtn = (() => { // lock button beside the screen (toward the Writer board): closed red lock / open green lock
-    const lt = canvasTex(128, 160), g = new THREE.Group(); g.position.set(-RW / 2 + 0.05, 2.25, -6.68); g.rotation.y = Math.PI / 2; scene.add(g);
+  // Tim Nov 21 (2nd): on the front wall where the swirl poster hung over Gauge, between the glass training room and the entry door
+  const AC_X = -4.0, AC_Y = 2.3, AC_Z = RD / 2 - 0.05;
+  const agentchat = makeBoard('agentchat', 3.6, 2.4, AC_X, AC_Y, AC_Z, Math.PI, LOW ? 640 : 1024, LOW ? 427 : 683);
+  const agentLockBtn = (() => { // lock button beside the screen (door side): closed red lock / open green lock
+    const lt = canvasTex(128, 160), g = new THREE.Group(); g.position.set(AC_X + 2.25, AC_Y, AC_Z); g.rotation.y = Math.PI; scene.add(g);
     add(box(0.3, 0.38, 0.05), MAT.trim, 0, 0, 0, g);
     const face = add(new THREE.PlaneGeometry(0.26, 0.33), screenMat(lt.t), 0, 0, 0.03, g); face.userData.board = 'agentlock';
     return { face, lt };
   })();
   onAgentChat = () => {
     const t = agentchat.tex, open = agentUnlocked();
-    drawAgentChat(t.ctx, t.c.width, t.c.height, { locked: !open && !DEMO, msgs: DEMO ? L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> ALL: Example line', '[2026-11-21 19:40:30 ET] Claude -> Tim: Example reply']) : AC.msgs, err: AC.err, queued: AC.queued, demo: DEMO }); t.t.needsUpdate = true;
+    agentchat.hits = drawAgentChat(t.ctx, t.c.width, t.c.height, DEMO
+      ? { demo: true, to: 'ALL', msgs: L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> ALL: Example line', '[2026-11-21 19:40:30 ET] Claude -> Tim: Example reply']) }
+      : open ? { msgs: AC.msgs, err: AC.err, note: AC.note, queued: AC.queued, to: AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret }
+        : { locked: true, code: AC.code, err: AC.err, note: AC.note, focused: AC.focused, caret: AC.caret });
+    t.t.needsUpdate = true;
     const g = agentLockBtn.lt.ctx; g.clearRect(0, 0, 128, 160); g.fillStyle = '#0d1014'; g.fillRect(0, 0, 128, 160);
     const c = open ? '#3ddc84' : '#ff6b5a'; g.strokeStyle = c; g.lineWidth = 10; g.beginPath(); g.arc(open ? 78 : 64, 62, 24, Math.PI, 0); g.stroke();
     g.fillStyle = c; g.fillRect(30, 62, 68, 52); g.fillStyle = '#0d1014'; g.fillRect(60, 78, 8, 20);
     g.fillStyle = '#e3e5e9'; g.font = "800 22px 'Inter PE', system-ui, sans-serif"; g.textAlign = 'center'; g.fillText(open ? 'LOCK' : 'UNLOCK', 64, 146); agentLockBtn.lt.t.needsUpdate = true;
   };
+  const AC_VIEW = [[AC_X, 2.1, AC_Z - 3.1], [AC_X, 2.25, AC_Z]];
+  function agentFocus() { // must run inside the tap / click itself, or a phone will not raise its keyboard
+    if (DEMO) { toast('Example data: the agent chat is off'); return; }
+    acSyncInput(); keys.clear();
+    try { acInput.focus({ preventScroll: true }); } catch (e) { acInput.focus(); }
+    const len = acInput.value.length; try { acInput.setSelectionRange(len, len); } catch (e) { /* ignore */ }
+    if (camera.position.distanceTo(new THREE.Vector3(...AC_VIEW[0])) > 0.6) glideTo(AC_VIEW, L.GLIDE_MS);
+  }
+  function agentBoardHit(h) {
+    if (!h) return agentFocus();
+    if (h.act === 'to') { AC.to = h.to; acRepaint(); return agentFocus(); }
+    if (h.act === 'attach') { if (DEMO) return toast('Example data: the agent chat is off'); if (agentUnlocked()) acFile.click(); return; }
+    if (h.act === 'rm') { AC.files.splice(h.i, 1); AC.note = ''; acRepaint(); return; }
+    if (h.act === 'send') { agentFocus(); return agentSend(); }
+    if (h.act === 'unlock') { agentFocus(); return agentUnlock(); }
+    return agentFocus();
+  }
+  renderer.domElement.addEventListener('dragover', e => { if (agentUnlocked() && e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+  renderer.domElement.addEventListener('drop', e => { if (!agentUnlocked() || !e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); agentAddFiles(e.dataTransfer.files); agentFocus(); });
   onAgentChat(); if (agentUnlocked()) agentRefresh();
   const boards = { project, usage, autos, whiteboard, writer, constraint, agentchat };
   const WALL_BOARDS = [project, usage, constraint, autos, writer]; // readability probe / LOS targets (whiteboard keeps its own layout)
@@ -1705,6 +1740,7 @@ function buildWorld() {
     const o = hit.object;
     if (o.userData.zachSwitch) return { zachSwitch: true };
     if (o.userData.board) {
+      if (o.userData.board === 'agentchat' && hit.uv) { const x = hit.uv.x, y = 1 - hit.uv.y; return { board: 'agentchat', ac: agentchat.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) || null }; }
       if (o.userData.board !== 'project') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
       const h = project.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
@@ -1716,6 +1752,7 @@ function buildWorld() {
     return null;
   }
   function activate(p) {
+    if (AC.focused && !(p && (p.board === 'agentchat' || p.board === 'agentlock'))) acInput.blur(); // a tap elsewhere puts the phone keyboard away
     if (!p) return false;
     if (p.zachSwitch) { toggleZach(); return true; }
     if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
@@ -1724,8 +1761,8 @@ function buildWorld() {
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === L.RELEASE_PLATE_BOARD) openBuildPopup();
-    else if (p.board === 'agentchat') openAgentChat();
-    else if (p.board === 'agentlock') { if (agentUnlocked()) { agentLock(); if (panelOpen) closePanel(); toast('Agent chat locked'); } else openAgentUnlock(); }
+    else if (p.board === 'agentchat') agentBoardHit(p.ac);
+    else if (p.board === 'agentlock') { if (agentUnlocked()) { agentLock(); acInput.blur(); toast('Agent chat locked'); } else agentFocus(); }
     else if (p.board === 'pipeline') { if (pipe.live) setBrowse(true); else window.open(PIPELINE_URL, '_blank', 'noopener'); }
     return true;
   }

@@ -1665,7 +1665,11 @@
     for (const line of Array.isArray(lines) ? lines : []) {
       const m = /^\[(\d{4}-\d\d-\d\d) (\d\d:\d\d)(?::\d\d)? ET\] (\w+) -> (\w+): ?(.*)$/.exec(str(line).trim());
       if (!m || !m[5].trim()) continue;
-      out.push({ day: m[1], time: m[2], from: m[3], to: m[4], text: m[5].replace(/ \/\/ /g, '\n').slice(0, 4000) });
+      const files = []; // " // [attached: D:\...\name]" added by TIMMAY for files sent from the wall
+      const text = m[5].replace(/(?: \/\/ )?\[attached: ([^\]]+)\]/g, (_, p) => { files.push(p.split(/[\\/]/).pop()); return ''; });
+      const msg = { day: m[1], time: m[2], from: m[3], to: m[4], text: text.replace(/ \/\/ /g, '\n').trim().slice(0, 4000) };
+      if (files.length) msg.files = files;
+      out.push(msg);
     }
     return out;
   }
