@@ -2,7 +2,7 @@
    with stubby arms and legs and simple expressive 3D faces (Hermes is a white icon tile with artwork instead of eyes). The President is Tim's own textured 3D model (office/assets/president.glb),
    skinned at load time to the same bone handles, so it shares the procedural poses. Procedural animation only. */
 import * as THREE from 'three';
-import { avatarFor, shapePoints } from './avatars.js';
+import { avatarFor, shapePoints, CLAUDE_STAR } from './avatars.js';
 import { drawCanLabel } from './draw.js';
 
 const G = {}; // shared geometries
@@ -341,15 +341,38 @@ function sphereLogo(key) {
   return new THREE.Mesh(g, m);
 }
 
+/* Claude's starburst (Tim, Nov 21): a flat white mark printed on the front of the ball, as in his picture ("the symbol should be flat").
+   It is a polar grid (hub to outline, rings x CLAUDE_STAR angles) lying on the ball's curve a hair above the skin, so it follows the sphere
+   with no height of its own. One shared geometry, about 1.1k vertices. */
+const STAR_LIFT = 0.0015, STAR_RINGS = 6;
+function flatStar() {
+  const m = mat('claudeStar', () => new THREE.MeshStandardMaterial({ color: 0xf7f5f2, roughness: 0.6, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2 }));
+  const g = geo('claudeStar', () => {
+    const n = CLAUDE_STAR.length, R = SPHERE_R + STAR_LIFT, pos = [], idx = [], skin = (x, y) => Math.sqrt(Math.max(0, R * R - x * x - y * y));
+    const ring = k => 1 + (k - 1) * n; // vertex index of ring k (k >= 1), the hub is vertex 0
+    pos.push(0, 0, R);
+    for (let k = 1; k <= STAR_RINGS; k++) for (let i = 0; i < n; i++) {
+      const t = 2 * Math.PI * i / n, r = CLAUDE_STAR[i] * SPHERE_R * k / STAR_RINGS, x = r * Math.cos(t), y = r * Math.sin(t);
+      pos.push(x, y, skin(x, y));
+    }
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n; idx.push(0, ring(1) + i, ring(1) + j);
+      for (let k = 1; k < STAR_RINGS; k++) { const a = ring(k) + i, b = ring(k) + j, c = ring(k + 1) + i, d = ring(k + 1) + j; idx.push(a, c, d, a, d, b); } }
+    const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); bg.setIndex(idx);
+    const N = []; for (let v = 0; v < pos.length; v += 3) { const l = Math.hypot(pos[v], pos[v + 1], pos[v + 2]); N.push(pos[v] / l, pos[v + 1] / l, pos[v + 2] / l); }
+    bg.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); return bg; // the ball's own normals, so the mark shades like the ball
+  });
+  return new THREE.Mesh(g, m);
+}
+
 /* ---------- jelly bot ---------- */
 export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const ball = a.shape === 'sphere';
+  const ball = a.shape === 'sphere', paint = ball && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit
   const bodyG = geo(key + (ball ? ':' + hiQuality : ''), () => ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = ball ? satinMat(a.color, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : ball ? satinMat(a.color, hiQuality) : jelly(a.color, hiQuality);
+  const bodyM = ball ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : ball ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
@@ -394,7 +417,7 @@ export function makeBot(name, hiQuality, botId, override) {
     face.rotation.z = rot; }
   if (a.icon) { // the artwork is the face: no slot eyes, brows or mouth on an icon tile
     face.userData.studio = () => {}; face.visible = false;
-    if (ball) body.add(sphereLogo(a.icon));
+    if (ball) body.add(a.icon === 'claude' ? flatStar() : sphereLogo(a.icon));
     else { const art = iconArt(a.icon, ((bb.max.x - bb.min.x) - 2 * ICON_PAD) / ICON_ART_FRAC); art.position.z = bb.max.z + 0.002; body.add(art); }
   }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
@@ -411,7 +434,7 @@ export function makeBot(name, hiQuality, botId, override) {
     const needle = new THREE.Mesh(geo('gNeedle', () => new THREE.BoxGeometry(0.012, 0.17, 0.01)), mat('needle', () => new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0x6a5200 })));
     needle.position.set(0.05, 0.19, bb.max.z); needle.rotation.z = -0.6; body.add(needle);
   }
-  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(ball ? a.color : 0xffffff), new THREE.Color(a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic });
+  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(ball ? paint : 0xffffff), new THREE.Color(ball ? paint : a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic });
   if (a.prop === 'quill') {
     const q = new THREE.Group(), feather = new THREE.Mesh(geo('quill', () => { const g = new THREE.SphereGeometry(0.05, 10, 8); g.scale(0.35, 1.6, 0.12); return g; }), white());
     feather.position.y = 0.08; const nib = new THREE.Mesh(geo('nib', () => new THREE.ConeGeometry(0.008, 0.05, 6)), black()); nib.rotation.x = Math.PI; nib.position.y = -0.02;

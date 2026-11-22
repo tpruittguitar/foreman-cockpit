@@ -251,6 +251,24 @@ test('renamed bots are matched by bot_id first', () => {
   assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
 });
 
+test('Claude avatar (Tim, Nov 21): an orange satin sphere with a flat white starburst traced from his picture, arms and legs, no slot eyes', async () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '../office/avatars.js'), 'utf8');
+  const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
+  const id = 'd4118f0c-1b06-4e9a-982f-f5314451c841', a = A.avatarFor('Claude', id);
+  assert.deepEqual([a.shape, a.color, a.icon], ['sphere', '#d46b4e', 'claude'], 'the orange sampled from his picture');
+  assert.ok(!a.generic && !a.prop && !a.face, 'no props and no slot eyes: the starburst is the face');
+  for (const [k, o] of Object.entries(A.AVATARS)) if (k !== id) assert.notEqual(o.color.toLowerCase(), a.color, 'colour not used by another bot');
+  const S = A.CLAUDE_STAR;
+  assert.equal(S.length, 180); assert.ok(S.every(r => r > 0.1 && r < 0.8), 'the star stays well inside the ball');
+  const tips = S.filter((r, i) => r > 0.5 && !(S[(i + 179) % 180] > 0.5)).length; // count rays by their tips
+  assert.ok(tips >= 10 && tips <= 13, 'about a dozen rays, as in the picture (' + tips + ')');
+  const chars = fs.readFileSync(path.join(__dirname, '../office/chars.js'), 'utf8');
+  assert.match(chars, /a\.icon === 'claude' \? flatStar\(\)/, 'the starburst is printed flat on the ball (Tim: the symbol should be flat)');
+  assert.doesNotMatch(chars, /raisedStar|STAR_H\b/, 'no raised relief left');
+  assert.match(chars, /const armR = limb\(/, 'the sphere keeps the arms and legs every bot has');
+});
+
 test('ChatGPT avatar (Tim, Nov 21): a complete glossy black sphere with the white logo on the front, arms and legs, no slot eyes', async () => {
   const fs = require('node:fs'), path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '../office/avatars.js'), 'utf8');
@@ -433,7 +451,7 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   // avatars: each bot has its own sidebar-matched body
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['starburst', '#a8733f'],
+  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['sphere', '#d46b4e'],
     ChatGPT: ['sphere', '#18181b'], Root: ['roundsquare', '#8e8c88'], Usage: ['wedge', '#7c7b79'], Edgar: ['cloud', '#2f7cf0'], Comp: ['wedge', '#1cc26d'],
     Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'],
     Hermes: ['icontile', '#cdcbc6'] };

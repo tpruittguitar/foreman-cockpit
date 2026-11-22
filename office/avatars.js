@@ -87,13 +87,16 @@ export const BOT_IDS = {
   'QA bot': '338fc1b1-fecc-475d-ba9e-acd49bcadcfc', 'HR - Bot Trainer': '372936ae-81e1-4013-b0d0-9ee47d97a3c4', 'Software': 'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f',
   'Usage Budget': 'f1a70b7a-6051-45d7-8031-e46a4cba066f', 'Archive \u00b7 Application State Tracker': 'c95408dd-c07f-460e-aaa0-9d515fe5be7d'
 };
+/* Claude's starburst (Tim, Nov 21), traced from his picture: the outline's distance from the hub at every 2 degrees, counter-clockwise
+   from +x, in units of the ball's radius. chars.js prints it flat on the front of the ball; drawAvatar paints it on the board icon. */
+export const CLAUDE_STAR = [.473,.610,.642,.649,.652,.637,.498,.218,.231,.239,.247,.262,.277,.293,.322,.334,.364,.402,.460,.530,.600,.617,.641,.648,.656,.647,.634,.604,.466,.306,.205,.189,.184,.187,.221,.245,.307,.464,.606,.626,.633,.632,.619,.591,.393,.171,.131,.126,.126,.132,.143,.206,.223,.283,.372,.473,.693,.710,.725,.728,.717,.712,.703,.629,.460,.376,.314,.264,.228,.225,.225,.644,.683,.687,.689,.680,.667,.638,.539,.465,.371,.325,.295,.260,.227,.215,.199,.183,.172,.675,.695,.691,.681,.602,.458,.414,.344,.290,.251,.222,.209,.190,.192,.181,.178,.540,.649,.670,.669,.658,.624,.468,.407,.321,.275,.247,.233,.684,.705,.702,.687,.609,.559,.460,.387,.324,.276,.263,.224,.217,.643,.686,.699,.703,.686,.666,.479,.379,.289,.250,.251,.269,.297,.348,.394,.464,.547,.645,.660,.670,.680,.665,.611,.314,.376,.454,.571,.688,.688,.685,.600,.283,.227,.229,.242,.273,.333,.390,.465,.577,.634,.650,.670,.676,.656,.605,.290,.309,.363,.403];
 /* bot_id -> { shape, rot, color }, matched to the current sidebar avatars (item 17). Keyed by id so renames never break an avatar. */
 export const AVATARS = {
   '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' },            // President: round face, dark hair (original art)
   '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'blob', rot: 0.5, color: '#f2399a' },             // QA: pink pebble
   '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'blob', rot: 0, color: '#e8423f' },               // HR: red round blob
   'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'blob', rot: 0.3, color: '#22b8a2' },             // Cursor: teal round blob
-  'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'starburst', rot: 0.2, color: '#a8733f' },          // Claude: brown starburst
+  'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'sphere', rot: 0, color: '#d46b4e', shade: '#bf472f', icon: 'claude' }, // Claude (Tim, Nov 21): orange satin ball, flat white starburst (CLAUDE_STAR); color is his picture's orange, shade the deeper 3D paint that reads as that orange under the office lights
   '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'sphere', rot: 0, color: '#18181b', icon: 'chatgpt' },  // ChatGPT (Tim, Nov 21): black glossy sphere, white logo on the front (office/assets/chatgpt-logo.png)
   '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' },     // Root: gray rounded square
   'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'wedge', rot: 0.6, color: '#7c7b79' },            // Usage: gray tilted wedge
@@ -141,9 +144,14 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * size, -y * size) : ctx.moveTo(x * size, -y * size)));
     ctx.closePath(); ctx.fill();
   }
-  if (a.icon) { // icon bots (Hermes tile, ChatGPT sphere): a thin edge so the mark reads on the board, no slot eyes
-    ctx.lineWidth = Math.max(1, size * 0.06); ctx.strokeStyle = a.shape === 'sphere' ? '#d8d8dc' : '#2a2a2e'; ctx.stroke(); ctx.restore(); return;
+  if (a.icon) { // icon bots (Hermes tile, ChatGPT and Claude spheres): a thin edge so the mark reads on the board, no slot eyes
+    ctx.lineWidth = Math.max(1, size * 0.06); ctx.strokeStyle = a.icon === 'claude' ? '#9c4a33' : a.shape === 'sphere' ? '#d8d8dc' : '#2a2a2e'; ctx.stroke();
+    if (a.icon === 'claude') { ctx.fillStyle = '#fff'; ctx.beginPath(); const n = CLAUDE_STAR.length;
+      CLAUDE_STAR.forEach((r, k) => { const t = TAU * k / n, x = r * 0.36 * size * Math.cos(t), y = -r * 0.36 * size * Math.sin(t); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.closePath(); ctx.fill(); }
+    ctx.restore(); return;
   }
+
   const fc = a.face || {}, fr = fc.rot || 0;
   ctx.fillStyle = fc.color || '#111'; ctx.rotate(-fr); // canvas y points down, so a CCW face tilt is a negative canvas rotation
   for (const dx of [-0.1, 0.1]) { ctx.beginPath(); ctx.ellipse((dx + (fc.dx || 0)) * size, (-0.02 - (fc.dy || 0)) * size, size * 0.05, size * 0.09, -(fc.tilt || 0), 0, TAU); ctx.fill(); }
