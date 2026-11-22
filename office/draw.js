@@ -638,8 +638,8 @@ export function drawAgentChat(ctx, W, H, o) {
   const s = W / 1024; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#0d1014'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${38 * s}px ${SANS}`; ctx.fillText('AGENT CHAT', 28 * s, 54 * s);
-  ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`;
-  ctx.fillText(fit(ctx, 'Claude Duet · Hermes (Local) · ChatGPT Dot · Grokbot President', W - 300 * s), 270 * s, 50 * s);
+  const tx = 28 * s + ctx.measureText('AGENT CHAT').width + 20 * s; ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`;
+  ctx.fillText(fit(ctx, 'Claude Duet · Hermes (Local) · ChatGPT Dot · Grokbot President', W - tx - 24 * s), tx, 50 * s);
   ctx.fillStyle = '#20262e'; ctx.fillRect(20 * s, 72 * s, W - 40 * s, 2 * s);
   if (o.demo) exampleTag(ctx, W - 190 * s, H - 18 * s, 18 * s);
   if (o.locked) {
@@ -651,7 +651,7 @@ export function drawAgentChat(ctx, W, H, o) {
     ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'Tap the screen or the lock to enter the code', cx, cy + 196 * s);
     ctx.textAlign = 'left'; return;
   }
-  const msgs = o.msgs || [], x0 = 28 * s, tw = W - 56 * s, fs = 24 * s, lh = 31 * s, top = 92 * s, bottom = H - 44 * s;
+  const msgs = o.msgs || [], x0 = 28 * s, tw = W - 56 * s, fs = 27 * s, lh = 35 * s, top = 92 * s, bottom = H - 44 * s;
   if (!msgs.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'No messages yet', x0, top + 40 * s); }
   // newest at the bottom: lay out from the last message upward until the screen is full
   let y = bottom;
