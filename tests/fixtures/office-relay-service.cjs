@@ -24,7 +24,7 @@ async function fixture({origin='https://office.example'}={}){
 
 async function browserFixture(options) {
  const f=await fixture(options);let expired=false;
- f.service=async request=>{const headers=new Headers(request.headers);headers.set('Cf-Access-Jwt-Assertion',await f.signAccess(expired?{exp:1}:{}));const result=await f.handle(new Request(request,{headers}));if(request.method==='POST'&&result.status===202)f.workerRun=f.worker();return result;};
- f.expire=()=>{expired=true;};return f;
+ f.service=async request=>{if(expired){if(new URL(request.url).search==='?signin=1')return new Response('<h1>Fixture Access login</h1>',{headers:{'Content-Type':'text/html'}});return Response.redirect(options.origin+'/api/agent-coding?signin=1',302);}const headers=new Headers(request.headers);headers.set('Cf-Access-Jwt-Assertion',await f.signAccess(expired?{exp:1}:{}));const result=await f.handle(new Request(request,{headers}));if(request.method==='POST'&&result.status===202)f.workerRun=f.worker();return result;};
+ f.expire=()=>{expired=true;};f.restore=()=>{expired=false;};return f;
 }
 module.exports={fixture,browserFixture};

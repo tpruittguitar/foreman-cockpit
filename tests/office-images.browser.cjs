@@ -39,9 +39,15 @@ const setup=process.env.OFFICE_RELAY_BROWSER==='1'?require('./fixtures/office-re
   await page.waitForFunction(()=>fixtureText.some(t=>t.includes('Inspected the synthetic screenshot.')),null,{timeout:20000});
   // Expired owner scope must preserve both prompt and image, without chat fallback.
   fixture.expire();await page.setInputFiles('#ac-file',{name:'marked.png',mimeType:'image/png',buffer:png});await page.fill('#ac-input','/code Keep this unsubmitted draft.');await click('send');
-  await page.waitForFunction(()=>fixtureText.some(t=>t.includes('Owner sign-in required')));
+  await page.waitForFunction(()=>fixtureText.some(t=>t.includes('Owner sign-in required')||t.includes('Sign in to coding')));
   assert.equal(await page.inputValue('#ac-input'),'/code Keep this unsubmitted draft.');assert.ok(await page.evaluate(()=>fixtureText.some(t=>t.includes('marked.png'))));assert.equal(fixture.rpc.inputs.length,1);assert.equal(chatPosts.length,0);
   assert.ok(await page.evaluate(()=>{for(let y=80;y<820;y+=8)for(let x=120;x<1300;x+=8)if(__office.pickAt(x,y)?.ac?.act==='rm')return true;return false;}),'pending image remains removable after expired authorization');
+  if(process.env.OFFICE_RELAY_BROWSER==='1') {
+   const popupEvent=page.context().waitForEvent('page');await click('coding-sign-in');const popup=await popupEvent;await popup.waitForLoadState();assert.match(await popup.textContent('body'),/Fixture Access login/);assert.equal(await popup.evaluate(()=>window.opener),null);
+   assert.equal(fixture.rpc.inputs.length,1);assert.equal(await page.inputValue('#ac-input'),'/code Keep this unsubmitted draft.');
+   fixture.restore();await popup.reload();assert.match(await popup.textContent('body'),/Coding sign-in verified/);assert.equal(fixture.rpc.inputs.length,1,'login GET never dispatches');await popup.close();
+   assert.equal(await page.inputValue('#ac-input'),'/code Keep this unsubmitted draft.');await click('send');await page.waitForFunction(()=>document.querySelector('#ac-input').value==='');await fixture.workerRun;assert.equal(fixture.rpc.inputs.length,2,'only explicit Send after sign-in dispatches');assert.equal(fixture.rpc.inputs[1][1].url,input[1].url,'same screenshot survives the sign-in tab');
+  }
   assert.deepEqual(errors,[]);console.log(JSON.stringify({result:'PASS',imageSha256:crypto.createHash('sha256').update(png).digest('hex'),nativeInputTypes:input.map(i=>i.type),turns:fixture.rpc.inputs.length,ordinaryChatPosts:chatPosts.length,expiredDraftPreserved:true}));
  }finally{await browser.close();await fixture.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1});
