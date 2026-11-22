@@ -472,11 +472,11 @@ export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const edgar = a.shape === 'edgarCloud', rootCause = a.shape === 'rootSquare', flatSlab = edgar || rootCause, usage = a.shape === 'usageCone', qa = a.shape === 'qaDrop', flatLathe = usage || qa, flatEyes = flatSlab || flatLathe ? [new THREE.Vector4(), new THREE.Vector4()] : null;
+  const edgar = a.shape === 'edgarCloud', rootCause = a.shape === 'rootSquare', flatSlab = edgar || rootCause, usage = a.shape === 'usageCone', qa = a.shape === 'qaDrop', flatLathe = usage || qa, hr = a.shape === 'sphere' && !a.icon && !!a.face, frontMask = flatLathe || hr, flatEyes = flatSlab || frontMask ? [new THREE.Vector4(), new THREE.Vector4()] : null;
   const ball = a.shape === 'sphere', satin = ball || !!a.satin, paint = satin && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit; a.satin (Usage pick): a body in the balls' satin finish
   const bodyG = geo(key + (ball || flatSlab || flatLathe ? ':' + hiQuality : ''), () => usage ? usageConeBody(hiQuality) : qa ? qaDropBody(hiQuality) : ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = flatEyes ? flatEyeMaterial(paint, a.face.color, hiQuality, flatLathe ? 0.01 : bb.max.z - 0.001, flatEyes, flatLathe) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : flatSlab ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
+  const bodyM = flatEyes ? flatEyeMaterial(paint, a.face.color, hiQuality, frontMask ? 0.01 : bb.max.z - 0.001, flatEyes, frontMask) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : flatSlab ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
@@ -486,7 +486,7 @@ export function makeBot(name, hiQuality, botId, override) {
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   /* a.face (Hermes): its own eye colour, the eye pair tilted by face.rot instead of the body rot, shifted dx/dy, each eye leaning by tilt */
-  if (flatLathe) {
+  if (frontMask) {
     const L = window.OfficeLogic, neutral = L.exprParams('neutral'), center = L.gazeShift(neutral);
     face.visible = false;
     face.userData.studio = (p, blink, extra) => {
@@ -494,8 +494,8 @@ export function makeBot(name, hiQuality, botId, override) {
       flatEyes.forEach((eye, i) => {
         const k = i ? 'e1' : 'e0', side = i ? 1 : -1, scale = x.eyeScale || 1;
         const open = Math.max(0.06, Math.min(p[k + 'o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
-        eye.set(side * 0.084 * g.spread + g.x - center.x, -0.083 + g.y - center.y,
-          0.045 * p[k + 'w'] / neutral[k + 'w'] * scale, 0.0888 * p[k + 'h'] / neutral[k + 'h'] * open * scale);
+        eye.set((hr ? 0.051 : 0) + side * (hr ? 0.104 : 0.084) * g.spread + g.x - center.x, (hr ? -0.009 : -0.083) + g.y - center.y,
+          (hr ? 0.0498 : 0.045) * p[k + 'w'] / neutral[k + 'w'] * scale, (hr ? 0.0984 : 0.0888) * p[k + 'h'] / neutral[k + 'h'] * open * scale);
       });
     };
     face.userData.apply(neutral, 0);

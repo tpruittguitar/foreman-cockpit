@@ -312,7 +312,7 @@ test('avatars are keyed by bot_id; HR has a normal shape; Archive has a short ta
   for (const id of Object.values(A.BOT_IDS)) assert.ok(A.AVATARS[id], id);
   for (const k of Object.keys(A.AVATARS)) assert.match(k, /^[0-9a-f-]{36}$/);
   const hr = A.avatarFor('Anything', '372936ae-81e1-4013-b0d0-9ee47d97a3c4');
-  assert.notEqual(hr.shape, 'egg'); assert.equal(hr.color, '#e8423f');
+  assert.equal(hr.shape, 'sphere'); assert.equal(hr.color, '#ff263c');
   assert.deepEqual(A.avatarFor('Usage Ctrl', 'f1a70b7a-6051-45d7-8031-e46a4cba066f'), A.avatarFor('Usage'));
   assert.equal(A.shortTag('Archive'), 'Archive');
   assert.equal(A.shortTag('Usage'), 'Usage');
@@ -452,7 +452,7 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   // avatars: each bot has its own sidebar-matched body
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['qaDrop', '#ff309b'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['sphere', '#d46b4e'],
+  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['qaDrop', '#ff309b'], HR: ['sphere', '#ff263c'], Cursor: ['blob', '#22b8a2'], Claude: ['sphere', '#d46b4e'],
     ChatGPT: ['sphere', '#18181b'], Root: ['rootSquare', '#777777'], Usage: ['usageCone', '#777777'], Edgar: ['edgarCloud', '#1084fe'], Comp: ['usageCone', '#00c972'],
     Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'],
     Hermes: ['sphere', '#cdcbc6'] };

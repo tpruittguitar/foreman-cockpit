@@ -145,7 +145,7 @@ export const CLAUDE_STAR = [.473,.610,.642,.649,.652,.637,.498,.218,.231,.239,.2
 export const AVATARS = {
   '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' },            // President: round face, dark hair (original art)
   '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'qaDrop', rot: 0, color: '#ff309b', shade: '#e5238a', satin: true, face: { color: '#232325' } }, // QA: satin-pink reference teardrop
-  '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'blob', rot: 0, color: '#e8423f' },               // HR: red round blob
+  '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'sphere', rot: 0, color: '#ff263c', shade: '#e51d35', satin: true, face: { color: '#232325' } }, // HR: satin-red sphere
   'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'blob', rot: 0.3, color: '#22b8a2' },             // Cursor: teal round blob
   'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'sphere', rot: 0, color: '#d46b4e', shade: '#bf472f', icon: 'claude' }, // Claude (Tim, Nov 21): orange satin ball, flat white starburst (CLAUDE_STAR); color is his picture's orange, shade the deeper 3D paint that reads as that orange under the office lights
   '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'sphere', rot: 0, color: '#18181b', icon: 'chatgpt' },  // ChatGPT (Tim, Nov 21): black glossy sphere, white logo on the front (office/assets/chatgpt-logo.png)
@@ -206,10 +206,12 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     ctx.restore(); return;
   }
 
-  if (a.shape === 'usageCone' || a.shape === 'qaDrop') {
+  if (a.shape === 'usageCone' || a.shape === 'qaDrop' || (a.shape === 'sphere' && a.face)) {
     ctx.fillStyle = a.face.color;
-    for (const x of [-0.084, 0.084]) {
-      ctx.beginPath(); ctx.roundRect((x - 0.045) * size, -0.005 * size, 0.09 * size, 0.178 * size, 0.045 * size); ctx.fill();
+    const sphere = a.shape === 'sphere', eyeX = sphere ? [-0.053, 0.155] : [-0.084, 0.084];
+    const halfWidth = sphere ? 0.0498 : 0.045, top = sphere ? -0.0894 : -0.005, height = sphere ? 0.1968 : 0.178;
+    for (const x of eyeX) {
+      ctx.beginPath(); ctx.roundRect((x - halfWidth) * size, top * size, 2 * halfWidth * size, height * size, halfWidth * size); ctx.fill();
     }
     ctx.restore(); return;
   }
