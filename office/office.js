@@ -1302,7 +1302,7 @@ function buildWorld() {
     zach.root.rotation.y += d * Math.min(1, dt * 6);
     zach.root.position.set(zach.pos.x, 0, zach.pos.y);
     zach.pose = zach.mode === 'walk' ? 'walk' : 'stand';
-    poseZach(zach, L.zachMotion(zach.mode === 'walk' ? 'walk' : zach.mode, zach.modeT, reduced));
+    poseZach(zach, L.zachMotion(zach.mode, zach.modeT, reduced), zach.mode, zach.modeT, dt, reduced);
   }
 
   /* ---------- characters ---------- */
