@@ -454,7 +454,7 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['qaDrop', '#ff309b'], HR: ['sphere', '#ff263c'], Cursor: ['blob', '#22b8a2'], Claude: ['sphere', '#d46b4e'],
     ChatGPT: ['sphere', '#18181b'], Root: ['rootSquare', '#777777'], Usage: ['usageCone', '#777777'], Edgar: ['edgarCloud', '#1084fe'], Comp: ['usageCone', '#00c972'],
-    Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['archiveHex', '#ff309b'],
+    Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['guiClover', '#ff263c'], Archive: ['archiveHex', '#ff309b'],
     Hermes: ['sphere', '#cdcbc6'] };
   for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
   assert.equal(Object.keys(A.AVATARS).length, 15, '14 sidebar bots + Hermes');
