@@ -8,7 +8,7 @@
   },
   {
     "name": "HTML bullets",
-    "input": "<h3>Minimum Qualifications</h3><ul><li>Bachelor\u2019s degree in Engineering required.</li><li>Or equivalent combination of education and experience.</li><li>Ability to travel.</li></ul>",
+    "input": "<h3>Minimum Qualifications</h3><ul><li>Bachelor’s degree in Engineering required.</li><li>Or equivalent combination of education and experience.</li><li>Ability to travel.</li></ul>",
     "text": "Bachelor's degree in Engineering required. Or equivalent combination of education and experience.",
     "req": "PREFERRED",
     "flex": "HIGH_FLEX"
@@ -208,5 +208,75 @@
     "input": "The position partners closely with Engineering, Validation, Manufacturing, MS&T, Microbiology, Quality Control, Regulatory Affairs, Supply Chain, EHS, and project leadership to support successful project execution and operational excellence, while maintaining the appropriate level of Quality independence and authority for GMP decision-making, risk assessment and acceptance, release readiness, and quality-related escalation.\nPreferred Qualifications\nMS in Engineering.",
     "text": "Preferred Qualifications MS in Engineering.",
     "req": "PREFERRED"
+  },
+  {
+    "name": "high school diploma or GED alone is not a degree",
+    "input": "Requirements:\nHigh School Diploma or GED required.\n10+ years of manufacturing leadership experience.",
+    "text": "NOT_STATED",
+    "req": "NOT_STATED"
+  },
+  {
+    "name": "minimum high school diploma heading is not a degree",
+    "input": "Minimum Qualifications:\nHigh school diploma or equivalent\nFive years of supervisory experience in assembly operations.",
+    "text": "NOT_STATED",
+    "req": "NOT_STATED"
+  },
+  {
+    "name": "required high school diploma does not make a preferred bachelor's hard",
+    "input": "Qualifications:\nHigh school diploma required; bachelor's degree in engineering preferred.",
+    "text": "High school diploma required; bachelor's degree in engineering preferred.",
+    "req": "PREFERRED",
+    "flex": "SOFT_FLEX"
+  },
+  {
+    "name": "preferred bachelor's before a required high school diploma stays preferred",
+    "input": "Education: Bachelor's degree preferred, high school diploma required.",
+    "text": "Education: Bachelor's degree preferred, high school diploma required.",
+    "req": "PREFERRED",
+    "flex": "SOFT_FLEX"
+  },
+  {
+    "name": "required bachelor's next to a high school line stays required",
+    "input": "Bachelor's degree in Mechanical Engineering required.\nHigh school diploma or GED is the minimum for line technicians.",
+    "text": "Bachelor's degree in Mechanical Engineering required.",
+    "req": "REQUIRED",
+    "flex": "NO_FLEX"
+  },
+  {
+    "name": "a technical diploma in engineering still counts as a credential",
+    "input": "Diploma in Mechanical Engineering required.",
+    "text": "Diploma in Mechanical Engineering required.",
+    "req": "REQUIRED"
+  },
+  {
+    "name": "a high school degree is still high school",
+    "input": "Education: High School Degree or GED",
+    "text": "NOT_STATED",
+    "req": "NOT_STATED"
+  },
+  {
+    "name": "required high school diploma with a preferred college degree stays preferred",
+    "input": "High school diploma or equivalent required, college degree preferred",
+    "text": "High school diploma or equivalent required, college degree preferred",
+    "req": "PREFERRED",
+    "flex": "SOFT_FLEX"
+  },
+  {
+    "name": "a preferred bachelor's with an associate's alternative stays preferred",
+    "input": "Bachelor's degree in Engineering preferred, Associate's degree considered with relevant experience.",
+    "text": "Bachelor's degree in Engineering preferred, Associate's degree considered with relevant experience.",
+    "req": "PREFERRED"
+  },
+  {
+    "name": "a general education degree is high school level",
+    "input": "High school diploma or general education degree (GED) is required.",
+    "text": "NOT_STATED",
+    "req": "NOT_STATED"
+  },
+  {
+    "name": "a high school diploma or equivalent degree is high school level",
+    "input": "High school diploma or equivalent degree",
+    "text": "NOT_STATED",
+    "req": "NOT_STATED"
   }
 ]
