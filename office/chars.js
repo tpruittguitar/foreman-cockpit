@@ -2,6 +2,7 @@
    with stubby arms and legs and simple expressive 3D faces (Hermes is a white icon tile with artwork instead of eyes). The President is Tim's own textured 3D model (office/assets/president.glb),
    skinned at load time to the same bone handles, so it shares the procedural poses. Procedural animation only. */
 import * as THREE from 'three';
+import { setSkinWeights, walkKneeAngle, walkLimbPose } from './humanoid.js';
 import { avatarFor, shapePoints, PILL_SIZE, CLAUDE_STAR, qaDropRadius, archiveHexRadius, guiCloverRadius } from './avatars.js';
 import { drawCanLabel } from './draw.js';
 
@@ -616,14 +617,7 @@ function presWeights(x, y) {
   const w = [1 - arm - leg, x < 0 ? arm : 0, x < 0 ? 0 : arm, 0, thigh * r, shin * r, thigh * (1 - r), shin * (1 - r)];
   return w;
 }
-function presSkin(g) {
-  const p = g.attributes.position, n = p.count, si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
-  for (let i = 0; i < n; i++) {
-    const w = presWeights(p.getX(i), p.getY(i)), top = w.map((v, k) => [v, k]).sort((a, b) => b[0] - a[0]).slice(0, 4), s = top.reduce((a, b) => a + b[0], 0) || 1;
-    top.forEach(([v, k], j) => { si[i * 4 + j] = k; sw[i * 4 + j] = v / s; });
-  }
-  g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); g.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
-}
+function presSkin(g) { setSkinWeights(g, presWeights); }
 /* chest decal: the body-only front triangles inside the print window, lifted 4 mm along the normal, planar UVs onto the print canvas */
 function presPrint(g) {
   const P = PRES_RIG.print, p = g.attributes.position, nm = g.attributes.normal, idx = g.index, out = [], uv = [], A = new THREE.Vector3(), B = new THREE.Vector3(), C = new THREE.Vector3(), N = new THREE.Vector3();
@@ -739,7 +733,7 @@ function setLegs(c, hipR, hipL, k, mode) {
   const f = mode === 1 ? 0.8 : 1;
   c.legR.rotation.x = lerp(c.legR.rotation.x, hipR * f, k); c.legL.rotation.x = lerp(c.legL.rotation.x, hipL * f, k);
   const kn = c.legR.userData.knee; if (!kn) return;
-  const kr = h => mode === 1 ? -h * f : mode === 2 ? -h * 0.9 + 0.1 : Math.max(0, -h) * 0.5 + 0.08;
+  const kr = h => mode === 1 ? -h * f : mode === 2 ? -h * 0.9 + 0.1 : walkKneeAngle(h);
   kn.rotation.x = lerp(kn.rotation.x, kr(hipR), k); c.legL.userData.knee.rotation.x = lerp(c.legL.userData.knee.rotation.x, kr(hipL), k);
 }
 export function animate(c, pose, t, dt, opts) {
@@ -760,7 +754,7 @@ export function animate(c, pose, t, dt, opts) {
   if (c.body) c.body.position.z = 0; // President typing leans in (z 0.23); every other pose resets
   switch (pose) {
     case 'walk': {
-      const s = Math.sin(t * 9 + ph); legX = s * 0.6; armR.x = -s * 0.5; armL.x = s * 0.5; bob = Math.abs(Math.cos(t * 9 + ph)) * 0.03; if (opts.box) { armR.x = armL.x = -1.25; armR.z = c.rest.armR.z * 0.3; armL.z = c.rest.armL.z * 0.3; } break;
+      const gait = walkLimbPose(t, ph); legX = gait.hipR; armR.x = gait.armR; armL.x = gait.armL; bob = gait.bob; if (opts.box) { armR.x = armL.x = -1.25; armR.z = c.rest.armR.z * 0.3; armL.z = c.rest.armL.z * 0.3; } break;
     }
     case 'bike': { // exercise bike: seated, pedalling
       // chair seat top is 0.495, saddle top 0.705: raise by the difference so every body size sits on the saddle
