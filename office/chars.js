@@ -2,7 +2,7 @@
    with stubby arms and legs and simple expressive 3D faces (Hermes is a white icon tile with artwork instead of eyes). The President is Tim's own textured 3D model (office/assets/president.glb),
    skinned at load time to the same bone handles, so it shares the procedural poses. Procedural animation only. */
 import * as THREE from 'three';
-import { avatarFor, shapePoints, CLAUDE_STAR } from './avatars.js';
+import { avatarFor, shapePoints, CLAUDE_STAR, qaDropRadius } from './avatars.js';
 import { drawCanLabel } from './draw.js';
 
 const G = {}; // shared geometries
@@ -393,6 +393,17 @@ function flatStar() {
 }
 
 /* ---------- jelly bot ---------- */
+function qaDropBody(hi) {
+  const n = hi ? 144 : 72;
+  const points = Array.from({ length: n + 1 }, (_, i) => {
+    const t = i / n;
+    return new THREE.Vector2(qaDropRadius(t), 0.746 * t - 0.373);
+  });
+  const g = new THREE.LatheGeometry(points, hi ? 128 : 48);
+  g.computeBoundingBox();
+  return g;
+}
+
 // Usage's approved circular cross-section: soft tip, continuous taper and a wide, rolled-under base.
 function usageConeBody(hi) {
   const sections = [
@@ -415,8 +426,8 @@ function usageConeBody(hi) {
 
 /* Edgar's eyes change aperture and gaze with the existing studio expression driver. Paint them directly
    on the front cap in body space: no raised eye mesh, shine, z-fighting, or marks on the rear face. */
-function flatEyeMaterial(paint, eyePaint, hi, frontZ, eyes, usage) {
-  const m = usage ? satinMat(paint, hi) : new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75,
+function flatEyeMaterial(paint, eyePaint, hi, frontZ, eyes, lathe) {
+  const m = lathe ? satinMat(paint, hi) : new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75,
     clearcoat: hi ? 0.04 : 0, clearcoatRoughness: 0.75 });
   m.customProgramCacheKey = () => 'office-flat-eye-masks';
   m.onBeforeCompile = shader => {
@@ -451,21 +462,21 @@ export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const edgar = a.shape === 'edgarCloud', usage = a.shape === 'usageCone', flatEyes = edgar || usage ? [new THREE.Vector4(), new THREE.Vector4()] : null;
+  const edgar = a.shape === 'edgarCloud', usage = a.shape === 'usageCone', qa = a.shape === 'qaDrop', flatLathe = usage || qa, flatEyes = edgar || flatLathe ? [new THREE.Vector4(), new THREE.Vector4()] : null;
   const ball = a.shape === 'sphere', satin = ball || !!a.satin, paint = satin && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit; a.satin (Usage pick): a body in the balls' satin finish
-  const bodyG = geo(key + (ball || edgar || usage ? ':' + hiQuality : ''), () => usage ? usageConeBody(hiQuality) : ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
+  const bodyG = geo(key + (ball || edgar || flatLathe ? ':' + hiQuality : ''), () => usage ? usageConeBody(hiQuality) : qa ? qaDropBody(hiQuality) : ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = flatEyes ? flatEyeMaterial(paint, a.face.color, hiQuality, usage ? 0.01 : bb.max.z - 0.001, flatEyes, usage) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : edgar ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
+  const bodyM = flatEyes ? flatEyeMaterial(paint, a.face.color, hiQuality, flatLathe ? 0.01 : bb.max.z - 0.001, flatEyes, flatLathe) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : edgar ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
-  body.position.y = usage ? 0.498 : legLen + halfH - 0.02;
+  body.position.y = flatLathe ? 0.498 : legLen + halfH - 0.02;
   const mesh = new THREE.Mesh(bodyG, bodyM); body.add(mesh);
   const face = makeFace(bb.max.z - 0.012, 1.0, false, true, 0);
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   /* a.face (Hermes): its own eye colour, the eye pair tilted by face.rot instead of the body rot, shifted dx/dy, each eye leaning by tilt */
-  if (usage) {
+  if (flatLathe) {
     const L = window.OfficeLogic, neutral = L.exprParams('neutral'), center = L.gazeShift(neutral);
     face.visible = false;
     face.userData.studio = (p, blink, extra) => {
@@ -532,12 +543,12 @@ export function makeBot(name, hiQuality, botId, override) {
   }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
-  const armX = usage ? 0.323 : ax, armY = usage ? -0.11 : -0.06;
+  const armX = usage ? 0.323 : qa ? 0.299 : ax, armY = flatLathe ? -0.11 : -0.06;
   armR.position.set(-armX, armY, 0.02); armL.position.set(armX, armY, 0.02);
   armR.rotation.z = -0.45; armL.rotation.z = 0.45;
   body.add(armR, armL);
   const legR = limb(0.055, 0.07, limbM, 'leg'), legL = limb(0.055, 0.07, limbM, 'leg');
-  const legX = usage ? 0.101 : 0.11;
+  const legX = flatLathe ? 0.101 : 0.11;
   legR.position.set(-legX, legLen - 0.01, 0); legL.position.set(legX, legLen - 0.01, 0);
   rig.add(legR, legL);
   // props: Gauge wears a dial needle on its face-plate top; Edgar (writer) holds a quill

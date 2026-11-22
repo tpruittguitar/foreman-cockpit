@@ -452,7 +452,7 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   // avatars: each bot has its own sidebar-matched body
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['blob', '#f2399a'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['sphere', '#d46b4e'],
+  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['qaDrop', '#ff309b'], HR: ['blob', '#e8423f'], Cursor: ['blob', '#22b8a2'], Claude: ['sphere', '#d46b4e'],
     ChatGPT: ['sphere', '#18181b'], Root: ['roundsquare', '#8e8c88'], Usage: ['usageCone', '#777777'], Edgar: ['edgarCloud', '#1084fe'], Comp: ['usageCone', '#00c972'],
     Gauge: ['pill', '#f2399a'], Sniffer: ['pill', '#2382f2'], GUI: ['clover4', '#f2353f'], Archive: ['hexagon', '#f2389b'],
     Hermes: ['sphere', '#cdcbc6'] };

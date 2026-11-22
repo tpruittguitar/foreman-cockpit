@@ -54,6 +54,18 @@ function tracedOutline(radii, rot) {
     return radii[k] + (radii[(k + 1) % radii.length] - radii[k]) * (f - Math.floor(f));
   }, rot, 180);
 }
+// Symmetrized, smoothed radius trace of QA's reference teardrop. t runs from bottom to tip.
+const QA_PROFILE = [0.301546883, -0.1683504293, -0.0676869127, 0.0224846473, -0.0010045269,
+  0.0078611362, -0.0120182123, -0.0036124767, -0.0044281486];
+export function qaDropRadius(t) {
+  const x = 2 * t - 1;
+  let prev = 1, curr = x, sum = QA_PROFILE[0] + x * QA_PROFILE[1];
+  for (let k = 2; k < QA_PROFILE.length; k++) {
+    [prev, curr] = [curr, 2 * x * curr - prev];
+    sum += QA_PROFILE[k] * curr;
+  }
+  return Math.sqrt(Math.max(0, t * (1 - t) * sum));
+}
 const SHAPES = {
   roundsquare: rot => roundedPoly([[-0.36, -0.36], [0.36, -0.36], [0.36, 0.36], [-0.36, 0.36]], 0.17, rot),
   star4: rot => polar(t => 0.2 + 0.25 * Math.pow(Math.abs(Math.cos(2 * t)), 2.2), rot),
@@ -73,6 +85,10 @@ const SHAPES = {
   /* Hermes (Tim, Nov 21): a white app-icon tile, a rounded square like his "Meshy_AI_Button" picture; built as a bevelled box in chars.js */
   icontile: rot => roundedPoly([[-0.38, -0.38], [0.38, -0.38], [0.38, 0.38], [-0.38, 0.38]], 0.18, rot, 12),
   /* Usage (Tim, Nov 22): the Grok Bot pick, a rounded tilted triangle traced from his avatar picture (USAGE_PICK); built as a satin pillow in chars.js */
+  qaDrop: () => {
+    const side = Array.from({ length: 49 }, (_, i) => [qaDropRadius(i / 48), 0.746 * i / 48 - 0.373]);
+    return side.concat(side.slice(1, -1).reverse().map(([x, y]) => [-x, y]));
+  },
   usageCone: rot => roundedPoly([[-0.371, -0.35], [0.371, -0.35], [0, 0.373]], 0.17, rot),
   pick: rot => polar(t => { const n = USAGE_PICK.length, f = t / TAU * n, k = Math.floor(f) % n; return USAGE_PICK[k] + (USAGE_PICK[(k + 1) % n] - USAGE_PICK[k]) * (f - Math.floor(f)); }, rot, 180),
   /* ChatGPT (Tim, Nov 21): a complete glossy black sphere with the white logo on the front; built as a sphere in chars.js */
@@ -127,7 +143,7 @@ export const CLAUDE_STAR = [.473,.610,.642,.649,.652,.637,.498,.218,.231,.239,.2
 /* bot_id -> { shape, rot, color }, matched to the current sidebar avatars (item 17). Keyed by id so renames never break an avatar. */
 export const AVATARS = {
   '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' },            // President: round face, dark hair (original art)
-  '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'blob', rot: 0.5, color: '#f2399a' },             // QA: pink pebble
+  '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'qaDrop', rot: 0, color: '#ff309b', shade: '#e5238a', satin: true, face: { color: '#232325' } }, // QA: satin-pink reference teardrop
   '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'blob', rot: 0, color: '#e8423f' },               // HR: red round blob
   'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'blob', rot: 0.3, color: '#22b8a2' },             // Cursor: teal round blob
   'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'sphere', rot: 0, color: '#d46b4e', shade: '#bf472f', icon: 'claude' }, // Claude (Tim, Nov 21): orange satin ball, flat white starburst (CLAUDE_STAR); color is his picture's orange, shade the deeper 3D paint that reads as that orange under the office lights
@@ -189,7 +205,7 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     ctx.restore(); return;
   }
 
-  if (a.shape === 'usageCone') {
+  if (a.shape === 'usageCone' || a.shape === 'qaDrop') {
     ctx.fillStyle = a.face.color;
     for (const x of [-0.084, 0.084]) {
       ctx.beginPath(); ctx.roundRect((x - 0.045) * size, -0.005 * size, 0.09 * size, 0.178 * size, 0.045 * size); ctx.fill();
