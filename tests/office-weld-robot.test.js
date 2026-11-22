@@ -16,7 +16,7 @@ test('the cycle approaches, welds, lifts, rests, and alternates parts', async ()
 test('the arm IK puts the torch tip on every point of both seams and at home', async () => {
   const [W] = await load();
   for (const s of W.SEAMS) for (let k = 0; k <= 1; k += 0.1) {
-    const p = { x: s.x, y: s.y, z: s.z0 + (s.z1 - s.z0) * k }, q = W.armTip(W.solveArm(p));
+    const p = { x: s.x, y: s.y0 + (s.y1 - s.y0) * k, z: s.z0 + (s.z1 - s.z0) * k }, q = W.armTip(W.solveArm(p));
     assert.ok(Math.hypot(q.x - p.x, q.y - p.y, q.z - p.z) < 1e-6, `seam point ${JSON.stringify(p)} reached`);
   }
   for (let t = 0; t < W.WELD_CYCLE_S * 2; t += 0.05) { const p = W.tipTarget(W.weldPhase(t), t), q = W.armTip(W.solveArm(p));
@@ -55,4 +55,16 @@ test('the cell sits in the warehouse, clear of the glass doors, the walkway to t
   assert.ok(c.x0 > 12 + 3 && c.x1 < 48 - 3 && c.z0 > -27 + 1, 'inside the warehouse, off the walls and the dock lane');
   assert.ok(c.z1 < 0.1 - 3, 'at least 3 m clear of the door-to-dock walkway');
   assert.ok(c.z1 < 13.2 - 1.25 - 3, 'nowhere near the case shelf');
+});
+
+test('Tim\'s Nov 22 review: no eyes, no safety cones, and it welds a bare-metal car shell', async () => {
+  const src = fs.readFileSync(path.join(__dirname, '../office/weld-robot.js'), 'utf8');
+  assert.doesNotMatch(src, /eyeG|shineG|of eyes/, 'no eye or shine meshes and no squint');
+  assert.doesNotMatch(src, /bollard|TABLE\./, 'no corner cones and no welding table');
+  const [W] = await load();
+  for (const s of W.SEAMS) { // both seams sit on the shell's near side, at its top surface
+    assert.ok(Math.abs(s.x - W.CAR.near) < 0.1, 'seam on the near side');
+    for (const k of [0, 0.5, 1]) { const z = s.z0 + (s.z1 - s.z0) * k, y = s.y0 + (s.y1 - s.y0) * k; assert.ok(Math.abs(y - W.carTopAt(z)) < 0.03, 'seam on the body top at z=' + z); }
+  }
+  const c = W.CELL; assert.ok(c.x1 > W.CAR.x + W.CAR.w / 2 && c.z1 > W.CAR.l / 2 && c.z0 < -W.CAR.l / 2, 'the car sits inside the blocked cell');
 });

@@ -1194,7 +1194,7 @@ function buildWorld() {
   /* Tim Nov 22: a cartoony welding robot cell in the warehouse (office/weld-robot.js), 9 m in from the glass doors and left of the
      door-to-dock walkway. It welds while any bot is working and parks with an amber beacon when the office is idle. */
   const WELD_POS = { x: WH.x0 + 9, z: -8 }, WELD_SCALE = 1.25, weldBot = makeWeldRobot(THREE, { low: LOW, light: !LOW });
-  weldBot.group.position.set(WELD_POS.x, 0, WELD_POS.z); weldBot.group.scale.setScalar(WELD_SCALE); scene.add(weldBot.group); // table on the far side (+x): seen in profile from the walkway
+  weldBot.group.position.set(WELD_POS.x, 0, WELD_POS.z); weldBot.group.scale.setScalar(WELD_SCALE); scene.add(weldBot.group); // car shell on the far side (+x): seen in profile from the walkway
   { const c = weldBot.cell, k = WELD_SCALE; block(WELD_POS.x + k * (c.x0 + c.x1) / 2, WELD_POS.z + k * (c.z0 + c.z1) / 2, k * (c.x1 - c.x0) / 2, k * (c.z1 - c.z0) / 2, false, 'weldcell'); }
   let rosterKey = '';
   function syncDesks() {
