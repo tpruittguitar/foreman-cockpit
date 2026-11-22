@@ -30,7 +30,7 @@ export async function runConfiguredRelay(config) {
   await rpc.initialize();const account=await rpc.includedAccount();if(account.userId!==config.nativeUserId||account.accountId!==config.nativeAccountId)throw Error('Native account binding changed');
   const scope=Object.fromEntries(['sessionId','repository','base','branch','conversationId'].map(k=>[k,config.binding[k]]));
   const adapter=new DotAdapter({rpc,store,workspace,verifyWorkspace,scope,identity:{owner:config.binding.owner,tenant:config.binding.tenant,...account},images:relayImages(mailbox),publishDraft:draftPublisher({workspace,stateDir,...scope}),approve:async p=>{
-   if(!process.stdin.isTTY)return 'cancel';
+   if(!process.stdin.isTTY)return 'decline'; // unattended: the step is skipped and the turn continues (cancel aborts the whole turn)
    const answer=await terminal.question('Native approval for this turn: '+JSON.stringify(p)+'\nType accept for this action once, or cancel: ');return answer==='accept'?'accept':'cancel';
   }});
   return await runMailboxOnce({mailbox,config,jobVerificationKey,statusSigningKey,ledger:store,adapter});

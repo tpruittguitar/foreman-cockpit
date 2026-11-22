@@ -1,4 +1,6 @@
 import { codexImageInput } from '../../lib/office-images.mjs';
+// Bridge note sent with every owner turn (Nov 22). Live turns run unattended, so permission prompts are declined and the turn goes on.
+export const TURN_GUIDANCE='Bridge note: no one is watching this turn, so permission requests are declined. Stay inside the sandbox; if a check needs more access, skip it and say so in the outcome. When the owner asks to change how the Office or site looks or works, deliver it as draft_pr so it can be reviewed and merged; use local_change only when the owner asks for local-only work.';
 import path from 'node:path';
 import { routeTool, validRoute } from '../../lib/office-route.mjs';
 const key = b => JSON.stringify([b.tenant,b.owner,b.provider,b.conversationId,b.requestId]);
@@ -71,6 +73,7 @@ export class DotAdapter {
       const pr=await this.publishDraft();this.store.set('native',k,{...fixed(job),status:'completed',pullRequest:pr});return;
     }
     const input=await codexImageInput(job,this.images);
+    input.push({type:'text',text:TURN_GUIDANCE});
     const account=await this.rpc.includedAccount(); if(account.userId!==this.identity.userId || account.accountId!==this.identity.accountId)throw Error('Native account changed');
     const before=this.publishDraft?.capture?.();
     const saved=this.store.read('session',this.scope.sessionId);

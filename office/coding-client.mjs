@@ -55,3 +55,15 @@ export function createCodingClient(fetcher, uuid = () => crypto.randomUUID()) {
     }
   };
 }
+// Tim Nov 22: a /code request must stay on the board after a reload or a change of "To". Only the request's ids, text, state and
+// summaries are kept (never image data), for one day, in this browser; locking the chat clears them.
+export const CODING_STORE = 'office.codingJobs', CODING_KEEP_MS = 24 * 3600 * 1000, CODING_KEEP_MAX = 10;
+const KEEP = ['provider', 'conversationId', 'requestId', 'text', 'status', 'approach', 'outcome', 'draftUrl', 'at'];
+export const etClock = ms => { const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)); const v = k => (p.find(x => x.type === k) || {}).value; return v('hour') + ':' + v('minute'); };
+export function keepCodingJobs(jobs, now = Date.now()) {
+  return [...jobs].filter(j => j && j.requestId && j.conversationId && now - (j.at || 0) < CODING_KEEP_MS).slice(-CODING_KEEP_MAX)
+    .map(j => Object.fromEntries(KEEP.filter(k => j[k] !== undefined).map(k => [k, j[k]])));
+}
+export function restoreCodingJobs(raw, now = Date.now()) {
+  try { const list = JSON.parse(raw || '[]'); return Array.isArray(list) ? keepCodingJobs(list.filter(j => j && typeof j.text === 'string' && typeof j.provider === 'string'), now) : []; } catch { return []; }
+}

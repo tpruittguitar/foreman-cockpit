@@ -92,11 +92,11 @@ test('client retries reuse identity, providers isolate conversations, and lock d
   let resolve; const slow=createCodingClient(()=>new Promise(r=>{resolve=r;}),()=>requestId); const pending=slow.send('Dot','fix'); slow.clear(); resolve(Response.json({status:'queued'})); assert.equal(await pending,null);
 });
 test('panel smoke: /code never enters ordinary chat, repeated disconnected sends, All, lock and status', async () => {
-  const {createCodingClient,codingText}=await import('../office/coding-client.mjs');
+  const {createCodingClient,codingText,CODING_STORE,keepCodingJobs,restoreCodingJobs,etClock}=await import('../office/coding-client.mjs');
   const source=fs.readFileSync('office/office.js','utf8');
   const code=source.slice(source.indexOf("const AGENT_URL ="),source.indexOf('function openBot(name)'));
   const calls=[]; let result='disconnected';
-  const ctx={createCodingClient,codingText,crypto:require('node:crypto').webcrypto, URLSearchParams,Date,Map,JSON,FileReader:function(){},DEMO:false,
+  const ctx={createCodingClient,codingText,CODING_STORE,keepCodingJobs,restoreCodingJobs,etClock,Intl,crypto:require('node:crypto').webcrypto, URLSearchParams,Date,Map,JSON,FileReader:function(){},DEMO:false,
     document:{hidden:false,createElement:()=>({setAttribute(){},addEventListener(){},focus(){}}),body:{append(){}}},localStorage:{getItem(){},removeItem(){}},setInterval(){},setTimeout(){},
     L:{parseAgentChat:()=>[],agentName:x=>x},fetch:async(url,o)=>{ calls.push({url,body:o?.body&&JSON.parse(o.body)}); if(url==='/api/agent-chat')return Response.json({ok:true,lines:[]}); const b=o?.body&&JSON.parse(o.body); if(!b && !url.includes('?')) return Response.json({providers:[{provider:'Dot',connected:true,conversationId:'conversation_00001'}]}); if(!b)return Response.json({provider:'Dot',conversationId:ctx.job.conversationId,requestId:ctx.job.requestId,status:'completed',draftUrl:'https://github.com/example/project/pull/12'}); if(result==='disconnected')return Response.json({status:'not_connected'},{status:401});return Response.json({...b,status:'queued'}); }};
   vm.createContext(ctx);vm.runInContext(code,ctx);
