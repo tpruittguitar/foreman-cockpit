@@ -73,6 +73,7 @@ const SHAPES = {
   /* Hermes (Tim, Nov 21): a white app-icon tile, a rounded square like his "Meshy_AI_Button" picture; built as a bevelled box in chars.js */
   icontile: rot => roundedPoly([[-0.38, -0.38], [0.38, -0.38], [0.38, 0.38], [-0.38, 0.38]], 0.18, rot, 12),
   /* Usage (Tim, Nov 22): the Grok Bot pick, a rounded tilted triangle traced from his avatar picture (USAGE_PICK); built as a satin pillow in chars.js */
+  usageCone: rot => roundedPoly([[-0.371, -0.35], [0.371, -0.35], [0, 0.373]], 0.17, rot),
   pick: rot => polar(t => { const n = USAGE_PICK.length, f = t / TAU * n, k = Math.floor(f) % n; return USAGE_PICK[k] + (USAGE_PICK[(k + 1) % n] - USAGE_PICK[k]) * (f - Math.floor(f)); }, rot, 180),
   /* ChatGPT (Tim, Nov 21): a complete glossy black sphere with the white logo on the front; built as a sphere in chars.js */
   sphere: rot => polar(() => 0.36, rot, 64)
@@ -132,9 +133,8 @@ export const AVATARS = {
   'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'sphere', rot: 0, color: '#d46b4e', shade: '#bf472f', icon: 'claude' }, // Claude (Tim, Nov 21): orange satin ball, flat white starburst (CLAUDE_STAR); color is his picture's orange, shade the deeper 3D paint that reads as that orange under the office lights
   '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'sphere', rot: 0, color: '#18181b', icon: 'chatgpt' },  // ChatGPT (Tim, Nov 21): black glossy sphere, white logo on the front (office/assets/chatgpt-logo.png)
   '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'roundsquare', rot: 0.22, color: '#8e8c88' },     // Root: gray rounded square
-  /* Usage (Tim, Nov 22): his Grok Bot avatar, a gray rounded pick in the satin finish of the balls. face: the two dark pill eyes up and right
-     of centre, the pair tilted by rot, each eye leaning by tilt, gap = eye spacing vs the usual pair, all measured from his picture. */
-  'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'pick', rot: 0, color: '#777777', shade: '#555555', satin: true, face: { rot: 0.122, dx: 0.06, dy: 0.13, tilt: 0.92, gap: 0.81, color: '#1e1e20' } },
+  // Usage: upright satin cone with a generous lower rim and flat vertical eyes.
+  'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'usageCone', rot: 0, color: '#777777', shade: '#555555', satin: true, face: { color: '#232325' } },
   '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'edgarCloud', rot: 0, color: '#1084fe', shade: '#0871e5', satin: true, prop: 'quill', face: { rot: 0, dx: 0.013, dy: -0.029, gap: 0.78, color: '#232325' } }, // Edgar: video cloud + quill
   '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.5, color: '#1cc26d' },            // Comp: green tilted wedge
   '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
@@ -189,6 +189,13 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     ctx.restore(); return;
   }
 
+  if (a.shape === 'usageCone') {
+    ctx.fillStyle = a.face.color;
+    for (const x of [-0.084, 0.084]) {
+      ctx.beginPath(); ctx.roundRect((x - 0.045) * size, -0.005 * size, 0.09 * size, 0.178 * size, 0.045 * size); ctx.fill();
+    }
+    ctx.restore(); return;
+  }
   if (a.shape === 'edgarCloud') {
     ctx.fillStyle = a.face.color;
     for (const sx of [-1, 1]) {
