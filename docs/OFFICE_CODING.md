@@ -32,11 +32,9 @@ This is deliberately an unwired prerequisite, not a deploy-ready writable backen
 4. Implement each verified provider's native adapter and protocol translation separately. No provider substitution or Hermes model fallback may masquerade as another selected provider. Missing adapters stay Not connected. The mock adapter tests validate the contract, not any external provider protocol.
 5. Review and authorize activation separately. This branch provisions no secrets, persistent access, listeners or service bindings and does not deploy.
 
-## Native proof still outstanding
+## Subsequent image and relay work
 
-The only Codex runtime probe performed was `--version` and `app-server --help`; both exited successfully without a model call. No zero-charge native turn facility or authenticated Office-to-runtime binding was verified, so no live thread or scratch-file edit/resume proof is claimed. Do not alter a running Hermes or other local session for this proof.
-
-Once explicitly authorized with verified runtime cost/access: generate the protocol schema from installed Codex, use a dedicated stdio app-server and isolated scratch worktree with native approval gates, initialize a thread scoped to that worktree, submit a harmless scratch-file edit, record the actual thread and turn IDs plus filesystem diff, resume that same thread for a second edit, and independently verify both native turn events and the final diff. Then prove the owner route binds those IDs and rejects every other tenant/provider. Do not expose an unauthenticated network listener, disable approvals, broaden tokens, send shared-chat messages, merge or deploy. Other providers require equivalent provider-native evidence before activation.
+See [Office coding images](OFFICE_CODING_IMAGES.md) for the later actual native image-understanding proof, image-aware adapter, disabled hosted relay, signed Access/job/result contracts and outbound worker. The original prerequisite tests below remain relevant, but the native-proof limitation recorded during the initial implementation has been superseded by that explicitly scoped local proof. The live hosted end-to-end connection remains unverified and disabled until operator configuration and deployment are separately approved.
 
 ## Validation
 

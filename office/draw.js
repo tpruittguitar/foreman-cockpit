@@ -750,6 +750,7 @@ export function drawAgentChat(ctx, W, H, o) {
     });
   }
   ctx.fillStyle = o.err && msgs.length ? '#ff8a7a' : '#9aa0a8'; ctx.font = `600 ${20 * s}px ${SANS}`;
+  if(o.signIn) { ctx.fillStyle='#37e0ff';ctx.fillText('Sign in to coding ↗ · draft kept',x0,H-12*s);hit(x0,H-40*s,320*s,34*s,'coding-sign-in');return hits; }
   const foot = o.note || (o.err && msgs.length ? o.err : '') || (o.queued ? o.queued + ' message' + (o.queued > 1 ? 's' : '') + ' waiting for TIMMAY' : 'Chat · /code requests coding · Not connected');
   ctx.fillText(fit(ctx, foot, W - (scroll.max > 0 ? 384 : 260) * s), x0, H - 12 * s);
   return hits;
