@@ -251,7 +251,7 @@ test('renamed bots are matched by bot_id first', () => {
   assert.equal(L.canonicalBot('Root', '70f0889b-ecd4-457b-a69c-304cd2aff540'), 'Root');
 });
 
-test('Claude avatar (Tim, Nov 21): an orange satin sphere with a raised white starburst traced from his picture, arms and legs, no slot eyes', async () => {
+test('Claude avatar (Tim, Nov 21): an orange satin sphere with a flat white starburst traced from his picture, arms and legs, no slot eyes', async () => {
   const fs = require('node:fs'), path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
@@ -264,7 +264,8 @@ test('Claude avatar (Tim, Nov 21): an orange satin sphere with a raised white st
   const tips = S.filter((r, i) => r > 0.5 && !(S[(i + 179) % 180] > 0.5)).length; // count rays by their tips
   assert.ok(tips >= 10 && tips <= 13, 'about a dozen rays, as in the picture (' + tips + ')');
   const chars = fs.readFileSync(path.join(__dirname, '../office/chars.js'), 'utf8');
-  assert.match(chars, /a\.icon === 'claude' \? raisedStar\(\)/, 'the starburst is solid relief, not a flat decal');
+  assert.match(chars, /a\.icon === 'claude' \? flatStar\(\)/, 'the starburst is printed flat on the ball (Tim: the symbol should be flat)');
+  assert.doesNotMatch(chars, /raisedStar|STAR_H\b/, 'no raised relief left');
   assert.match(chars, /const armR = limb\(/, 'the sphere keeps the arms and legs every bot has');
 });
 

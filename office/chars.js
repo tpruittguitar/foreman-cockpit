@@ -341,27 +341,25 @@ function sphereLogo(key) {
   return new THREE.Mesh(g, m);
 }
 
-/* Claude's raised starburst (Tim, Nov 21): a solid white relief standing STAR_H off the front of the ball, as in his picture. The top face is a polar
-   grid (hub to outline, rings x CLAUDE_STAR angles) lifted onto the ball's curve, so it follows the sphere; the side wall drops from that edge into the
-   skin. One shared geometry, about 1.5k vertices. */
-const STAR_H = 0.03, STAR_RINGS = 6;
-function raisedStar() {
-  const m = mat('claudeStar', () => new THREE.MeshStandardMaterial({ color: 0xf7f5f2, roughness: 0.6, metalness: 0 }));
+/* Claude's starburst (Tim, Nov 21): a flat white mark printed on the front of the ball, as in his picture ("the symbol should be flat").
+   It is a polar grid (hub to outline, rings x CLAUDE_STAR angles) lying on the ball's curve a hair above the skin, so it follows the sphere
+   with no height of its own. One shared geometry, about 1.1k vertices. */
+const STAR_LIFT = 0.0015, STAR_RINGS = 6;
+function flatStar() {
+  const m = mat('claudeStar', () => new THREE.MeshStandardMaterial({ color: 0xf7f5f2, roughness: 0.6, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2 }));
   const g = geo('claudeStar', () => {
-    const n = CLAUDE_STAR.length, R = SPHERE_R, pos = [], idx = [], skin = (x, y) => Math.sqrt(Math.max(0, R * R - x * x - y * y));
+    const n = CLAUDE_STAR.length, R = SPHERE_R + STAR_LIFT, pos = [], idx = [], skin = (x, y) => Math.sqrt(Math.max(0, R * R - x * x - y * y));
     const ring = k => 1 + (k - 1) * n; // vertex index of ring k (k >= 1), the hub is vertex 0
-    pos.push(0, 0, R + STAR_H);
+    pos.push(0, 0, R);
     for (let k = 1; k <= STAR_RINGS; k++) for (let i = 0; i < n; i++) {
-      const t = 2 * Math.PI * i / n, r = CLAUDE_STAR[i] * R * k / STAR_RINGS, x = r * Math.cos(t), y = r * Math.sin(t);
-      pos.push(x, y, skin(x, y) + STAR_H);
+      const t = 2 * Math.PI * i / n, r = CLAUDE_STAR[i] * SPHERE_R * k / STAR_RINGS, x = r * Math.cos(t), y = r * Math.sin(t);
+      pos.push(x, y, skin(x, y));
     }
     for (let i = 0; i < n; i++) { const j = (i + 1) % n; idx.push(0, ring(1) + i, ring(1) + j);
       for (let k = 1; k < STAR_RINGS; k++) { const a = ring(k) + i, b = ring(k) + j, c = ring(k + 1) + i, d = ring(k + 1) + j; idx.push(a, c, d, a, d, b); } }
-    const w = pos.length / 3; // side wall: its own vertices so the edge stays crisp
-    for (let i = 0; i < n; i++) { const t = 2 * Math.PI * i / n, r = CLAUDE_STAR[i] * R, x = r * Math.cos(t), y = r * Math.sin(t), z = skin(x, y);
-      pos.push(x, y, z + STAR_H, x, y, z - 0.01); }
-    for (let i = 0; i < n; i++) { const j = (i + 1) % n, a = w + 2 * i, b = w + 2 * j; idx.push(a, a + 1, b + 1, a, b + 1, b); }
-    const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); bg.setIndex(idx); bg.computeVertexNormals(); return bg;
+    const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); bg.setIndex(idx);
+    const N = []; for (let v = 0; v < pos.length; v += 3) { const l = Math.hypot(pos[v], pos[v + 1], pos[v + 2]); N.push(pos[v] / l, pos[v + 1] / l, pos[v + 2] / l); }
+    bg.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); return bg; // the ball's own normals, so the mark shades like the ball
   });
   return new THREE.Mesh(g, m);
 }
@@ -419,7 +417,7 @@ export function makeBot(name, hiQuality, botId, override) {
     face.rotation.z = rot; }
   if (a.icon) { // the artwork is the face: no slot eyes, brows or mouth on an icon tile
     face.userData.studio = () => {}; face.visible = false;
-    if (ball) body.add(a.icon === 'claude' ? raisedStar() : sphereLogo(a.icon));
+    if (ball) body.add(a.icon === 'claude' ? flatStar() : sphereLogo(a.icon));
     else { const art = iconArt(a.icon, ((bb.max.x - bb.min.x) - 2 * ICON_PAD) / ICON_ART_FRAC); art.position.z = bb.max.z + 0.002; body.add(art); }
   }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
