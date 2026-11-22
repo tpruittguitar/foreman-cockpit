@@ -33,16 +33,45 @@ test('it parks when the office is idle and finishes the part it is on first', as
   assert.equal(W.weldPhase(t).phase, 'pause', 'idle mid-weld: completes the part, then rests');
 });
 
-test('builds headless, sparks fly while welding and stay within the pool, none on reduced motion', async () => {
+test('only the real torch contact on visible steel produces short, pooled bursts', async () => {
   const [W, THREE] = await load();
   for (const low of [false, true]) {
-    const r = W.makeWeldRobot(THREE, { low, light: !low }); let most = 0, welded = false;
-    assert.equal(r.maxSparks, low ? W.SPARKS.phone : W.SPARKS.desktop);
-    for (let k = 0; k < 400; k++) { const s = r.update(1 / 30, { working: true }); most = Math.max(most, s.sparks); welded = welded || s.welding; }
-    assert.ok(welded, 'it welds'); assert.ok(most > 5 && most <= r.maxSparks, 'sparks ' + most);
-    const calm = W.makeWeldRobot(THREE, { low }); let any = 0;
-    for (let k = 0; k < 400; k++) any = Math.max(any, calm.update(1 / 30, { working: true, reduced: true }).sparks);
-    assert.equal(any, 0, 'reduced motion: no sparks');
+    const r = W.makeWeldRobot(THREE, { low, light: !low });
+    r.group.position.set(21, 0, -8); r.group.scale.setScalar(1.25); // as placed in the Office
+    const tip = r.group.getObjectByName('weld-tip'), points = r.group.getObjectByName('weld-sparks');
+    const shell = r.group.children.filter(mesh => mesh.material?.color?.getHex() === 0xc3cad2);
+    const ray = new THREE.Raycaster(), down = new THREE.Vector3(0, -1, 0), origin = new THREE.Vector3(), spot = new THREE.Vector3();
+    const touched = new Set(), sparked = new Set(), bornAtTip = new Set(); let most = 0, quietWeld = false;
+    assert.equal(points.geometry.attributes.position.count, low ? W.SPARKS.phone : W.SPARKS.desktop);
+    assert.equal(r.update(1 / 30, { working: false }).sparks, 0, 'parks while idle');
+    for (let k = 0; k < 600; k++) {
+      const state = r.update(1 / 30, { working: true });
+      if (!state.welding) { assert.equal(state.sparks, 0, 'no particles away from the work'); continue; }
+      touched.add(state.seam);
+      tip.getWorldPosition(spot); r.group.updateMatrixWorld(true);
+      ray.set(origin.copy(spot).addScaledVector(down, -0.3), down);
+      const hit = ray.intersectObjects(shell, false)[0];
+      assert.ok(hit && Math.abs(hit.point.y - spot.y) < 0.028, 'torch reaches actual shell mesh at each contact');
+      if (state.sparks) {
+        sparked.add(state.seam);
+        const pos = points.geometry.attributes.position, color = points.geometry.attributes.color;
+        for (let i = 0; i < pos.count; i++) if (color.getX(i) === 1) {
+          const born = r.group.localToWorld(new THREE.Vector3().fromBufferAttribute(pos, i));
+          assert.ok(born.distanceTo(spot) < 1e-6, 'new particles start at the physical tip');
+          bornAtTip.add(state.seam);
+        }
+      }
+      else if (k > 90) quietWeld = true;
+      most = Math.max(most, state.sparks);
+    }
+    assert.equal(touched.size, 2); assert.equal(sparked.size, 2); assert.equal(bornAtTip.size, 2);
+    assert.ok(quietWeld, 'visible pauses between bursts while in contact');
+    assert.ok(most > 5 && most <= r.maxSparks);
+    for (let k = 0; k < 240; k++) {
+      if (!r.update(1 / 30, { working: true }).sparks) continue;
+      assert.equal(r.update(1 / 30, { working: true, reduced: true }).sparks, 0, 'reduced motion clears an active burst');
+      break;
+    }
   }
 });
 

@@ -9,7 +9,7 @@
 export const WELD_PHASES = [['approach', 1.2], ['weld', 4.5], ['lift', 1.0], ['pause', 1.8]];
 export const WELD_CYCLE_S = WELD_PHASES.reduce((s, p) => s + p[1], 0);
 export const ARM = { shoulderY: 0.95, upper: 0.85, fore: 0.8, torch: 0.3, torchAngle: -70 * Math.PI / 180 };
-export const SPARKS = { desktop: 64, phone: 28, rate: 80, gravity: -9.8 };
+export const SPARKS = { desktop: 64, phone: 28, rate: 100, gravity: -9.8, burstEvery: 0.48, burstFor: 0.17 };
 /* robot-local layout: base at the origin, the car shell along z on the +x side, nose at +z. Its near side faces the robot.
    Seams: 0 runs along the near roof rail (roof to side panel), 1 along the near hood edge (hood to fender), sloping down to the nose. */
 export const CAR = { x: 1.43, w: 1.36, l: 3.24, near: 0.75 };
@@ -45,6 +45,14 @@ export function tipTarget(ph, t) {
   if (ph.phase === 'weld') { const p = lerp3(a, b, ph.k); p.x += 0.006 * Math.sin(t * 22); return p; }
   if (ph.phase === 'lift') return ph.k < 0.3 ? lerp3(b, up(b), smooth(ph.k / 0.3)) : lerp3(up(b), HOME_TIP, smooth((ph.k - 0.3) / 0.7));
   return { x: HOME_TIP.x, y: HOME_TIP.y + 0.02 * Math.sin(t * 1.6), z: HOME_TIP.z };
+}
+
+/* A scheduled weld is not contact: the moving nozzle must actually arrive over the visible steel. */
+export function weldContact(ph, tip) {
+  if (ph.phase !== 'weld') return false;
+  const seam = SEAMS[ph.seam];
+  return tip.z >= seam.z0 - 0.012 && tip.z <= seam.z1 + 0.012 &&
+    Math.abs(tip.x - seam.x) < 0.018 && Math.abs(tip.y - carTopAt(tip.z)) < 0.020;
 }
 
 /* Two-link IK, elbow up, torch held at a fixed downward tilt. Returns base yaw and absolute link angles in the arm plane. */
@@ -151,7 +159,7 @@ export function makeWeldRobot(THREE, opts = {}) {
   add(new THREE.SphereGeometry(0.085, 16, 12), M.joint, 0, 0, 0, wrist);
   const torchBody = add(new THREE.CylinderGeometry(0.035, 0.045, ARM.torch - 0.08, 12), M.joint, (ARM.torch - 0.08) / 2 + 0.02, 0, 0, wrist); torchBody.rotation.z = -Math.PI / 2;
   const nozzle = add(new THREE.CylinderGeometry(0.018, 0.034, 0.08, 12), M.copper, ARM.torch - 0.04, 0, 0, wrist); nozzle.rotation.z = -Math.PI / 2;
-  const tip = new THREE.Object3D(); tip.position.x = ARM.torch; wrist.add(tip);
+  const tip = new THREE.Object3D(); tip.name = 'weld-tip'; tip.position.x = ARM.torch; wrist.add(tip);
 
   /* ---- arc glow at the tip (two additive sprites), and one flickering light on desktop ---- */
   const glowTex = (() => {
@@ -173,7 +181,7 @@ export function makeWeldRobot(THREE, opts = {}) {
   const dotTex = (() => { if (!hasDoc) return null; const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'), g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
     g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,0.8)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 32, 32); const t = new THREE.CanvasTexture(c); return t; })();
   const sparks = new THREE.Points(sg, new THREE.PointsMaterial({ size: low ? 0.075 : 0.06, map: dotTex, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, sizeAttenuation: true }));
-  root.add(sparks);
+  sparks.name = 'weld-sparks'; sparks.visible = false; root.add(sparks);
   let alive = 0, emitAcc = 0;
 
   const J = solveArm(HOME_TIP), cur = Object.assign({}, J);
@@ -186,12 +194,12 @@ export function makeWeldRobot(THREE, opts = {}) {
     let i = -1; for (let k = 0; k < maxSparks; k++) if (age[k] >= life[k]) { i = k; break; }
     if (i < 0) return;
     const a = rnd() * Math.PI * 2, up = 0.8 + rnd() * 1.8, out = 0.6 + rnd() * 1.6;
-    pos[i * 3] = at.x; pos[i * 3 + 1] = at.y + 0.01; pos[i * 3 + 2] = at.z;
+    pos[i * 3] = at.x; pos[i * 3 + 1] = at.y; pos[i * 3 + 2] = at.z;
     vel[i * 3] = Math.cos(a) * out - 0.6; vel[i * 3 + 1] = up; vel[i * 3 + 2] = Math.sin(a) * out; // a little bias out, away from the body side
-    age[i] = 0; life[i] = 0.45 + rnd() * 0.5;
+    age[i] = 0; life[i] = 0.09 + rnd() * 0.14;
+    col[i * 3] = 1; col[i * 3 + 1] = 0.66; col[i * 3 + 2] = 0.22; alive++;
   }
   function stepSparks(dt, emitting, at) {
-    if (emitting) { emitAcc += dt * SPARKS.rate * (low ? 0.5 : 1); while (emitAcc >= 1) { spawn(at); emitAcc -= 1; } } else emitAcc = 0;
     alive = 0;
     for (let i = 0; i < maxSparks; i++) {
       if (age[i] >= life[i]) { col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = 0; continue; }
@@ -204,6 +212,8 @@ export function makeWeldRobot(THREE, opts = {}) {
       const k = Math.min(1, age[i] / life[i]), fade = 1 - k * k; // yellow -> orange -> gone
       col[i * 3] = fade; col[i * 3 + 1] = (0.66 - 0.36 * k) * fade; col[i * 3 + 2] = (0.22 - 0.2 * k) * fade;
     }
+    if (emitting) { emitAcc += dt * SPARKS.rate * (low ? 0.5 : 1); while (emitAcc >= 1) { spawn(at); emitAcc -= 1; } } else emitAcc = 0;
+    sparks.visible = alive > 0;
     sg.attributes.position.needsUpdate = true; sg.attributes.color.needsUpdate = true;
   }
 
@@ -222,20 +232,22 @@ export function makeWeldRobot(THREE, opts = {}) {
     const want = solveArm(parked ? HOME_TIP : tipTarget(ph, t)), f = 1 - Math.exp(-dt * (ph.phase === 'weld' ? 18 : 7));
     for (const k of ['yaw', 'a1', 'a2', 'a3']) cur[k] += (want[k] - cur[k]) * f;
     pose(cur);
-    const welding = ph.phase === 'weld' && ph.k > 0.02 && ph.k < 0.99;
+    tip.updateWorldMatrix(true, false); tipLocal.setFromMatrixPosition(tip.matrixWorld); root.worldToLocal(tipLocal);
+    const welding = weldContact(ph, tipLocal);
+    const burst = welding && !reduced && (ph.k * WELD_PHASES[1][1]) % SPARKS.burstEvery < SPARKS.burstFor;
     // beads: reset when its part comes round again, grow while welding, then cool
     beads.forEach((b, i) => {
       if (ph.seam === i && ph.phase === 'approach' && ph.k < 0.1) { b.mesh.visible = false; b.heat = 0; }
-      if (ph.seam === i && ph.phase === 'weld') { b.mesh.visible = true; b.mesh.scale.z = Math.max(1e-3, b.len * ph.k); b.heat = 1; }
+      if (ph.seam === i && welding) { b.mesh.visible = true; b.mesh.scale.z = Math.max(1e-3, b.len * ph.k); b.heat = 1; }
       else b.heat = Math.max(0, b.heat - dt / 5);
       b.m.emissiveIntensity = 2.4 * b.heat * b.heat;
     });
-    tip.updateWorldMatrix(true, false); tipLocal.setFromMatrixPosition(tip.matrixWorld); root.worldToLocal(tipLocal);
-    const flick = welding ? 0.65 + 0.35 * Math.sin(t * 53) * Math.sin(t * 31 + 1) + (reduced ? 0 : 0.2 * rnd()) : 0;
-    arc.visible = halo.visible = welding;
-    if (welding) { arc.position.copy(tipLocal); halo.position.copy(tipLocal); arc.scale.setScalar(0.2 + 0.12 * flick); halo.scale.setScalar(0.5 + 0.25 * flick); }
-    if (light) { light.position.set(tipLocal.x - 0.1, tipLocal.y + 0.15, tipLocal.z); light.intensity = welding ? 4 + 3 * flick : 0; }
-    stepSparks(Math.min(dt, 0.05), welding && !reduced, tipLocal);
+    const flick = burst ? 0.65 + 0.35 * Math.sin(t * 53) * Math.sin(t * 31 + 1) : 0;
+    arc.visible = halo.visible = burst;
+    if (burst) { arc.position.copy(tipLocal); halo.position.copy(tipLocal); arc.scale.setScalar(0.2 + 0.12 * flick); halo.scale.setScalar(0.5 + 0.25 * flick); }
+    if (light) { light.position.set(tipLocal.x - 0.1, tipLocal.y + 0.15, tipLocal.z); light.intensity = burst ? 4 + 3 * flick : 0; }
+    if (!welding || reduced) age.set(life); // no lingering sparks after the tip leaves the part
+    stepSparks(Math.min(dt, 0.05), burst, tipLocal);
     // beacon green while the office works, amber when parked
     M.beacon.color.setHex(working ? 0x3ddc84 : 0xffb020); M.beacon.emissive.setHex(working ? 0x3ddc84 : 0xffb020);
     M.beacon.emissiveIntensity = working ? 1.2 + 0.6 * Math.max(0, Math.sin(t * 6)) : 0.9;
