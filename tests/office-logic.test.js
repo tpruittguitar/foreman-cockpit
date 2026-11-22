@@ -452,13 +452,13 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   // avatars: each bot has its own sidebar-matched body
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
-  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['qaDrop', '#ff309b'], HR: ['sphere', '#ff263c'], Cursor: ['blob', '#22b8a2'], Claude: ['sphere', '#d46b4e'],
+  const shapeColor = { President: ['minifig', '#f5d2b0'], QA: ['qaDrop', '#ff309b'], HR: ['sphere', '#ff263c'], Cursor: ['sphere', '#1084fe'], Claude: ['sphere', '#d46b4e'],
     ChatGPT: ['sphere', '#18181b'], Root: ['rootSquare', '#777777'], Usage: ['usageCone', '#777777'], Edgar: ['edgarCloud', '#1084fe'], Comp: ['usageCone', '#00c972'],
     Gauge: ['gaugePill', '#ff309b'], Sniffer: ['snifferPill', '#1084fe'], GUI: ['guiClover', '#ff263c'], Archive: ['archiveHex', '#ff309b'],
     Hermes: ['sphere', '#cdcbc6'] };
   for (const [n, id] of want) { const a = A.avatarFor(n, id); assert.deepEqual([a.shape, a.color], shapeColor[n], n); assert.equal(A.BOT_IDS[n], id, n); }
   assert.equal(Object.keys(A.AVATARS).length, 15, '14 sidebar bots + Hermes');
-  assert.equal(A.avatarFor('Software').color, '#22b8a2', 'old name still resolves');
+  assert.equal(A.avatarFor('Software').color, '#1084fe', 'old name still resolves');
 });
 
 test('Sniffer and Gauge retain independent reference proportions and flat vertical owner-icon eyes', async () => {

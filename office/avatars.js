@@ -249,7 +249,7 @@ export const AVATARS = {
   '431e8cf1-f077-4548-82b7-46c1959dc4c9': { shape: 'minifig', rot: 0, color: '#f5d2b0' },            // President: round face, dark hair (original art)
   '338fc1b1-fecc-475d-ba9e-acd49bcadcfc': { shape: 'qaDrop', rot: 0, color: '#ff309b', shade: '#e5238a', satin: true, face: { color: '#232325' } }, // QA: satin-pink reference teardrop
   '372936ae-81e1-4013-b0d0-9ee47d97a3c4': { shape: 'sphere', rot: 0, color: '#ff263c', shade: '#e51d35', satin: true, face: { color: '#232325' } }, // HR: satin-red sphere
-  'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'blob', rot: 0.3, color: '#22b8a2' },             // Cursor: teal round blob
+  'b0178cd7-2b7a-4843-8bd1-a58bd6a13b6f': { shape: 'sphere', rot: 0, color: '#1084fe', shade: '#0871e5', icon: 'cursor' }, // Cursor: satin-blue sphere with supplied front mark
   'd4118f0c-1b06-4e9a-982f-f5314451c841': { shape: 'sphere', rot: 0, color: '#d46b4e', shade: '#bf472f', icon: 'claude' }, // Claude (Tim, Nov 21): orange satin ball, flat white starburst (CLAUDE_STAR); color is his picture's orange, shade the deeper 3D paint that reads as that orange under the office lights
   '7bcb0d85-ec55-4e17-907f-3e71688e8799': { shape: 'sphere', rot: 0, color: '#18181b', icon: 'chatgpt' },  // ChatGPT (Tim, Nov 21): black glossy sphere, white logo on the front (office/assets/chatgpt-logo.png)
   '70f0889b-ecd4-457b-a69c-304cd2aff540': { shape: 'rootSquare', rot: 0, color: '#777777', shade: '#555555', satin: true, face: { rot: 0, dx: 0.03, dy: -0.026, gap: 0.78, color: '#232325' } }, // RootCause: satin-gray square
@@ -287,6 +287,17 @@ export function shapePoints(a) {
   const f = SHAPES[a.shape] || SHAPES.roundsquare;
   return f(a.rot || 0);
 }
+let cursorBadge;
+export function loadCursorBadge(onReady) {
+  if (typeof Image === 'undefined') return null;
+  if (!cursorBadge) {
+    cursorBadge = new Image();
+    cursorBadge.src = new URL('./assets/cursor-logo.png', import.meta.url).href;
+  }
+  if (onReady && !cursorBadge.complete) cursorBadge.addEventListener('load', onReady, { once: true });
+  return cursorBadge;
+}
+
 /* Small owner icon for canvas boards. */
 export function drawAvatar(ctx, bot, cx, cy, size, botId) {
   const a = avatarFor(bot, botId);
@@ -301,8 +312,12 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * size, -y * size) : ctx.moveTo(x * size, -y * size)));
     ctx.closePath(); ctx.fill();
   }
-  if (a.icon) { // icon bots (Hermes tile, ChatGPT and Claude spheres): a thin edge so the mark reads on the board, no slot eyes
+  if (a.icon) { // Icon avatars use their mark instead of slot eyes.
     ctx.lineWidth = Math.max(1, size * 0.06); ctx.strokeStyle = a.icon === 'claude' ? '#9c4a33' : a.icon === 'chatgpt' ? '#d8d8dc' : '#2a2a2e'; ctx.stroke();
+    if (a.icon === 'cursor') {
+      const mark = loadCursorBadge(), halfSpan = 0.252 * size;
+      if (mark?.complete && mark.naturalWidth) ctx.drawImage(mark, -halfSpan, -halfSpan, 2 * halfSpan, 2 * halfSpan);
+    }
     if (a.icon === 'claude') { ctx.fillStyle = '#fff'; ctx.beginPath(); const n = CLAUDE_STAR.length;
       CLAUDE_STAR.forEach((r, k) => { const t = TAU * k / n, x = r * 0.36 * size * Math.cos(t), y = -r * 0.36 * size * Math.sin(t); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
       ctx.closePath(); ctx.fill(); }
