@@ -461,20 +461,18 @@ test('item 17: roster is the 15 sidebar bots, in sidebar order, short names, exa
   assert.equal(A.avatarFor('Software').color, '#1084fe', 'old name still resolves');
 });
 
-test('Sniffer and Gauge retain independent reference proportions and flat vertical owner-icon eyes', async () => {
+test('Sniffer and Gauge retain level capsule proportions, circular end caps, and flat vertical owner-icon eyes', async () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../office/avatars.js'), 'utf8');
   const A = await import('data:text/javascript;base64,' + Buffer.from(src).toString('base64'));
   for (const [name, expectedRatio] of [['Sniffer', 1.493], ['Gauge', 211 / 141]]) {
     const a = A.avatarFor(name), outline = A.shapePoints(a);
     const span = axis => Math.max(...outline.map(p => p[axis])) - Math.min(...outline.map(p => p[axis]));
     assert.ok(Math.abs(span(0) / span(1) - expectedRatio) < 0.025, name);
-    if (name === 'Sniffer') {
-      outline.forEach(([x, y], i) => {
-        const acrossY = outline[(outline.length / 2 - i + outline.length) % outline.length];
-        const acrossX = outline[(outline.length - i) % outline.length];
-        assert.ok(Math.hypot(x + acrossY[0], y - acrossY[1]) < 1e-10);
-        assert.ok(Math.hypot(x - acrossX[0], y + acrossX[1]) < 1e-10);
-      });
+    const { w, h } = A.PILL_SIZE[a.shape], r = h / 2, cap = (w - h) / 2;
+    for (const [x, y] of outline) assert.ok(Math.abs(Math.hypot(Math.abs(x) - cap, y) - r) < 1e-10, name + ' circular cap');
+    for (const [start, end] of [[48, 49], [97, 0]]) {
+      assert.ok(Math.abs(outline[start][1] - outline[end][1]) < 1e-10, name + ' level barrel');
+      assert.ok(Math.abs(outline[start][0] + outline[end][0]) < 1e-10, name + ' equal ends');
     }
     const eyes = [];
     const ctx = new Proxy({ roundRect(...args) { eyes.push(args); } }, { get(o, k) { return o[k] || (() => {}); } });
