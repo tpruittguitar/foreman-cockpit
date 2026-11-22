@@ -256,10 +256,20 @@ function puffBody(a, hi) {
     let wmax = 0, wmin = 0; for (let k = 0; k < NT; k++) { const x = Math.cos(k / NT * Math.PI * 2) * prof[k]; wmax = Math.max(wmax, x); wmin = Math.min(wmin, x); }
     D = (wmax - wmin) * (SHAPE_THICK[a.shape] || BOT_THICK) / 2; // wide shapes get a thinner front-to-back depth
     ringAt = (ph, t) => { const f = t / (Math.PI * 2) * NT, k0 = Math.floor(f) % NT, k1 = (k0 + 1) % NT, sp = Math.sin(ph), cp = Math.cos(ph), r = (prof[k0] + (prof[k1] - prof[k0]) * (f - Math.floor(f))) * Math.pow(Math.abs(sp), 2 / FL); return [Math.cos(t) * r, Math.sin(t) * r, Math.sign(cp) * Math.pow(Math.abs(cp), 2 / FL) * D]; };
-    if (a.shape === 'edgarCloud') {
+    if (a.shape === 'edgarCloud' || a.shape === 'rootSquare') {
       // Flat front and rear caps; ellipse only in the perimeter bevel, then a straight side wall.
-      const band = 0.20111, radius = 0.063882;
+      const square = a.shape === 'rootSquare';
+      const band = square ? 0.2895984 : 0.20111, radius = square ? 0.09199008 : 0.063882;
+      if (square) D = 0.3072831 * 0.5 / 0.95;
       const outline = t => {
+        if (square) {
+          // Intersect the ray against a straight edge or a quarter-circle corner.
+          const w = 0.6586144 * 0.5 / 0.95, c = w * 0.25, k = w - c;
+          const x = Math.abs(Math.cos(t)), y = Math.abs(Math.sin(t)), e = w / Math.max(x, y);
+          if (e * Math.min(x, y) <= k) return e;
+          const m = k * (x + y);
+          return m + Math.sqrt(Math.max(0, m * m - 2 * k * k + c * c));
+        }
         const f = ((t % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI) * NT, k = Math.floor(f);
         return prof[k] + (prof[(k + 1) % NT] - prof[k]) * (f - k);
       };
@@ -462,11 +472,11 @@ export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const edgar = a.shape === 'edgarCloud', usage = a.shape === 'usageCone', qa = a.shape === 'qaDrop', flatLathe = usage || qa, flatEyes = edgar || flatLathe ? [new THREE.Vector4(), new THREE.Vector4()] : null;
+  const edgar = a.shape === 'edgarCloud', rootCause = a.shape === 'rootSquare', flatSlab = edgar || rootCause, usage = a.shape === 'usageCone', qa = a.shape === 'qaDrop', flatLathe = usage || qa, flatEyes = flatSlab || flatLathe ? [new THREE.Vector4(), new THREE.Vector4()] : null;
   const ball = a.shape === 'sphere', satin = ball || !!a.satin, paint = satin && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit; a.satin (Usage pick): a body in the balls' satin finish
-  const bodyG = geo(key + (ball || edgar || flatLathe ? ':' + hiQuality : ''), () => usage ? usageConeBody(hiQuality) : qa ? qaDropBody(hiQuality) : ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
+  const bodyG = geo(key + (ball || flatSlab || flatLathe ? ':' + hiQuality : ''), () => usage ? usageConeBody(hiQuality) : qa ? qaDropBody(hiQuality) : ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = flatEyes ? flatEyeMaterial(paint, a.face.color, hiQuality, flatLathe ? 0.01 : bb.max.z - 0.001, flatEyes, flatLathe) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : edgar ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
+  const bodyM = flatEyes ? flatEyeMaterial(paint, a.face.color, hiQuality, flatLathe ? 0.01 : bb.max.z - 0.001, flatEyes, flatLathe) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : flatSlab ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
@@ -489,7 +499,7 @@ export function makeBot(name, hiQuality, botId, override) {
       });
     };
     face.userData.apply(neutral, 0);
-  } else if (edgar) {
+  } else if (flatSlab) {
     const L = window.OfficeLogic, neutral = L.exprParams('neutral');
     const { dx, dy, gap } = a.face;
     face.visible = false; // the face group remains an animation target, but all detailing is painted on
@@ -499,7 +509,7 @@ export function makeBot(name, hiQuality, botId, override) {
         const k = i ? 'e1' : 'e0', sx = (i ? 1 : -1) * 0.1 * gap * g.spread, scale = x.eyeScale || 1;
         const sz = L.slotSize(0.13 * p[k + 'w'] / neutral[k + 'w'] * scale, 0.24 * p[k + 'h'] / neutral[k + 'h'] * scale);
         const open = Math.max(0.06, Math.min(p[k + 'o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
-        eye.set(dx + sx * Math.cos(g.roll) + g.x, dy + sx * Math.sin(g.roll) + g.y, sz.w * 0.72, sz.h * open * 0.72);
+        eye.set(dx + sx * Math.cos(g.roll) + g.x, dy + (rootCause ? 0 : sx * Math.sin(g.roll)) + g.y, sz.w * 0.72, sz.h * open * 0.72);
       });
     };
     face.userData.apply(neutral, 0);
