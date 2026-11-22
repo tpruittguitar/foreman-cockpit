@@ -358,7 +358,7 @@ function tileMat(a, hiQ) {
     : new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, map: g, roughness: 0.72, bumpMap: g, bumpScale: 0.6 });
 }
 
-const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href, chatgpt: new URL('./assets/chatgpt-logo.png', import.meta.url).href };
+const ICON_ART = { hermes: new URL('./assets/hermes-icon.png', import.meta.url).href, chatgpt: new URL('./assets/chatgpt-logo.png', import.meta.url).href, cursor: new URL('./assets/cursor-logo.png', import.meta.url).href };
 // The girl spans 75% of the PNG's width. Tim (Nov 21): padding between her and the tile's edge cut 15% (0.150 -> 0.1275).
 const ICON_ART_FRAC = 0.75, ICON_PAD = 0.1275;
 function iconArt(key, size) {

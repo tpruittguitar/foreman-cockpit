@@ -7,7 +7,7 @@ import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from 
 import { makeZach, poseZach, loadZachMesh, disposeZachMesh, attachZachMesh, detachZachMesh } from './zach.js';
 import { makeWeldRobot } from './weld-robot.js';
 import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched, drawAgentChat } from './draw.js';
-import { shortTag, idFor } from './avatars.js';
+import { shortTag, idFor, loadCursorBadge } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
 const TAG_MAX_PX = 240; // full bot name unless the label would be wider than this (or 30% of the screen)
@@ -1663,6 +1663,7 @@ function buildWorld() {
 
   /* ---------- screens ---------- */
   let boardDirty = true, page = 0, pageAt = 0, focusItem = null, autosAt = 0;
+  loadCursorBadge(() => { boardDirty = true; });
   /* Automations wall board on its own, so its countdowns tick every second without redrawing the other boards */
   function drawAutos() { const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO, fetchedAt: S.fetched.automations, boardM: autos.w }); a.t.needsUpdate = true; autosAt = clock; }
   function drawBoards() {
