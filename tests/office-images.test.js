@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const {setup,image,scope,identity,origin}=require('./fixtures/office-image-service.cjs');
 test('prompt and exact image bytes reach native image input; durable refs survive polling, no replay and no PR for diagnosis',async()=>{const f=await setup();try{
  const response=await f.post();assert.equal(response.status,202);const accepted=await response.json();assert.equal(accepted.attachments.length,1);assert.equal(accepted.attachments[0].name,image.name);assert.doesNotMatch(JSON.stringify(accepted),/base64/);
- await f.adapter.queue;assert.deepEqual(f.rpc.inputs,[[{type:'text',text:f.body.text},{type:'image',url:image.data}]]);
+ await f.adapter.queue;const {TURN_GUIDANCE}=await import('../tools/office-dot/adapter.mjs');assert.deepEqual(f.rpc.inputs,[[{type:'text',text:f.body.text},{type:'image',url:image.data},{type:'text',text:TURN_GUIDANCE}]]);
  const q=new URLSearchParams({provider:'Dot',conversationId:scope.conversationId,requestId:f.body.requestId});const status=await(await f.service(new Request(origin+'/api/agent-coding?'+q))).json();assert.equal(status.status,'finished');assert.equal(status.approach.route,'diagnose');assert.equal(status.draftUrl,undefined);assert.deepEqual(status.attachments,accepted.attachments);
  await f.post();await f.adapter.queue;assert.equal(f.rpc.inputs.length,1);
  assert.equal((await f.post({...f.body,attachments:[{...image,name:'different.png'}]})).status,409);
