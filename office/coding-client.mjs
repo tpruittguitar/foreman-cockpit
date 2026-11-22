@@ -1,7 +1,8 @@
 export const CODING_SIGN_IN = '/api/agent-coding?signin=1';
 const signInResult = (job, status = 'not_connected') => ({ ...job, status, signIn: true, message: 'Check coding sign-in in a new tab; your draft is kept. Then return and press Send (same request ID).' });
 // Explicit user action only. No keyword classification, log watching or ALL dispatch.
-export const codingText = text => /^\/code(?:\s|$)/i.test(text.trim()) ? text.trim().replace(/^\/code\s*/i, '') : null;
+export const codingText = text => /^\/code(?:\s|$)/i.test(text.trim()) ? text.trim().replace(/^\/code\s*/i, '') : /^\/learn(?:\s|$)/i.test(text.trim()) ? text.trim() : null;
+// /learn (Tim, Nov 22): Hermes reads the board history since the last /learn and updates its skills. Same sign-in and worker as /code.
 export function createCodingClient(fetcher, uuid = () => crypto.randomUUID()) {
   const conversations = new Map(), pending = new Map(), requestKeys = new Map();
   let generation = 0;
@@ -10,6 +11,7 @@ export function createCodingClient(fetcher, uuid = () => crypto.randomUUID()) {
     async send(provider, text, attachments = []) {
       if (!['Claude', 'Hermes', 'Dot', 'Grok'].includes(provider)) return { status: 'not_connected', message: 'Select one agent; All cannot receive coding requests' };
       if (!text.trim()) return { status: 'not_connected', message: 'Type /code followed by your coding request' };
+      if (/^\/learn(?:\s|$)/i.test(text.trim()) && provider !== 'Hermes') return { status: 'not_connected', message: 'Only Hermes can /learn; pick Hermes in To' };
       if (attachments.some(f=>!f.data)) return {status:'rejected',message:'Image is still loading; try Send again when ready'};
       if (attachments.some(f=>!['image/png','image/jpeg'].includes(f.type))) return {status:'rejected',message:'Coding accepts PNG or JPEG images; remove unsupported files'};
       const startGeneration = generation;
