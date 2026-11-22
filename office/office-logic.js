@@ -1656,6 +1656,19 @@
     return str(t).replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
       .replace(/(?:\+?\d[\s().-]?){7,}\d/g, '[phone]').replace(/[A-Za-z0-9_-]{24,}/g, '[token]');
   }
+  /* Agent chat wall: raw chat.log lines from TIMMAY ("[YYYY-MM-DD HH:MM:SS ET] SENDER -> RECIPIENT: text") via /api/agent-chat. */
+  const AGENT_NAMES = { Claude: 'Claude Duet', Hermes: 'Hermes (Local)', Dot: 'ChatGPT Dot', Grok: 'Grokbot President', ALL: 'All', Tim: 'Tim', System: 'System' };
+  const AGENT_TO = ['ALL', 'Claude', 'Hermes', 'Dot', 'Grok']; // matches functions/api/agent-chat.js TO
+  const agentName = k => AGENT_NAMES[k] || str(k);
+  function parseAgentChat(lines) {
+    const out = [];
+    for (const line of Array.isArray(lines) ? lines : []) {
+      const m = /^\[(\d{4}-\d\d-\d\d) (\d\d:\d\d)(?::\d\d)? ET\] (\w+) -> (\w+): ?(.*)$/.exec(str(line).trim());
+      if (!m || !m[5].trim()) continue;
+      out.push({ day: m[1], time: m[2], from: m[3], to: m[4], text: m[5].replace(/ \/\/ /g, '\n').slice(0, 4000) });
+    }
+    return out;
+  }
   function parseChatFeed(text) {
     const out = [];
     for (const line of str(text).split(/\r?\n/)) {
@@ -2376,7 +2389,7 @@
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
-    screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
+    screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, AGENT_NAMES, AGENT_TO, agentName, parseAgentChat, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, ZACH_KEY, zachShownFrom, readZachShown, saveZachShown, createZachSwitch, ZACH_SWITCH, zachSwitchPose, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, buildLaunchLine, RELEASE_PLATE_BOARD, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,

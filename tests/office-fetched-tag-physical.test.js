@@ -20,7 +20,8 @@ function fakeCtx() {
 }
 const BW = Number(/const BW = ([\d.]+)/.exec(office)[1]);
 const BOARDS = [...office.matchAll(/makeBoard\('(\w+)', (BW|[\d.]+), (?:BH|[\d.]+), .*?LOW \? (\d+) : (\d+), LOW \? \d+ : (\d+)\)/g)]
-  .map(m => ({ id: m[1], m: m[2] === 'BW' ? BW : Number(m[2]), low: Number(m[3]), hi: Number(m[4]), h: Number(m[5]) }));
+  .map(m => ({ id: m[1], m: m[2] === 'BW' ? BW : Number(m[2]), low: Number(m[3]), hi: Number(m[4]), h: Number(m[5]) }))
+  .filter(b => b.id !== 'agentchat'); // the agent chat wall is a locked live chat, not a fetched feed: no fetched tag
 const AT = Date.parse('2026-11-18T03:39:43Z');
 const pxOf = c => Number(/(\d+(?:\.\d+)?)px/.exec(c.texts.find(x => x.t.startsWith('fetched ')).font)[1]);
 
