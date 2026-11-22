@@ -66,6 +66,31 @@ export function qaDropRadius(t) {
   }
   return Math.sqrt(Math.max(0, t * (1 - t) * sum));
 }
+// Archive’s six-sided outline traced from the approved pink reference.
+const ARCHIVE_HEX = [
+  .3321374063, .3293051413, .3270365438, .3250459042, .3232329897, .3218277374, .3210873070, .3208958431, .3208990505, .3211011013,
+  .3218400320, .3231481622, .3246836285, .3262700941, .3280464732, .3301678752, .3325877778, .3349638137, .3367244938, .3374505979,
+  .3371800638, .3361959438, .3346232253, .3323769278, .3295206332, .3263894744, .3232713777, .3202844271, .3175034457, .3150313914,
+  .3130045493, .3115555646, .3107079299, .3103537861, .3104762062, .3111034929, .3120122287, .3129896277, .3141390710, .3156133952,
+  .3174078292, .3195568101, .3223275963, .3259910469, .3303500831, .3348276710, .3390717411, .3430127911, .3464558313, .3491276903,
+  .3508676665, .3513794160, .3502815964, .3476807880, .3442740306, .3407869844, .3375379045, .3345834822, .3320405625, .3300827928,
+  .3286616747, .3274609806, .3263447063, .3255618607, .3253804347, .3257891739, .3266369417, .3278146917, .3292449025, .3309548246,
+  .3330653327, .3356356680, .3385961381, .3417143067, .3446002420, .3468928356, .3485121262, .3497873525, .3512996266, .3533176703,
+  .3553644975, .3565950967, .3565947244, .3555333950, .3536637940, .3510753337, .3477644397, .3438442543, .3397489525, .3360317149,
+  .3329593189, .3303501894, .3278814583, .3255711048, .3237583898, .3226753808, .3221555565, .3218403517, .3217042597, .3220456598,
+  .3229092130, .3240052664, .3252720904, .3270783422, .3297553634, .3330214010, .3360384706, .3381106639, .3390858186, .3391206062,
+  .3384058779, .3371252999, .3353980899, .3332386883, .3306166951, .3275393514, .3241514806, .3207859333, .3178010973, .3154064410,
+  .3137039999, .3127367330, .3123542059, .3122332896, .3121875101, .3122539126, .3125389352, .3131485299, .3141942024, .3157626037,
+  .3179332792, .3207811279, .3241916286, .3278550792, .3315744008, .3353528716, .3392175384, .3430387213, .3464587597, .3491278898,
+  .3508676665, .3513794160, .3502815964, .3476807880, .3442740306, .3407869844, .3375379045, .3345834822, .3320405625, .3300827928,
+  .3286616747, .3274609806, .3263447063, .3255618607, .3253804347, .3257891739, .3266369417, .3278146917, .3292449025, .3309548246,
+  .3330653327, .3356356680, .3385961381, .3417143067, .3446002420, .3468926361, .3485093972, .3497641512, .3511770306, .3529150657,
+  .3545427844, .3555527776, .3557730112, .3551307904, .3535411980, .3510519329, .3477589819, .3438208535, .3396263565, .3356291103,
+];
+export function archiveHexRadius(t) {
+  const f = ((t % TAU + TAU) % TAU) * ARCHIVE_HEX.length / TAU, i = Math.floor(f);
+  return ARCHIVE_HEX[i] + (ARCHIVE_HEX[(i + 1) % ARCHIVE_HEX.length] - ARCHIVE_HEX[i]) * (f - i);
+}
 const SHAPES = {
   rootSquare: rot => roundedPoly([[-0.3293072, -0.3293072], [0.3293072, -0.3293072], [0.3293072, 0.3293072], [-0.3293072, 0.3293072]], 0.0823268, rot),
   roundsquare: rot => roundedPoly([[-0.36, -0.36], [0.36, -0.36], [0.36, 0.36], [-0.36, 0.36]], 0.17, rot),
@@ -77,6 +102,7 @@ const SHAPES = {
   cookie6: rot => polar(t => 0.35 + 0.075 * Math.cos(6 * t), rot),
   pentagon: rot => roundedPoly(regular(5, 0.45), 0.15, rot),
   flower: rot => polar(t => 0.31 + 0.12 * Math.pow(Math.abs(Math.cos(2.5 * t)), 0.8), rot),   // rounded petal lobes
+  archiveHex: rot => tracedOutline(ARCHIVE_HEX, rot),
   hexagon: rot => roundedPoly(regular(6, 0.44), 0.16, rot),                                    // Archive: soft hexagon (Grok "hexagone")
   cloud: rot => polar(t => 0.33 + 0.045 * Math.cos(5 * t + 0.6) + 0.02 * Math.cos(3 * t + 2.1), rot, 90), // Edgar: scalloped cloud (Grok "nuage")
   edgarCloud: rot => tracedOutline(EDGAR_CLOUD, rot),
@@ -157,7 +183,7 @@ export const AVATARS = {
   '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
   '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
   'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' },         // GUI: red clover
-  'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'hexagon', rot: 0.15, color: '#f2389b' },         // Archive: pink soft hexagon
+  'c95408dd-c07f-460e-aaa0-9d515fe5be7d': { shape: 'archiveHex', rot: 0, color: '#ff309b', shade: '#e5238a', satin: true, face: { rot: 0, dx: 0.048, dy: 0.005, gap: 0.82, color: '#232325' } }, // Archive: satin-pink reference hexagon
   /* Hermes (Tim, Nov 21): a glossy white 3D icon tile in place of the teal hexagon bot. The front shows the black-and-white girl with
      headphones from Tim's icon picture (office/assets/hermes-icon.png, line art only, the tile itself is the white); the back is plain white.
      No slot eyes: the artwork is the face. */
@@ -215,7 +241,7 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     }
     ctx.restore(); return;
   }
-  if (a.shape === 'edgarCloud' || a.shape === 'rootSquare') {
+  if (a.shape === 'edgarCloud' || a.shape === 'rootSquare' || a.shape === 'archiveHex') {
     ctx.fillStyle = a.face.color;
     for (const sx of [-1, 1]) {
       ctx.beginPath(); ctx.roundRect((a.face.dx + sx * 0.078 - 0.034) * size, -0.05 * size, 0.068 * size, 0.164 * size, 0.034 * size); ctx.fill();
