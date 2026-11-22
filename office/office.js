@@ -426,7 +426,7 @@ function chatBoxHTML(b) {
    Tim Nov 21: no popup. Tapping the board's input line focuses a real (invisible) textarea, so a phone brings up its keyboard and a
    PC takes typing and paste; the board redraws what is typed. Files: the 📎 button, paste, or drop on the board. */
 const AGENT_URL = '/api/agent-chat', AGENT_STORE = 'office.agentChatToken', AC_MAX_FILES = 4, AC_MAX_FILE = 8 * 1024 * 1024;
-const AC = { token: '', exp: 0, msgs: [], err: '', note: '', queued: 0, to: 'ALL', at: 0, busy: false, sending: false, draft: '', code: '', files: [], focused: false, caret: true };
+const AC = { token: '', exp: 0, msgs: [], err: '', note: '', queued: 0, to: 'ALL', at: 0, busy: false, sending: false, draft: '', code: '', files: [], focused: false, caret: true, scroll: { offset: 0 } };
 const codingClient = createCodingClient((...args) => fetch(...args));
 const codingJobs = new Map();
 let codingGeneration = 0;
@@ -434,6 +434,11 @@ let onAgentChat = null; // repaints the wall screen + lock button (set in the sc
 try { const j = JSON.parse(localStorage.getItem(AGENT_STORE) || 'null'); if (j && j.exp > Date.now()) { AC.token = j.token; AC.exp = j.exp; } } catch (e) { /* none */ }
 const agentUnlocked = () => !!AC.token && AC.exp > Date.now();
 const acRepaint = () => { if (onAgentChat) onAgentChat(); };
+function agentScroll(delta) {
+  if ((!DEMO && !agentUnlocked()) || !Number.isFinite(delta)) return;
+  AC.scroll.offset = Math.max(0, Math.min(AC.scroll.max || 0, AC.scroll.offset + delta));
+  acRepaint();
+}
 const acInput = document.createElement('textarea'), acFile = document.createElement('input');
 acInput.id = 'ac-input'; acInput.setAttribute('aria-label', 'Agent chat message'); acInput.autocomplete = 'off'; acInput.spellcheck = true; acInput.maxLength = 2000;
 acFile.type = 'file'; acFile.multiple = true; acFile.hidden = true; acFile.id = 'ac-file';
@@ -446,6 +451,7 @@ function acSyncInput() { // one field: the unlock code while locked, the message
 function agentLock(why) {
   codingGeneration++; codingClient.clear(); codingJobs.clear();
   AC.token = ''; AC.exp = 0; AC.msgs = []; AC.queued = 0; AC.err = why || ''; AC.note = ''; AC.draft = ''; AC.files = [];
+  AC.scroll = { offset: 0 };
   try { localStorage.removeItem(AGENT_STORE); } catch (e) { /* ignore */ }
   acSyncInput(); acRepaint();
 }
@@ -926,8 +932,8 @@ function buildWorld() {
   onAgentChat = () => {
     const t = agentchat.tex, open = agentUnlocked();
     agentchat.hits = drawAgentChat(t.ctx, t.c.width, t.c.height, DEMO
-      ? { demo: true, to: 'ALL', msgs: L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> ALL: Example line', '[2026-11-21 19:40:30 ET] Claude -> Tim: Example reply']) }
-      : open ? { msgs: AC.msgs.concat([...codingJobs.values()].filter(j => j.provider === AC.to).map(codingMessage)), err: AC.err, note: AC.note, queued: AC.queued, to: AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret }
+      ? { demo: true, to: 'ALL', msgs: L.parseAgentChat(['[2026-11-21 19:40:00 ET] Tim -> ALL: Example line', '[2026-11-21 19:40:30 ET] Claude -> Tim: Example reply']), scroll: AC.scroll }
+      : open ? { msgs: AC.msgs.concat([...codingJobs.values()].filter(j => j.provider === AC.to).map(codingMessage)), err: AC.err, note: AC.note, queued: AC.queued, to: AC.to, draft: AC.draft, files: AC.files, focused: AC.focused, caret: AC.caret, scroll: AC.scroll }
         : { locked: true, code: AC.code, err: AC.err, note: AC.note, focused: AC.focused, caret: AC.caret });
     t.t.needsUpdate = true;
     const g = agentLockBtn.lt.ctx; g.clearRect(0, 0, 128, 160); g.fillStyle = '#0d1014'; g.fillRect(0, 0, 128, 160);
@@ -945,7 +951,9 @@ function buildWorld() {
   }
   function agentBoardHit(h) {
     if (!h) return agentFocus();
-    if (h.act === 'to') { AC.to = h.to; acRepaint(); return agentFocus(); }
+    if (h.act === 'scroll') return agentScroll(h.dir ? h.dir * AC.scroll.view * 0.8 : -AC.scroll.offset);
+    if (h.act === 'history') return; // reading messages does not raise the keyboard
+    if (h.act === 'to') { AC.to = h.to; AC.scroll = { offset: 0 }; acRepaint(); return agentFocus(); }
     if (h.act === 'draft' && /^https:\/\/github\.com\/[\w-]+\/[\w.-]+\/pull\/[1-9][0-9]*$/.test(h.url || '')) { window.open(h.url, '_blank', 'noopener,noreferrer'); return; }
     if (h.act === 'attach') { if (DEMO) return toast('Example data: the agent chat is off'); if (agentUnlocked()) acFile.click(); return; }
     if (h.act === 'rm') { AC.files.splice(h.i, 1); AC.note = ''; acRepaint(); return; }
@@ -1829,6 +1837,15 @@ function buildWorld() {
     boardDirty = true;
   }
   const canvas = renderer.domElement;
+  canvas.addEventListener('wheel', e => {
+    if (panelOpen || e.ctrlKey) return;
+    camera.updateMatrixWorld();
+    const p = pick(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+    if (p?.board !== 'agentchat' || !['history', 'draft'].includes(p.ac?.act)) return;
+    e.preventDefault();
+    const unit = e.deltaMode === 1 ? 30 : e.deltaMode === 2 ? AC.scroll.view : 1;
+    agentScroll(e.deltaY * unit); lastInput = performance.now();
+  }, { passive: false });
   const look = new THREE.Euler(0, 0, 0, 'YXZ');
   function turn(dx, dy) { look.setFromQuaternion(camera.quaternion); look.y -= dx; look.x = Math.max(-1.4, Math.min(1.4, look.x - dy)); camera.quaternion.setFromEuler(look); }
   let down = null;
@@ -1870,19 +1887,35 @@ function buildWorld() {
     js.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === jid) jmove(t); }, { passive: false });
     const jend = e => { for (const t of e.changedTouches) if (t.identifier === jid) { jid = null; joy.x = joy.y = 0; knob.style.transform = ''; } };
     js.addEventListener('touchend', jend); js.addEventListener('touchcancel', jend);
-    const looks = new Map(), dims = new Map();
+    const looks = new Map(), dims = new Map(), chats = new Map();
     canvas.addEventListener('touchstart', e => { e.preventDefault(); for (const t of e.changedTouches) {
       ndc.set(t.clientX / innerWidth * 2 - 1, -(t.clientY / innerHeight) * 2 + 1); camera.updateMatrixWorld(); ray.setFromCamera(ndc, camera);
       const h = ray.intersectObject(dimPlate, true)[0], other = ray.intersectObjects(pickables(), true)[0];
       if (L.touchDragTarget(h, other)) { dims.set(t.identifier, true); dimDrag = true; down = null; glide = null; tour = null; lastInput = performance.now(); $('start').hidden = true; canvas.style.cursor = 'ns-resize'; dimDragTo(t.clientX, t.clientY); }
-      else looks.set(t.identifier, { x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, at: performance.now() });
+      else {
+        const p = pickRay();
+        const gesture = { x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, at: performance.now(), moved: false };
+        if (p?.board === 'agentchat' && ['history', 'draft'].includes(p.ac?.act)) chats.set(t.identifier, gesture);
+        else looks.set(t.identifier, gesture);
+      }
     } lastInput = performance.now(); glide = null; }, { passive: false });
     canvas.addEventListener('touchmove', e => { e.preventDefault(); for (const t of e.changedTouches) {
       if (dims.has(t.identifier)) { dimDragTo(t.clientX, t.clientY); continue; }
+      const chat = chats.get(t.identifier);
+      if (chat) {
+        if (Math.hypot(t.clientX - chat.sx, t.clientY - chat.sy) > 6) chat.moved = true;
+        if (chat.moved) agentScroll((chat.y - t.clientY) * 2);
+        chat.y = t.clientY; continue; // scrolling the text never turns the camera
+      }
       const l = looks.get(t.identifier); if (!l) continue; turn((t.clientX - l.x) * 0.005, (t.clientY - l.y) * 0.005); l.x = t.clientX; l.y = t.clientY;
     } }, { passive: false });
     const endTouch = e => { for (const t of e.changedTouches) {
       if (dims.delete(t.identifier)) { dimDrag = false; canvas.style.cursor = ''; setDim(dimTarget, true); continue; }
+      const chat = chats.get(t.identifier); chats.delete(t.identifier);
+      if (chat) {
+        if (e.type !== 'touchcancel' && !chat.moved && performance.now() - chat.at < 350) activate(pick(t.clientX / innerWidth * 2 - 1, -(t.clientY / innerHeight) * 2 + 1));
+        continue;
+      }
       const l = looks.get(t.identifier); looks.delete(t.identifier);
       if (l && performance.now() - l.at < 350 && Math.hypot(t.clientX - l.sx, t.clientY - l.sy) < 10) activate(pick(t.clientX / innerWidth * 2 - 1, -(t.clientY / innerHeight) * 2 + 1));
     } };

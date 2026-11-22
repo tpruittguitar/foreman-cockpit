@@ -64,7 +64,8 @@ test('wall Detail layout shows exactly 6 card rows per column and pages the rest
   }
   assert.match(draw, /L\.columnPage\(c\.cards,\s*fit,\s*o\.page/, 'drawBoard pages via L.columnPage');
   assert.match(draw, /'p '\s*\+\s*\(pg\.page\s*\+\s*1\)\s*\+\s*'\/'\s*\+\s*pg\.pages/, 'p N/M page label');
-  assert.doesNotMatch(draw, /columnWindow|o\.scroll|SHARE\s*=/, 'no #426 scroll / unequal-column Detail layout');
+  const board = draw.slice(draw.indexOf('export function drawBoard('), draw.indexOf('export function drawUsage('));
+  assert.doesNotMatch(board, /columnWindow|o\.scroll|SHARE\s*=/, 'checksheet keeps paged columns; Agent Chat scrolls independently');
   const col = ex(20, 'ip');
   assert.equal(L.columnPage(col, 6, 0).items.length, 6);
   assert.equal(L.columnPage(col, 6, 0).pages, 4);
