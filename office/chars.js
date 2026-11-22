@@ -579,7 +579,7 @@ export function makeBot(name, hiQuality, botId, override) {
     const needle = new THREE.Mesh(geo('gNeedle', () => new THREE.BoxGeometry(0.012, 0.17, 0.01)), mat('needle', () => new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0x6a5200 })));
     needle.position.set(0.05, 0.19, bb.max.z); needle.rotation.z = -0.6; body.add(needle);
   }
-  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(satin ? paint : 0xffffff), new THREE.Color(satin ? paint : a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic });
+  const c = finish({ name, root, rig, body, armR, armL, legR, legL, face, mats: [bodyM, limbM], colors: [new THREE.Color(satin ? paint : 0xffffff), new THREE.Color(satin ? paint : a.color)], top: legLen + halfH * 2, sitLift: 0.34, radius: Math.min(0.42, Math.max(0.2, halfW * 0.9)), halfW, halfD: (bb.max.z - bb.min.z) / 2, kind: 'bot', generic: !!a.generic }, a.icon ? 'happy' : 'neutral');
   if (a.prop === 'quill') {
     const q = new THREE.Group(), feather = new THREE.Mesh(geo('quill', () => { const g = new THREE.SphereGeometry(0.05, 10, 8); g.scale(0.35, 1.6, 0.12); return g; }), white());
     feather.position.y = 0.08; const nib = new THREE.Mesh(geo('nib', () => new THREE.ConeGeometry(0.008, 0.05, 6)), black()); nib.rotation.x = Math.PI; nib.position.y = -0.02;
@@ -695,7 +695,7 @@ function makePresident() {
   return c;
 }
 
-function finish(c) {
+function finish(c, initialExpression = 'happy') {
   const r = c.armR, l = c.armL;
   c.rest = { armR: r.rotation.clone(), armL: l.rotation.clone() };
   const hold = new THREE.Group(); hold.position.y = -(r.userData.len || 0.2) * 0.95; r.add(hold);
@@ -711,7 +711,8 @@ function finish(c) {
   c.grey = new THREE.Color(0x6d6f73);
   c.setFrozen = on => c.mats.forEach((m, i) => m.color.copy(on ? c.grey : c.colors[i]));
   const L = window.OfficeLogic, rng = L.makeRng(L.hash('blink:' + c.name));
-  c.expr = L.exprParams('happy'); c.exprTarget = 'happy'; c.blinker = L.createBlinker(rng, 0); c.blinkRng = rng;
+  // Eye-bearing bots start in their upright neutral look, not the temporary happy squint.
+  c.expr = L.exprParams(initialExpression); c.exprTarget = initialExpression; c.blinker = L.createBlinker(rng, 0); c.blinkRng = rng;
   c.setExpression = e => { c.exprTarget = e; };
   c.bodyY0 = c.body.position.y; c.halfH = (c.top - 0.16) / 2; c.fidgetNow = null; c.breath = 1;
   c.updateFace = (dt, t, reduced) => { // blend towards the target expression, then blink; studio look + move idles drift the gaze and fidget (call once per frame)
