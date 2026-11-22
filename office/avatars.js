@@ -109,7 +109,9 @@ export const AVATARS = {
   /* Hermes (Tim, Nov 21): a glossy white 3D icon tile in place of the teal hexagon bot. The front shows the black-and-white girl with
      headphones from Tim's icon picture (office/assets/hermes-icon.png, line art only, the tile itself is the white); the back is plain white.
      No slot eyes: the artwork is the face. */
-  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'icontile', rot: 0, color: '#cdcbc6', icon: 'hermes' }
+  /* Hermes ball (Tim, Nov 21, for review): the same girl artwork on a white satin ball, in the style of the ChatGPT and Claude balls.
+     color stays the board-icon grey-white; shade is the 3D paint. */
+  '15ab4cfb-2d51-4809-9ae3-f1285ebd829f': { shape: 'sphere', rot: 0, color: '#cdcbc6', shade: '#eceae6', icon: 'hermes' }
 };
 /* bot_id -> short tag, used only when the full name does not fit the label. */
 export const SHORT_TAGS = { 'c95408dd-c07f-460e-aaa0-9d515fe5be7d': 'Archive' };
@@ -145,7 +147,7 @@ export function drawAvatar(ctx, bot, cx, cy, size, botId) {
     ctx.closePath(); ctx.fill();
   }
   if (a.icon) { // icon bots (Hermes tile, ChatGPT and Claude spheres): a thin edge so the mark reads on the board, no slot eyes
-    ctx.lineWidth = Math.max(1, size * 0.06); ctx.strokeStyle = a.icon === 'claude' ? '#9c4a33' : a.shape === 'sphere' ? '#d8d8dc' : '#2a2a2e'; ctx.stroke();
+    ctx.lineWidth = Math.max(1, size * 0.06); ctx.strokeStyle = a.icon === 'claude' ? '#9c4a33' : a.icon === 'chatgpt' ? '#d8d8dc' : '#2a2a2e'; ctx.stroke();
     if (a.icon === 'claude') { ctx.fillStyle = '#fff'; ctx.beginPath(); const n = CLAUDE_STAR.length;
       CLAUDE_STAR.forEach((r, k) => { const t = TAU * k / n, x = r * 0.36 * size * Math.cos(t), y = -r * 0.36 * size * Math.sin(t); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
       ctx.closePath(); ctx.fill(); }
