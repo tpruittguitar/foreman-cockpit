@@ -136,7 +136,7 @@ export const AVATARS = {
   // Usage: upright satin cone with a generous lower rim and flat vertical eyes.
   'f1a70b7a-6051-45d7-8031-e46a4cba066f': { shape: 'usageCone', rot: 0, color: '#777777', shade: '#555555', satin: true, face: { color: '#232325' } },
   '811cc842-4bef-47c2-98d2-0f4bb78f7169': { shape: 'edgarCloud', rot: 0, color: '#1084fe', shade: '#0871e5', satin: true, prop: 'quill', face: { rot: 0, dx: 0.013, dy: -0.029, gap: 0.78, color: '#232325' } }, // Edgar: video cloud + quill
-  '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'wedge', rot: 0.5, color: '#1cc26d' },            // Comp: green tilted wedge
+  '424e5611-fb8f-4ae1-a360-051e61e63e8a': { shape: 'usageCone', rot: 0, color: '#00c972', shade: '#00b869', satin: true, face: { color: '#232325' } }, // Comp: same cone as Usage, reference green
   '132c47df-ccfb-4f91-b4e2-ebcb1d775bc6': { shape: 'pill', rot: 0, color: '#f2399a', prop: 'gauge' }, // Gauge: pink pill + needle
   '321469c4-1299-43e7-bd32-1704f58777be': { shape: 'pill', rot: 0.12, color: '#2382f2' },            // Sniffer: blue pill
   'a8b4a0b2-acfd-4485-8444-7ab27007df4a': { shape: 'clover4', rot: 0.45, color: '#f2353f' },         // GUI: red clover
