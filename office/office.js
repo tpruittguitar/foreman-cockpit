@@ -484,34 +484,33 @@ async function agentUnlock() {
   acSyncInput(); acRepaint();
 }
 function codingMessage(job) {
-  return { from: job.provider, to: 'Tim', time: '', text: 'Coding: ' + (job.message || job.status) + '\n' + job.text,
+  return { from: job.provider, to: 'Tim', time: '', text: 'Coding: ' + (job.message || job.status) + (job.approach ? '\nApproach: ' + job.approach.summary : '') + (job.outcome ? '\nResult: ' + job.outcome.summary : '') + '\n' + job.text,
     draftUrl: job.status === 'completed' ? job.draftUrl : null };
 }
 async function codingRefresh() {
   if (!agentUnlocked() || DEMO || document.hidden) return;
   const generation = codingGeneration;
   for (const [id, job] of codingJobs) {
-    if (!['submitting', 'queued', 'running'].includes(job.status)) continue;
+    if (!['submitting', 'queued', 'running', 'awaiting_approval'].includes(job.status)) continue;
     const update = await codingClient.status(job);
     if (generation !== codingGeneration || !agentUnlocked()) return;
     if (update) codingJobs.set(id, { ...job, ...update });
   }
   acRepaint();
 }
-setInterval(codingRefresh, 15000);
+setInterval(codingRefresh, 2000);
 async function agentSend() {
   const text = AC.draft.trim(); if ((!text && !AC.files.length) || AC.sending) return;
   const code = codingText(text);
   if (code !== null) {
     if (!agentUnlocked() || DEMO) return;
-    if (AC.files.length) { AC.note = 'Coding attachments are not connected; remove files first'; acRepaint(); return; }
     const generation = codingGeneration;
     AC.sending = true; AC.note = 'Checking coding session…'; acRepaint();
-    const job = await codingClient.send(AC.to, code); AC.sending = false;
+    const job = await codingClient.send(AC.to, code, AC.files.map(({name,type,data})=>({name,type,data}))); AC.sending = false;
     if (generation !== codingGeneration || !agentUnlocked() || !job) return;
     AC.note = job.message || ('Coding: ' + job.status);
     if (job.requestId) codingJobs.set(job.requestId, job);
-    if (['queued', 'running', 'completed'].includes(job.status)) { AC.draft = ''; acSyncInput(); }
+    if (['queued', 'running', 'completed', 'finished'].includes(job.status)) { AC.draft = ''; AC.files = []; acSyncInput(); }
     acRepaint(); return;
   }
   if (AC.files.some(f => !f.data)) { AC.note = 'Still reading the file, try Send again in a moment'; acRepaint(); return; }
