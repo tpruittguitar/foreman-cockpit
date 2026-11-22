@@ -332,11 +332,15 @@ function satinMat(color, hi) {
     : new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0 });
 }
 function sphereBody(hi) { const g = new THREE.SphereGeometry(SPHERE_R, hi ? 48 : 32, hi ? 32 : 20); g.computeBoundingBox(); return g; }
+/* Per-art layout on the ball: span = width of the whole PNG on the ball, cap = half-angle of the cap the art is printed on. Hermes (Tim, Nov 21,
+   for review): the girl spans 75% of her PNG and fills about two thirds of the ball's width, as on the tile; her cap is wider so her hair fits. */
+const LOGO_FIT = { chatgpt: { span: LOGO_SPAN, cap: 0.82 }, hermes: { span: 0.634, cap: 1.0 } };
 function sphereLogo(key) {
   const m = mat('sphereLogo:' + key, () => { const t = new THREE.TextureLoader().load(ICON_ART[key]); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
     return new THREE.MeshPhysicalMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.55, clearcoat: 0.2, clearcoatRoughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 }); });
-  const g = geo('sphereLogoCap', () => { const A = 0.82, c = new THREE.SphereGeometry(SPHERE_R * 1.004, 40, 40, Math.PI / 2 - A, 2 * A, Math.PI / 2 - A, 2 * A);
-    const P = c.attributes.position, U = c.attributes.uv; for (let i = 0; i < P.count; i++) U.setXY(i, P.getX(i) / LOGO_SPAN + 0.5, P.getY(i) / LOGO_SPAN + 0.5);
+  const fit = LOGO_FIT[key] || LOGO_FIT.chatgpt;
+  const g = geo('sphereLogoCap:' + key, () => { const A = fit.cap, c = new THREE.SphereGeometry(SPHERE_R * 1.004, 40, 40, Math.PI / 2 - A, 2 * A, Math.PI / 2 - A, 2 * A);
+    const P = c.attributes.position, U = c.attributes.uv; for (let i = 0; i < P.count; i++) U.setXY(i, P.getX(i) / fit.span + 0.5, P.getY(i) / fit.span + 0.5);
     U.needsUpdate = true; return c; });
   return new THREE.Mesh(g, m);
 }
