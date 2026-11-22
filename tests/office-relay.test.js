@@ -50,3 +50,8 @@ test('complete deployment config imports distinct signing roles and still requir
  const handle=await configuredHostedCoding(env);assert.equal((await handle(new Request(config.origin+'/api/agent-coding'))).status,401);assert.equal(f.files.size,0);
  }finally{global.fetch=original;await f.close();}});
 test('a second outbound process cannot rewrite the first native turn before acquiring its SQLite lock',async()=>{const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{PrivateStore}=await import('../tools/office-dot/store.mjs');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'relay-lock-'));const first=new PrivateStore(dir,{recoverNative:false});let second;try{const lock=first.acquireWorkerLock('worker');first.set('native','synthetic',{status:'running'});second=new PrivateStore(dir,{recoverNative:false});assert.equal(second.acquireWorkerLock('worker'),null);assert.equal(first.read('native','synthetic').status,'running');first.releaseWorkerLock('worker',lock);}finally{second?.close();first.close();fs.rmSync(dir,{recursive:true,force:true});}});
+test('owner can be pinned by the signed Access email claim instead of subject',async()=>{const f=await fixture({accessIdentity:{subject:undefined,email:'owner@example.com'}});try{
+ assert.equal((await f.post(await f.signAccess({sub:'idp-assigned',email:'other@example.com'}))).status,401);
+ assert.equal((await f.post(await f.signAccess({sub:'idp-assigned'}))).status,401,'missing email claim is refused');
+ assert.equal((await f.post(await f.signAccess({sub:'idp-assigned',email:'Owner@Example.com'}))).status,202);
+ }finally{await f.close();}});

@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {setup,image,scope,identity}=require('./office-image-service.cjs');
-async function fixture({origin='https://office.example'}={}){
+async function fixture({origin='https://office.example',accessIdentity}={}){
  const c=await import('../../lib/office-relay/crypto.mjs'),{CodingMailbox}=await import('../../lib/office-relay/mailbox.mjs'),{createHostedCoding,relayImages}=await import('../../lib/office-relay/hosted.mjs'),{runMailboxOnce}=await import('../../tools/office-dot/outbound.mjs');
  const f=await setup(),files=new Map(),calls=[];let sequence=0,t=1800000000,privateRepo=true;
  const request=async q=>{calls.push(q);if(q.path==='/repos/tpruittguitar/office-mailbox')return Response.json({private:privateRepo,full_name:'tpruittguitar/office-mailbox',default_branch:'main'});
@@ -11,7 +11,7 @@ async function fixture({origin='https://office.example'}={}){
  const mailbox=new CodingMailbox(request),jobs=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']),status=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']),accessKeys=await crypto.subtle.generateKey({name:'RSASSA-PKCS1-v1_5',modulusLength:2048,publicExponent:new Uint8Array([1,0,1]),hash:'SHA-256'},true,['sign','verify']);
  const jwk=await crypto.subtle.exportKey('jwk',accessKeys.publicKey);jwk.kid='fixture-key';
  const config={origin,workerId:'designated-worker',binding:{owner:identity.owner,tenant:identity.tenant,provider:'Dot',...scope}};
- const access={issuer:'https://fixture.cloudflareaccess.com',audience:'fixture-audience',subject:'verified-owner',fetcher:async url=>{assert.equal(url,'https://fixture.cloudflareaccess.com/cdn-cgi/access/certs');return Response.json({keys:[jwk]});}};
+ const access={issuer:'https://fixture.cloudflareaccess.com',audience:'fixture-audience',subject:'verified-owner',...accessIdentity,fetcher:async url=>{assert.equal(url,'https://fixture.cloudflareaccess.com/cdn-cgi/access/certs');return Response.json({keys:[jwk]});}};
  const signAccess=async(extra={},header={})=>{const h=c.url64(new TextEncoder().encode(JSON.stringify({alg:'RS256',kid:'fixture-key',...header}))),b=c.url64(new TextEncoder().encode(JSON.stringify({iss:access.issuer,sub:access.subject,aud:[access.audience],type:'app',iat:t,exp:t+300,...extra})));const sig=await crypto.subtle.sign('RSASSA-PKCS1-v1_5',accessKeys.privateKey,new TextEncoder().encode(h+'.'+b));return h+'.'+b+'.'+c.url64(new Uint8Array(sig));};
  const handle=createHostedCoding({enabled:true,mailbox,config,access,jobSigningKey:jobs.privateKey,jobVerificationKey:jobs.publicKey,statusVerificationKey:status.publicKey,now:()=>t});
  f.adapter.images=relayImages(mailbox);
