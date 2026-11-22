@@ -393,15 +393,35 @@ function flatStar() {
 }
 
 /* ---------- jelly bot ---------- */
+// Usage's approved circular cross-section: soft tip, continuous taper and a wide, rolled-under base.
+function usageConeBody(hi) {
+  const sections = [
+    [[0, 0.125], [0.109, 0.125], [0.371, 0.114], [0.371, 0.281]],
+    [[0.371, 0.281], [0.371, 0.354], [0.286, 0.565], [0.192, 0.719]],
+    [[0.192, 0.719], [0.1356, 0.8114], [0.082, 0.871], [0, 0.871]],
+  ];
+  const points = [], n = hi ? 24 : 12;
+  for (const [a, b, c, d] of sections) {
+    for (let i = 0; i < n; i++) {
+      const t = i / n, u = 1 - t, at = k => u ** 3 * a[k] + 3 * u * u * t * b[k] + 3 * u * t * t * c[k] + t ** 3 * d[k];
+      points.push(new THREE.Vector2(at(0), at(1) - 0.498));
+    }
+  }
+  points.push(new THREE.Vector2(0, 0.871 - 0.498));
+  const g = new THREE.LatheGeometry(points, hi ? 96 : 48);
+  g.computeBoundingBox();
+  return g;
+}
+
 /* Edgar's eyes change aperture and gaze with the existing studio expression driver. Paint them directly
    on the front cap in body space: no raised eye mesh, shine, z-fighting, or marks on the rear face. */
-function edgarMaterial(paint, eyePaint, hi, halfDepth, eyes) {
-  const m = new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75,
+function flatEyeMaterial(paint, eyePaint, hi, frontZ, eyes, usage) {
+  const m = usage ? satinMat(paint, hi) : new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75,
     clearcoat: hi ? 0.04 : 0, clearcoatRoughness: 0.75 });
-  m.customProgramCacheKey = () => 'edgar-flat-eye-masks';
+  m.customProgramCacheKey = () => 'office-flat-eye-masks';
   m.onBeforeCompile = shader => {
     shader.uniforms.edgarPills = { value: eyes };
-    shader.uniforms.edgarCapZ = { value: halfDepth - 0.001 };
+    shader.uniforms.edgarCapZ = { value: frontZ };
     shader.uniforms.edgarPaint = { value: new THREE.Color(eyePaint) };
     shader.vertexShader = 'varying vec3 vEdgarLocal;\n' + shader.vertexShader.replace(
       '#include <begin_vertex>', '#include <begin_vertex>\nvEdgarLocal = position;');
@@ -431,21 +451,34 @@ export function makeBot(name, hiQuality, botId, override) {
   const a = avatarFor(name, botId, override);
   if (a.shape === 'minifig') return makePresident();
   const key = 'body:' + a.shape + ':' + a.rot + ':' + a.color;
-  const edgar = a.shape === 'edgarCloud', flatEyes = edgar ? [new THREE.Vector4(), new THREE.Vector4()] : null;
+  const edgar = a.shape === 'edgarCloud', usage = a.shape === 'usageCone', flatEyes = edgar || usage ? [new THREE.Vector4(), new THREE.Vector4()] : null;
   const ball = a.shape === 'sphere', satin = ball || !!a.satin, paint = satin && a.shade || a.color; // a.shade: 3D paint that lands on a.color once lit; a.satin (Usage pick): a body in the balls' satin finish
-  const bodyG = geo(key + (ball || edgar ? ':' + hiQuality : ''), () => ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
+  const bodyG = geo(key + (ball || edgar || usage ? ':' + hiQuality : ''), () => usage ? usageConeBody(hiQuality) : ball ? sphereBody(hiQuality) : a.icon ? tileBody(a) : puffBody(a, hiQuality));
   const bb = bodyG.boundingBox, halfH = (bb.max.y - bb.min.y) / 2, halfW = (bb.max.x - bb.min.x) / 2;
-  const bodyM = edgar ? edgarMaterial(paint, a.face.color, hiQuality, bb.max.z, flatEyes) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : edgar ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
+  const bodyM = flatEyes ? flatEyeMaterial(paint, a.face.color, hiQuality, usage ? 0.01 : bb.max.z - 0.001, flatEyes, usage) : satin ? satinMat(paint, hiQuality) : a.icon ? tileMat(a, hiQuality) : clayMat(hiQuality), limbM = a.icon && !ball ? new THREE.MeshStandardMaterial({ color: a.color, map: grainTex(), roughness: 0.72, bumpMap: grainTex(), bumpScale: 0.6 }) : edgar ? new THREE.MeshPhysicalMaterial({ color: paint, roughness: 0.75, clearcoat: hiQuality ? 0.04 : 0, clearcoatRoughness: 0.75 }) : satin ? satinMat(paint, hiQuality) : jelly(a.color, hiQuality);
   const root = new THREE.Group(), rig = new THREE.Group(), body = new THREE.Group();
   root.add(rig); rig.add(body);
   const legLen = 0.16;
-  body.position.y = legLen + halfH - 0.02;
+  body.position.y = usage ? 0.498 : legLen + halfH - 0.02;
   const mesh = new THREE.Mesh(bodyG, bodyM); body.add(mesh);
   const face = makeFace(bb.max.z - 0.012, 1.0, false, true, 0);
   face.userData.frontZ = bb.max.z; face.position.y = 0.02; body.add(face);
   // Grok Bot face: two tall matte slot eyes (no shine, no mouth), set low and close; the face tilts with a tilted body
   /* a.face (Hermes): its own eye colour, the eye pair tilted by face.rot instead of the body rot, shifted dx/dy, each eye leaning by tilt */
-  if (edgar) {
+  if (usage) {
+    const L = window.OfficeLogic, neutral = L.exprParams('neutral'), center = L.gazeShift(neutral);
+    face.visible = false;
+    face.userData.studio = (p, blink, extra) => {
+      const x = extra || {}, g = L.gazeShift(p, x);
+      flatEyes.forEach((eye, i) => {
+        const k = i ? 'e1' : 'e0', side = i ? 1 : -1, scale = x.eyeScale || 1;
+        const open = Math.max(0.06, Math.min(p[k + 'o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
+        eye.set(side * 0.084 * g.spread + g.x - center.x, -0.083 + g.y - center.y,
+          0.045 * p[k + 'w'] / neutral[k + 'w'] * scale, 0.0888 * p[k + 'h'] / neutral[k + 'h'] * open * scale);
+      });
+    };
+    face.userData.apply(neutral, 0);
+  } else if (edgar) {
     const L = window.OfficeLogic, neutral = L.exprParams('neutral');
     const { dx, dy, gap } = a.face;
     face.visible = false; // the face group remains an animation target, but all detailing is painted on
@@ -499,11 +532,13 @@ export function makeBot(name, hiQuality, botId, override) {
   }
   const armR = limb(0.052, 0.1, limbM, 'arm'), armL = limb(0.052, 0.1, limbM, 'arm');
   const ax = Math.min(halfW - 0.05, 0.33);
-  armR.position.set(-ax, -0.06, 0.02); armL.position.set(ax, -0.06, 0.02);
+  const armX = usage ? 0.323 : ax, armY = usage ? -0.11 : -0.06;
+  armR.position.set(-armX, armY, 0.02); armL.position.set(armX, armY, 0.02);
   armR.rotation.z = -0.45; armL.rotation.z = 0.45;
   body.add(armR, armL);
   const legR = limb(0.055, 0.07, limbM, 'leg'), legL = limb(0.055, 0.07, limbM, 'leg');
-  legR.position.set(-0.11, legLen - 0.01, 0); legL.position.set(0.11, legLen - 0.01, 0);
+  const legX = usage ? 0.101 : 0.11;
+  legR.position.set(-legX, legLen - 0.01, 0); legL.position.set(legX, legLen - 0.01, 0);
   rig.add(legR, legL);
   // props: Gauge wears a dial needle on its face-plate top; Edgar (writer) holds a quill
   if (a.prop === 'gauge') {
