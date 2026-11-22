@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from './chars.js';
 import { makeZach, poseZach, loadZachMesh, disposeZachMesh, attachZachMesh, detachZachMesh } from './zach.js';
+import { makeWeldRobot } from './weld-robot.js';
 import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched, drawAgentChat } from './draw.js';
 import { shortTag, idFor } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
@@ -1153,6 +1154,11 @@ function buildWorld() {
   add(box(0.7, 0.08, 2.4), MAT.metal, 0, 0.35, 0, shelf); add(box(0.7, 0.08, 2.4), MAT.metal, 0, 0.72, 0, shelf);
   for (const x of [-0.3, 0.3]) for (const z of [-1.1, 1.1]) add(box(0.05, 0.85, 0.05), MAT.metal, x, 0.425, z, shelf);
   block(SHELF_POS.x, SHELF_POS.z, 0.4, 1.25, false, 'shelf');
+  /* Tim Nov 22: a cartoony welding robot cell in the warehouse (office/weld-robot.js), 9 m in from the glass doors and left of the
+     door-to-dock walkway. It welds while any bot is working and parks with an amber beacon when the office is idle. */
+  const WELD_POS = { x: WH.x0 + 9, z: -8 }, WELD_SCALE = 1.25, weldBot = makeWeldRobot(THREE, { low: LOW, light: !LOW });
+  weldBot.group.position.set(WELD_POS.x, 0, WELD_POS.z); weldBot.group.scale.setScalar(WELD_SCALE); scene.add(weldBot.group); // table on the far side (+x): seen in profile from the walkway
+  { const c = weldBot.cell, k = WELD_SCALE; block(WELD_POS.x + k * (c.x0 + c.x1) / 2, WELD_POS.z + k * (c.z0 + c.z1) / 2, k * (c.x1 - c.x0) / 2, k * (c.z1 - c.z0) / 2, false, 'weldcell'); }
   let rosterKey = '';
   function syncDesks() {
     const names = bots().map(b => b.bot), k = names.join('|');
@@ -2010,6 +2016,7 @@ function buildWorld() {
     shelfRefill += dt; if (shelfRefill > L.SHELF_REFILL_S) { shelfRefill = 0; const n = L.shelfAutoRefill(shelfStock); if (n !== shelfStock) { shelfStock = n; layoutCans(lastDeskCans); } }
     for (const c of chars.values()) updateChar(c, dt);
     if (zachSw.on) updateZach(dt);
+    weldBot.update(dt, { working: Object.values(S.fresh || {}).some(f => f && f.working), reduced: reducedMQ.matches, camera: XR ? null : camera });
     separateChars();
     if (Q.labels) updateLabels();
     renderer.render(scene, camera);
