@@ -150,3 +150,17 @@ test('Claude 5-hr window is a text line under the bar, never a second bar', () =
   assert.match(hFull, /5-hr window: FULL, stopped · resets 12:49 AM ET/);
   assert.equal((hFull.match(/class="aiu-track"/g) || []).length, 1);
 });
+
+test('weekly failed and missing readings never render as measured zero', () => {
+  const reading = { at: '2026-10-13T19:40:00Z', provider: 'GROK', meter: 'weekly' };
+  for (const sample of [{ usedPct: null, status: 'CHROME_UNAVAILABLE' }, {}, { usedPct: 0, status: 'CHROME_UNAVAILABLE' }]) {
+    const rows = U.project(U.parse(line({ ...reading, ...sample })), NOW);
+    assert.equal(rows[0].usedPct, null);
+    assert.equal(rows[0].verdict, 'NO_READING');
+    assert.match(U.html(rows, NOW), /NO READING/);
+    assert.doesNotMatch(U.html(rows, NOW), /0% used|aiu-track/);
+  }
+  const zero = U.project(U.parse(line({ ...reading, usedPct: 0, status: 'OK' })), NOW);
+  assert.equal(zero[0].usedPct, 0);
+  assert.match(U.html(zero, NOW), /0% used/);
+});
