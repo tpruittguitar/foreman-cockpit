@@ -21,3 +21,15 @@ test('saved discovery evidence is pinned to the snapshot and only shows supporte
  let h=Q.intakeHtml(state,'',0);a.match(h,/Saved posting/);a.match(h,new RegExp('/blob/'+rev+'/state/discovery-evidence/'));a.match(h,/Degree: PREFERRED/);a.match(h,/175,000/);
  item.discoveredFacts.sourceRef='different';h=Q.intakeHtml(state,'',0);a.doesNotMatch(h,/Posted annual base|Degree:/);item.evidenceRefs[0].path='javascript:bad';a.doesNotMatch(Q.intakeHtml(state,'',0),/Saved posting/);
 });
+
+test('a non-SHA source revision is an error and does not fetch a snapshot',async()=>{
+ const f=fixture(),urls=[],c=Q.create({now:()=>Date.parse(at),digest,fetch:async url=>{urls.push(url);return {ok:true,json:async()=>f.index}}});
+ await c.accept({...f.health,sourceRevision:'main'});
+ a.equal(c.state.status,'error');
+ a.equal(c.state.error,'Queue snapshot revision is unverified');
+ a.equal(c.state.index,null);
+ a.equal(urls.length,0);
+ await c.accept({...f.health,sourceRevision:undefined});
+ a.equal(c.state.error,'Queue snapshot revision is unverified');
+ a.equal(urls.length,0);
+});

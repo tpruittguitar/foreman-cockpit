@@ -10,3 +10,19 @@ test('a failed evidence refresh retains verified coverage and labels the failure
 test('health files are pinned to a verified immutable revision rather than a cached branch alias',async()=>{const src=fs.readFileSync(path.join(root,'functions/api/pipeline-health.js'),'utf8'),api=await import('data:text/javascript;base64,'+Buffer.from(src).toString('base64')),sha='a'.repeat(40),seen=[];const h=await api.loadHealth(async url=>{seen.push(url);return new Response('missing',{status:404});},Date.now(),sha);assert.equal(h.sourceRevision,sha);assert.equal(seen.length,12);assert.ok(seen.every(u=>u.includes('/'+sha+'/')));});
 test('concurrent current-revision reads share one request and respect the one-minute cache',async()=>{const src=fs.readFileSync(path.join(root,'functions/api/pipeline-health.js'),'utf8'),api=await import('data:text/javascript;base64,'+Buffer.from(src+'\n// revision dedup test').toString('base64'));let count=0;const now=Date.now(),sha='b'.repeat(40),fetcher=async()=>{count++;return new Response(JSON.stringify({ref:'refs/heads/main',object:{type:'commit',sha}}));};assert.deepEqual(await Promise.all([api.currentRevision(fetcher,null,now),api.currentRevision(fetcher,null,now)]),[sha,sha]);assert.equal(await api.currentRevision(fetcher,null,now+59000),sha);assert.equal(count,1);await api.currentRevision(fetcher,null,now+60001);assert.equal(count,2);});
 test('an unavailable revision lookup backs off and cannot certify a healthy source revision',async()=>{const src=fs.readFileSync(path.join(root,'functions/api/pipeline-health.js'),'utf8'),api=await import('data:text/javascript;base64,'+Buffer.from(src+'\n// revision failure test').toString('base64'));let calls=0;const t=Date.now(),fetcher=async()=>{calls++;return new Response('limited',{status:429});};await assert.rejects(api.currentRevision(fetcher,null,t),/429/);await assert.rejects(api.currentRevision(fetcher,null,t+1000),/temporarily unavailable/);assert.equal(calls,1);const C=require('../pipeline-control-room');assert.ok(C.model({health:{ok:true,checks:{revision:{ok:false}},issues:[]}}).warnings.some(x=>/revision is unverified/.test(x.title)));});
+
+test('a rate-limited revision lookup keeps the last-known-good SHA and sends a token when given',async()=>{
+ const src=fs.readFileSync(path.join(root,'functions/api/pipeline-health.js'),'utf8'),api=await import('data:text/javascript;base64,'+Buffer.from(src+'\n// revision last-known-good test').toString('base64'));
+ const now=Date.now(),sha='c'.repeat(40),auth=[];
+ const ok=async(url,opts)=>{auth.push((opts&&opts.headers&&opts.headers.Authorization)||'');return new Response(JSON.stringify({ref:'refs/heads/main',object:{type:'commit',sha}}));};
+ assert.equal(await api.currentRevision(ok,null,now,'test-token'),sha);
+ assert.equal(auth[0],'Bearer test-token');
+ let calls=0;const limited=async()=>{calls++;return new Response('limited',{status:429});};
+ assert.equal(await api.currentRevision(limited,null,now+60001),sha);
+ assert.equal(calls,1);
+ assert.equal(await api.currentRevision(limited,null,now+61000),sha);
+ assert.equal(calls,1);
+ const body=await(await api.healthResponse(limited,null,now+62000)).json();
+ assert.equal(body.sourceRevision,sha);
+ assert.equal(body.checks.revision.ok,true);
+});
