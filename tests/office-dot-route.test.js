@@ -44,3 +44,8 @@ test('publisher uses real local git with a mocked forge; exact selected files, p
  try{const publisher=draftPublisher({workspace,stateDir:path.join(root,'state'),repository,branch,execute});const before=publisher.capture();fs.writeFileSync(path.join(workspace,'new.js'),'synthetic edit');const plan=publisher.prepare(before,[path.join(workspace,'new.js')]);const pr=await publisher(plan);assert.equal(pr.draft,true);assert.equal(pushes,1);assert.equal(creates,1);assert.equal(raw(['status','--porcelain']).trim(),'');assert.ok(commands.some(c=>c.includes('user.name=ChatGPT Dot')));assert.ok(commands.every(c=>!c.includes('--global')&&!c.includes('merge')));await assert.rejects(()=>publisher(plan),/diff changed/);assert.equal(pushes,1);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
+test('refused prompts in an unattended turn skip the step and never end the turn',async()=>{const f=await setup();try{const key=JSON.stringify([f.job.tenant,f.job.owner,'Dot',f.job.conversationId,f.job.requestId]);f.adapter.active={key,threadId:'thread',turnId:'turn',job:f.job};
+ await f.adapter.onApproval({id:'cmd',method:'item/commandExecution/requestApproval',params:{threadId:'thread',turnId:'turn',itemId:'i1',command:'Remove-Item x',proposedExecpolicyAmendment:['Remove-Item']}});
+ await f.adapter.onApproval({id:'perm',method:'item/permissions/requestApproval',params:{threadId:'thread',turnId:'turn',itemId:'i2'}});
+ assert.deepEqual(f.rpc.responses.find(r=>r.id==='cmd').result,{decision:'decline'});assert.deepEqual(f.rpc.responses.find(r=>r.id==='perm').result,{permissions:{},scope:'turn'});
+ }finally{f.adapter.active=null;await f.close();}});
