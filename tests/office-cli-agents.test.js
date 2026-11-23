@@ -15,7 +15,7 @@ test('each agent gets its own session and branch; jobs route to the right tool; 
  const git=a=>execFileSync('git',a,{cwd:ws,stdio:'ignore'});git(['init','-q','-b',c.branch]);git(['remote','add','origin','https://github.com/'+c.repository+'.git']);
  fs.writeFileSync(path.join(ws,'a.js'),'1');git(['add','.']);git(['-c','user.name=t','-c','user.email=t@t','commit','-qm','init']);
  const store=new PrivateStore(state),calls=[];
- const run=async o=>{calls.push(o);if(o.command==='cursor-agent')return {missing:true};if(o.command==='claude.cmd'){fs.writeFileSync(path.join(ws,'a.js'),'2');return {code:0,out:JSON.stringify({result:'ok\nROUTE {"route":"local_change","summary":"Edited a.js"}'})};}return {code:0,out:'LEARNED: Tim wants lean replies.'};};
+ const run=async o=>{calls.push(o);if(o.command==='cursor-agent'||o.command==='agent')return {missing:true};if(o.command==='claude.cmd'){fs.writeFileSync(path.join(ws,'a.js'),'2');return {code:0,out:JSON.stringify({result:'ok\nROUTE {"route":"local_change","summary":"Edited a.js"}'})};}return {code:0,out:'LEARNED: Tim wants lean replies.'};};
  const claude=new CliAdapter({provider:'Claude',store,workspace:ws,stateDir:state,binding,run});
  const cj={...c,requestId:'request-000000000002',text:'make it 2',attachments:[]};await claude.submit(cj);await claude.queue;
  assert.deepEqual((await claude.status(cj)).outcome,{route:'local_change',summary:'Edited a.js'});

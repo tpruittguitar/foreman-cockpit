@@ -90,7 +90,8 @@ export const TOOLS = {
   Claude: ({ workspace, extraDirs }) => ({ command: 'claude.cmd', input: null, args: ['-p', '--output-format', 'json', '--permission-mode', 'acceptEdits', '--strict-mcp-config',
     '--allowedTools', 'Read', 'Edit', 'Write', 'MultiEdit', 'Glob', 'Grep', '--disallowedTools', 'Bash', 'WebFetch', 'WebSearch', 'Task', 'NotebookEdit',
     ...extraDirs.flatMap(d => ['--add-dir', d]), '--max-turns', '40'], text: r => { const j = lastJson(r.out); return j && !j.is_error ? j.result : null; } }),
-  Grok: ({ workspace, promptFile }) => ({ command: 'cursor-agent', input: null, args: ['-p', '--output-format', 'text', '--workspace', workspace, 'Read the task in ' + promptFile + ' and do it.'], text: r => r.out }),
+  Grok: ({ workspace, promptFile }) => ({ command: locate('agent') ? 'agent' : 'cursor-agent', // Cursor's installer names it agent (cursor.com/docs/cli/installation); older installs: cursor-agent
+    input: null, args: ['-p', '--output-format', 'text', '--workspace', workspace, 'Read the task in ' + promptFile + ' and do it.'], text: r => r.out }),
   Hermes: ({ workspace, promptFile, images }) => ({ command: 'hermes', input: null, args: ['chat', '--query-file', promptFile, '-Q', '--source', 'tool', '-t', 'file', '--in', workspace, '--max-turns', '40', ...(images[0] ? ['--image', images[0]] : [])], text: r => r.out })
 };
 
