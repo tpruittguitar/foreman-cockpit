@@ -6,7 +6,7 @@ import { codingText, createCodingClient, CODING_SIGN_IN, CODING_STORE, keepCodin
 import { makeBot, animate, canGeometry, canMaterials, canStyle, makeCase } from './chars.js';
 import { makeZach, poseZach, loadZachMesh, disposeZachMesh, attachZachMesh, detachZachMesh } from './zach.js';
 import { makeWeldRobot } from './weld-robot.js';
-import { drawDesk, drawBoard, drawUsage, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched, drawAgentChat } from './draw.js';
+import { drawDesk, drawBoard, drawUsage, drawUsageLimits, drawSign, drawPlaque, drawWhiteboard, drawAutomations, drawTrainingSchedule, drawWriterHealth, drawTown, drawPipelineWall, drawConstraintWall, drawFetched, drawAgentChat } from './draw.js';
 import { shortTag, idFor, loadCursorBadge } from './avatars.js';
 import { CSS3DRenderer, CSS3DObject } from './vendor/three/addons/CSS3DRenderer.js';
 const PIPELINE_URL = 'https://foreman-cockpit.pages.dev/pipeline'; // item 8: live Pipeline Explorer on the wall
@@ -922,7 +922,8 @@ function buildWorld() {
   }
   const BW = 9.6, BH = 3.9;
   const project = makeBoard('project', BW, BH, -2, 2.3, -RD / 2 + 0.05, 0, LOW ? 1280 : 2048, LOW ? 520 : 832);
-  const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.2, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
+  const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.5, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
+  const limits = makeBoard('limits', usage.w, 0.68, usage.g.position.x, 0.61, usage.g.position.z, 0, LOW ? 640 : 1024, LOW ? 99 : 158);
   const autos = makeBoard('autos', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683); // Tim Nov 18: Automations in the old Needs Tim spot
   const whiteboard = makeBoard('whiteboard', 4.4, 2.6, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 378 : 605); // big conference whiteboard where Automations hung
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
@@ -977,8 +978,8 @@ function buildWorld() {
   renderer.domElement.addEventListener('dragover', e => { if (agentUnlocked() && e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
   renderer.domElement.addEventListener('drop', e => { if (!agentUnlocked() || !e.dataTransfer || !e.dataTransfer.files.length) return; e.preventDefault(); agentAddFiles(e.dataTransfer.files); agentFocus(); });
   onAgentChat(); if (agentUnlocked()) agentRefresh();
-  const boards = { project, usage, autos, whiteboard, writer, constraint, agentchat };
-  const WALL_BOARDS = [project, usage, constraint, autos, writer]; // readability probe / LOS targets (whiteboard keeps its own layout)
+  const boards = { project, usage, limits, autos, whiteboard, writer, constraint, agentchat };
+  const WALL_BOARDS = [project, usage, limits, constraint, autos, writer]; // readability probe / LOS targets (whiteboard keeps its own layout)
 
   /* ---------- item 8: Pipeline Explorer wall display (right wall, above the lounge; Tim's red-outlined spot) ----------
      The wall shows a painted face. Desktop: clicking it loads the live page (https://foreman-cockpit.pages.dev/pipeline) in an
@@ -1690,6 +1691,7 @@ function buildWorld() {
     pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred() }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
+    const lim = limits.tex; drawUsageLimits(lim.ctx, lim.c.width, lim.c.height, L.usageLimitRows(S.readings, Date.now())); lim.t.needsUpdate = true;
     drawAutos();
     const sw = schedule.tex; drawTrainingSchedule(sw.ctx, sw.c.width, sw.c.height, { rows: L.visibleTrainingSessions(S.training, Date.now()).map(L.formatTrainingSession), fetchedAt: S.fetched.training, boardM: schedule.w }); sw.t.needsUpdate = true;
     const wr = writer.tex; drawWriterHealth(wr.ctx, wr.c.width, wr.c.height, { auto: S.auto, now: Date.now(), demo: DEMO }); drawFetched(wr.ctx, wr.c.width, wr.c.height, S.fetched.automations, null, null, writer.w); wr.t.needsUpdate = true;
@@ -1796,7 +1798,7 @@ function buildWorld() {
   let glide = null, hop = TV, hopPos = null, lastInput = performance.now(), tour = null, joy = { x: 0, y: 0 };
   let hoverBot = null, hoverItem = null;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const pickables = () => { const a = [project.screen, usage.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, agentchat.screen, agentLockBtn.face, pipe.mesh]; if (releasePlate) a.push(releasePlate); a.push(zachPlate); desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
+  const pickables = () => { const a = [project.screen, usage.screen, limits.screen, constraint.screen, autos.screen, whiteboard.screen, schedule.screen, writer.screen, agentchat.screen, agentLockBtn.face, pipe.mesh]; if (releasePlate) a.push(releasePlate); a.push(zachPlate); desks.forEach(d => a.push(d.g)); chars.forEach(c => a.push(c.root)); return a; };
   function pick(nx, ny) { ndc.set(nx, ny); ray.setFromCamera(ndc, camera); return pickRay(); }
   function pickRay() { // uses the current `ray` (mouse or VR controller)
     const hits = ray.intersectObjects(pickables(), true).filter(h => h.object.visible && !(h.object.layers.mask === 2));
@@ -1822,7 +1824,7 @@ function buildWorld() {
     if (p.zachSwitch) { toggleZach(); return true; }
     if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
     else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
-    else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage') openUsage(); else if (p.board === 'project') openBoard();
+    else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage' || p.board === 'limits') openUsage(); else if (p.board === 'project') openBoard();
     else if (p.board === 'constraint') window.open(PIPELINE_URL, '_blank', 'noopener');
     else if (p.board === 'autos' || p.board === 'writer') openAutomations(p.board);
     else if (p.board === L.RELEASE_PLATE_BOARD) openBuildPopup();
@@ -1942,7 +1944,7 @@ function buildWorld() {
     targets = [
       { kind: 'board', id: 'autos', x: -12, view: [[-8.4, 1.9, 2.3], [-12, 1.9, 2.3]] },
       { kind: 'board', id: 'project', x: -2, view: [[-2, 2.2, -4.6], [-2, 2.3, -10]] },
-      { kind: 'board', id: 'usage', x: 5.7, view: [[5.7, 2.1, -6.4], [5.7, 2.2, -10]] }
+      { kind: 'board', id: 'usage', x: 5.7, view: [[5.7, 2.1, -6.4], [5.7, 2.05, -10]] } // frame both usage panels
     ].concat(desks.map(d => ({ kind: 'desk', id: d.name, bot: d.name, x: d.x, z: d.z, view: [[d.x + 0.3, 1.85, d.z + 2.0], [d.x, 1.05, d.z - 0.25]] })));
     rows = L.hopRows(targets); if (hopPos && (!rows[hopPos.row] || !rows[hopPos.row][hopPos.col])) hopPos = null;
   }

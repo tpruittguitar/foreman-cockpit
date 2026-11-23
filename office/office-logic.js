@@ -1424,12 +1424,25 @@
   const USAGE_CHECK_SCHEDULE_ET = ['02:05', '08:05', '14:05', '20:05'];
   const USAGE_GRACE_MIN = 30;
   const USAGE_PROVIDERS = [{ id: 'CLAUDE', name: 'Claude' }, { id: 'CHATGPT', name: 'ChatGPT' }, { id: 'GROK', name: 'Grok' }];
+  const LIMIT_PROVIDERS = [{ id: 'GITHUB', name: 'GitHub' }, { id: 'DESKTOP_COMMANDER', name: 'Desktop Commander' }];
+  const isLimitProvider = id => LIMIT_PROVIDERS.some(p => p.id === id);
   function parseReadings(text) {
     const out = [];
     for (const line of str(text).split(/\r?\n/)) {
       if (!line.trim()) continue; let r; try { r = JSON.parse(line); } catch (e) { continue; }
       if (!r || time(r.at) == null || !str(r.provider)) continue;
       const rec = { at: str(r.at), provider: str(r.provider).toUpperCase(), usedPct: typeof r.usedPct === 'number' && Number.isFinite(r.usedPct) ? r.usedPct : null, meter: str(r.meter), label: str(r.label), resetsAt: str(r.resetsAt), status: str(r.status) };
+      if (isLimitProvider(rec.provider)) {
+        if (r.provider !== rec.provider || r.status !== 'OK' || typeof r.source !== 'string' || !r.source) continue;
+        if (r.provider === 'GITHUB') {
+          if (r.meter !== 'core_api' || !Number.isSafeInteger(r.remaining) || !Number.isSafeInteger(r.limit)
+              || r.limit <= 0 || r.remaining < 0 || r.remaining > r.limit || time(r.resetsAt) == null) continue;
+          out.push({ at: rec.at, provider: r.provider, remaining: r.remaining, limit: r.limit, leftPct: 100 * r.remaining / r.limit, resetsAt: rec.resetsAt });
+        } else if (r.meter === 'remote_calls_monthly' && Number.isFinite(r.leftPct) && r.leftPct >= 0 && r.leftPct <= 100) {
+          out.push({ at: rec.at, provider: r.provider, leftPct: r.leftPct });
+        }
+        continue;
+      }
       if ('resets_available' in r) rec.resets_available = r.resets_available;
       if ('resets_expire' in r) rec.resets_expire = r.resets_expire;
       if ('extra_usd' in r) rec.extra_usd = r.extra_usd;
@@ -1498,8 +1511,16 @@
     return now > nextCheck(t) + USAGE_GRACE_MIN * MIN;
   }
   function etClock(ms) { return new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }); }
+  function usageLimitRows(readings, now) {
+    const latest = latestPerProvider((readings || []).filter(r => isLimitProvider(r.provider)));
+    return LIMIT_PROVIDERS.map(({ id, name }) => {
+      const r = latest[id];
+      if (!r) return { name, leftPct: null };
+      return { ...r, name, measured: 'Measured ' + etClock(time(r.at)) + ' ET', stale: readingStale(r, now) };
+    });
+  }
   function usageRows(readings, now, fallback) {
-    const latest = latestPerProvider(readings || []);
+    const latest = latestPerProvider((readings || []).filter(r => !isLimitProvider(r.provider)));
     if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
     return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => {
       const r = latest[p.id];
@@ -2393,7 +2414,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
+    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLimitRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, AGENT_NAMES, AGENT_TO, agentName, parseAgentChat, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
