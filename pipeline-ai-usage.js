@@ -27,6 +27,9 @@
   }
 
   /** One weekly projection per provider; historical short-window meters are ignored. */
+  /* A WATCH reading (usage is high) is a real reading with a real usedPct; only failed reads (CHROME_UNAVAILABLE, UNREADABLE,
+     SIGN_IN_NEEDED, ...) are NO_READING. Card eee3a384 (Nov 20): Grok at 98% WATCH read NO READING in both views.
+     weeklyPct() above is the one test: null means no usable reading. */
   function project(readings, nowMs) {
     nowMs = nowMs || Date.now();
     var groups = {};
@@ -42,10 +45,10 @@
       if (last.resets_available !== undefined) p.resets_available = last.resets_available;
       if (last.resets_expire !== undefined) p.resets_expire = last.resets_expire;
       if (last.extra_usd !== undefined) p.extra_usd = last.extra_usd;
-      if (p.status !== 'OK' || p.usedPct === null) { p.verdict = 'NO_READING'; return p; }
+      if (p.usedPct === null) { p.verdict = 'NO_READING'; return p; }
       if (reset && reset <= nowMs) { p.verdict = 'RESET_PASSED'; return p; }
       if (p.usedPct >= 100) { p.verdict = 'OUT'; p.runOutAt = at; return p; }
-      var same = g.filter(function (r) { return r.status === 'OK' && weeklyPct(r) !== null && Date.parse(r.resetsAt) === reset && at - Date.parse(r.at) >= MIN_GAP; });
+      var same = g.filter(function (r) { return weeklyPct(r) !== null && Date.parse(r.resetsAt) === reset && at - Date.parse(r.at) >= MIN_GAP; });
       if (same.length) {
         var prev = same[same.length - 1], dt = (at - Date.parse(prev.at)) / H;
         p.rate = (p.usedPct - weeklyPct(prev)) / dt; p.basis = 'last ' + Math.round(dt) + ' h';
@@ -145,6 +148,10 @@
     if (p.verdict === 'OUT') return 'out until reset';
     if (p.verdict === 'BEFORE_RESET') return 'runs out ~' + when(p.runOutAt);
     if (p.verdict === 'LASTS') return 'lasts to reset';
+    /* Card eee3a384 (Nov 20): every row says something, the same words as the flat view pill, so the 3D rows never sit blank */
+    if (p.verdict === 'UNKNOWN') return 'needs 2 readings';
+    if (p.verdict === 'NO_READING') return 'no reading';
+    if (p.verdict === 'RESET_PASSED') return 'reset passed';
     return '';
   }
   function html(projections, nowMs) {
