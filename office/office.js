@@ -927,11 +927,11 @@ function buildWorld() {
   const whiteboard = makeBoard('whiteboard', 4.4, 2.6, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 378 : 605); // big conference whiteboard where Automations hung
   const constraint = makeBoard('constraint', 4.6, 2.6, -9.4, 2.3, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 362 : 579); // empty back wall left of the checksheet (Tim 2026-11-16)
   const writer = makeBoard('writer', 2.6, 1.7, -RW / 2 + 0.05, 2.3, -8.3, Math.PI / 2, LOW ? 512 : 768, LOW ? 335 : 502); // Tim Nov 17: empty left wall beside the Constraint wall
-  // Tim Nov 21 (2nd): on the front wall where the swirl poster hung over Gauge, between the glass training room and the entry door
-  const AC_X = -4.0, AC_Y = 2.3, AC_Z = RD / 2 - 0.05;
-  const agentchat = makeBoard('agentchat', 3.6, 2.4, AC_X, AC_Y, AC_Z, Math.PI, LOW ? 640 : 1024, LOW ? 427 : 683);
-  const agentLockBtn = (() => { // lock button beside the screen (door side): closed red lock / open green lock
-    const lt = canvasTex(128, 160), g = new THREE.Group(); g.position.set(AC_X + 2.25, AC_Y, AC_Z); g.rotation.y = Math.PI; scene.add(g);
+  // Tim Nov 22 mockup (cs-541ca7bc)
+  const AC_X = -3.65, AC_Y = 2.2, AC_Z = RD / 2 - 0.05;
+  const agentchat = makeBoard('agentchat', 5.4, 3.6, AC_X, AC_Y, AC_Z, Math.PI, LOW ? 960 : 1536, LOW ? 640 : 1024);
+  const agentLockBtn = (() => { // lock button beside the entry door
+    const lt = canvasTex(128, 160), g = new THREE.Group(); g.position.set(-0.57, 1.2, AC_Z); g.rotation.y = Math.PI; scene.add(g);
     add(box(0.3, 0.38, 0.05), MAT.trim, 0, 0, 0, g);
     const face = add(new THREE.PlaneGeometry(0.26, 0.33), screenMat(lt.t), 0, 0, 0.03, g); face.userData.board = 'agentlock';
     return { face, lt };
@@ -948,13 +948,18 @@ function buildWorld() {
     g.fillStyle = c; g.fillRect(30, 62, 68, 52); g.fillStyle = '#0d1014'; g.fillRect(60, 78, 8, 20);
     g.fillStyle = '#e3e5e9'; g.font = "800 22px 'Inter PE', system-ui, sans-serif"; g.textAlign = 'center'; g.fillText(open ? 'LOCK' : 'UNLOCK', 64, 146); agentLockBtn.lt.t.needsUpdate = true;
   };
-  const AC_VIEW = [[AC_X, 2.1, AC_Z - 3.1], [AC_X, 2.25, AC_Z]];
+  const AC_VIEW = () => {
+    const halfWidth = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect;
+    const distance = Math.max(4, (agentchat.w + 0.2) / (2 * halfWidth * 0.9) + 0.07);
+    return [[AC_X, AC_Y, AC_Z - distance], [AC_X, AC_Y, AC_Z]];
+  };
   function agentFocus() { // must run inside the tap / click itself, or a phone will not raise its keyboard
     if (DEMO) { toast('Example data: the agent chat is off'); return; }
     acSyncInput(); keys.clear();
     try { acInput.focus({ preventScroll: true }); } catch (e) { acInput.focus(); }
     const len = acInput.value.length; try { acInput.setSelectionRange(len, len); } catch (e) { /* ignore */ }
-    if (camera.position.distanceTo(new THREE.Vector3(...AC_VIEW[0])) > 0.6) glideTo(AC_VIEW, L.GLIDE_MS);
+    const view = AC_VIEW();
+    if (camera.position.distanceTo(new THREE.Vector3(...view[0])) > 0.6) glideTo(view, L.GLIDE_MS);
   }
   function agentBoardHit(h) {
     if (!h) return agentFocus();
