@@ -106,32 +106,59 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
 }
 // Resolve once per minute and pin every file to one immutable commit. Branch raw URLs can lag main.
 let revisionMemo=null,revisionPending=null,revisionFailureUntil=0;
-export async function currentRevision(fetcher=fetch,cache=null,now=Date.now()){
-  const valid=x=>x&&/^[a-f0-9]{40}$/.test(x.sha||'')&&Number.isFinite(Date.parse(x.at))&&now>=Date.parse(x.at)&&now-Date.parse(x.at)<60000;
-  if(valid(revisionMemo))return revisionMemo.sha;
+export async function currentRevision(fetcher=fetch,cache=null,now=Date.now(),token=null){
+  const sha=x=>x&&/^[a-f0-9]{40}$/.test(x.sha||'')&&Number.isFinite(Date.parse(x.at))&&now>=Date.parse(x.at);
+  const fresh=x=>sha(x)&&now-Date.parse(x.at)<60000;
+  const stale=x=>sha(x)&&now-Date.parse(x.at)<6*3600000;
+  const key=new Request('https://foreman-cockpit.pages.dev/__health_source_revision');
+  const staleKey=new Request('https://foreman-cockpit.pages.dev/__health_source_revision_stale');
+  async function lastGood(){
+    if(stale(revisionMemo))return revisionMemo;
+    if(cache){
+      for(const k of [key,staleKey]){
+        try{const hit=await cache.match(k),saved=hit&&await hit.json();if(stale(saved)){revisionMemo=saved;return saved;}}catch{}
+      }
+    }
+  }
+  if(fresh(revisionMemo))return revisionMemo.sha;
   if(revisionPending)return revisionPending;
-  if(now<revisionFailureUntil)throw Error('Evidence revision check is temporarily unavailable');
+  if(now<revisionFailureUntil){
+    const keep=await lastGood();
+    if(keep)return keep.sha;
+    throw Error('Evidence revision check is temporarily unavailable');
+  }
   revisionPending=(async()=>{
-    const key=new Request('https://foreman-cockpit.pages.dev/__health_source_revision');
-    if(cache)try{const hit=await cache.match(key),saved=hit&&await hit.json();if(valid(saved)){revisionMemo=saved;return saved.sha;}}catch{}
-    const r=await fetcher('https://api.github.com/repos/tpruittguitar/forge-coordination/git/ref/heads/main',{headers:{Accept:'application/vnd.github+json','User-Agent':'forge-pipeline-health'},cache:'no-store',signal:AbortSignal.timeout(7000)});
-    if(!r.ok)throw Error('Evidence revision HTTP '+r.status);const j=await r.json();
-    if(j.ref!=='refs/heads/main'||j.object?.type!=='commit'||!/^[a-f0-9]{40}$/.test(j.object?.sha||''))throw Error('Invalid main revision');
-    revisionMemo={sha:j.object.sha,at:new Date(now).toISOString()};
-    if(cache)try{await cache.put(key,new Response(JSON.stringify(revisionMemo),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=60'}}));}catch{}
-    return revisionMemo.sha;
+    if(cache)try{const hit=await cache.match(key),saved=hit&&await hit.json();if(fresh(saved)){revisionMemo=saved;return saved.sha;}}catch{}
+    try{
+      const headers={Accept:'application/vnd.github+json','User-Agent':'forge-pipeline-health'};
+      if(token)headers.Authorization='Bearer '+token;
+      const r=await fetcher('https://api.github.com/repos/tpruittguitar/forge-coordination/git/ref/heads/main',{headers,cache:'no-store',signal:AbortSignal.timeout(7000)});
+      if(!r.ok)throw Error('Evidence revision HTTP '+r.status);const j=await r.json();
+      if(j.ref!=='refs/heads/main'||j.object?.type!=='commit'||!/^[a-f0-9]{40}$/.test(j.object?.sha||''))throw Error('Invalid main revision');
+      revisionMemo={sha:j.object.sha,at:new Date(now).toISOString()};
+      if(cache)try{
+        await cache.put(key,new Response(JSON.stringify(revisionMemo),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=60'}}));
+        await cache.put(staleKey,new Response(JSON.stringify(revisionMemo),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=21600'}}));
+      }catch{}
+      return revisionMemo.sha;
+    }catch(e){
+      revisionFailureUntil=now+60000;
+      const keep=await lastGood();
+      if(keep)return keep.sha;
+      throw e;
+    }
   })();
-  try{return await revisionPending;}catch(e){revisionFailureUntil=now+60000;throw e;}finally{revisionPending=null;}
+  try{return await revisionPending;}finally{revisionPending=null;}
 }
 // Cache only fully verified results, keyed by both immutable revision and minute.
 // A minute boundary expires client and server results together; cached observations
 // never extend the existing freshness window, even after a source revision changes.
 let healthMemo=null,healthPending=null;
 const responseHeaders=remaining=>({'Content-Type':'application/json','Cache-Control':'public, max-age='+Math.max(0,Math.floor(remaining/1000))});
-export async function healthResponse(fetcher=fetch,cache=null,now=Date.now()){
+export async function healthResponse(fetcher=fetch,cache=null,now=Date.now(),token=null){
   const started=Date.now(),minute=Math.floor(now/60000);
   const headers=complete=>complete?responseHeaders((minute+1)*60000-now-(Date.now()-started)):{'Content-Type':'application/json','Cache-Control':'no-store'};
-  let revision='main',error='';try{revision=await currentRevision(fetcher,cache,now);}catch{error='Could not verify current main revision';}
+  let revision='main',error='';try{revision=await currentRevision(fetcher,cache,now,token);}catch{error='Could not verify current main revision';}
   const id=revision+'/'+minute;
   if(!error&&healthMemo?.id===id)return new Response(healthMemo.body,{headers:headers(true)});
   if(!error&&healthPending?.id===id){const result=await healthPending.result;return new Response(result.body,{headers:headers(result.complete)});}
@@ -158,6 +185,6 @@ export async function healthResponse(fetcher=fetch,cache=null,now=Date.now()){
   try{const result=await pending.result;return new Response(result.body,{headers:headers(result.complete)});}
   finally{if(healthPending===pending)healthPending=null;}
 }
-export async function onRequestGet(){
-  return healthResponse(fetch,globalThis.caches?.default||null);
+export async function onRequestGet(context){
+  return healthResponse(fetch,globalThis.caches?.default||null,Date.now(),context?.env?.GITHUB_TOKEN);
 }
