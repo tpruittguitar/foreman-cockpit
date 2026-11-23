@@ -40,7 +40,10 @@ export class DotAdapter {
     const supported=['item/fileChange/requestApproval','item/commandExecution/requestApproval'].includes(m.method);
     if(!a || p.threadId!==a.threadId || p.turnId!==a.turnId || !supported || p.grantRoot || p.networkApprovalContext ||
        p.proposedExecpolicyAmendment || p.proposedNetworkPolicyAmendments || (p.cwd && path.resolve(p.cwd)!==this.workspace)) {
-      this.rpc.send({id:m.id,...(supported?{result:{decision:'cancel'}}:{error:{code:-32601,message:'Permission expansion unavailable'}})});return;
+      // Refuse without ending the turn: 'decline' skips this one step, an empty permissions grant gives nothing.
+      // ('cancel' or an error interrupts the whole turn, which is how Nov 22 owner turns failed.)
+      const refusal=supported?{result:{decision:'decline'}}:m.method==='item/permissions/requestApproval'?{result:{permissions:{},scope:'turn'}}:{error:{code:-32601,message:'Permission expansion unavailable'}};
+      this.rpc.send({id:m.id,...refusal});return;
     }
     this.store.set('native',a.key,{...fixed(a.job),threadId:a.threadId,turnId:a.turnId,status:'awaiting_approval'});
     const approvalKey=JSON.stringify([a.key,m.id]);
