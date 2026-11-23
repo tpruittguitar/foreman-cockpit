@@ -523,20 +523,23 @@ export function drawAutomations(ctx, W, H, o) {
   if (o.demo) exampleTag(ctx, 330 * s, 50 * s, 20 * s);
   drawFetched(ctx, W, H, o.fetchedAt, headX, 56 * s, o.boardM); // header row beside the title, clear of the runs/hour row and the now line
   if (!a || !a.rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`; ctx.fillText(o.err || 'Waiting for AUTOMATIONS_STATUS.json', 28 * s, 130 * s); return; }
-  /* one row per automation (brief_office7 item 3): name, OK / FAIL / SKIPPED, last ran (ET), live countdown; the 3-day timeline is in the click panel */
-  const rows = L.automationBoardRows(a, o.now), cx = [28 * s, W * 0.47, W * 0.61, W * 0.79], top = 104 * s, foot = 34 * s;
+  /* one row per automation: name, result, last ran (ET), countdown, est. per run and est. per week (cs-0e5860cc); timeline is in the click panel */
+  const rows = L.automationBoardRows(a, o.now), cx = [16 * s, W * 0.31, W * 0.42, W * 0.55, W * 0.69, W * 0.84], top = 104 * s, foot = 34 * s;
   const avail = H - top - foot, rowH = Math.min(64 * s, avail / Math.max(1, rows.length)), shown = rows.length;
-  const fs = Math.min(26 * s, rowH * 0.48);
-  ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${26 * s}px ${SANS}`;
-  ['Automation', 'Result', 'Last ran', 'Next run'].forEach((t, k) => ctx.fillText(t, cx[k], 92 * s));
+  const fs = Math.min(18 * s, rowH * 0.44);
+  ctx.fillStyle = '#9aa0a8'; ctx.font = `700 ${18 * s}px ${SANS}`;
+  ['Automation', 'Result', 'Last ran', 'Next run', 'est. / run', 'est. / week'].forEach((t, k) => ctx.fillText(t, cx[k], 92 * s));
   rows.slice(0, shown).forEach((r, i) => { const y = top + i * rowH, base = y + rowH * 0.66;
     if (i % 2) { ctx.fillStyle = '#15181c'; ctx.fillRect(16 * s, y, W - 32 * s, rowH); }
-    ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.label, cx[1] - cx[0] - 16 * s), cx[0], base);
-    const col = RES_COL[r.result === 'SKIPPED' ? 'SKIP' : r.result], cw = 0.12 * W, ch = rowH * 0.64;
+    ctx.fillStyle = '#e3e5e9'; ctx.font = `700 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.label, cx[1] - cx[0] - 10 * s), cx[0], base);
+    const col = RES_COL[r.result === 'SKIPPED' ? 'SKIP' : r.result], cw = Math.min(0.10 * W, cx[2] - cx[1] - 8 * s), ch = rowH * 0.64;
     ctx.fillStyle = col; ctx.fillRect(cx[1], y + (rowH - ch) / 2, cw, ch);
     ctx.fillStyle = '#0f1114'; ctx.font = `800 ${fs}px ${SANS}`; ctx.textAlign = 'center'; ctx.fillText(r.result, cx[1] + cw / 2, base); ctx.textAlign = 'left';
-    ctx.fillStyle = '#c9ccd2'; ctx.font = `600 ${fs}px ${SANS}`; ctx.fillText(fit(ctx, r.last, cx[3] - cx[2] - 12 * s), cx[2], base);
-    ctx.fillStyle = r.running ? '#37e0ff' : r.next === 'overdue' ? '#ffd23f' : '#c9ccd2'; ctx.fillText(fit(ctx, r.next, W - cx[3] - 20 * s), cx[3], base); });
+    /* last / next / est. strings are short; paint them in full so the labels stay readable */
+    ctx.fillStyle = '#c9ccd2'; ctx.font = `600 ${fs}px ${SANS}`; ctx.fillText(r.last, cx[2], base);
+    ctx.fillStyle = r.running ? '#37e0ff' : r.next === 'overdue' ? '#ffd23f' : '#c9ccd2'; ctx.fillText(r.next, cx[3], base);
+    ctx.fillStyle = '#c9ccd2'; ctx.fillText(r.estRun, cx[4], base);
+    ctx.fillText(r.estWeek, cx[5], base); });
   ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${26 * s}px ${SANS}`;
   ctx.fillText((rows.length > shown ? '+' + (rows.length - shown) + ' more · ' : '') + 'click for the 3-day timeline', 28 * s, H - 12 * s);
 }
