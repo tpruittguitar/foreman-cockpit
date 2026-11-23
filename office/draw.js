@@ -358,6 +358,32 @@ export function drawUsage(ctx, W, H, o) {
   });
 }
 
+export function drawUsageLimits(ctx, W, H, rows) {
+  const s = W / 1024, left = 34 * s, right = W - left, barW = 420 * s;
+  ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${44 * s}px ${SANS}`; ctx.fillText('USAGE LIMITS', 30 * s, 40 * s);
+  rows.forEach((row, i) => {
+    const y = (49 + 51 * i) * s, known = row.leftPct != null;
+    const col = known ? TONE[L.usageWord(100 - row.leftPct).tone] : '#9aa0a8';
+    ctx.fillStyle = '#22262b'; ctx.fillRect(24 * s, y, W - 48 * s, 2 * s);
+    ctx.fillStyle = known ? '#f1f2f4' : '#9aa0a8';
+    ctx.font = `800 ${32 * s}px ${SANS}`; ctx.fillText(row.name, left, y + 29 * s);
+    ctx.fillStyle = '#2b2e33'; ctx.fillRect(left, y + 36 * s, barW, 9 * s);
+    const value = !known ? 'no reading' : row.limit != null
+      ? row.remaining.toLocaleString('en-US') + ' / ' + row.limit.toLocaleString('en-US') + ' left'
+      : row.leftPct + '% left';
+    ctx.textAlign = 'right'; ctx.fillStyle = col;
+    ctx.font = `800 ${30 * s}px ${SANS}`; ctx.fillText(value, right, y + 25 * s);
+    if (known) {
+      ctx.fillRect(left, y + 36 * s, barW * row.leftPct / 100, 9 * s);
+      const reset = row.resetsAt ? ' · resets ' + L.etClock(Date.parse(row.resetsAt)) + ' ET' : '';
+      ctx.fillStyle = row.stale ? C.stale : '#a9aeb6'; ctx.font = `600 ${22 * s}px ${SANS}`;
+      ctx.fillText(row.measured + reset + (row.stale ? ' · ? STALE' : ''), right, y + 47 * s, right - left - barW - 20 * s);
+    }
+    ctx.textAlign = 'left';
+  });
+}
+
 /* ---------- Pipeline constraint wall (back wall, left of the checksheet) ----------
    o: { sum: PipelineControlRoom.summary(...) | null, age: L.constraintAge(...), err, demo }. Mirrors the cockpit strip: stage rate cards,
    the waiting queues between them, the CONSTRAINT stage outlined in red. Unknown stays "Unknown" / "—", never zero. */

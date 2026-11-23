@@ -155,7 +155,7 @@ function coverPage() {
     await page.waitForTimeout(settle == null ? 900 : settle);
   }
   const shot = (page, name) => page.screenshot({ path: path.join(OUT, name), timeout: 120000 });
-  const BOARD = { project: { c: [-2, 2.3, -9.88], n: [0, 0, 1] }, usage: { c: [5.7, 2.2, -9.88], n: [0, 0, 1] }, constraint: { c: [-9.4, 2.3, -9.88], n: [0, 0, 1] },
+  const BOARD = { project: { c: [-2, 2.3, -9.88], n: [0, 0, 1] }, usage: { c: [5.7, 2.5, -9.88], n: [0, 0, 1] }, constraint: { c: [-9.4, 2.3, -9.88], n: [0, 0, 1] },
     autos: { c: [-11.88, 2.1, 7.1], n: [1, 0, 0] }, writer: { c: [-11.88, 2.3, -8.3], n: [1, 0, 0] } };
   const walkup = id => { const b = BOARD[id]; return [[b.c[0] + 3 * b.n[0], EYE, b.c[2] + 3 * b.n[2]], b.c]; };
   const DOOR = [[0.3, EYE, 9.0], [-0.6, EYE - 0.1, -4]], STAND = [[-2, EYE, -10 + 6.7], [-2, 2.3, -9.95]];
