@@ -1369,6 +1369,10 @@
   function botActivity(bot, now, ctx) {
     const sig = botSignals(bot, ctx, true), f = freshness(bot, now, sig), id = str(bot && bot.bot_id), c = ctx || {};
     const sc = id && c.screens && c.screens.screens && c.screens.screens[id];
+    /* cs-366c0fe4 (President fix b): a fresh busy:true (activeAt within BOT_STALE_MIN) outranks offline for the working pose and tag;
+       the screen itself keeps its offline caption and mirror state (screenState is unchanged). */
+    const ta = sc && sc.offline && sc.busy && sc.hasActive ? time(sc.activeAt) : null;
+    if (ta != null && !sc.paused && ta <= now + MIN && now - ta <= BOT_STALE_MIN * MIN) return Object.assign(freshness(bot, now, sig.concat([{ at: sc.activeAt, src: 'screen' }])), { working: true });
     if (f.stale || !sc || sc.paused || !(sc.offline || (sc.hasActive && !sc.busy))) return Object.assign(f, { working: !f.stale });
     const q = sig.find(v => v && v.idle), t = q ? time(q.at) : null, m = t == null ? null : Math.max(0, Math.floor((now - t) / MIN));
     return Object.assign(f, { stale: true, working: false, label: (sc.offline ? 'offline · last seen ' : 'idle · last active ') + (m == null ? 'unknown' : ageText(m)) });
