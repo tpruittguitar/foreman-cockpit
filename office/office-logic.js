@@ -1497,16 +1497,18 @@
     }
     return ms + 6 * 60 * MIN;
   }
-  /* stale: CLAUDE/CHATGPT use one missed cycle (nextCheck + grace). GROK follows Usage's
-     read schedule: hourly 2 PM-2 AM ET (stale after 90 min), then 5/8/11 AM (stale after 3.5 h). */
   function grokStaleLimitMin(now) {
     const et = new Date(now - etOffsetMin(now) * MIN);
     const hm = et.getUTCHours() * 60 + et.getUTCMinutes();
     return (hm >= 14 * 60 || hm < 2 * 60) ? 90 : 210;
   }
+  const DC_STALE_MIN = 26 * 60;
+  /* GROK follows Usage's read schedule: hourly 2 PM-2 AM ET (90 min), then 5/8/11 AM (3.5 h).
+     Usage reads DESKTOP_COMMANDER daily at 8 AM ET (26 h). Other providers use nextCheck + grace. */
   function readingStale(r, now) {
     const t = time(r && r.at);
     if (t == null) return true;
+    if (String(r.provider).toUpperCase() === 'DESKTOP_COMMANDER') return now - t > DC_STALE_MIN * MIN;
     if (r && String(r.provider).toUpperCase() === 'GROK') return now - t > grokStaleLimitMin(now) * MIN;
     return now > nextCheck(t) + USAGE_GRACE_MIN * MIN;
   }
