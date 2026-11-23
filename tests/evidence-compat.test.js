@@ -58,7 +58,8 @@ test('Grok historical fit is used as stored, never replaced by the keyword heuri
   const row={TITLE:'Director of Quality',COMPANY:'X',LOCATION:'Austin, TX',payload:p};
   const legacy=S.scoreRow(row,cfg).parts.experience,keyword=S.scoreRow({...row,payload:{GROK_FIT_EVIDENCE:p.GROK_FIT_EVIDENCE}},cfg).parts.experience;
   assert.equal(legacy.rawScore,82);assert.equal(legacy.evidenceSource,'GROK_SCOPE_FIT_RAW');assert.equal(legacy.legacyEvidence,true);
-  assert.equal(keyword.evidenceSource,'KEYWORD_PROXY');assert.notEqual(keyword.rawScore,82,'fixture proves the heuristic would differ');
+  assert.equal(keyword.evidenceSource,'UNKNOWN');assert.equal(keyword.rawScore,null);assert.equal(keyword.known,false);
+  assert.equal(keyword.basis,'Fit unknown · no AI fit yet');
 });
 
 test('URLs inside legacy salary text never become pay numbers',()=>{
@@ -74,16 +75,46 @@ test('trust labels: legacy pay is known but never silently VERIFIED; estimates s
   assert.equal(T.salary({}),'UNKNOWN');
 });
 
-test('FIT cell names a keyword proxy',()=>{
-  const html=require('node:fs').readFileSync(require('node:path').join(__dirname,'..','pipeline.html'),'utf8');
-  assert.match(html,/c==='EXPERIENCE_FIT'\)\{var ex=scoreFor_\(r\)\.parts\.experience;v=esc\(v\)\+\(ex&&ex\.evidenceSource==='KEYWORD_PROXY'\?' proxy':''\)\}/);
+test('CODE_FIT contributes the same SCORE and confidence as missing fit',()=>{
+  const cfg=S.defaults(),row={TITLE:'Director of Quality',COMPANY:'Fivetran',LOCATION:'Austin, TX',payload:{FLEX_CLASS:'HIGH_FLEX'}};
+  const missing=S.scoreRow(row,cfg);
+  const codeFit={SCOPE_FIT_RAW:'100',SCOPE_FIT_MODEL_REF:'CODE_FIT rev1',EXPERIENCE_FIT_BASIS:'CODE_FIT rev1: 6/9 resume competencies met'};
+  for(const fields of [
+    codeFit,
+    {SCOPE_FIT_RAW:'100',SCOPE_FIT_MODEL_REF:'code_fit rev1',GROK_SCOPE_FIT_RAW:'82'},
+    {SCOPE_FIT_RAW:'100',FIT_BASIS:codeFit.EXPERIENCE_FIT_BASIS},
+    {SCOPE_FIT_RAW:'100',evidenceSource:'KEYWORD_PROXY'},
+  ]){
+    const scored=S.scoreRow({...row,payload:{...row.payload,...fields}},cfg);
+    assert.equal(scored.parts.experience.known,false);
+    assert.equal(scored.parts.experience.score,null);
+    assert.equal(scored.parts.experience.basis,'Fit unknown · CODE_FIT keyword score ignored');
+    assert.equal(scored.assessment.rawFit,null);
+    assert.equal(scored.assessment.adjustedFit,null);
+    assert.equal(scored.overall,missing.overall);
+    assert.equal(scored.confidence,missing.confidence);
+  }
+  const ai=S.scoreRow({...row,payload:{...row.payload,SCOPE_FIT_RAW:'72',SCOPE_FIT_MODEL_REF:'grok-scope'}},cfg);
+  assert.equal(ai.parts.experience.known,true);
+  assert.equal(ai.parts.experience.score,72);
+  assert.equal(ai.assessment.rawFit,72);
 });
 
-test('a stored EXPERIENCE_FIT number is a keyword proxy, not role-fit evidence',()=>{
+test('FIT cell displays a dash for unknown raw fit',()=>{
+  const html=require('node:fs').readFileSync(require('node:path').join(__dirname,'..','pipeline.html'),'utf8');
+  const [formatter]=html.match(/function scoreCell_\(v\)\{[^}]+\}/);
+  const scoreCell=require('node:vm').runInNewContext('('+formatter+')');
+  assert.match(html,/case 'EXPERIENCE_FIT':return scoreCell_\(scoreFor_\(r\)\.assessment\.rawFit\)/);
+  assert.equal(scoreCell(null),'—');
+  assert.equal(scoreCell(72),'72');
+});
+
+test('a stored EXPERIENCE_FIT number leaves role fit unknown',()=>{
   assert.equal(E.fit({EXPERIENCE_FIT:'35'}).value,null);
   assert.equal(E.FIT_KEYS.includes('EXPERIENCE_FIT'),false);
   const e=S.scoreRow({TITLE:'Plant quality lead',COMPANY:'X',LOCATION:'Austin, TX',payload:{EXPERIENCE_FIT:'40'}},S.defaults()).parts.experience;
-  assert.equal(e.evidenceSource,'KEYWORD_PROXY');
+  assert.equal(e.evidenceSource,'UNKNOWN');
+  assert.equal(e.known,false);
 });
 
 test('a stored qualitative fit label is still stored evidence, not a keyword recompute',()=>{
