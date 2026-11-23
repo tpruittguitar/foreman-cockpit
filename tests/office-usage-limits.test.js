@@ -25,7 +25,19 @@ test('usage limits select the newest valid reading per provider regardless of fi
   assert.equal(dc.measured, gh.measured);
   const cutoff = L.nextCheck(Date.parse(at)) + L.USAGE_GRACE_MIN * 60000;
   assert.ok(L.usageLimitRows(readings, cutoff).every(r => !r.stale));
-  assert.ok(L.usageLimitRows(readings, cutoff + 1).every(r => r.stale));
+  assert.equal(L.usageLimitRows(readings, cutoff + 1)[0].stale, true);
+});
+
+test('Desktop Commander stays fresh for 26 hours while GitHub keeps its existing cutoff', () => {
+  const at = '2026-11-23T01:58:42-05:00';
+  const t = Date.parse(at);
+  const hour = 60 * 60 * 1000;
+  const readings = parse({ ...github, at }, { ...desktop, at });
+  const [gh, dc] = L.usageLimitRows(readings, t + 25 * hour);
+  assert.equal(dc.leftPct, 18);
+  assert.equal(dc.stale, false);
+  assert.equal(gh.stale, true);
+  assert.equal(L.usageLimitRows(readings, t + 27 * hour)[1].stale, true);
 });
 
 test('usage limits leave absent or invalid readings empty and preserve real zeroes', () => {
