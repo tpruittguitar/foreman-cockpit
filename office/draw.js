@@ -390,6 +390,8 @@ export function drawUsageLimits(ctx, W, H, rows) {
     }
     const meterLine = (m, label) => {
       if (!m) return '—';
+      if (m.na) return label + ' n/a';
+      if (m.scripts != null && m.used == null) return label + ' ' + fmt(m.scripts) + ' scripts';
       return m.limit != null ? label + ' ' + fmt(m.used) + ' / ' + fmt(m.limit) : label + ' ' + fmt(m.used);
     };
     const lines = (row.workersRequests || row.pagesBuilds)
