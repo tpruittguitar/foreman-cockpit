@@ -11,12 +11,25 @@ test('screens index carries the task line without the "Task:" prefix', () => {
   assert.equal(s.b2.task, '');
 });
 
-test('floor tags carry no chips: name plus neutral card title or a plain word (card 653d851)', () => {
+test('floor tags carry no chips: name · working|idle|blocked · title (cs-ffe2ed7d)', () => {
   const tag = src.slice(src.indexOf('function updateLabels'), src.indexOf('const ys = L.nudgeLabels'));
   assert.doesNotMatch(tag, /class="chip/);
-  assert.match(tag, /needs \? 'NEEDS TIM' : task \?/);
-  assert.match(tag, /<span class="tsub\$\{needs \? ' alert' : ''\}">/);
+  assert.match(tag, /L\.floorTag\(/);
+  assert.match(tag, /name · working\|idle\|blocked · title/);
+  assert.match(tag, /floor\.state === 'blocked' \? ' alert'/);
   assert.doesNotMatch(src, /flyEl|\bfly\.sk\b/);
+  const idle = L.floorTag('GUI', { working: false, state: 'idle', task: 'idle' });
+  assert.equal(idle.text, 'GUI · idle');
+  const work = L.floorTag('QA', { working: true, state: 'working', task: 'QA proofs: 66 queued' });
+  assert.equal(work.sub, 'working · QA proofs: 66 queued');
+  assert.equal(work.text, 'QA · ' + work.sub);
+  const long = L.floorTag('QA', { working: true, state: 'working', task: 'QA proofs: 66 queued, waiting on natural runs (next gate 12:40 PM ET)' });
+  assert.ok(long.sub.startsWith('working · QA proofs:'), long.sub);
+  assert.ok(long.sub.endsWith('…') && long.sub.length <= 'working · '.length + 40, long.sub);
+  const blocked = L.floorTag('Gauge', { blocked: true, state: 'blocked', task: 'blocked: card-pickup webhook needs Tim to copy URL/key into gauge.env' });
+  assert.equal(blocked.state, 'blocked');
+  assert.match(blocked.sub, /^blocked · card-pickup webhook/);
+  assert.doesNotMatch(blocked.sub, /offline/);
 });
 
 test('labelOverlaps hides any tag still overlapping after the nudge; the first listed wins', () => {
