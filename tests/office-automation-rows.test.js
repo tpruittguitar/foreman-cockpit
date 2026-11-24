@@ -43,7 +43,7 @@ test('the wall board draws one row per automation with headers, and the board re
   const c = fakeCtx();
   D.drawAutomations(c, 1024, 625, { auto: L.parseAutomations(STATUS, NOW), err: '', now: NOW, demo: false });
   const t = c.texts.map(x => x.t);
-  for (const h of ['Automation', 'Result', 'Last ran', 'Next run', 'est. / run', 'est. / week']) assert.ok(t.includes(h), h);
+  for (const h of ['Automation', 'Result', 'Last ran', 'Last run by', 'Next run', 'est. / run', 'est. / week']) assert.ok(t.includes(h), h);
   for (const v of ['ChatGPT · usage reader', 'OK', 'FAIL', 'SKIPPED', '12:05 AM ET', 'in 12m 03s', 'running now']) assert.ok(t.includes(v), v);
   assert.ok(!t.includes('runs / hour'), 'the timeline moved to the click panel');
   const office = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
@@ -80,4 +80,42 @@ test('all 15 source rows paint, including FORGE_CLAUDE_SHARED_HELPER, with no +N
   assert.ok(!t.some(x => /\+\d+ more/.test(String(x))), 'no +N more: ' + JSON.stringify(t.filter(x => /more/.test(String(x)))));
   const ys = c.texts.filter(x => rows.some(r => r.label === x.t)).map(x => x.y).sort((a, b) => a - b);
   for (let i = 1; i < ys.length; i++) assert.ok(ys[i] > ys[i - 1], 'row labels do not overlap: ' + JSON.stringify(ys));
+});
+
+test('Last run by comes from evidence, or a dash when missing; Any is not a runner name', () => {
+  const rows = L.automationBoardRows(L.parseAutomations(STATUS, NOW), NOW);
+  assert.equal(rows[0].lastBy, 'ChatGPT');
+  assert.equal(rows[1].lastBy, 'Claude');
+  assert.equal(rows[3].lastBy, '—', 'no last_run_at -> dash, not Gauge');
+  const anyRan = L.parseAutomations({ automations: [
+    { ai: 'Any', name: 'health', result: 'SKIP', last_run_at: iso(NOW - 10 * MIN), last_run_by: '' }
+  ] }, NOW);
+  assert.equal(L.automationBoardRows(anyRan, NOW)[0].lastBy, '—');
+  const named = L.parseAutomations({ automations: [
+    { ai: 'Any', name: 'posting', result: 'STALE', last_run_at: iso(NOW - 10 * MIN), last_run_by: 'ChatGPT' }
+  ] }, NOW);
+  assert.equal(L.automationBoardRows(named, NOW)[0].lastBy, 'ChatGPT');
+  const c = fakeCtx();
+  D.drawAutomations(c, 1024, 625, { auto: L.parseAutomations(STATUS, NOW), err: '', now: NOW, demo: false });
+  const t = c.texts.map(x => x.t);
+  assert.ok(t.includes('Last run by'));
+  assert.ok(t.includes('ChatGPT'));
+  assert.ok(t.includes('—'));
+});
+
+test('paused rows paint as PAUSED grey, not FAIL, even when the feed marks them STALE', () => {
+  const parsed = L.parseAutomations({ automations: [
+    { ai: 'Any', name: 'FORGE_AI_USAGE_READER', result: 'STALE', last_run_at: '', stale: true, runs_per_week: 0, paused: true, est_week: '0' }
+  ] }, NOW);
+  assert.equal(parsed.rows[0].result, 'PAUSED');
+  assert.equal(parsed.rows[0].paused, true);
+  const row = L.automationBoardRows(parsed, NOW)[0];
+  assert.equal(row.result, 'PAUSED');
+  assert.equal(row.paused, true);
+  assert.equal(row.lastBy, '—');
+  const c = fakeCtx();
+  D.drawAutomations(c, 1024, 625, { auto: parsed, err: '', now: NOW, demo: false });
+  const t = c.texts.map(x => x.t);
+  assert.ok(t.includes('PAUSED'));
+  assert.ok(!t.includes('FAIL'));
 });

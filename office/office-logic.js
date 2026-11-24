@@ -1808,31 +1808,44 @@
   function allWork(bots) { const out = []; for (const b of bots || []) for (const w of b.work || []) out.push(Object.assign({}, w, { poster: b.bot, ownerName: w.ownerName || b.bot })); return out; }
 
   /* ---------- Automations (item 19/20, control/AUTOMATIONS_STATUS.json) ---------- */
-  const AUTOMATION_RESULTS = ['OK', 'FAIL', 'SKIP', 'EMPTY', 'STALE'];
+  const AUTOMATION_RESULTS = ['OK', 'FAIL', 'SKIP', 'EMPTY', 'STALE', 'PAUSED'];
   function simpleResult(r) {
     const v = str(r).trim().toUpperCase();
     if (['OK', 'SUCCESS', 'PASS', 'DONE', 'GREEN'].includes(v)) return 'OK';
     if (['FAIL', 'FAILED', 'FAILURE', 'ERROR', 'RED', 'TIMEOUT'].includes(v)) return 'FAIL';
     if (['SKIP', 'SKIPPED', 'NOOP', 'NO-OP'].includes(v)) return 'SKIP';
     if (v === 'STALE') return 'STALE';
+    if (v === 'PAUSED') return 'PAUSED';
     if (['EMPTY', 'NONE', 'NOTHING'].includes(v)) return 'EMPTY';
     return v ? 'FAIL' : 'EMPTY';
+  }
+  /* Last run by: only a name from the run's evidence (or a known runner on a row that has last_run_at). Dash on the wall when blank. Never invent. */
+  function lastRunByName(a, last) {
+    const who = str(a.last_run_by).trim();
+    if (who && !/^(any|other|unknown|-|—)$/i.test(who)) return who;
+    if (last != null) {
+      const ai = str(a.ai).trim();
+      if (ai && !/^(any|other|unknown)$/i.test(ai)) return ai;
+    }
+    return '';
   }
   function parseAutomations(o, now) {
     const list = o && Array.isArray(o.automations) ? o.automations : [];
     const rows = list.filter(a => a && str(a.name).trim()).map(a => {
       const last = time(a.last_run_at), next = time(a.next_run_at), iv = last != null && next != null && next > last ? next - last : null;
       let result = simpleResult(a.result);
+      const paused = a.paused === true || a.runs_per_week === 0 || result === 'PAUSED';
       const stale = a.stale === true || (last != null && iv != null && now - last > 2 * iv);
-      if (stale) result = 'STALE';
-      return { ai: str(a.ai).trim() || 'Other', name: truncate(str(a.name), 80), result, last_run_at: last != null ? str(a.last_run_at) : '', next_run_at: next != null ? str(a.next_run_at) : '', running: a.running === true, started_at: str(a.started_at), schedule: str(a.schedule), est_per_run: str(a.est_per_run), est_week: str(a.est_week) };
+      if (stale && last != null) result = 'STALE';
+      if (paused) result = 'PAUSED';
+      return { ai: str(a.ai).trim() || 'Other', name: truncate(str(a.name), 80), result, last_run_at: last != null ? str(a.last_run_at) : '', next_run_at: next != null ? str(a.next_run_at) : '', running: a.running === true, started_at: str(a.started_at), schedule: str(a.schedule), est_per_run: str(a.est_per_run), est_week: str(a.est_week), paused, last_run_by: lastRunByName(a, last) };
     });
     const runs = (o && Array.isArray(o.runs) ? o.runs : []).filter(r => r && time(r.start) != null).map(r => ({ ai: str(r.ai) || 'Other', name: str(r.name), start: time(r.start), end: time(r.end) != null && time(r.end) > time(r.start) ? time(r.end) : time(r.start) + 10 * MIN, result: r.expected ? 'UPCOMING' : simpleResult(r.result), writer: r.writer === true, expected: r.expected === true }));
     return { generated_at: str(o && o.generated_at), rows, runs, writer: o && o.writer_health && typeof o.writer_health === 'object' ? o.writer_health : null };
   }
   /* Automations wall board rows (brief_office7 item 3): one row per automation with a simplified result (OK / FAIL / SKIPPED),
      when it last ran (ET), a live countdown to its next run, and est. per-run / weekly usage from AUTOMATIONS_STATUS.json. */
-  const BOARD_RESULT = { OK: 'OK', FAIL: 'FAIL', STALE: 'FAIL', SKIP: 'SKIPPED', EMPTY: 'SKIPPED' };
+  const BOARD_RESULT = { OK: 'OK', FAIL: 'FAIL', STALE: 'FAIL', SKIP: 'SKIPPED', EMPTY: 'SKIPPED', PAUSED: 'PAUSED' };
   function nextRunText(r, now) {
     if (r.running) return 'running now';
     const t = time(r.next_run_at); if (t == null) return '—';
@@ -1844,7 +1857,8 @@
   }
   function automationBoardRows(a, now) {
     return ((a && a.rows) || []).map(r => { const last = time(r.last_run_at);
-      return { label: r.ai + ' · ' + r.name, result: BOARD_RESULT[r.result] || 'FAIL', last: last != null ? etClock(last) + ' ET' : 'never', next: nextRunText(r, now), running: r.running, estRun: str(r.est_per_run) || '—', estWeek: str(r.est_week) || '—' }; });
+      const paused = r.paused === true || r.result === 'PAUSED';
+      return { label: r.ai + ' · ' + r.name, result: paused ? 'PAUSED' : (BOARD_RESULT[r.result] || 'FAIL'), last: last != null ? etClock(last) + ' ET' : 'never', lastBy: r.last_run_by ? r.last_run_by : '—', next: nextRunText(r, now), running: r.running, paused, estRun: str(r.est_per_run) || '—', estWeek: str(r.est_week) || '—' }; });
   }
   /* Writer health rows with units (Tim Nov 17: no Last ping / Queue depth / Timeouts). Writer heartbeat = time of the last
      successful Writer write, i.e. AUTOMATIONS_STATUS.json generated_at minus writer_health.last_write_age_min. Public data only. */
