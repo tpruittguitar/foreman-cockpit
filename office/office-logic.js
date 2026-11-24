@@ -375,6 +375,14 @@
     if (training && training.trainer === name) return '';
     return fresh && fresh.stale ? (fresh.label || '') : '';
   }
+  function blockedCue(activity) {
+    const blocked = !!(activity && (activity.blocked || activity.state === 'blocked'));
+    return { hop: blocked, sign: blocked, pose: blocked ? 'wave' : null };
+  }
+  function blockedHopOffset(t, phase, reduced) {
+    if (reduced) return 0;
+    return Math.abs(Math.sin((t || 0) * 6 + (phase || 0))) * 0.16;
+  }
 
   /* ---------- What each bot is doing on the floor (ambient behaviour, never data) ----------
      Order: needs Tim / blocked -> waves at its own desk; meeting member -> conference seat; working -> types at its desk;
@@ -391,6 +399,10 @@
     let meeting = null, training = null;
     if (state === 'failed') return { plans, meeting, training };
     for (const b of list) if (statusStyle(b.status).alert) plans[b.bot] = { act: 'wave' };
+    for (const b of list) {
+      const f = fresh && fresh[b.bot];
+      if (f && (f.blocked === true || f.state === 'blocked')) plans[b.bot] = { act: 'wave' };
+    }
     /* Tim (Nov 17, 9:48 PM, final): a bot looks working ONLY with a fresh real activity signal (freshness(), newest signal within
        BOT_STALE_MIN). Status or an assigned card alone does not count: no fresh signal means idle life, fresh means work. */
     let seat = 0;
@@ -2528,7 +2540,7 @@
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, ZACH_KEY, zachShownFrom, readZachShown, saveZachShown, createZachSwitch, ZACH_SWITCH, zachSwitchPose, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, buildLaunchLine, RELEASE_PLATE_BOARD, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
-    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine, activityChip,
+    SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine, activityChip, blockedCue, blockedHopOffset,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
 });

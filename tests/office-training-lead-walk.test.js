@@ -154,7 +154,7 @@ test('replay: HR walks to the head of the table and leads, even with a full walk
 });
 
 test('office.js treats session lead/visit/train as urgent and does not send a gave-up trainer home', () => {
-  assert.match(office, /mayStartWalk\(far, needs \|\| c\.forceNap \|\| home \|\| L\.isSessionWalk\(g\), walkingNow, chars\.size\)/);
+  assert.match(office, /mayStartWalk\(far, cue.hop \|\| c\.forceNap \|\| home \|\| L\.isSessionWalk\(g\), walkingNow, chars\.size\)/);
   assert.match(office, /g = L\.applyGaveUp\(g, c\.gaveUp, clock, dk\)/);
   assert.equal(typeof L.isSessionWalk, 'function');
   assert.equal(L.isSessionWalk({ key: 'lead' }), true);

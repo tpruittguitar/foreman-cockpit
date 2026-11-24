@@ -55,6 +55,6 @@ test('office.js: breaks take L.breakSpot at the real walk speed, and the seat ta
   assert.match(office, /case 'coffee': case 'fridge': if \(p\.brk\) \{ const s = L\.breakSpot\(p\.act, d\.seat, SLOTS, L\.WALK_MPS \* realRate,/);
   assert.match(office, /return \{ key: 'stretch', spot: d\.stand, pose: 'stretch' \}; \}/);
   assert.match(office, /const home = !!dk && Math\.hypot\(g\.spot\.x - dk\.seat\.x, g\.spot\.z - dk\.seat\.z\) < 0\.05;/);
-  assert.match(office, /L\.mayStartWalk\(far, needs \|\| c\.forceNap \|\| home \|\| L\.isSessionWalk\(g\), walkingNow, chars\.size\)/);
+  assert.match(office, /L\.mayStartWalk\(far, cue.hop \|\| c\.forceNap \|\| home \|\| L\.isSessionWalk\(g\), walkingNow, chars\.size\)/);
   assert.match(office, /if \(raw > 0\) realRate \+= \(dt \/ raw - realRate\) \* 0\.05;/);
 });
