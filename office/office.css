@@ -184,7 +184,8 @@ html.tv .hint { bottom: calc(var(--safe) + 3.2em); }
 .run.clash { outline: 2px solid #ff2a2a; }
 .conc i { position: absolute; bottom: 0; width: 22px; background: #2f6f80; } .conc i.c2 { background: #ffd23f; } .conc i.c3 { background: #ff4b4b; }
 table.autos { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; } table.autos td, table.autos th { border-bottom: 1px solid #262a30; padding: 4px; text-align: left; }
-.res.OK { color: #3ddc84; } .res.FAIL { color: #ff4b4b; } .res.STALE { color: #ffd23f; } .res.SKIP, .res.EMPTY { color: #9aa0a8; }
+.res.OK { color: #3ddc84; } .res.FAIL { color: #ff4b4b; } .res.STALE { color: #ffd23f; } .res.SKIP, .res.EMPTY, .res.PAUSED { color: #9aa0a8; }
+table.autos tr.paused td { color: #7a7f88; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: #555a62; } .dot.green { background: #3ddc84; } .dot.amber { background: #ffd23f; } .dot.red { background: #ff4b4b; }
 canvas { cursor: grab; }
 
