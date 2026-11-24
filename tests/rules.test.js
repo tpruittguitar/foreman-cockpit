@@ -93,6 +93,8 @@ const NC_024 = '- NC-024 CENTENE: employer=Centene; rule=NC-016; source_url=http
 const NC_025 = '- NC-025 MAXIMUS: employer=Maximus; rule=NC-016; source_url=https://www.maximus.com/';
 const NC_026 = '- NC-026 KAISER: employer=Kaiser Permanente; rule=NC-016; source_url=https://about.kaiserpermanente.org/';
 const NC_027 = '- NC-027 CARESTAR: employer=CareStar; rule=NC-016; source_url=https://www.carestar.com/';
+const NC_029 = '- NC-029 LAW_FIRMS_AND_LEGAL_SERVICES: exclude before intake only when the employer\'s core business is a law firm, trial practice, or legal services firm. Do not exclude manufacturers, industrial suppliers, automation firms, or other employers solely because they have an in-house legal department or mention legal, regulatory, quality, or compliance functions. Tim, Hermes chat, recorded Nov 24, 2026. employer_business_any=law firm|law firms|legal services|legal service|trial lawyer|trial lawyers|lawyers|law office|law offices|legal practice|attorney at law|attorneys at law; employer_business_exempt=manufacturing|manufacturer|equipment|automation|supplier|component|software|recruiting|staffing';
+const NC_030 = '- NC-030 LEGAL_ROLES: exclude roles whose primary function is the practice of law or legal operations, including attorney, counsel, paralegal, and legal operations. Apply to the actual role and title regardless of employer industry. Do not classify manufacturing quality, regulatory, or compliance roles as legal roles solely because those functions touch regulations or policies. Whole-word title matches only: counsel does not match counseling or counselor; legal does not match regulatory, compliance, or quality. Tim, Hermes chat, recorded Nov 24, 2026. title_any=attorney|counsel|paralegal|legal operations|lawyer|legal ops|legal';
 const roleText = canonicalText.replace('SECTION=COMPENSATION_GEOGRAPHY', [NC_005, NC_006, NC_015, 'SECTION=COMPENSATION_GEOGRAPHY'].join('\n'));
 const withRoles = W.parseCanonicalNeverConsiderRules(roleText);
 const finance = W.classifyNeverConsider({ COMPANY: 'Any Co', TITLE: 'Head of Accounting' }, withRoles);
@@ -119,7 +121,7 @@ ok(financeExisting.results[0].result === 'EXISTING_MATCH' && financeExisting.sum
 const freshLines = ['V2_CURRENT_POPULATION_MASTER', 'COUNTS: TOTAL=0', 'END V2_CURRENT_POPULATION_MASTER TOTAL=0'];
 const fresh = W.planIntake(freshLines, [abbvieCard], withEmployers, intakeCtx);
 ok(fresh.results[0].result === 'NEVER_CONSIDER_EXCLUDED' && fresh.results[0].NEVER_CONSIDER_RULE_ID === 'NC-001' && fresh.excluded[0].DECLINE_REASON_CODE === 'NEVER_CONSIDER', 'a new employer line match is excluded at intake with decline code NEVER_CONSIDER');
-const structuredText = canonicalText.replace('SECTION=COMPENSATION_GEOGRAPHY', [NC_005, NC_006, NC_013, NC_015, NC_016, NC_019, NC_020, NC_021, NC_022, NC_023, NC_024, NC_025, NC_026, NC_027, 'SECTION=COMPENSATION_GEOGRAPHY'].join('\n'));
+const structuredText = canonicalText.replace('SECTION=COMPENSATION_GEOGRAPHY', [NC_005, NC_006, NC_013, NC_015, NC_016, NC_019, NC_020, NC_021, NC_022, NC_023, NC_024, NC_025, NC_026, NC_027, NC_029, NC_030, 'SECTION=COMPENSATION_GEOGRAPHY'].join('\n'));
 const SR = W.parseCanonicalNeverConsiderRules(structuredText);
 ok(SR.status === 'ACTIVE' && !SR.rules.some(r => r.RULE_ID === 'NC-001' && r.spec) && SR.rules.some(r => r.RULE_ID === 'NC-020' && r.spec), 'machine-field lines parse and a prose NC line has no spec');
 const sc = (rec) => W.classifyNeverConsider(Object.assign({ COMPANY: 'Any Co', LOCATION: 'Austin, TX', REMOTE_HYBRID: 'On-site' }, rec), SR);
@@ -134,6 +136,20 @@ ok(supervisor.outcome === 'EXCLUDE' && supervisor.confidence === 'HIGH' && super
 ok(sc({ TITLE: 'Project Manager', EMPLOYER_PRIMARY_BUSINESS: 'automotive manufacturing' }).outcome === 'ALLOW', 'a PM title at a manufacturer is exempt from NC-019');
 ok(sc({ TITLE: 'Project Manager', EMPLOYER_PRIMARY_BUSINESS: 'enterprise software' }).ruleId === 'NC-019' && sc({ TITLE: 'Project Manager', EMPLOYER_PRIMARY_BUSINESS: 'enterprise software' }).outcome === 'EXCLUDE', 'a PM title outside manufacturing and energy is excluded by NC-019');
 ok(sc({ TITLE: 'Project Manager' }).outcome === 'ALLOW', 'a PM title with no business evidence is not flagged');
+ok(sc({ COMPANY: 'Poulin / Willey Trial Lawyers', TITLE: 'Associate Attorney', EMPLOYER_PRIMARY_BUSINESS: 'Poulin / Willey Trial Lawyers' }).outcome === 'EXCLUDE' && ['NC-029', 'NC-030'].includes(sc({ COMPANY: 'Poulin / Willey Trial Lawyers', TITLE: 'Associate Attorney', EMPLOYER_PRIMARY_BUSINESS: 'Poulin / Willey Trial Lawyers' }).ruleId), 'law-firm employer and attorney title exclude under NC-029 or NC-030');
+ok(sc({ COMPANY: 'Poulin / Willey Trial Lawyers', TITLE: 'Office Manager', EMPLOYER_PRIMARY_BUSINESS: 'Poulin / Willey Trial Lawyers' }).outcome === 'EXCLUDE' && sc({ COMPANY: 'Poulin / Willey Trial Lawyers', TITLE: 'Office Manager', EMPLOYER_PRIMARY_BUSINESS: 'Poulin / Willey Trial Lawyers' }).ruleId === 'NC-029', 'law-firm employer alone excludes under NC-029');
+ok(sc({ TITLE: 'Attorney' }).outcome === 'EXCLUDE' && sc({ TITLE: 'Attorney' }).ruleId === 'NC-030', 'Attorney excludes under NC-030');
+ok(sc({ TITLE: 'General Counsel' }).outcome === 'EXCLUDE' && sc({ TITLE: 'General Counsel' }).ruleId === 'NC-030', 'General Counsel excludes under NC-030');
+ok(sc({ TITLE: 'Paralegal' }).outcome === 'EXCLUDE' && sc({ TITLE: 'Paralegal' }).ruleId === 'NC-030', 'Paralegal excludes under NC-030');
+ok(sc({ TITLE: 'Legal Operations Manager' }).outcome === 'EXCLUDE' && sc({ TITLE: 'Legal Operations Manager' }).ruleId === 'NC-030', 'Legal Operations Manager excludes under NC-030');
+ok(sc({ TITLE: 'Quality Manager', EMPLOYER_PRIMARY_BUSINESS: 'discrete manufacturing' }).outcome === 'ALLOW', 'Quality Manager at discrete manufacturing is allowed');
+ok(sc({ TITLE: 'Regulatory Affairs Director', EMPLOYER_PRIMARY_BUSINESS: 'discrete manufacturing' }).outcome === 'ALLOW', 'Regulatory Affairs Director at discrete manufacturing is allowed');
+ok(sc({ TITLE: 'Compliance Manager', EMPLOYER_PRIMARY_BUSINESS: 'discrete manufacturing' }).outcome === 'ALLOW', 'Compliance Manager at discrete manufacturing is allowed');
+ok(sc({ TITLE: 'EHS/Quality Compliance', EMPLOYER_PRIMARY_BUSINESS: 'discrete manufacturing' }).outcome === 'ALLOW', 'EHS/Quality Compliance at discrete manufacturing is allowed');
+ok(sc({ TITLE: 'School Counselor' }).outcome === 'ALLOW', 'School Counselor is not caught by counsel');
+ok(sc({ TITLE: 'Career Counseling Manager' }).outcome === 'ALLOW', 'Career Counseling Manager is not caught by counsel');
+ok(sc({ TITLE: 'Compliance Counsel' }).outcome === 'EXCLUDE' && sc({ TITLE: 'Compliance Counsel' }).ruleId === 'NC-030', 'Compliance Counsel still excludes under NC-030');
+ok(sc({ COMPANY: 'Acme Manufacturing', TITLE: 'Quality Manager', EMPLOYER_PRIMARY_BUSINESS: 'manufacturing; in-house legal department' }).outcome === 'ALLOW', 'a manufacturer with an in-house legal department is not excluded by NC-029');
 const mi = { TITLE: 'Director of Manufacturing', LOCATION: 'Detroit, MI', REMOTE_HYBRID: 'On-site' };
 const highPay = sc(Object.assign({ SALARY_BASE_POSTED: '$260,000' }, mi));
 ok(highPay.outcome === 'REVIEW' && highPay.basis === 'REVIEW_NEEDED' && highPay.ruleId === 'NC-023', 'an onsite MI role at $260k goes to REVIEW_NEEDED');
