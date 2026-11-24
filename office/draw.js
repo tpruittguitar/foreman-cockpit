@@ -359,29 +359,48 @@ export function drawUsage(ctx, W, H, o) {
 }
 
 export function drawUsageLimits(ctx, W, H, rows) {
-  const s = W / 1024, left = 34 * s, right = W - left, barW = 420 * s;
-  ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${44 * s}px ${SANS}`; ctx.fillText('USAGE LIMITS', 30 * s, 40 * s);
-  rows.forEach((row, i) => {
-    const y = (49 + 51 * i) * s, known = row.leftPct != null;
-    const col = known ? TONE[L.usageWord(100 - row.leftPct).tone] : '#9aa0a8';
-    ctx.fillStyle = '#22262b'; ctx.fillRect(24 * s, y, W - 48 * s, 2 * s);
-    ctx.fillStyle = known ? '#f1f2f4' : '#9aa0a8';
-    ctx.font = `800 ${32 * s}px ${SANS}`; ctx.fillText(row.name, left, y + 29 * s);
-    ctx.fillStyle = '#2b2e33'; ctx.fillRect(left, y + 36 * s, barW, 9 * s);
-    const value = !known ? 'no reading' : row.limit != null
-      ? row.remaining.toLocaleString('en-US') + ' / ' + row.limit.toLocaleString('en-US') + ' left'
-      : row.leftPct + '% left';
-    ctx.textAlign = 'right'; ctx.fillStyle = col;
-    ctx.font = `800 ${30 * s}px ${SANS}`; ctx.fillText(value, right, y + 25 * s);
-    if (known) {
-      ctx.fillRect(left, y + 36 * s, barW * row.leftPct / 100, 9 * s);
-      const reset = row.resetsAt ? ' · resets ' + L.etClock(Date.parse(row.resetsAt)) + ' ET' : '';
-      ctx.fillStyle = row.stale ? C.stale : '#a9aeb6'; ctx.font = `600 ${22 * s}px ${SANS}`;
-      ctx.fillText(row.measured + reset + (row.stale ? ' · ? STALE' : ''), right, y + 47 * s, right - left - barW - 20 * s);
-    }
-    ctx.textAlign = 'left';
+  const s = W / 1024, pad = 20 * s, inner = 16 * s, leftW = 210 * s, colW = (W - pad * 2 - leftW - inner * 2) / 3, y0 = 44 * s;
+  ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#8a8a8a'; ctx.lineWidth = 2 * s; ctx.strokeRect(1 * s, 1 * s, W - 2 * s, H - 2 * s);
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  ctx.fillStyle = '#9a9a9a'; ctx.font = `800 ${38 * s}px ${SANS}`; ctx.fillText('Other', 30 * s, 56 * s); ctx.fillText('Limits', 30 * s, 94 * s);
+  const heads = ['GitHub', 'Desktop Cmdr', 'CloudFlare'];
+  heads.forEach((t, i) => {
+    const x = pad + leftW + i * (colW + inner);
+    ctx.fillStyle = '#9a9a9a'; ctx.font = `800 ${28 * s}px ${SANS}`; ctx.fillText(t, x, 56 * s);
   });
+  const byName = Object.fromEntries(rows.map(r => [r.name, r]));
+  const lineY = y => y0 + y * s;
+  const fmt = n => Number(n).toLocaleString('en-US');
+  const drawCell = (x, row) => {
+    ctx.fillStyle = '#9a9a9a'; ctx.font = `600 ${20 * s}px ${SANS}`; ctx.textAlign = 'left';
+    if (!row) { ctx.fillText('—', x, lineY(52)); return; }
+    if (row.name === 'GitHub') {
+      if (row.leftPct == null || row.remaining == null || row.limit == null) { ctx.fillText('—', x, lineY(52)); return; }
+      ctx.fillText(fmt(row.remaining) + ' / ' + fmt(row.limit) + ' left', x, lineY(52));
+      const resetAt = Date.parse(row.resetsAt);
+      let t = Number.isFinite(resetAt) ? 'resets ' + L.etClock(resetAt) + ' ET' : '';
+      if (row.stale) t = (t ? t + ' · ' : '') + '? STALE';
+      if (t) ctx.fillText(t, x, lineY(79));
+      return;
+    }
+    if (row.name === 'Desktop Cmdr') {
+      ctx.fillText(row.leftPct == null ? '—' : row.leftPct.toLocaleString('en-US') + '% left' + (row.stale ? ' · ? STALE' : ''), x, lineY(52));
+      return;
+    }
+    const meterLine = (m, label) => {
+      if (!m) return '—';
+      return m.limit != null ? label + ' ' + fmt(m.used) + ' / ' + fmt(m.limit) : label + ' ' + fmt(m.used);
+    };
+    const lines = (row.workersRequests || row.pagesBuilds)
+      ? [meterLine(row.workersRequests, 'Workers'), meterLine(row.pagesBuilds, 'Pages')]
+      : ['—'];
+    if (row.stale) lines.push('? STALE');
+    lines.forEach((t, i) => ctx.fillText(t, x, lineY(52 + i * 27)));
+  };
+  drawCell(pad + leftW, byName['GitHub']);
+  drawCell(pad + leftW + colW + inner, byName['Desktop Cmdr']);
+  drawCell(pad + leftW + (colW + inner) * 2, byName['CloudFlare']);
 }
 
 /* ---------- Pipeline constraint wall (back wall, left of the checksheet) ----------

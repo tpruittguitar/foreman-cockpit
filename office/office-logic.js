@@ -1428,7 +1428,7 @@
   const USAGE_CHECK_SCHEDULE_ET = ['02:05', '08:05', '14:05', '20:05'];
   const USAGE_GRACE_MIN = 30;
   const USAGE_PROVIDERS = [{ id: 'CLAUDE', name: 'Claude' }, { id: 'CHATGPT', name: 'ChatGPT' }, { id: 'GROK', name: 'Grok' }];
-  const LIMIT_PROVIDERS = [{ id: 'GITHUB', name: 'GitHub' }, { id: 'DESKTOP_COMMANDER', name: 'Desktop Commander' }];
+  const LIMIT_PROVIDERS = [{ id: 'GITHUB', name: 'GitHub' }, { id: 'DESKTOP_COMMANDER', name: 'Desktop Cmdr' }, { id: 'CLOUDFLARE', name: 'CloudFlare' }];
   const isLimitProvider = id => LIMIT_PROVIDERS.some(p => p.id === id);
   function parseReadings(text) {
     const out = [];
@@ -1442,8 +1442,25 @@
           if (r.meter !== 'core_api' || !Number.isSafeInteger(r.remaining) || !Number.isSafeInteger(r.limit)
               || r.limit <= 0 || r.remaining < 0 || r.remaining > r.limit || time(r.resetsAt) == null) continue;
           out.push({ at: rec.at, provider: r.provider, remaining: r.remaining, limit: r.limit, leftPct: 100 * r.remaining / r.limit, resetsAt: rec.resetsAt });
-        } else if (r.meter === 'remote_calls_monthly' && Number.isFinite(r.leftPct) && r.leftPct >= 0 && r.leftPct <= 100) {
+        } else if (r.provider === 'DESKTOP_COMMANDER' && r.meter === 'remote_calls_monthly' && Number.isFinite(r.leftPct) && r.leftPct >= 0 && r.leftPct <= 100) {
           out.push({ at: rec.at, provider: r.provider, leftPct: r.leftPct });
+        } else if (r.provider === 'CLOUDFLARE') {
+          const row = { at: rec.at, provider: r.provider };
+          let ok = false;
+          for (const meter of ['workersRequests', 'pagesBuilds']) {
+            const m = r[meter];
+            if (!m || typeof m !== 'object' || !Number.isSafeInteger(m.used) || m.used < 0) continue;
+            const item = { used: m.used };
+            if (m.limit != null || m.remaining != null) {
+              if (!(Number.isSafeInteger(m.limit) && m.limit > 0 && Number.isSafeInteger(m.remaining)
+                  && m.remaining >= 0 && m.remaining <= m.limit && m.used <= m.limit && m.used + m.remaining === m.limit)) continue;
+              item.limit = m.limit; item.remaining = m.remaining;
+            }
+            if (time(m.resetsAt) != null) item.resetsAt = str(m.resetsAt);
+            row[meter] = item;
+            ok = true;
+          }
+          if (ok) out.push(row);
         }
         continue;
       }
@@ -1521,7 +1538,7 @@
     const latest = latestPerProvider((readings || []).filter(r => isLimitProvider(r.provider)));
     return LIMIT_PROVIDERS.map(({ id, name }) => {
       const r = latest[id];
-      if (!r) return { name, leftPct: null };
+      if (!r) return { name, leftPct: null, stale: false };
       return { ...r, name, measured: 'Measured ' + etClock(time(r.at)) + ' ET', stale: readingStale(r, now) };
     });
   }
