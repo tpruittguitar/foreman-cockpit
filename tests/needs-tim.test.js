@@ -92,7 +92,9 @@ test('page is wired: script, view, route, System tab, bell, badge refresh after 
   assert.match(html,/<div class="view" id="view-needs-tim"><\/div>/);
   assert.match(html,/'needs-tim':'operations'/); assert.match(html,/if\(t==='needs-tim'\)renderNeedsTim_\(\);/);
   assert.match(html,/bell\.onclick=function\(e\)\{e\.stopPropagation\(\);switchTab\('needs-tim'\)\}/);
+  assert.match(html,/bell\.setAttribute\('aria-label','Needs you: 0'\);bell\.title='Needs you'/);
   assert.match(html,/scheduleWriterRefresh_\(\);ntLoad_\(false\);/);
+  assert.match(html,/function ntBadge_\(\)\{var b=\$\('bell'\);if\(!b\)return;var m=ntModel_\(\),n=PipelineNeedsTim.badge\(m\),x=b.querySelector\('\.nt-badge'\),l=n>99\?'99\+':String\(n\);b\.setAttribute\('aria-label','Needs you: '\+l\);if\(!n\)\{if\(x\)x\.remove\(\);return\}/);
   const nav=fs.readFileSync(path.join(__dirname,'..','pipeline-navigation.js'),'utf8');
   assert.match(nav,/items:\[\['Needs you','needs-tim'\],\['Dashboard','automations'\]/); assert.match(nav,/'needs-tim':'operations'/);
 });
