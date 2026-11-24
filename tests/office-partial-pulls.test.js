@@ -10,7 +10,7 @@ const office = fs.readFileSync(path.join(__dirname, '..', 'office', 'office.js')
 const MIN = 60000, NOW = Date.parse('2026-11-18T05:31:00Z'), ago = m => new Date(NOW - m * MIN).toISOString();
 const cursor = { bot: 'Cursor', status: 'idle', last_action: 'Queued 9:35 job', last_action_at: ago(38 * 60) };
 
-test('without merges, the 38 h status row is stale last-seen; a minutes-old coordination merge makes Cursor working', () => {
+test('without merges, the 38 h status row is stale last-seen; a minutes-old coordination merge is a freshness signal, not a working pose (cs-ffe2ed7d)', () => {
   const row = L.botActivity(cursor, NOW, {});
   assert.equal(row.working, false);
   assert.equal(row.source, 'status row');
@@ -23,10 +23,10 @@ test('without merges, the 38 h status row is stale last-seen; a minutes-old coor
   assert.match(folded.errors.join('; '), /foreman-cockpit/);
   assert.equal(folded.merges.get('cursor'), ago(2));
   const a = L.botActivity(cursor, NOW, { merges: folded.merges });
-  assert.equal(a.working, true);
+  assert.equal(a.working, false);
+  assert.equal(a.state, 'idle');
   assert.equal(a.source, 'PR merge');
   assert.equal(a.ageMin, 2);
-  assert.equal(a.label, '');
 });
 
 test('keepNewerTimes keeps a prior cockpit merge when a later load only gets the other repos', () => {

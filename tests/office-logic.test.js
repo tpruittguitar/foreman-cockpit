@@ -133,6 +133,31 @@ test('stale and failed data states; no idle animation when data is missing', () 
   assert.equal(L.behaviorFor('waiting_tim', 'live'), 'wave');
 });
 
+
+
+test('needs tim from items is counted by needsList and boardView', () => {
+  const items = L.parseItems([{ id: 'n1', title: 'Keep or close open pilot PRs', priority: 'Needs Tim', status: 'needs_tim', owner: 'Tim', question: 'ok?', link: 'https://github.com/tpruittguitar/foreman-cockpit/pull/1' }]);
+  const needs = L.needsList({ items, bots: [], entries: [], pulls: [], prStates: new Map(), demo: false, now: NOW });
+  assert.equal(needs.needs.length, 1);
+  const cols = L.boardView(items, { needs: needs.needs });
+  assert.equal(cols.find(c => c.id === 'needs_tim').total, 1);
+});
+
+test('needs tim item without a question is queued, not needs tim', () => {
+  const items = L.parseItems([{ id: 'n2', title: 'Keep or close open pilot PRs', priority: 'Needs Tim', status: 'needs_tim', owner: 'Tim', question: '', link: 'https://github.com/tpruittguitar/foreman-cockpit/pull/2' }]);
+  assert.equal(L.columnFor(items[0]), 'queued');
+  assert.equal(L.needsList({ items, bots: [], entries: [], pulls: [], prStates: new Map(), demo: false, now: NOW }).needs.length, 0);
+});
+
+test('bot waiting tim still counts and the same list drives board and header totals', () => {
+  const bots = [{ bot: 'Root', bot_id: 'r1', status: 'waiting_tim', question: 'Need help?' }];
+  const items = L.parseItems([{ id: 'n3', title: 'Keep or close open pilot PRs', priority: 'Needs Tim', status: 'needs_tim', owner: 'Tim', question: 'ok?', link: 'https://github.com/tpruittguitar/foreman-cockpit/pull/3' }]);
+  const needs = L.needsList({ bots, items, entries: [], pulls: [], prStates: new Map(), demo: false, now: NOW });
+  assert.equal(needs.needs.length, 2);
+  const cols = L.boardView(items, { needs: needs.needs });
+  assert.equal(cols.find(c => c.id === 'needs_tim').total, 2);
+});
+
 test('reduced motion: alert pulse is steady; otherwise about 1 Hz', () => {
   assert.equal(L.pulse(0.1, true), 1);
   assert.equal(L.pulse(0.37, true), 1);

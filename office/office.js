@@ -242,7 +242,7 @@ function alertBots() { return bots().filter(b => L.statusStyle(b.status).alert);
 function botTarget(b) { return L.needsTarget({ link: b.link, bot: b.bot, bot_id: idFor(b.bot, b.bot_id), items: items() }); }
 /* Needs Tim board rows: only current asks (L.needsList), then "?" rows that always explain themselves. */
 function needsData() {
-  return L.needsList({ bots: bots(), entries: S.parsed ? S.parsed.needsTim : [], prStates: S.prStates, pulls: DEMO ? [] : S.pulls, now: Date.now(), demo: DEMO });
+  return L.needsList({ bots: bots(), entries: S.parsed ? S.parsed.needsTim : [], items: items(), prStates: S.prStates, pulls: DEMO ? [] : S.pulls, now: Date.now(), demo: DEMO });
 }
 function needsEntries() {
   const d = needsData(), e = [];
@@ -290,7 +290,7 @@ function needsRowHTML(e) {
   if (t.href) return `<a class="needlink" data-kind="${t.kind}" ${targetAttrs(t.href)}>${inner}</a>`;
   return `<span class="needlink nolink">${inner}${t.label ? `<span class="meta">${esc(t.label)} · no PR or chat link known</span>` : ''}</span>`;
 }
-function stWord(b) { const s0 = L.statusStyle(b.status), st = s0.alert ? s0 : L.statusStyle(freshOf(b).working ? 'working' : 'idle'); return `<span class="st ${st.alert ? 'alert' : st.status}">${st.glyph} ${st.word}</span>`; }
+function stWord(b) { const act = freshOf(b), st = act.blocked || act.state === 'blocked' ? L.statusStyle('blocked') : act.working ? L.statusStyle('working') : L.statusStyle(b.status).alert ? L.statusStyle(b.status) : L.statusStyle('idle'); return `<span class="st ${st.alert ? 'alert' : st.status}">${st.glyph} ${st.word}</span>`; }
 function renderFlat() {
   if ($('flat').hidden) return;
   const now = Date.now(), h = [];
@@ -613,7 +613,7 @@ function openNeeds() {
 let boardTab = 'All', doneOpen = false;
 function openBoard() {
   const tabs = L.projectTabs(items()); if (!tabs.includes(boardTab)) boardTab = 'All';
-  const cols = L.boardView(items(), { tab: boardTab, doneOpen });
+  const cols = L.boardView(items(), { tab: boardTab, doneOpen, needs: needsData().needs });
   showPanel(`<h2 id="panel-title">Forge checksheet</h2>
     <div class="tabs" role="tablist">${tabs.map(t => `<button class="tab${t === boardTab ? ' on' : ''}" role="tab" aria-selected="${t === boardTab}" data-tab="${esc(t)}">${esc(t)} (${t === 'All' ? items().length : items().filter(i => i.project === t).length})</button>`).join('')}</div>
     <div class="cols">${cols.map(c => `<section class="bcol ${c.id}"><h3>${c.id === 'needs_tim' ? '⚠ ' : ''}${esc(c.label)} (${c.total})${c.id === 'done' ? ` <button class="linkbtn" data-done="1">${c.collapsed ? 'show' : 'hide'}</button>` : ''}</h3>
@@ -1594,16 +1594,17 @@ function buildWorld() {
       const rp = c.goalNow && c.goalNow.recent;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
       const fr = !frozen && !needs ? L.activityChip(S.fresh[c.name], plan.training, c.name) : '';
-      /* Tim (Nov 18, 8:49 AM ET, card 653d851): no chips on floor tags. A tag is the name plus one plain word or the card title:
-         NEEDS TIM (red, a state word), the bot's task-file card while it works, else idle / offline. Ages stay in the hover title. */
-      const sc = S.screens && S.screens.screens && S.screens.screens[idFor(c.name, c.botId)], task = !fr && !needs && sc && sc.busy && sc.task ? sc.task : '';
-      const sub = frozen ? '' : needs ? 'NEEDS TIM' : task ? (task.length > 40 ? task.slice(0, 39) + '…' : task) : /^offline/.test(fr) ? 'offline' : fr ? 'idle' : S.fresh[c.name] && S.fresh[c.name].working ? 'working' : 'idle';
-      const tip = [task, fr, why ? '? ' + why : ''].filter(Boolean).join(' · ');
+      /* cs-ffe2ed7d: tag is name · working|idle|blocked · title. Offline is a monitor caption, not the floor state. */
+      const activity = S.fresh[c.name] || {};
+      const sc = S.screens && S.screens.screens && S.screens.screens[idFor(c.name, c.botId)];
+      const floor = L.floorTag(c.name, activity, { title: activity.task || (sc && sc.task) || '' });
+      const sub = frozen ? '' : floor.sub;
+      const tip = [floor.text, fr, why ? '? ' + why : ''].filter(Boolean).join(' · ');
       const key = c.name + needs + frozen + (hoverBot === c.name) + sub + tip;
       if (key !== c.tagKey) {
         c.tagKey = key;
         c.tag.className = 'tag' + (frozen ? ' frozen' : '') + (hoverBot === c.name ? ' hl' : '');
-        const tail = sub ? `<span class="tsub${needs ? ' alert' : ''}">${esc(sub)}</span>` : '';
+        const tail = sub ? ` · <span class="tsub${floor.state === 'blocked' ? ' alert' : ''}">${esc(sub)}</span>` : '';
         c.tag.innerHTML = esc(c.name) + tail; c.tag.title = tip;
         const short = shortTag(c.name, c.botId);
         if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = esc(short) + tail; c.tag.title = c.name + (tip ? ' · ' + tip : ''); }
@@ -1685,7 +1686,7 @@ function buildWorld() {
     if (hoverBot) items().filter(i => i.owner === hoverBot).forEach(i => hl.add(i.id));
     if (hoverItem) hl.add(hoverItem);
     const t = project.tex, tabs = L.projectTabs(items()); if (!tabs.includes(boardTab)) boardTab = 'All';
-    const cols = L.boardView(items(), { tab: boardTab, doneOpen });
+    const cols = L.boardView(items(), { tab: boardTab, doneOpen, needs: needsData().needs });
     const age = S.parsed ? L.dataAge(S.parsed.updatedAt, Date.now()) : null;
     project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
     pagesN = project.hits.pages || 1;

@@ -402,7 +402,7 @@
       }
       if (seated.length && !meeting) meeting = Object.assign({}, m, { seated });
     }
-    const busy = b => (fresh ? !!(fresh[b.bot] && !fresh[b.bot].stale) : ['working', 'blocked'].includes(normStatus(b.status)));
+    const busy = b => { if (!fresh) return ['working', 'blocked'].includes(normStatus(b.status)); const f = fresh[b.bot]; if (!f) return false; if (f.blocked === true || f.state === 'blocked') return true; if (typeof f.working === 'boolean') return f.working; return !f.stale; };
     const rp = activeTraining(opts && opts.training, now) ? null : replayTraining(opts && opts.training, now);
     const idleIn = n => list.some(b => b.bot === n && !busy(b));
     const sess = rp ? (idleIn(rp.trainer) ? Object.assign(rp, { trainees: rp.trainees.filter(idleIn) }) : null) : activeTraining(opts && opts.training, now);
@@ -835,11 +835,23 @@
     return ['All'].concat(tabs);
   }
   /* One tab of the board: four columns, Done collapsed unless opened; `max` cards per column (null = all). */
+  function needCard(n) {
+    if (n && n.item) return n.item;
+    return { id: n && n.id || ('need:' + str(n && n.bot) + ':' + str(n && n.text).slice(0, 40)), title: str(n && n.text), priority: 'Needs Tim',
+      status: 'needs_tim', owner: str(n && n.bot), ownerKnown: true, link: str(n && n.link), updated_at: '', project: (n && n.item && n.item.project) || 'Other',
+      pr: prNumber(n && n.text, n && n.link), question: str(n && n.text) || ' ', note: '', source: str(n && n.kind) || 'need', prState: '' };
+  }
   function boardView(items, opts) {
     const o = opts || {}, tab = o.tab || 'All', max = o.max == null ? null : o.max;
     const mine = sortItems((items || []).filter(i => tab === 'All' || i.project === tab));
+    const needList = o.needs && o.needs.needs ? o.needs.needs : Array.isArray(o.needs) ? o.needs : null;
     return COLUMNS.map(c => {
-      const all = mine.filter(i => columnFor(i) === c.id), collapsed = c.id === 'done' && !o.doneOpen;
+      let all = mine.filter(i => columnFor(i) === c.id);
+      if (c.id === 'needs_tim' && needList) {
+        all = needList.map(needCard);
+        if (tab !== 'All') all = all.filter(i => i.project === tab);
+      }
+      const collapsed = c.id === 'done' && !o.doneOpen;
       const cards = collapsed ? [] : max == null ? all : all.slice(0, max);
       return { id: c.id, label: c.label, total: all.length, cards, more: collapsed ? 0 : all.length - cards.length, collapsed };
     });
@@ -886,13 +898,18 @@
       if (pr) { if (seen.has(pr)) continue; seen.add(pr); }
       needs.push({ kind: 'entry', text: n.text, link: n.link, bot: n.bot, bot_id: n.bot_id });
     }
+    for (const i of o.items || []) {
+      if (!i || columnFor(i) !== 'needs_tim' || !live(i.title)) continue;
+      const pr = prKey(i.link); if (pr && seen.has(pr)) continue; if (pr) seen.add(pr);
+      if (i.id && seen.has('item:' + i.id)) continue; if (i.id) seen.add('item:' + i.id);
+      needs.push({ kind: 'item', text: cardTitle(i) || i.title, bot: i.owner, link: i.link, id: i.id, item: i });
+    }
     for (const p of o.pulls || []) {
       const k = prKey(p.url); if (!live(p.title) || (k && seen.has(k))) continue; if (k) seen.add(k);
       review.push({ text: p.repo + ' #' + p.number + ' ' + p.title, link: p.url, pr: k, draft: p.draft, checks: p.checks });
     }
     return { needs, review, empty: !needs.length };
   }
-
   /* ---------- Fetching OFFICE_STATUS.json / AUTOMATIONS_STATUS.json (item 23) ----------
      raw.githubusercontent.com caches for minutes and ignores ?t=, so read through the contents API (Accept: raw) with
      If-None-Match; a 304 keeps the current data. Unauthenticated API calls are 60/hour per IP and shared with the PR
@@ -1364,19 +1381,59 @@
     return out;
   }
   /* The ONE activity read (QA #407): the list view, the name tags and the 3D plan all call this, so they never disagree. */
-  /* QA #434 (Nov 18, 2:43 AM ET): a screen that says busy:false (with activeAt) or offline:true wins over merge, PR, automation and
-     status-row times, so a bot is never drawn typing while its own screen says idle or offline. */
+  /* cs-ffe2ed7d: task-file state (via the screens index) wins. A screen may mark working only with a real per-screen
+     activeAt (within BOT_STALE_MIN, not the shared index.updated_at batch stamp). Status-row, PR, merge and automation
+     times still fill freshness ages for the hover tip; they do not set working when the task file is idle, blocked, or
+     not busy. Blocked stays visible even when activeAt is older than 2 h. */
+  function taskLine(task) { return str(task).replace(/^Task:\s*/i, '').trim(); }
+  function taskTitle(task) {
+    const t = taskLine(task), m = /^blocked(?:\s*:|\b)\s*/i.exec(t);
+    if (m) return t.slice(m[0].length).trim();
+    return /^idle$/i.test(t) ? '' : t;
+  }
+  function isBlockedScreen(sc) { return !!(sc && (sc.blocked || /^blocked(?:\s*:|\b)/i.test(taskLine(sc.task)))); }
+  function isIdleTask(task) { return /^idle$/i.test(taskLine(task)); }
+  function batchActiveAt(index) {
+    const s = index && index.screens, upd = index && index.updated_at; if (!s || !upd) return null;
+    let n = 0; for (const id of Object.keys(s)) { const e = s[id]; if (e && e.hasActive && str(e.activeAt) === str(upd)) n++; }
+    return n >= 2 ? str(upd) : null;
+  }
+  function screenWorkAt(sc, index, now) {
+    if (!sc || sc.paused || !sc.busy || isBlockedScreen(sc) || isIdleTask(sc.task)) return null;
+    if (!sc.hasActive) return null;
+    const t = time(sc.activeAt); if (t == null || t > now + MIN || now - t > BOT_STALE_MIN * MIN) return null;
+    const batch = batchActiveAt(index); if (batch && str(sc.activeAt) === batch) return null;
+    return t;
+  }
+  function floorTag(name, activity, opts) {
+    const a = activity || {}, o = opts || {};
+    const state = a.blocked || a.state === 'blocked' ? 'blocked' : a.working || a.state === 'working' ? 'working' : 'idle';
+    let title = taskTitle(o.title != null ? o.title : a.task);
+    if (title.length > 40) title = title.slice(0, 39).trimEnd() + '…';
+    const sub = title ? state + ' · ' + title : state;
+    return { state, title, sub, text: str(name) + ' · ' + sub };
+  }
   function botActivity(bot, now, ctx) {
     const sig = botSignals(bot, ctx, true), f = freshness(bot, now, sig), id = str(bot && bot.bot_id), c = ctx || {};
-    const sc = id && c.screens && c.screens.screens && c.screens.screens[id];
-    /* cs-366c0fe4 (President fix b): a fresh busy:true (activeAt within BOT_STALE_MIN) outranks offline for the working pose and tag;
-       the screen itself keeps its offline caption and mirror state (screenState is unchanged). */
-    const ta = sc && sc.offline && sc.busy && sc.hasActive ? time(sc.activeAt) : null;
-    if (ta != null && !sc.paused && ta <= now + MIN && now - ta <= BOT_STALE_MIN * MIN) return Object.assign(freshness(bot, now, sig.concat([{ at: sc.activeAt, src: 'screen' }])), { working: true });
-    if (f.stale || !sc || sc.paused || !(sc.offline || (sc.hasActive && !sc.busy))) return Object.assign(f, { working: !f.stale });
-    const q = sig.find(v => v && v.idle), t = q ? time(q.at) : null, m = t == null ? null : Math.max(0, Math.floor((now - t) / MIN));
-    return Object.assign(f, { stale: true, working: false, label: (sc.offline ? 'offline · last seen ' : 'idle · last active ') + (m == null ? 'unknown' : ageText(m)) });
+    const index = c.screens, sc = id && index && index.screens && index.screens[id];
+    const title = taskTitle(sc ? sc.task : (bot && bot.task));
+    if (isBlockedScreen(sc) || (!sc && /^blocked(?:\s*:|\b)/i.test(taskLine(bot && bot.task)))) {
+      return Object.assign({}, f, { working: false, blocked: true, state: 'blocked', task: title });
+    }
+    const wt = screenWorkAt(sc, index, now);
+    if (wt != null) {
+      const ageMin = Math.max(0, Math.floor((now - wt) / MIN));
+      return Object.assign({}, f, { working: true, blocked: false, state: 'working', task: title, source: 'screen', lastSeen: wt, ageMin, stale: false, label: '' });
+    }
+    if (sc && (sc.offline || (sc.hasActive && !sc.busy) || isIdleTask(sc.task))) {
+      const q = sig.find(v => v && v.idle), t = q ? time(q.at) : time(sc.lastSeen || sc.activeAt || sc.at);
+      const m = t == null ? null : Math.max(0, Math.floor((now - t) / MIN));
+      const label = (sc.offline ? 'offline · last seen ' : 'idle · last active ') + (m == null ? 'unknown' : ageText(m));
+      return Object.assign({}, f, { stale: true, working: false, blocked: false, state: 'idle', task: title, label });
+    }
+    return Object.assign({}, f, { working: false, blocked: false, state: 'idle', task: title });
   }
+
   /* GitHub pulls list -> Map botLower -> newest merged_at, by the branch's first word (cursor/..., cursor-obsfix-..., claude/..., chatgpt/...). */
   function prMerges(list, into) {
     const m = into || new Map();
@@ -1661,18 +1718,28 @@
     if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
     out.updated_at = time(o.updated_at) != null ? str(o.updated_at) : '';
     const s = o.screens && typeof o.screens === 'object' && !Array.isArray(o.screens) ? o.screens : {};
-    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true, offline: e.offline === true, lastSeen: time(e.lastSeen) != null ? str(e.lastSeen) : '',
-      activeAt: time(e.activeAt) != null ? str(e.activeAt) : '', hasActive: Object.prototype.hasOwnProperty.call(e, 'activeAt'), task: str(e.task).replace(/^Task:\s*/i, '').trim().slice(0, 120) }; }
+    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; const task = str(e.task).replace(/^Task:\s*/i, '').trim().slice(0, 120);
+      out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true, offline: e.offline === true, lastSeen: time(e.lastSeen) != null ? str(e.lastSeen) : '',
+      activeAt: time(e.activeAt) != null ? str(e.activeAt) : '', hasActive: Object.prototype.hasOwnProperty.call(e, 'activeAt'), task, blocked: e.blocked === true || /^blocked(?:\s*:|\b)/i.test(task) }; }
     return out;
   }
   /* Tim (Nov 17): a bot drawn napping while it is actually working. OFFICE_STATUS rows only ever go working -> idle, so an idle or
      empty status is promoted to working when there is live proof right now: its mirrored desk screen is fresh (SCREEN_FRESH_MIN)
      and shows its live-work terminal open (busy), or one of its routines is running. Alerts, blocked, needs_tim etc. are untouched. */
   function liveStatus(bot, botId, screens, auto, now) {
-    const b = bot || {}, st = str(b.status).toLowerCase();
+    const b = bot || {}, e = botId && screens && screens.screens && screens.screens[botId];
+    if (isBlockedScreen(e) || (!e && /^blocked(?:\s*:|\b)/i.test(taskLine(b.task)))) return Object.assign({}, b, { status: 'blocked' });
+    if (e && (isIdleTask(e.task) || (e.hasActive && !e.busy))) {
+      const st0 = str(b.status).toLowerCase();
+      if (!st0 || st0 === 'idle' || st0 === 'working') return st0 === 'idle' && !e.blocked ? b : Object.assign({}, b, { status: 'idle' });
+    }
+    const st = str(b.status).toLowerCase();
     if (st && st !== 'idle') return b;
-    const e = botId && screens && screens.screens && screens.screens[botId];
-    const screenLive = !!(e && e.busy && !e.paused && !e.offline && time(e.at) != null && now - time(e.at) <= SCREEN_FRESH_MIN * MIN && time(e.at) <= now + MIN);
+    let screenLive = !!screenWorkAt(e, screens, now);
+    if (!screenLive && e && !e.hasActive && e.busy && !e.paused && !e.offline && !isIdleTask(e.task) && !isBlockedScreen(e)) {
+      const t = time(e.at), batch = batchActiveAt(screens);
+      screenLive = t != null && t <= now + MIN && now - t <= SCREEN_FRESH_MIN * MIN && !(batch && str(e.at) === batch);
+    }
     const routineLive = !!(((auto && auto.rows) || []).some(r => r && r.running && r.ai === b.bot));
     if (!screenLive && !routineLive) return b;
     return Object.assign({}, b, { status: 'working', live: screenLive ? 'screen' : 'routine' });
@@ -2452,7 +2519,7 @@
     daylight, truncate, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, floorTag, screenWorkAt, taskTitle, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
