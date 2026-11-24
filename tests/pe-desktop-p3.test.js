@@ -54,6 +54,8 @@ test('map follows the search: a hidden open job yields to the filtered view, and
   const back = run({ focus: 'J1', search: '', mapMode: 'visible', mapAutoFiltered: true }, [{ id: 'J1' }]);
   assert.equal(back.mapMode, 'selected');
   assert.match(html, /stat\.textContent='NO LOCATION';try\{renderMapHud_\(\)\}catch\(e\)\{\}return\}/);
+  assert.match(html, /stat\.textContent='LOCATING…';try\{renderMapHud_\(\)\}catch\(e\)\{\}/);
+  assert.ok(!/stat\.textContent='LOCATING…';[^\n]*map-hud-show/.test(html));
 });
 
 test('desktop header: one refresh control (countdown chip) and shrinkable middle items', () => {
