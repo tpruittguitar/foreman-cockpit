@@ -1449,7 +1449,12 @@
           let ok = false;
           for (const meter of ['workersRequests', 'pagesBuilds']) {
             const m = r[meter];
-            if (!m || typeof m !== 'object' || !Number.isSafeInteger(m.used) || m.used < 0) continue;
+            if (!m || typeof m !== 'object') continue;
+            if (m.na === true) { row[meter] = { na: true }; ok = true; continue; }
+            if (meter === 'workersRequests' && Number.isSafeInteger(m.scripts) && m.scripts >= 0 && m.used == null) {
+              row[meter] = { scripts: m.scripts }; ok = true; continue;
+            }
+            if (!Number.isSafeInteger(m.used) || m.used < 0) continue;
             const item = { used: m.used };
             if (m.limit != null || m.remaining != null) {
               if (!(Number.isSafeInteger(m.limit) && m.limit > 0 && Number.isSafeInteger(m.remaining)

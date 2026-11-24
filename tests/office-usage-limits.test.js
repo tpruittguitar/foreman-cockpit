@@ -74,6 +74,31 @@ test('usage limits leave absent or invalid readings empty and preserve real zero
   assert.equal(usedOnly.workersRequests.limit, undefined);
 });
 
+test('CloudFlare accepts a real Workers zero with Pages n/a, and a scripts-count fallback', () => {
+  const naCf = L.usageLimitRows(parse({
+    at, provider: 'CLOUDFLARE', status: 'OK', source: 'cloudflare api',
+    workersRequests: { used: 0, remaining: 100000, limit: 100000, resetsAt: '2026-11-24T00:00:00Z' },
+    pagesBuilds: { na: true }
+  }), now)[2];
+  assert.equal(naCf.workersRequests.used, 0);
+  assert.equal(naCf.workersRequests.limit, 100000);
+  assert.equal(naCf.pagesBuilds.na, true);
+  const scriptsOnly = L.usageLimitRows(parse({
+    at, provider: 'CLOUDFLARE', status: 'OK', source: 'cloudflare api',
+    workersRequests: { scripts: 3 },
+    pagesBuilds: { na: true }
+  }), now)[2];
+  assert.equal(scriptsOnly.workersRequests.scripts, 3);
+  assert.equal(scriptsOnly.pagesBuilds.na, true);
+  const pagesScriptsIgnored = L.usageLimitRows(parse({
+    at, provider: 'CLOUDFLARE', status: 'OK', source: 'cloudflare api',
+    workersRequests: { used: 0, remaining: 100000, limit: 100000, resetsAt: '2026-11-24T00:00:00Z' },
+    pagesBuilds: { scripts: 3 }
+  }), now)[2];
+  assert.equal(pagesScriptsIgnored.workersRequests.used, 0);
+  assert.equal(pagesScriptsIgnored.pagesBuilds, undefined);
+});
+
 test('limit readings leave AI usage rows and their status fallback unchanged', () => {
   const claude = { at, provider: 'CLAUDE', meter: 'weekly', usedPct: 71, status: 'OK' };
   const fallback = { as_of: at, services: [{ name: 'Claude', pct_used: 11 }] };
