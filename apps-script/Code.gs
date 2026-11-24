@@ -184,7 +184,7 @@ function doPost(e) {
 function auth_(k) { return PASSPHRASE && k === PASSPHRASE; }
 function out_(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
 /** One entry point for every canonical write (HTTP POST, GET submit, Drive queue). The key is checked by the HTTP layer only. */
-var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived', 'archive_sweep', 'resolve_held_email', 'rotate_logs', 'evidence_repair'];
+var WRITE_ACTIONS = ['intake', 'ruling', 'data_discovery', 'upsert_application', 'interview_note', 'approve_resume', 'save_rules', 'save_scoring_model', 'undo_ruling', 'install_automation', 'batch', 'rotate_receipts', 'correct_receipts', 'reconcile_intake_receipt', 'migration', 'freeze_writer', 'unfreeze_writer', 'restore_archived', 'archive_sweep', 'resolve_held_email', 'rotate_logs', 'evidence_repair', 'delete_rows'];
 function dispatchWrite_(req) {
   req = req || {};
   if(req.automation){var alignmentError=automationEnvelopeError_(req,automationAlignmentRead_());if(alignmentError)return {ok:false,mode:'PAUSED_CONFLICT',error:alignmentError};}
@@ -209,6 +209,7 @@ function dispatchWrite_(req) {
   if (a === 'unfreeze_writer') return setFreeze_(req, false);
   if (a === 'restore_archived') return restoreArchived_(req);
   if (a === 'archive_sweep') return archiveSweep_(req);
+  if (a === 'delete_rows') return deleteRows_(req);
   if (a === 'resolve_held_email') return resolveHeldEmail_(req);
   if (a === 'correct_receipts') return correctReceipts_(req);
   if (a === 'reconcile_intake_receipt') return reconcileIntakeReceipt_(req);
@@ -221,7 +222,7 @@ function dispatchWrite_(req) {
     var malformed = [];
     list.forEach(function (sub, ix) {
       var err = !sub || typeof sub !== 'object' ? 'request must be a JSON object'
-        : sub.action === 'batch' || sub.action === 'archive_sweep' || sub.action === 'resolve_held_email' || sub.action === 'rotate_logs' || sub.action === 'evidence_repair' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
+        : sub.action === 'batch' || sub.action === 'archive_sweep' || sub.action === 'delete_rows' || sub.action === 'resolve_held_email' || sub.action === 'rotate_logs' || sub.action === 'evidence_repair' || WRITE_ACTIONS.indexOf(sub.action) < 0 ? 'unsupported action in batch: ' + sub.action
         : requestShapeError_(sub);
       if (err) malformed.push({ index: ix, ok: false, error: err });
     });
@@ -1538,6 +1539,65 @@ function archiveSweep_(req) {
       PRIMARY_IDS: pids, CHANGES: ['ARCHIVED_TERMINAL'], ARCHIVE_FILE_ID: st.archiveId, ARCHIVE_APPENDED: add.length, READBACK_VERIFIED: 'PENDING', TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: 'PENDING_VERIFICATION', EXECUTED_AT: at };
     var writeId = stageVerification_('ARCHIVE_SWEEP', [], [receipt], countsLineOf_(all), at);
     return { ok: true, op: 'apply', verification: 'PENDING', writeId: writeId, requestId: rid, moved: pids.length, archiveAppended: add.length, summary: summary };
+  } finally { lock.releaseLock(); }
+}
+
+/* ================= delete rows (cs-a10d93a2, Tim 2026-11-24 16:06 ET) =================
+ * "not dead .... deleted. they never got a complete evaluation. if they are legit good jobs many will likely be rediscovered
+ * and reenter the pipeline". delete_rows physically removes named rows from the live master in one verified write.
+ * Protected rows are skipped: APPLIED (bucket or application evidence), any interview state (payload/tags or an
+ * INTERVIEW_NOTE event), and archive state (ARCHIVE_BUCKETS or ARCHIVE_STATE). The archive and identity match are untouched;
+ * no re-import block is added, so a rediscovered job re-enters intake normally. */
+var DELETE_ROWS_MAX = 1000;
+var DELETE_APPLIED_KEYS = ['APP_DATE', 'APP_STATUS_EVIDENCE', 'APPLICATION_STATUS', 'APPLICATION_RECEIPT_GMAIL_ID'];
+/** Pure: which named rows go and which stay. interviewIds is a map of primaryIds with an interview event. */
+function planDeleteRows_(lines, ids, interviewIds) {
+  interviewIds = interviewIds || {};
+  var byPid = rowsByPid_(lines), keys = {}, deleted = [], skipped = [], notFound = [], seen = {};
+  ids.forEach(function (raw) {
+    var pid = String(raw || '').trim(); if (!pid || seen[pid]) return; seen[pid] = true;
+    var hits = byPid[pid] || [];
+    if (!hits.length) { notFound.push(pid); return; }
+    if (hits.length > 1) { skipped.push({ primaryId: pid, reason: 'AMBIGUOUS' }); return; }
+    var r = rowParts_(hits[0]); if (!r) { skipped.push({ primaryId: pid, reason: 'UNPARSEABLE' }); return; }
+    var bucket = r.fixed[4].trim(), P = r.P || {}, tags = String(r.fixed[6] || '');
+    var has = function (k) { var v = String(P[k] == null ? '' : P[k]).trim(); return v !== '' && v !== '-'; };
+    var reason = '';
+    if (bucket === 'APPLIED' || DELETE_APPLIED_KEYS.some(has)) reason = 'APPLIED';
+    else if (interviewIds[pid] || /INTERVIEW/i.test(tags) || Object.keys(P).some(function (k) { return /INTERVIEW/.test(k) && has(k); }) || /INTERVIEW|SCREEN|OFFER/i.test(String(P.APP_STATUS || ''))) reason = 'INTERVIEW';
+    else if (ARCHIVE_BUCKETS.indexOf(bucket) >= 0 || has('ARCHIVE_STATE')) reason = 'ARCHIVE';
+    if (reason) { skipped.push({ primaryId: pid, reason: reason, bucket: bucket }); return; }
+    keys[rowKey_(hits[0])] = true; deleted.push({ primaryId: pid, bucket: bucket });
+  });
+  return { keys: keys, deleted: deleted, skipped: skipped, notFound: notFound };
+}
+/** POST delete_rows {primaryIds: [...], reason: "...", requestId?, actor?}. An empty primaryIds list is a no-op readback. */
+function deleteRows_(req) {
+  req = req || {};
+  var ids = req.primaryIds, reason = String(req.reason || '').trim();
+  if (!Array.isArray(ids)) return { ok: false, mode: 'REJECTED_SCHEMA', error: 'delete_rows needs primaryIds (array)' };
+  if (!reason) return { ok: false, mode: 'REJECTED_SCHEMA', error: 'delete_rows needs a reason' };
+  if (ids.length > DELETE_ROWS_MAX) return { ok: false, mode: 'REJECTED_SCHEMA', error: 'delete_rows takes at most ' + DELETE_ROWS_MAX + ' primaryIds' };
+  if (!ids.length) return { ok: true, action: 'delete_rows', deleted: 0, skipped: [], notFound: [], note: 'no primaryIds; nothing read or written' };
+  var lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    DOC_ACCESS_ = [];
+    var M = openMaster_(), snapshot = M.lines.slice(), fence = writeFence_(snapshot); if (fence) return fence;
+    var interviewIds = {}; readEvents_('', 1000, { match: function (e) { return e.type === 'INTERVIEW_NOTE'; } }).forEach(function (e) { interviewIds[String(e.primaryId || '')] = true; });
+    var plan = planDeleteRows_(snapshot, ids, interviewIds);
+    var summary = { ok: true, action: 'delete_rows', reason: reason, requested: ids.length, deleted: plan.deleted.length, skipped: plan.skipped, notFound: plan.notFound, deletedIds: plan.deleted.map(function (d) { return d.primaryId; }) };
+    if (!plan.deleted.length) return summary;
+    var at = new Date().toISOString(), rid = String(req.requestId || '') || ('DELETE-ROWS-' + at.replace(/[^0-9]/g, '').slice(0, 14));
+    var allow = {}; plan.deleted.forEach(function (d) { allow[d.primaryId] = true; });
+    var all = masterWithoutRows_(snapshot, plan.keys);
+    WRITE_CONTEXT_ = { action: 'delete_rows', requestId: rid, deleteRows: allow };
+    saveMasterLines_(all, snapshot);
+    var pids = summary.deletedIds;
+    var receipt = { RECEIPT: 'STATE_CHANGE_RECEIPT', REQUEST_ID: rid, EXECUTED_BY: 'Authorized State Writer (runs as Tim)', TARGET_CANONICAL_ID: pids.length === 1 ? pids[0] : 'MULTIPLE (' + pids.length + ')',
+      PRIMARY_IDS: pids, CHANGES: ['DELETED_ROW'], REASON: reason, SKIPPED: plan.skipped.length, NOT_FOUND: plan.notFound.length, READBACK_VERIFIED: 'PENDING', TARGET_FILE_ID: MASTER_ID, COMPLETION_STATUS: 'PENDING_VERIFICATION', EXECUTED_AT: at, ACTOR: String(req.actor || 'FORGE') };
+    var writeId = stageVerification_('DELETE_ROWS', [], [receipt], countsLineOf_(all), at);
+    summary.verification = 'PENDING'; summary.writeId = writeId; summary.requestId = rid;
+    return summary;
   } finally { lock.releaseLock(); }
 }
 
@@ -3679,4 +3739,4 @@ function readReceipts_() {
 }
 
 // CommonJS export for unit tests (ignored by Apps Script)
-if (typeof module !== 'undefined') module.exports = { readJobDocuments_: readJobDocuments_, profileResumeMetadata_: profileResumeMetadata_, readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, parseNeverConsiderEmployerLine_: parseNeverConsiderEmployerLine_, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, declineNeverConsiderRow_: declineNeverConsiderRow_, queueNeverConsiderDeclines_: queueNeverConsiderDeclines_, normEmployer: normEmployer, employerKey_: employerKey_, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, worklistResearchLines_: worklistResearchLines_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
+if (typeof module !== 'undefined') module.exports = { readJobDocuments_: readJobDocuments_, profileResumeMetadata_: profileResumeMetadata_, readIndex_: readIndex_, writeIndex_: writeIndex_, migrateReceiptIndex_: migrateReceiptIndex_, receiptIndexSummary_: receiptIndexSummary_, saveMasterLines_: saveMasterLines_, scoringPublishConflict_: scoringPublishConflict_, dedupeControlPoints_: dedupeControlPoints_, timFlexChoice_: timFlexChoice_, planUpsertBatch_: planUpsertBatch_, UPSERT_BATCH_MAX: UPSERT_BATCH_MAX, rowReadbackFromText_: rowReadbackFromText_, automationEnvelopeError_: automationEnvelopeError_, protectedCaseEvidence: protectedCaseEvidence, mutateRow: mutateRow, deriveWriterScores_: deriveWriterScores_, recomputeCountsLine: recomputeCountsLine, recomputeEndLine: recomputeEndLine, parsePayload: parsePayload, planIntake: planIntake, applyPlanToLines: applyPlanToLines, parseRulesText: parseRulesText, parseCanonicalNeverConsiderRules: parseCanonicalNeverConsiderRules, parseNeverConsiderEmployerLine_: parseNeverConsiderEmployerLine_, ruleById: ruleById, categoryTerms: categoryTerms, preExclusionCandidates: preExclusionCandidates, runCounters_: runCounters_, intakeResponse_: intakeResponse_, INTAKE_OUTCOMES: INTAKE_OUTCOMES, matchExisting: matchExisting, indexExisting: indexExisting, boardJobIds: boardJobIds, employerReqCores: employerReqCores, protectedIdentity_: protectedIdentity_, classifyNeverConsider: classifyNeverConsider, declineNeverConsiderRow_: declineNeverConsiderRow_, queueNeverConsiderDeclines_: queueNeverConsiderDeclines_, normEmployer: normEmployer, employerKey_: employerKey_, normTitle: normTitle, normLocation: normLocation, canonUrl: canonUrl, reqCore: reqCore, sanitizeRecord: sanitizeRecord, BUCKETS: BUCKETS, planUpsertApplication: planUpsertApplication, applyFields_: applyFields_, legacyIntakeProof_: legacyIntakeProof_, reconcileIntakeReceipt_: reconcileIntakeReceipt_, completedReceiptRequestIds_: completedReceiptRequestIds_, dispatchWrite_: dispatchWrite_, operationsRead_: operationsRead_, schedulerRead_: schedulerRead_, readMigrationState_: readMigrationState_, identityChange_: identityChange_, identityConflicts_: identityConflicts_, requestShapeError_: requestShapeError_, setWriteDeadline_: setWriteDeadline_, withDocRetry_: withDocRetry_, isTransientDocError_: isTransientDocError_, DOC_RETRY_DELAYS_MS: DOC_RETRY_DELAYS_MS, isEvidenceKey_: isEvidenceKey_, splitRowEvidence_: splitRowEvidence_, resolveEvidence_: resolveEvidence_, worklistResearchLines_: worklistResearchLines_, foldRunVerifications_: foldRunVerifications_, readRuns_: readRuns_, parseCompanion_: parseCompanion_, parseArchive_: parseArchive_, hydrateLines_: hydrateLines_, readMasterHydrated_: readMasterHydrated_, readEvidence_: readEvidence_, planMasterMigration_: planMasterMigration_, planArchiveSweep_: planArchiveSweep_, heldRecord_: heldRecord_, heldEmails_: heldEmails_, timRuledApplied_: timRuledApplied_, masterWithoutRows_: masterWithoutRows_, planDeleteRows_: planDeleteRows_, deleteRows_: deleteRows_, migrationChunks_: migrationChunks_, chunkState_: chunkState_, evidenceRefOf_: evidenceRefOf_, EVIDENCE_KEYS: EVIDENCE_KEYS, ARCHIVE_BUCKETS: ARCHIVE_BUCKETS, textHash_: textHash_, classifyPendingWrite_: classifyPendingWrite_, verifiedReceipts_: verifiedReceipts_, verifyPendingWrites_: verifyPendingWrites_, replayState_: replayState_, rotateReceipts_: rotateReceipts_, rotateLogs_: rotateLogs_, planEvidenceRepair_: planEvidenceRepair_, evidenceRepair_: evidenceRepair_, maybeRotateLogs_: maybeRotateLogs_, readEvents_: readEvents_, readReceiptsWithArchives_: readReceiptsWithArchives_, LOG_ROTATE_BYTES: LOG_ROTATE_BYTES, SHALLOW_ARCHIVE_BYTES: SHALLOW_ARCHIVE_BYTES, findRequestResult_: findRequestResult_, correctReceipts_: correctReceipts_, errorStack_: errorStack_, resetExecution_: function () { MASTER_WRITTEN_IN_EXECUTION_ = false; EVIDENCE_ROUTING_ = null; CURRENT_WRITE_ID_ = ''; WRITE_CONTEXT_ = {}; POLICY_CACHE_ = {}; }, policyConfig_: policyConfig_, canonicalRulesText_: canonicalRulesText_, readCanonicalRules_: readCanonicalRules_, saveCanonicalRules_: saveCanonicalRules_, readScoringModel_: readScoringModel_, saveScoringModel_: saveScoringModel_, readRules_: readRules_, readFlexPolicy_: readFlexPolicy_, POLICY_GITHUB_DEFAULTS: POLICY_GITHUB_DEFAULTS, checkPolicySource: checkPolicySource, VERIFY_GRACE_MS: VERIFY_GRACE_MS, validateScoringModel_: validateScoringModel_, SCORING_MODEL_ID: SCORING_MODEL_ID, SCORING_WEIGHT_KEYS: SCORING_WEIGHT_KEYS, WRITE_ACTIONS: WRITE_ACTIONS };
