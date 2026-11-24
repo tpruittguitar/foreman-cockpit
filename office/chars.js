@@ -790,11 +790,11 @@ export function animate(c, pose, t, dt, opts) {
       break;
     }
     case 'wave': {
-      // needs Tim: stands at its own desk waving both arms, looping
-      // (Tim, item 9) ONE arm waves high to get Tim's attention, the other rests
+      // blocked: hop up and down with one hand raised; the other arm rests
       const w = still ? 0 : Math.sin(t * 9 + ph);
-      armR.z = -(2.6 + 0.4 * w) * sideR; armR.x = 0;
-      bob = still ? 0 : Math.abs(Math.sin(t * 4.5 + ph)) * 0.012; break;
+      armR.z = -(2.6 + 0.4 * w) * sideR; armR.x = 0; armL.x = -1.05;
+      const hop = window.OfficeLogic && window.OfficeLogic.blockedHopOffset ? window.OfficeLogic.blockedHopOffset(t, ph, still) : (still ? 0 : Math.abs(Math.sin((t || 0) * 6 + (ph || 0))) * 0.16);
+      bob = hop; break;
     }
     case 'pool': {
       const stroke = still ? 0 : opts.stroke != null ? opts.stroke : Math.max(0, Math.sin(t * 1.6 + ph)) ** 3; // opts.stroke: L.poolShot (-0.6 pull back .. 1 strike)

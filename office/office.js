@@ -1345,7 +1345,7 @@ function buildWorld() {
     const now = Date.now(), list = bots().filter(b => deskOf(b.bot)), ctx = signalCtx();
     S.fresh = Object.fromEntries(list.map(b => [b.bot, freshOf(b, now, ctx)]));
     S.needsSet = S.state === 'failed' ? new Set() : L.needsTimNames(needsData());
-    plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh, { training: DEMO ? [] : S.training, needs: S.needsSet }); // item 3 / 9: only a real needs_tim item waves
+    plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh, { training: DEMO ? [] : S.training, needs: S.needsSet }); // cs-31de0ce8: blocked task-file state waves/hops; needsSet is not the hop source
     const idleNames = list.filter(b => { const c = chars.get(b.bot), p = plan.plans[b.bot]; return c && p && !p.brk && IDLE_PLAN.has(p.act) && !S.needsSet.has(b.bot) && !c.job && !c.jobs.length; }).map(b => b.bot);
     S.restocker = L.pickRestocker(idleNames, fridgeStock, S.restocker); // item 10: an idle bot restocks when the fridge runs low
     updateInvite(list, idleNames);
@@ -1434,10 +1434,11 @@ function buildWorld() {
     return { key: 'invite:' + cur, spot, pose: 'talk', faceBot: cur, ambient: 'invite', say: L.inviteText(cur) };
   }
   function decide(c, b, convo) {
-    const st0 = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name), needsTim = S.needsSet.has(c.name);
+    const st0 = L.statusStyle(b ? b.status : 'idle'), d = deskOf(c.name);
+    const cue = L.blockedCue(S.fresh && S.fresh[c.name]);
     if (c.spot) return { key: 'spot', spot: c.spot, pose: 'stand' }; // test/screenshot hook only
     if (c.forceNap) return { key: 'force-nap:' + c.forceNap.id, spot: c.forceNap, pose: 'nap', lie: c.forceNap.lie }; // QA hook: T.forceNap
-    if (needsTim) { book.release(c.name); return { key: 'stand', spot: d.stand, pose: 'wave' }; } // real needs_tim item only: stays at its own desk, one arm waving
+    if (cue.hop) { book.release(c.name); return { key: 'stand', spot: d.stand, pose: cue.pose }; } // blocked freshness cue: stays at its own desk, one arm waving
     const trainPlan = plan.plans[c.name];
     if (trainPlan && (trainPlan.act === 'lead' || trainPlan.act === 'visit' || trainPlan.act === 'train' || trainPlan.act === 'listen')) {
       book.release(c.name);
@@ -1469,6 +1470,7 @@ function buildWorld() {
       case 'trip': return slotted({ bike: ['bike'], pool: ['pool'], lounge: ['sit'], board: ['board'], waterfall: ['waterfall'] }[p.trip || p.spot] || ['loiter']) || { key: 'seat:work', spot: d.seat, pose: 'type' }; // idle trip: walk there, idle, the plan flips back to work and the bot walks home and sits
       case 'stale': return { key: 'stale', spot: d.seat, pose: 'sit', stale: true }; // no fresh signal for 2 h: sits quietly, no "?" (Tim, item 3)
       case 'stretch': return { key: 'stretch', spot: d.stand, pose: 'stretch' }; // item 9: short stretch beside the desk, then back to work
+      case 'wave': return { key: 'stand', spot: d.stand, pose: 'wave' };
       case 'work': case 'replay': return { key: 'seat:' + p.act, spot: d.seat, pose: 'type', recent: p.replay };
       case 'replay_board': return Object.assign(slotted(['board']) || { key: 'seat', spot: d.seat, pose: 'type' }, { pose: 'board', recent: p.replay });
       case 'meeting': case 'train': return { key: p.act + ':' + p.seat, spot: CONF_SEATS[p.seat], pose: 'meet', ambient: p.act === 'train' ? 'reply' : '' };
@@ -1496,7 +1498,7 @@ function buildWorld() {
     const b = botByName(c.name), reduced = reducedMQ.matches;
     const frozen = S.state === 'failed';
     c.setFrozen(frozen);
-    const st = L.statusStyle(b ? b.status : 'idle'), needs = S.needsSet.has(c.name) && !frozen;
+    const st = L.statusStyle(b ? b.status : 'idle'), needs = S.needsSet.has(c.name) && !frozen, cue = L.blockedCue(S.fresh && S.fresh[c.name]);
     if (frozen) {
       c.warn.visible = false; c.quest.visible = false; c.zzz.visible = false; c.setExpression(L.exprFor({ failed: true, pose: c.pose, name: c.name })); c.updateFace(dt, clock, true);
       animate(c, c.pose === 'type' || c.pose === 'sit' ? 'sit' : 'frozen', clock, dt, { reduced: true, holding: false });
@@ -1510,7 +1512,7 @@ function buildWorld() {
       // walking cap: at most a third of the bots on the move; others wait where they are (alerts and session walks never wait)
       const far = Math.hypot(g.spot.x - c.pos.x, g.spot.z - c.pos.y) > 0.4;
       const home = !!dk && Math.hypot(g.spot.x - dk.seat.x, g.spot.z - dk.seat.z) < 0.05; /* QA #409: back to the seat the moment a break ends, never held by the walk cap */
-      if (!L.mayStartWalk(far, needs || c.forceNap || home || L.isSessionWalk(g), walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
+      if (!L.mayStartWalk(far, cue.hop || c.forceNap || home || L.isSessionWalk(g), walkingNow, chars.size)) { if (!c.wantSince) c.wantSince = clock; }
       else { c.goalKey = g.key; c.goal = g; c.arrived = false; c.wantSince = 0; if (!g.key.startsWith('restock:')) { c.restocked = false; c.shelfPicked = false; } c.path = route({ x: c.pos.x, z: c.pos.y }, g.spot); c.prog = null; if (far) walkingNow++; }
     }
     const goal = c.goalKey === g.key ? g : (c.goal || g);
@@ -1553,14 +1555,13 @@ function buildWorld() {
     if (goal.pose === 'fridge' && c.arrived && clock - c.arrivedAt > 1.4 && c.tookKey !== c.goalKey) { c.tookKey = c.goalKey; fridgeStock = L.fridgeTake(fridgeStock); layoutCans(lastDeskCans); }
     const nowMs = Date.now(), fresh = S.fresh[c.name], itemsNow = items(), gk = goal.key || '';
     const near = !renderer.xr.isPresenting && !TV && Math.hypot(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) < 1.5 && pose !== 'nap' && pose !== 'deskSleep';
-    c.setExpression(L.exprFor({ pose, name: c.name, t: clock, needsTim: needs, status: L.failedPr(c.name, itemsNow, S.pulls) ? 'failed' : b ? L.statusStyle(b.status).status : 'idle', stale: !!(fresh && fresh.stale), near,
+    c.setExpression(L.exprFor({ pose, name: c.name, t: clock, needsTim: needs, status: L.failedPr(c.name, itemsNow, S.pulls) ? 'failed' : (fresh && fresh.state) || (b ? L.statusStyle(b.status).status : 'idle'), stale: !!(fresh && fresh.stale), near,
       mergedRecently: L.mergedRecently(c.name, itemsNow, S.prStates, S.prTimes, nowMs), greeted: (() => { const hr = chars.get(L.TRAINER); return !!(hr && hr.goalKey === 'invite:' + c.name && hr.arrived); })(),
       surprised: gk.startsWith('job:') && gk.endsWith(':receive') && c.arrived && clock - c.arrivedAt < 2.5, ambient: goal.ambient || '' })); // eased + blinking in c.updateFace
 
-    c.warn.visible = needs;
-    c.quest.visible = false; // "?" is gone: only a real needs_tim item shows anything (the warning triangle + arm wave)
+    c.quest.visible = false;
     c.updateFace(dt, clock, reduced);
-    if (needs) { const p = L.pulse(clock, reduced); c.warn.userData.mat.emissiveIntensity = 0.3 + p; c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; }
+    if (cue.sign) { const p = L.pulse(clock, reduced); c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; c.warn.visible = true; } else if (c.warn.visible) { c.warn.visible = false; c.warn.scale.setScalar(1); }
     const perch = ['sit', 'type', 'game', 'deskSleep'].includes(pose) && !!dk && Math.hypot(c.pos.x - dk.seat.x, c.pos.y - dk.seat.z) < 0.1;
     animate(c, pose, clock, dt, { perch, chair: goal.key === 'lead' && pose === 'talk', reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null, nap: pose === 'nap' && goal.lie ? goal.lie.seat : null });
     const nap = pose === 'nap' ? L.napFit(c, goal.lie && goal.lie.seat) : null;
@@ -2246,7 +2247,7 @@ function buildWorld() {
   desks: desks.map(d => ({ name: d.name, seat: d.seat, stand: d.stand, visit: d.visit })),
   slots: SLOTS.concat(BOARD_SLOTS).map(s => ({ id: s.id, kind: s.kind, x: +s.x.toFixed(3), z: +s.z.toFixed(3), face: s.face })), trainer: TRAINER_SPOT }),
     info: () => ({ camY: +camera.position.y.toFixed(3), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, chars: chars.size, desks: desks.length, deskNames: desks.map(d => d.name),
-      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: Object.fromEntries(Object.keys(plan.plans || {}).map(n => { const c = chars.get(n), src = plan.plans[n] || {}, act = c ? L.actionLabel(c.goalNow, c.pose, src.act || '') : (src.act || ''); return [n, Object.assign({}, src, { act })]; })), activity: Object.fromEntries(Object.entries(S.fresh).map(([n, f]) => { const c = chars.get(n), sched = (plan.plans[n] || {}).act || ''; return [n, { plan: c ? L.actionLabel(c.goalNow, c.pose, sched) : sched, working: f.working, source: f.source || 'none', ageMin: f.ageMin }]; })), meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
+      poses: [...chars.values()].map(c => c.name + ':' + c.pose), goals: [...chars.values()].map(c => c.name + ':' + c.goalKey + ':' + c.path.length), plan: Object.fromEntries(Object.keys(plan.plans || {}).map(n => { const c = chars.get(n), src = plan.plans[n] || {}, act = c ? L.actionLabel(c.goalNow, c.pose, src.act || '') : (src.act || ''); return [n, Object.assign({}, src, { act })]; })), activity: Object.fromEntries(Object.entries(S.fresh).map(([n, f]) => { const c = chars.get(n), sched = (plan.plans[n] || {}).act || ''; return [n, { blocked: !!(f && (f.blocked || f.state === 'blocked')), state: f && f.state, pose: c ? c.pose : '', warn: !!(c && c.warn && c.warn.visible), hopY: c ? c.rig.position.y : 0, plan: c ? L.actionLabel(c.goalNow, c.pose, sched) : sched, working: f.working, source: f.source || 'none', ageMin: f.ageMin }]; })), meeting: plan.meeting && plan.meeting.id, training: !!plan.training,
       lights: scene.children.filter(o => o.isLight).length, walking: walkingNow, positions: [...chars.values()].map(c => [c.name, +c.pos.x.toFixed(2), +c.pos.y.toFixed(2), c.pose, +(c.radius || 0.3).toFixed(2)]), slots: [...chars.keys()].map(n => book.slotOf(n)).filter(Boolean),
       generic: [...chars.values()].filter(c => c.generic).map(c => c.name), idle: [...chars.values()].map(c => c.name + ':' + (c.idleAct || '')), fridge: fridgeStock, restocker: S.restocker, needs: [...S.needsSet],
       jobs: [...chars.values()].filter(c => c.job).map(c => c.name + ':' + c.job.phase), pipeline: { live: pipe.live, embed: !!pipe.css, browsing: pipe.browsing }, conf: CONF })
