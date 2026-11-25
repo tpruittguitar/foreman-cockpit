@@ -110,3 +110,13 @@ test('GUI review (cs-e3a8680f): after ET midnight a previous-day STALE summary k
  assert.doesNotMatch(h,/· today/,'no current-day today claim');assert.match(h,/Completed writes · Oct 28<\/h4><b>1<\/b>/,'numbers kept, labelled with their own day');assert.match(h,/Counts for: 2026-10-28/);
  const fresh=A.html({data:d,now},{columns:()=>'<svg/>',bars:()=>'<svg/>'});assert.match(fresh,/Completed writes · today/);assert.doesNotMatch(fresh,/STALE/);
 });
+test('GUI round 2 (cs-e3a8680f): the Writer STALE banner is on the open Operations view, before the collapsed diagnostics',()=>{
+ const d={...A.aggregate(fixture({a:entry('W1')}),now),ok:true};
+ const stale={...d,stale:true,asOf:'2026-10-29T03:55:00Z',staleReason:'Eastern day rollover pending: counts are for '+d.todayDate};
+ const b=A.staleBanner(stale);assert.match(b,/role="status" aria-label="Writer activity is STALE · as of Oct 28, 11:55 PM ET\. Eastern day rollover pending/);assert.match(b,/⚠ Writer activity is STALE/);
+ assert.equal(A.staleBanner(d),'');assert.equal(A.staleBanner(null),'');assert.equal(A.staleBanner({ok:false,stale:true}),'');
+ const ops=fs.readFileSync(path.join(__dirname,'..','pipeline-operations-ui.js'),'utf8'),i=ops.indexOf('PipelineWriterActivity.staleBanner(activity.data)'),j=ops.indexOf('<details class="cr-diagnostics"');
+ assert.ok(i>0&&j>0&&i<j,'banner is rendered outside and before details.cr-diagnostics');
+ const page=fs.readFileSync(path.join(__dirname,'..','pipeline.html'),'utf8');
+ assert.match(page,/if\(index&&!PipelineWaitingQueues\.staleLabel\(st\)&&Date\.now\(\)-Date\.parse\(index\.at\)>30\*60000\)note\+=' · delayed evidence'/,'no "delayed evidence" after a STALE label');
+});

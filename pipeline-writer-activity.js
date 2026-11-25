@@ -95,6 +95,8 @@
   }
   function asOfLabel(t){return 'as of '+new Date(t).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})+' ET';}   /* same format as PipelineControlRoom's boardTime */
   function dayLabel(ymd){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd||'');return m?['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2]-1]+' '+(+m[3]):'day unknown';}
+  /* GUI round 2 (cs-e3a8680f): the STALE banner is also shown on the open Operations view, outside the collapsed diagnostics. */
+  function staleBanner(d){if(!d||!d.ok||!d.stale)return '';var banner='Writer activity is STALE · '+asOfLabel(d.asOf)+'. '+(d.staleReason||'');return '<div class="panel cr-writer-stale"><p class="tip warn" role="status" aria-label="'+esc(banner)+'">⚠ '+esc(banner)+'</p></div>';}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   function html(state,charts){
     state=state||{};var d=state.data;
@@ -105,7 +107,7 @@
        labelled with their own Eastern date unless that date is today. */
     var etToday=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(state.now||Date.now()));
     var isToday=d.todayDate===etToday,dayWord=isToday?'today':dayLabel(d.todayDate),h=head;
-    if(d.stale){var banner='Writer activity is STALE · '+asOfLabel(d.asOf)+'. '+(d.staleReason||'');h+='<div class="panel"><p class="tip warn" role="status" aria-label="'+esc(banner)+'">⚠ '+esc(banner)+'</p></div>';}
+    h+=staleBanner(d);
     h+='<div class="dash-grid ops-kpis">'+tile('New job inserts · '+esc(dayWord),d.today.inserts,'Recorded insert operations · Eastern day')+tile('Job updates · '+esc(dayWord),d.today.updates,'Recorded update operations · repeat updates count')+tile('Completed writes · '+esc(dayWord),d.today.writes,'One batch counts as one write')+tile('Jobs touched · '+esc(dayWord),d.today.jobs,'Distinct job IDs across completed writes')+'</div>';
     var cols=d.buckets.map(function(b,i){return {label:i%3===0||i===d.buckets.length-1?new Date(b.start).toLocaleTimeString('en-US',{hour:'numeric',timeZone:'America/New_York'}):'',value:b.writes,color:'#61cdbb'};});
     var bySource=Object.keys(d.sources).sort().map(function(s){return {label:s,value:d.sources[s].inserts+d.sources[s].updates+d.sources[s].otherChanges};});
@@ -117,6 +119,6 @@
     if(state.error)h+='<p class="tip warn">Refresh failed; showing the previous snapshot: '+esc(state.error)+'</p>';
     return h;
   }
-  return {aggregate:aggregate,html:html,source:source};
+  return {aggregate:aggregate,html:html,source:source,staleBanner:staleBanner};
 });
 

@@ -96,7 +96,7 @@
     async function readInterviews(){if(typeof PipelineControlRoom==='undefined')return;var jobs=roomModel().outcomes.recruiting.jobs;await Promise.allSettled(jobs.filter(function(j){return !interviewsReadAt[j.primaryId]||Date.now()-interviewsReadAt[j.primaryId]>300000;}).map(async function(j){var r=await api.get('interview_notes','&primaryId='+encodeURIComponent(j.primaryId));if(r&&r.ok){interviews[j.primaryId]=PipelineControlRoom.interviewStatus(r.text);interviewsReadAt[j.primaryId]=Date.now();}}));}
     function dashboardHtml(store,summary,observed){
       if(typeof PipelineControlRoom==='undefined')return diagnosticsHtml(store,summary,observed);
-      return PipelineControlRoom.html(roomModel(),{boardHistoryOpen:boardHistoryOpen,receiptRecoveryOpen:receiptRecoveryOpen,rateWindowHours:rateWindowHours})+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
+      return PipelineControlRoom.html(roomModel(),{boardHistoryOpen:boardHistoryOpen,receiptRecoveryOpen:receiptRecoveryOpen,rateWindowHours:rateWindowHours})+(typeof PipelineWriterActivity!=='undefined'&&PipelineWriterActivity.staleBanner?PipelineWriterActivity.staleBanner(activity.data):'')+'<details class="cr-diagnostics" data-cr-diagnostics'+(diagnosticsOpen?' open':'')+'><summary>Detailed diagnostics · Writer activity, queue, backlog and source coverage</summary>'+diagnosticsHtml(store,summary,observed)+'</details>';
     }
     function visible(){return lastView&&lastView.isConnected&&lastView.getClientRects().length&&document.visibilityState!=='hidden';}
     function masterChanged(){
