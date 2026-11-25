@@ -43,3 +43,12 @@ test('cs-e3a8680f (4): a snapshot past 90 min is kept, marked STALE with its as-
  a.equal(Q.validate(f.index,f.health,t0+120*60000),f.index,'a 2-hour-old snapshot still validates');
  a.throws(()=>Q.validate(f.index,f.health,t0+25*3600000),/unavailable/,'older than 24 h still fails closed');
 });
+
+test('GUI review (cs-e3a8680f): the kept snapshot reads STALE · as of <boardTime> ET on every queue surface',()=>{
+ a.equal(Q.asOfLabel('2026-11-24T19:15:00Z'),'as of Nov 24, 2:15 PM ET');
+ a.equal(Q.staleLabel({stale:true,asOf:'2026-11-24T19:15:00Z'}),'STALE · as of Nov 24, 2:15 PM ET');
+ a.equal(Q.staleLabel({stale:false,asOf:'2026-11-24T19:15:00Z'}),'');a.equal(Q.staleLabel({stale:true,asOf:null}),'','no invented as-of');
+ const fs=require('node:fs'),path=require('node:path'),html=fs.readFileSync(path.join(__dirname,'../pipeline.html'),'utf8'),mob=fs.readFileSync(path.join(__dirname,'../pipeline-mobile.js'),'utf8');
+ a.ok(html.includes("note=index?(PipelineWaitingQueues.staleLabel(st)||"),'desktop queue bar');a.ok(html.includes('staleLabel:PipelineWaitingQueues.staleLabel(st)'),'mobile feed');
+ a.ok(mob.includes("esc('Decision queue is ' + qs.staleLabel.replace(' · ', ', '))")&&mob.includes("gl('caution') + '<span>' + esc(qs.staleLabel)"),'mobile Decide banner: word, glyph, accessible name');
+});

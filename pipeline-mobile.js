@@ -251,6 +251,8 @@
     var head = '<div class="m-count"><p><b class="m-num m-attn">' + all + '</b> need you</p><span class="m-label">Sort: score ↓</span></div>';
     var h = B().health(), qs = queueState();
     /* Down = orange ⚠ everywhere (header "QUEUE DOWN", this banner, the empty view); loading and stale = yellow "?" (Tim, Stage 5 polish). */
+    /* Kept snapshot 90 min to 24 h old (GUI review, cs-e3a8680f): 'STALE · as of Nov 24, 2:15 PM ET', word and glyph. */
+    if (qs.view === 'ready' && qs.staleLabel) head = '<p class="m-alert m-caution-note m-stale" role="status" aria-label="' + esc('Decision queue is ' + qs.staleLabel.replace(' · ', ', ')) + '">' + gl('caution') + '<span>' + esc(qs.staleLabel) + '</span></p>' + head;
     if (qs.view === 'loading' && q.length) head = '<p class="m-alert m-caution-note m-stale" role="status">' + gl('caution') + '<span>Decision queue loading: showing only jobs marked Needs decision.</span></p>' + head;
     /* Stale: "Showing queue from 8:53 AM ET. Refresh failed (server error). Retry" (Tim, Stage 5 review). After a failed
        retry: "... Retry failed at 9:40 AM ET (server error). Retry"; the queue time already says when it last loaded. */
@@ -310,7 +312,7 @@
   }
   function queueState() {
     var s = B().decideState(), when = s.loadedAt ? new Date(s.loadedAt).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) + ' ET' : 'never';
-    if (s.status === 'ready') return { view: 'ready', when: when };
+    if (s.status === 'ready') return { view: 'ready', when: when, staleLabel: s.staleLabel || '' };
     if (s.have) return { view: s.status === 'error' || s.error ? 'stale' : 'ready', when: when, error: s.error };
     if (s.status === 'error' || s.error || Date.now() - started > 60000) return { view: 'unavailable', when: when, error: s.error };
     return { view: 'loading', when: when };

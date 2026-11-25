@@ -97,3 +97,16 @@ test('cs-e3a8680f: a failed read serves the last good copy marked STALE; fresh d
  const s=await mod.loadActivityKept(kept,down,now+5*60000);assert.equal(s.publicationStatus,'STALE');assert.equal(s.asOf,summary.publishedAt);assert.match(s.staleReason,/refresh failed/);assert.equal(s.today.writes,fresh.today.writes);
  await assert.rejects(()=>mod.loadActivityKept(kept,down,now+25*3600000),/unavailable/,'a copy older than 24 h is not served');
 });
+
+test('GUI review (cs-e3a8680f): after ET midnight a previous-day STALE summary keeps its numbers, shows the banner and claims no current-day today',()=>{
+ const bt=t=>new Date(t).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+ const d={...A.aggregate(fixture({a:entry('W1')}),now),ok:true};   // todayDate 2026-10-28, published 8:00 PM ET
+ const pub='2026-10-29T03:55:00Z',after=Date.parse('2026-10-29T04:30:00Z');   // 12:30 AM ET on Oct 29
+ const stale={...d,stale:true,publicationStatus:'STALE',asOf:pub,staleReason:'Eastern day rollover pending: counts are for '+d.todayDate};
+ const h=A.html({data:stale,now:after},{columns:()=>'<svg/>',bars:()=>'<svg/>'});
+ const banner='Writer activity is STALE · as of '+bt(pub)+' ET. Eastern day rollover pending: counts are for 2026-10-28';
+ assert.ok(h.includes('role="status" aria-label="'+banner+'"'),'accessible banner');assert.ok(h.includes('⚠ '+banner),'visible banner with glyph');
+ assert.match(bt(pub),/^Oct 28, 11:55 PM$/);
+ assert.doesNotMatch(h,/· today/,'no current-day today claim');assert.match(h,/Completed writes · Oct 28<\/h4><b>1<\/b>/,'numbers kept, labelled with their own day');assert.match(h,/Counts for: 2026-10-28/);
+ const fresh=A.html({data:d,now},{columns:()=>'<svg/>',bars:()=>'<svg/>'});assert.match(fresh,/Completed writes · today/);assert.doesNotMatch(fresh,/STALE/);
+});
