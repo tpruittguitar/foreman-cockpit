@@ -1595,7 +1595,7 @@ function buildWorld() {
       const rp = c.goalNow && c.goalNow.recent;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
       const fr = !frozen && !needs ? L.activityChip(S.fresh[c.name], plan.training, c.name) : '';
-      /* cs-ffe2ed7d: tag is name · working|idle|blocked · title. Offline is a monitor caption, not the floor state. */
+      /* cs-9e5be547 #3: tag is name · idle, or name · working|waiting|blocked · card (blocked shows its reason). Offline is a monitor caption, not the floor state. */
       const activity = S.fresh[c.name] || {};
       const sc = S.screens && S.screens.screens && S.screens.screens[idFor(c.name, c.botId)];
       const floor = L.floorTag(c.name, activity, { title: activity.task || (sc && sc.task) || '' });
@@ -1642,6 +1642,7 @@ function buildWorld() {
     const ys = L.nudgeLabels(shown); /* card 544b368: a label that would overlap an earlier one moves up a label height */
     shown.forEach((t, i) => { t.c.tag.style.transform = `translate(-50%,-100%) translate(${t.x}px,${ys[i]}px)`; });
     L.labelOverlaps(shown, ys).forEach((o, i) => { if (o) shown[i].c.tag.style.display = 'none'; }); /* card 653d851: a tag still overlapping after the nudge cap hides; needs-Tim tags are placed first */
+    L.tagBoardHides(shown, ys, boardRects).forEach((o, i) => { if (o) shown[i].c.tag.style.display = 'none'; }); /* cs-9e5be547 #4: a tag covering a board face past the sliver hides */
     /* line-of-sight (GUI review finding 7): a tag over a board the camera faces fades to LOS_DIM; which tags show is decided above */
     shown.forEach((t, i) => {
       const dim = t.c.tag.style.display === 'none' ? '' : losRects.some(b => L.rectsOverlap({ x0: t.x - t.w / 2, x1: t.x + t.w / 2, y0: ys[i] - t.h, y1: ys[i] }, b) && camera.position.distanceTo(t.c.root.position) < b.depth) ? String(L.LOS_DIM) : '';
@@ -1692,7 +1693,7 @@ function buildWorld() {
     project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
     pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
-    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred() }); drawFetched(u.ctx, u.c.width, u.c.height, S.fetched.readings, null, null, usage.w); u.t.needsUpdate = true;
+    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred(), fetchedAt: S.fetched.readings }); u.t.needsUpdate = true;   /* cs-9e5be547 #7: fetched stamp is in the usage header */
     const lim = limits.tex; drawUsageLimits(lim.ctx, lim.c.width, lim.c.height, L.usageLimitRows(S.readings, Date.now())); lim.t.needsUpdate = true;
     drawAutos();
     const sw = schedule.tex; drawTrainingSchedule(sw.ctx, sw.c.width, sw.c.height, { rows: L.visibleTrainingSessions(S.training, Date.now()).map(L.formatTrainingSession), fetchedAt: S.fetched.training, boardM: schedule.w }); sw.t.needsUpdate = true;
@@ -1706,16 +1707,17 @@ function buildWorld() {
   let pagesN = 1;
   /* per frame: name chips between the camera and a board it faces fade to LOS_DIM (finding 7) */
   const tmpL = new THREE.Vector3(), tmpF = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpP = new THREE.Vector3(), eye = new THREE.Vector3();
-  let losRects = [];
+  let losRects = [], boardRects = [];   /* boardRects: every board face in front of the camera, near or far (cs-9e5be547 #4) */
   function screenRect(pts) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, front = false;
     for (const p of pts) { tmpP.copy(p).project(camera); if (tmpP.z < 1) front = true; const x = (tmpP.x * 0.5 + 0.5) * innerWidth, y = (-tmpP.y * 0.5 + 0.5) * innerHeight; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
     return front ? { x0, y0, x1, y1 } : null; }
   const corners = (b, z) => [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sy]) => b.g.localToWorld(new THREE.Vector3(sx * b.w / 2, sy * b.h / 2, z)));
   function boardFrame() {
     camera.updateMatrixWorld(); camera.getWorldDirection(tmpF); camera.getWorldPosition(eye); // world position: in VR the camera sits inside the rig
-    losRects = [];
+    losRects = []; boardRects = [];
     for (const b of Object.values(boards)) {
       tmpL.copy(eye); b.g.worldToLocal(tmpL);
+      if (tmpL.z > 0) { const f = screenRect(corners(b, 0.07)); if (f) boardRects.push(Object.assign(f, { id: b.id })); }
       const dist = L.boardDistance(tmpL.x, tmpL.y, tmpL.z, b.w, b.h); b.g.getWorldPosition(tmpC);
       if (tmpL.z > 0 && L.facesBoard(tmpF, tmpC.sub(eye), dist)) { const r = screenRect(corners(b, 0.07)); if (r) losRects.push(Object.assign(r, { id: b.id, depth: eye.distanceTo(b.g.getWorldPosition(tmpC)) })); }
     }

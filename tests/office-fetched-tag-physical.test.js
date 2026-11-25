@@ -45,8 +45,9 @@ test('box and padding scale with the font; no board width falls back to FETCHED_
   const n = fakeCtx(); D.drawFetched(n, 1024, 600, AT); assert.equal(pxOf(n), D.FETCHED_PX);
 });
 test('office.js passes each board width to its fetched tag', () => {
-  for (const id of ['project', 'usage', 'writer', 'constraint']) assert.match(office, new RegExp('drawFetched\\(\\w+\\.ctx, \\w+\\.c\\.width, \\w+\\.c\\.height, [^;]*, null, null, ' + id + '\\.w\\)'));
+  for (const id of ['project', 'writer', 'constraint']) assert.match(office, new RegExp('drawFetched\\(\\w+\\.ctx, \\w+\\.c\\.width, \\w+\\.c\\.height, [^;]*, null, null, ' + id + '\\.w\\)'));
   assert.match(office, /fetchedAt: S\.fetched\.automations, boardM: autos\.w \}/);
+  assert.match(office, /drawUsage\([^\n]*fetchedAt: S\.fetched\.readings \}\); u\.t\.needsUpdate/, 'usage: the fetched stamp is in its header (cs-9e5be547 #7)');
   assert.match(office, /fetchedAt: S\.fetched\.training, boardM: schedule\.w \}/);
 });
 

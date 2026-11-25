@@ -266,6 +266,9 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .wh-decide [data-decide-key="4"] { order: 3; width: 102px; }
   #drawer .wh-decide::after { content: ""; order: 4; width: 1px; background: var(--pe-seam); margin: 0 6px; }
   #drawer .wh-decide [data-decide-key="3"] { order: 5; width: 92px; margin-left: auto; padding: 0 8px !important; color: var(--pe-text-secondary) !important; }
+  /* cs-9e5be547 #1: disabled Pursue (Writer off) takes the same chrome as Research and Decline: no green, no glow. The word stays,
+     and disabled / aria-disabled plus the Writer-off title carry the state. Enabled Pursue keeps its green above. */
+  #drawer .wh-decide [data-decide-key="1"]:disabled, #drawer .wh-decide [data-decide-key="1"][aria-disabled="true"] { border-color: var(--pe-outline) !important; background: var(--pe-hull) !important; color: var(--pe-text-primary) !important; font-weight: 400 !important; box-shadow: none !important; }
   #drawer .wh-decide button:hover { background: var(--pe-plate) !important; }
 
   /* 7. Drawer Overview, D-1 order (Grok Bot step 3): score block -> WHY -> top evidence -> score breakdown -> Tim decision row
@@ -800,6 +803,7 @@ body { font-family: var(--pe-font-ui); -webkit-font-smoothing: antialiased; }
   #drawer .wh-decide [data-decide-key="1"] { order: 1; border-color: var(--pe-green) !important; background: var(--pe-raised) !important; color: var(--pe-green) !important; font-weight: 600 !important; }
   #drawer .wh-decide [data-decide-key="2"] { order: 2; border-color: var(--pe-amber) !important; color: var(--pe-amber) !important; font-weight: 600 !important; }
   #drawer .wh-decide [data-decide-key="4"] { order: 3; }
+  #drawer .wh-decide [data-decide-key="1"]:disabled, #drawer .wh-decide [data-decide-key="1"][aria-disabled="true"] { border-color: var(--pe-outline) !important; background: var(--pe-hull) !important; color: var(--pe-text-primary) !important; font-weight: 400 !important; box-shadow: none !important; }   /* cs-9e5be547 #1 */
   #drawer .wh-decide::after { content: ""; order: 4; flex: none; width: 1px; background: var(--pe-seam); margin: 0 2px; }
   #drawer .wh-decide [data-decide-key="3"] { order: 5; color: var(--pe-text-secondary) !important; }
 

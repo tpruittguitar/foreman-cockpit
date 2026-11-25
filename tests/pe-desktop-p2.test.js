@@ -70,3 +70,46 @@ test('GUI 12: Writer off also gates phone decide buttons, undo and the decision 
   const m = fs.readFileSync(path.join(__dirname, '..', 'pipeline-mobile.js'), 'utf8');
   assert.match(m, /wo\.apply\(el, !!\(b && b\.health && b\.health\(\)\.writer === false\)\)/);
 });
+
+// cs-9e5be547 #1 and #2: disabled Pursue matches Research / Decline; the drawer body reserves the sticky decide bar's height.
+const oct15 = fs.readFileSync(path.join(__dirname, '..', 'pipeline-ui-oct15.css'), 'utf8'), desk = fs.readFileSync(path.join(__dirname, '..', 'pipeline-ui-desktop.css'), 'utf8');
+const decl = (css, sel) => { const i = css.indexOf(sel + ' {'); assert.ok(i >= 0, sel); return css.slice(i, css.indexOf('}', i)); };
+test('cs-9e5be547 #1: disabled Pursue takes the Research / Decline chrome; enabled Pursue stays green with its glow', () => {
+  const dis = '#drawer .wh-decide [data-decide-key="1"]:disabled, #drawer .wh-decide [data-decide-key="1"][aria-disabled="true"]';
+  const both = oct15.split(dis + ' {');
+  assert.equal(both.length, 3, 'desktop and phone blocks');
+  const base = decl(oct15, '  #drawer .wh-decide button');
+  for (const part of both.slice(1)) {
+    const r = part.slice(0, part.indexOf('}'));
+    for (const t of ['border-color: var(--pe-outline) !important', 'background: var(--pe-hull) !important', 'color: var(--pe-text-primary) !important', 'box-shadow: none !important']) assert.ok(r.includes(t), t);
+    assert.doesNotMatch(r, /pe-green|pe-glow|#4ade80/i);
+  }
+  for (const t of ['var(--pe-outline)', 'background: var(--pe-hull)', 'box-shadow: none', 'color: var(--pe-text-primary)']) assert.ok(base.includes(t), 'Research shares ' + t);
+  assert.match(html, /#drawer #d-body \.wh-decide \[data-decide-key="3"\]\{color:var\(--pe-text-primary\)!important\}/, 'Decline is primary text');
+  const on = decl(oct15, '  #drawer .wh-decide [data-decide-key="1"]');
+  assert.match(on, /border-color: var\(--pe-green\) !important;[^}]*color: var\(--pe-green\) !important;[^}]*box-shadow: var\(--pe-glow-green\) !important/, 'enabled Pursue unchanged');
+  assert.ok(oct15.indexOf(dis) > oct15.indexOf('#drawer .wh-decide [data-decide-key="1"] {'), 'the disabled rule comes after, and its extra selector part makes it win');
+  assert.equal(typeof W.TITLE, 'string'); assert.ok(W.TITLE.length > 0, 'the Writer-off title still explains the state');
+});
+test('cs-9e5be547 #2: the content above the sticky decide bar reserves at least the bar height', () => {
+  const tok = fs.readFileSync(path.join(__dirname, '..', 'tokens.css'), 'utf8'), decH = Number(/--pe-dec-h: (\d+)px/.exec(tok)[1]);
+  const bar = /#drawer #d-body>\.wh-decide\{[^}]*padding:(\d+)px 0 (\d+)px/.exec(desk), barH = decH + Number(bar[1]) + Number(bar[2]);
+  const m = /#drawer #d-body>:not\(\.wh-decide\):has\(\+ \.wh-decide\)\{padding-bottom:calc\(var\(--pe-dec-h,50px\) \+ (\d+)px\)\}/.exec(desk);
+  assert.ok(m, 'reserved space on the content above the bar');
+  assert.ok(decH + Number(m[1]) >= barH + 12, 'reserve ' + (decH + Number(m[1])) + ' >= bar ' + barH + ' + 12 gap');
+  assert.match(desk, /#drawer #d-body\{[^}]*scroll-padding-bottom:calc\(var\(--pe-dec-h,50px\) \+ 24px\)/);
+  assert.match(desk, /#drawer #d-body>\.wh-decide\{position:sticky;bottom:0/, 'the bar stays sticky');
+  assert.match(html, /function pinDecideRow_\(\)\{var body=\$\('d-body'\),dec=body&&body\.querySelector\('\.wh-decide'\);if\(dec\)body\.appendChild\(dec\);\}/);
+});
+
+test('cs-9755c866: at 768 the brand keeps its type and cannot shrink under PIPELINE EXPLORER', () => {
+  const i = desk.indexOf('@media(max-width:1023px) and (min-width:761px){');
+  assert.ok(i >= 0, '1023-761 header block');
+  const block = desk.slice(i, desk.indexOf('\n}', i) + 2);
+  assert.match(block, /header \.brand\{[^}]*flex:0 0 auto;min-width:max-content;overflow:visible/);
+  assert.doesNotMatch(block, /font-size:\s*var\(--pe-fs-brand\)/);
+  assert.match(desk, /@media\(min-width:1400px\)\{header \.brand,header \.writer-identity,header \.hstat,header \[data-refresh-now\]\{flex:none\}/);
+  const octBrand = decl(oct15, '  header .brand');
+  assert.match(octBrand, /font-size: var\(--pe-fs-brand\)/);
+  assert.match(octBrand, /letter-spacing: var\(--pe-label-tracking\)/);
+});

@@ -115,7 +115,7 @@ test('Other Limits lines: Desktop Cmdr real leftPct plus SAMPLE cap/reset, Cloud
 
 test('wrapWords keeps every character, never adds an ellipsis, splits a word wider than the line', () => {
   const m = t => t.length * 10;
-  assert.deepEqual(L.wrapWords('Workers 0 / 100,000 requests', 150, m), ['Workers 0 /', '100,000', 'requests']);
+  assert.deepEqual(L.wrapWords('Workers 0 / 100,000 requests', 150, m), ['Workers', '0 / 100,000', 'requests'], 'never after the slash (cs-9e5be547 #6)');
   assert.deepEqual(L.wrapWords('abcdefghij', 40, m), ['abcd', 'efgh', 'ij']);
   assert.deepEqual(L.wrapWords('short', 400, m), ['short']);
   const long = 'Latest run failed 2:07 AM ET · CHROME_UNAVAILABLE · Chrome not connected';
@@ -184,4 +184,32 @@ test('limits draw: four columns, every line inside its column, SAMPLE only on De
   assert.equal(c.texts.filter(x => x.t === 'SAMPLE').length, 2);
   assert.ok(c.texts.some(x => x.t.endsWith('requests') && !x.t.startsWith('Workers')), 'CloudFlare wraps onto a second line, full text');
   assert.ok(c.texts.every(x => x.x + x.w <= 1024 - 20 && x.y <= 158), 'inside the panel');
+});
+
+// cs-9e5be547 #6 and #7
+test('wrapWords breaks at spaces and middots and keeps dates, clock times and quantities whole', () => {
+  const m = t => t.length * 10, lines = (t, w) => L.wrapWords(t, w, m);
+  const has = (out, p) => out.some(l => l.includes(p));
+  assert.ok(has(lines('$500 each week · $3,000 total cap to Dec 31, 2026', 250), 'Dec 31, 2026'));
+  assert.ok(has(lines('Unused credit expires weekly · renews Sun 11 AM ET', 200), 'Sun 11 AM ET'));
+  assert.ok(has(lines('Measured Nov 23, 1:58 AM ET · 18% left', 200), 'Nov 23, 1:58 AM ET'));
+  assert.ok(has(lines('Measured Nov 23, 1:58 AM ET · 18% left', 160), '1:58 AM ET'), 'too wide for the whole date: the clock time still holds');
+  assert.ok(has(lines('fetched 11:32:44 AM ET', 150), '11:32:44 AM ET'));
+  assert.deepEqual(lines('Workers 0 / 100,000 requests', 220), ['Workers', '0 / 100,000 requests']);
+  for (const w of [150, 200, 220, 300]) assert.ok(!lines('Workers 0 / 100,000 requests', w).some(l => /\/$/.test(l)), 'never after the slash at ' + w);
+  assert.deepEqual(lines('a · b', 30), ['a ·', 'b'], 'a middot is a break point');
+  assert.ok(!lines('Dec 31, 2026 · Sun 11 AM ET', 130).join('').includes('…'));
+});
+test('usage wall: the fetched stamp sits in the header with Latest reading, not under the last row %', () => {
+  const W = 1024, H = 605, c = fakeCtx(), AT = Date.parse('2026-11-25T11:32:44-05:00');
+  const rows = L.usageRows(parse(claude, duet, Object.assign({}, claude, { provider: 'CHATGPT', usedPct: 1 }), Object.assign({}, claude, { provider: 'GROK', usedPct: 38 })), NOW, null);
+  D.drawUsage(c, W, H, { rows, now: NOW, fetchedAt: AT });
+  const head = c.texts.find(x => x.t.startsWith('Latest reading '));
+  assert.match(head.t, /^Latest reading \d{1,2}:\d\d [AP]M ET · .+ · fetched 11:32:44 AM ET · /);
+  assert.ok(head.y <= 60 && head.x >= 40 + c.texts.find(x => x.t === 'AI USAGE').w, 'header row, clear of the title');
+  assert.equal(c.texts.filter(x => /fetched /.test(x.t)).length, 1, 'one board-level stamp');
+  const big = c.texts.filter(x => /^(\d+%|—)$/.test(x.t)), used = c.texts.filter(x => x.t === 'used');
+  for (const b of big.concat(used)) assert.ok(b.y > head.y + 20, 'nothing fetched near a % or "used"');
+  assert.ok(c.texts.some(x => /^Measured \d/.test(x.t) && x.y > 88), 'provider Measured lines stay in their rows');
+  assert.equal(L.usageHeader(rows, NOW), L.usageHeader(rows, NOW, null), 'no fetch time: header as before');
 });

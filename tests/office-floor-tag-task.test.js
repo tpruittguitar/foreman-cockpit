@@ -11,11 +11,12 @@ test('screens index carries the task line without the "Task:" prefix', () => {
   assert.equal(s.b2.task, '');
 });
 
-test('floor tags carry no chips: name · working|idle|blocked · title (cs-ffe2ed7d)', () => {
+test('floor tags carry no chips: name · idle, or name · working|waiting|blocked · card (cs-ffe2ed7d, cs-9e5be547 #3)', () => {
   const tag = src.slice(src.indexOf('function updateLabels'), src.indexOf('const ys = L.nudgeLabels'));
   assert.doesNotMatch(tag, /class="chip/);
   assert.match(tag, /L\.floorTag\(/);
-  assert.match(tag, /name · working\|idle\|blocked · title/);
+  assert.match(tag, /name · idle, or name · working\|waiting\|blocked · card/);
+  assert.doesNotMatch(src, /name · working\|idle\|blocked · title/);
   assert.match(tag, /floor\.state === 'blocked' \? ' alert'/);
   assert.doesNotMatch(src, /flyEl|\bfly\.sk\b/);
   const idle = L.floorTag('GUI', { working: false, state: 'idle', task: 'idle' });
@@ -45,4 +46,46 @@ test('training whiteboard is dark and the constraint waiting figure fits its gut
   assert.match(draw, /if \(sk && sk\.counter\) \{/);
   assert.match(draw, /const cw = 176 \* s, qw = 94 \* s/);
   assert.match(draw, /shrink\(ctx, qt, 800, 34 \* s, qw - 16 \* s\)/);
+});
+
+// cs-9e5be547 #3: idle is name only; waiting is its own state word; working and blocked keep their shape.
+test('floor tag states: idle drops any title, waiting is a word of its own, blocked keeps its reason', () => {
+  assert.equal(L.floorTag('GUI', { state: 'idle', task: 'P3 office floor tags' }).text, 'GUI · idle', 'idle never carries a card title');
+  assert.equal(L.floorTag('GUI', { state: 'idle' }, { title: 'Release notes' }).text, 'GUI · idle', 'not even a passed title');
+  const w = L.floorTag('QA', { state: 'idle', task: 'waiting: proof run for #559' });
+  assert.equal(w.state, 'waiting'); assert.equal(w.text, 'QA · waiting · proof run for #559');
+  assert.equal(L.floorTag('QA', { waiting: true, state: 'waiting', task: 'proof run for #559' }).text, 'QA · waiting · proof run for #559');
+  assert.equal(L.floorTag('QA', { working: true, state: 'working', task: 'QA proofs' }).text, 'QA · working · QA proofs');
+  const b = L.floorTag('Gauge', { blocked: true, state: 'blocked', task: 'blocked: needs Tim to copy the key' });
+  assert.equal(b.text, 'Gauge · blocked · needs Tim to copy the key', 'the word plus the reason, never colour only');
+  assert.match(src, /floor\.state === 'blocked' \? ' alert' : ''/);
+});
+test('botActivity: a "Task: waiting: <card>" screen is waiting, not idle and not working', () => {
+  const MIN = 60000, NOW = Date.parse('2026-11-25T17:00:00Z'), ago = m => new Date(NOW - m * MIN).toISOString();
+  const BOT = { bot: 'QA', bot_id: 'qa-1', status: 'idle' };
+  const ctx = task => ({ screens: L.parseScreensIndex({ updated_at: ago(1), screens: { 'qa-1': { at: ago(1), activeAt: ago(2), hasActive: true, busy: true, paused: false, task } } }) });
+  const a = L.botActivity(BOT, NOW, ctx('Task: waiting: proof run for #559'));
+  assert.deepEqual([a.state, a.waiting, a.working, a.blocked, a.task], ['waiting', true, false, false, 'proof run for #559']);
+  assert.equal(L.floorTag('QA', a).text, 'QA · waiting · proof run for #559');
+  assert.equal(L.botActivity(BOT, NOW, ctx('Task: my card')).state, 'working');
+  assert.equal(L.botActivity(BOT, NOW, ctx('Task: blocked: no key')).state, 'blocked');
+  assert.equal(L.floorTag('QA', L.botActivity(BOT, NOW, ctx('Task: idle'))).text, 'QA · idle');
+});
+
+// cs-9e5be547 #4: geometric board hide, no name list.
+test('tagBoardHides: a tag covering a board past the sliver hides; a tag clear of every board stays', () => {
+  const board = { x0: 400, x1: 800, y0: 100, y1: 400 };
+  const tags = [{ x: 600, y: 300, w: 100, h: 24 }, { x: 410, y: 300, w: 100, h: 24 }, { x: 200, y: 700, w: 100, h: 24 }, { x: 395, y: 300, w: 100, h: 24 }];
+  // 1: fully on the board; 2: 60% on; 3: desk foreground, no board; 4: 45 of 100 px over
+  assert.deepEqual(L.tagBoardHides(tags, tags.map(t => t.y), [board]), [true, true, false, true]);
+  const sliver = [{ x: 360, y: 300, w: 100, h: 24 }];   // 10 px of 100 over the edge = 10%
+  assert.deepEqual(L.tagBoardHides(sliver, [300], [board]), [false], 'a sliver is allowed');
+  assert.deepEqual(L.tagBoardHides(tags, tags.map(t => t.y), []), [false, false, false, false]);
+  assert.equal(L.TAG_BOARD_SLIVER, 0.2);
+  assert.equal(L.overlapFrac({ x0: 0, x1: 10, y0: 0, y1: 10 }, { x0: 5, x1: 20, y0: 0, y1: 20 }), 0.5);
+  const lbl = src.slice(src.indexOf('function updateLabels'), src.indexOf('function ambientText'));
+  assert.match(lbl, /L\.labelOverlaps\(shown, ys\)[^\n]*\n    L\.tagBoardHides\(shown, ys, boardRects\)\.forEach\(\(o, i\) => \{ if \(o\) shown\[i\]\.c\.tag\.style\.display = 'none'; \}\);/);
+  assert.match(src, /if \(tmpL\.z > 0\) \{ const f = screenRect\(corners\(b, 0\.07\)\); if \(f\) boardRects\.push/, 'every board face in front of the camera, near or far');
+  const logic = fs.readFileSync(path.join(__dirname, '..', 'office', 'office-logic.js'), 'utf8'), fn = logic.slice(logic.indexOf('function tagBoardHides'), logic.indexOf('\n  }\n', logic.indexOf('function tagBoardHides')));
+  assert.doesNotMatch(fn, /GUI|QA|Gauge|Root|Claude|Grok|Hermes|name/, 'no bot names');
 });

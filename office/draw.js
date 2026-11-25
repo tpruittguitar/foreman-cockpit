@@ -392,10 +392,13 @@ export function drawUsage(ctx, W, H, o) {
   ctx.textAlign = 'left';
   ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${44 * s}px ${SANS}`; ctx.fillText('AI USAGE', UW.left * s, 62 * s);
-  if (o.demo) exampleTag(ctx, 262 * s, 56 * s, 20 * s);
+  let headLeft = UW.left * s + ctx.measureText('AI USAGE').width + 24 * s;
+  if (o.demo) headLeft = Math.max(headLeft, 262 * s + exampleTag(ctx, 262 * s, 56 * s, 20 * s) + 24 * s);
   const rows = (o.rows || []).slice(0, 4);
   if (!rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText('Waiting for the first usage reading…', UW.left * s, 140 * s); return; }
-  ctx.textAlign = 'right'; ctx.font = `600 ${18 * s}px ${SANS}`; ctx.fillStyle = '#9aa0a8'; ctx.fillText(L.usageHeader(rows, o.now) + ' · ' + rows[0].source, W - UW.pctRight * s, 58 * s); ctx.textAlign = 'left';
+  /* cs-9e5be547 #7: the board-level fetched stamp rides in this header beside Latest reading, never under a provider's %. */
+  const head = L.usageHeader(rows, o.now, o.fetchedAt) + ' · ' + rows[0].source;
+  ctx.textAlign = 'right'; shrink(ctx, head, 600, 18 * s, W - UW.pctRight * s - headLeft); ctx.fillStyle = '#9aa0a8'; ctx.fillText(head, W - UW.pctRight * s, 58 * s); ctx.textAlign = 'left';
   const top = 88 * s, avail = H - top;
   let M = UM.full, hs = rows.map(u => usageRow(ctx, W, s, u, 0, o, M, true));
   if (hs.reduce((a, b) => a + b, 0) > avail) { M = UM.compact; hs = rows.map(u => usageRow(ctx, W, s, u, 0, o, M, true)); }

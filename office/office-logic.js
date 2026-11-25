@@ -1398,11 +1398,13 @@
      times still fill freshness ages for the hover tip; they do not set working when the task file is idle, blocked, or
      not busy. Blocked stays visible even when activeAt is older than 2 h. */
   function taskLine(task) { return str(task).replace(/^Task:\s*/i, '').trim(); }
+  /* cs-9e5be547 #3: "blocked: <reason>" and "waiting: <card>" lead with their state word; the title is what follows it. */
   function taskTitle(task) {
-    const t = taskLine(task), m = /^blocked(?:\s*:|\b)\s*/i.exec(t);
+    const t = taskLine(task), m = /^(?:blocked|waiting)(?:\s*:|\b)\s*/i.exec(t);
     if (m) return t.slice(m[0].length).trim();
     return /^idle$/i.test(t) ? '' : t;
   }
+  function isWaitingTask(task) { return /^waiting(?:\s*:|\b)/i.test(taskLine(task)); }
   function isBlockedScreen(sc) { return !!(sc && (sc.blocked || /^blocked(?:\s*:|\b)/i.test(taskLine(sc.task)))); }
   function isIdleTask(task) { return /^idle$/i.test(taskLine(task)); }
   function batchActiveAt(index) {
@@ -1411,16 +1413,19 @@
     return n >= 2 ? str(upd) : null;
   }
   function screenWorkAt(sc, index, now) {
-    if (!sc || sc.paused || !sc.busy || isBlockedScreen(sc) || isIdleTask(sc.task)) return null;
+    if (!sc || sc.paused || !sc.busy || isBlockedScreen(sc) || isIdleTask(sc.task) || isWaitingTask(sc.task)) return null;
     if (!sc.hasActive) return null;
     const t = time(sc.activeAt); if (t == null || t > now + MIN || now - t > BOT_STALE_MIN * MIN) return null;
     const batch = batchActiveAt(index); if (batch && str(sc.activeAt) === batch) return null;
     return t;
   }
+  /* cs-9e5be547 #3: name · idle (never a title) | name · waiting · card | name · working · card | name · blocked · reason.
+     The state is always a word, so blocked and waiting never rest on colour alone. */
   function floorTag(name, activity, opts) {
-    const a = activity || {}, o = opts || {};
-    const state = a.blocked || a.state === 'blocked' ? 'blocked' : a.working || a.state === 'working' ? 'working' : 'idle';
-    let title = taskTitle(o.title != null ? o.title : a.task);
+    const a = activity || {}, o = opts || {}, raw = o.title != null ? o.title : a.task;
+    const state = a.blocked || a.state === 'blocked' ? 'blocked' : a.working || a.state === 'working' ? 'working'
+      : a.waiting || a.state === 'waiting' || isWaitingTask(raw) ? 'waiting' : 'idle';
+    let title = state === 'idle' ? '' : taskTitle(raw);
     if (title.length > 40) title = title.slice(0, 39).trimEnd() + '…';
     const sub = title ? state + ' · ' + title : state;
     return { state, title, sub, text: str(name) + ' · ' + sub };
@@ -1431,6 +1436,9 @@
     const title = taskTitle(sc ? sc.task : (bot && bot.task));
     if (isBlockedScreen(sc) || (!sc && /^blocked(?:\s*:|\b)/i.test(taskLine(bot && bot.task)))) {
       return Object.assign({}, f, { working: false, blocked: true, state: 'blocked', task: title });
+    }
+    if (isWaitingTask(sc ? sc.task : (bot && bot.task))) {
+      return Object.assign({}, f, { working: false, blocked: false, waiting: true, state: 'waiting', task: title });
     }
     const wt = screenWorkAt(sc, index, now);
     if (wt != null) {
@@ -1732,19 +1740,48 @@
     if (row.stale) out.push(staleLine);
     return out;
   }
-  /* Word wrap with a caller's measure(text) -> px. Never adds an ellipsis; a single word wider than maxW is split by characters. */
+  /* Word wrap with a caller's measure(text) -> px. Never adds an ellipsis. cs-9e5be547 #6: breaks only at spaces and middots, and
+     keeps a phrase together when it fits: a date ("Dec 31, 2026"), a clock time ("Nov 23, 1:58 AM ET", "Sun 11 AM ET") and a
+     quantity ("0 / 100,000 requests"). A phrase wider than the line wraps at its own spaces; a single word wider than the line
+     is split by characters (last resort). */
+  const WRAP_MONTH = /^(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?$/, WRAP_DAY = /^(?:Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)[a-z]*\.?,?$/;
+  /* 2: never broken while the pair fits on a line (1:58 AM ET, 0 / 100,000); 1: kept together when the whole phrase fits. */
+  function wrapGlue(a, b) {
+    if (a === '·' || b === '·') return 0;
+    if (/^(?:AM|PM|ET)[.,;]?$/i.test(b) || b === '/' || a === '/' || /\/$/.test(a) || /^\//.test(b)) return 2;    // 11 AM ET, 0 / 100,000
+    if ((WRAP_MONTH.test(a) || WRAP_DAY.test(a)) && /^\d/.test(b)) return 1;                                     // Dec 31, Sun 11
+    if (/^\d{1,2},$/.test(a) && /^\d/.test(b)) return 1;                                                         // 31, 2026 · 23, 1:58
+    if (/^[\d.,]+$/.test(a) && /^[a-z]+[.,;]?$/.test(b)) return 1;                                               // 100,000 requests
+    return 0;
+  }
+  function wrapPhrases(words, min) {
+    const out = [];
+    for (let i = 0; i < words.length; i++) {
+      if (out.length && wrapGlue(words[i - 1], words[i]) >= min) out[out.length - 1].push(words[i]);
+      else out.push([words[i]]);
+    }
+    return out;
+  }
   function wrapWords(text, maxW, measure) {
     const out = [];
     for (const para of str(text).split('\n')) {
       let line = '';
-      for (const w of para.split(/\s+/).filter(Boolean)) {
+      const put = w => {
         const t = line ? line + ' ' + w : w;
-        if (measure(t) <= maxW) { line = t; continue; }
+        if (measure(t) <= maxW) { line = t; return; }
         if (line) out.push(line);
         line = '';
-        if (measure(w) <= maxW) { line = w; continue; }
+        if (measure(w) <= maxW) { line = w; return; }
         for (const c of w) { if (line && measure(line + c) > maxW) { out.push(line); line = ''; } line += c; }
-      }
+      };
+      const place = (phrases, next) => phrases.forEach(ph => {
+        const p = ph.join(' '), t = line ? line + ' ' + p : p;
+        if (measure(t) <= maxW) { line = t; return; }
+        if (measure(p) <= maxW) { if (line) out.push(line); line = p; return; }
+        if (ph.length < 2 || !next) { ph.forEach(put); return; }
+        place(wrapPhrases(ph, next), next === 2 ? 0 : null);   // too wide: keep the strong pairs, then single words
+      });
+      place(wrapPhrases(para.split(/\s+/).filter(Boolean), 1), 2);
       out.push(line);
     }
     return out;
@@ -1867,7 +1904,13 @@
     if (pct >= 100) return '5-hr window: FULL, stopped · resets ' + t + ' ET';
     return '5-hr window: ' + Math.round(pct) + '% used · resets ' + t + ' ET';
   }
-  function usageHeader(rows, now) { const t = usageLatest(rows); return t == null ? 'No usage reading yet' : 'Latest reading ' + etClock(t) + ' ET · ' + relTime(new Date(t).toISOString(), now); }
+  /* cs-9e5be547 #7: fetchedAt (the board's last fetch) joins the header as "fetched h:mm:ss AM ET", the drawFetched wording. */
+  function fetchedClock(at) { const t = typeof at === 'number' ? at : Date.parse(at); return Number.isFinite(t) && t > 0 ? 'fetched ' + new Date(t).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', second: '2-digit' }) + ' ET' : ''; }
+  function usageHeader(rows, now, fetchedAt) {
+    const t = usageLatest(rows), f = fetchedAt ? fetchedClock(fetchedAt) : '';
+    const head = t == null ? 'No usage reading yet' : 'Latest reading ' + etClock(t) + ' ET · ' + relTime(new Date(t).toISOString(), now);
+    return f ? head + ' · ' + f : head;
+  }
 
   /* ---------- Desk screens: mirrors of each bot's real screen (office-screens repo; publisher not live yet) ---------- */
   const SCREEN_FRESH_MIN = 15;
@@ -2637,6 +2680,20 @@
     return (fwd.x * toCentre.x + fwd.y * toCentre.y + fwd.z * toCentre.z) / (a * b) >= Math.cos(LOS_DEG * Math.PI / 180);
   }
   const rectsOverlap = (a, b) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+  /* cs-9e5be547 #4: a placed floor tag that covers more than TAG_BOARD_SLIVER of its own box with any on-screen board face hides.
+     Pure geometry on screen rectangles ({x0,x1,y0,y1}); no bot names. A tag that clears every board stays. */
+  const TAG_BOARD_SLIVER = 0.2;
+  function overlapFrac(a, b) {
+    const w = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0), h = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0), area = (a.x1 - a.x0) * (a.y1 - a.y0);
+    return w > 0 && h > 0 && area > 0 ? (w * h) / area : 0;
+  }
+  function tagBoardHides(tags, ys, rects, sliver) {
+    const s = sliver == null ? TAG_BOARD_SLIVER : sliver;
+    return (tags || []).map((t, i) => {
+      const r = { x0: t.x - t.w / 2, x1: t.x + t.w / 2, y0: ys[i] - t.h, y1: ys[i] };
+      return (rects || []).some(b => overlapFrac(r, b) > s);
+    });
+  }
 
   /* Phone name labels (finding 6): never overlapping; on a collision the lower-priority label hides. boxes: { x: centre, y: bottom,
      w, h, prio } in screen px (higher prio wins, then earlier). Returns a visible flag per box. */
@@ -2667,7 +2724,7 @@
   const minContrast = capPx => (capPx >= 24 ? 3 : 4.5);
 
   return { GAME_EVERY,
-    BOARD_FAR_M, LOS_DEG, LOS_DIM, HUD_STILL_MS, boardDistance, facesBoard, rectsOverlap, labelVisibility, labelPrio, hudHidden, parseColor, luminance, contrastRatio, minContrast,
+    BOARD_FAR_M, LOS_DEG, LOS_DIM, HUD_STILL_MS, boardDistance, facesBoard, rectsOverlap, TAG_BOARD_SLIVER, overlapFrac, tagBoardHides, labelVisibility, labelPrio, hudHidden, parseColor, luminance, contrastRatio, minContrast,
     TELEPORT_MAX_RANGE, TELEPORT_MARGIN, teleportTarget, teleportRigPos, VR_STICK_DEAD, VR_MOVE_SPEED, VR_SNAP_DEG, VR_SNAP_ON, VR_SNAP_OFF, stickAxes, stickMove, DESKTOP_QUALITY, VR_QUALITY, qualityFor, pickFrameRate,
     DIM_MIN, DIM_MAX, DIM_DEFAULT, DIM_STEP, DIM_KEY, clampDim, dimFromKnob, knobFromDim, dimStep, dimScale, dimSmooth,
     STATUSES, PRIORITIES, COLUMNS, KNOWN_PROJECTS, STALE_MIN, PUBLISHER_STALE_MIN, USAGE_STALE_MIN, CONVO_WINDOW_MIN, CONVO_MAX, MAX_PER_COLUMN,
@@ -2677,11 +2734,11 @@
     daylight, truncate, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, floorTag, screenWorkAt, taskTitle, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, floorTag, screenWorkAt, taskTitle, isWaitingTask, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, LIMIT_PROVIDERS, readingMeasured, duetRow, deepSeekLines, limitLines, DC_SAMPLE_LINES, wrapWords, NO_READING_YET, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
+    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, LIMIT_PROVIDERS, readingMeasured, duetRow, deepSeekLines, limitLines, DC_SAMPLE_LINES, wrapWords, NO_READING_YET, usageLatest, usageHeader, fetchedClock, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, AGENT_NAMES, AGENT_TO, agentName, parseAgentChat, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
