@@ -113,3 +113,18 @@ test('cs-9755c866: at 768 the brand keeps its type and cannot shrink under PIPEL
   assert.match(octBrand, /font-size: var\(--pe-fs-brand\)/);
   assert.match(octBrand, /letter-spacing: var\(--pe-label-tracking\)/);
 });
+
+test('cs-9755c866: at 390 with touch-phone the brand cannot shrink under PIPELINE EXPLORER', () => {
+  const mob = fs.readFileSync(path.join(__dirname, '..', 'pipeline-ui-mobile.css'), 'utf8');
+  assert.match(mob, /html\.touch-phone header \.brand\{min-width:min-content;overflow:visible\}/);
+  assert.match(mob, /html\.touch-phone header \.brand small\{width:0;min-width:100%;max-width:100%\}/);
+  assert.match(mob, /html\.touch-phone header \.writer-identity,html\.touch-phone header \.hstat\{min-width:0;flex:0 1 auto\}/);
+  assert.doesNotMatch(mob, /html\.touch-phone header \.brand\{[^}]*min-width:max-content/);
+  assert.match(mob, /header \.brand\{font-size:11\.6px!important;letter-spacing:\.85px!important;max-width:38vw!important\}/);
+  // 768 and 1440 rules in the desktop sheet stay as the earlier cs-9755c866 fix left them.
+  const i = desk.indexOf('@media(max-width:1023px) and (min-width:761px){');
+  assert.ok(i >= 0);
+  const block = desk.slice(i, desk.indexOf('\n}', i) + 2);
+  assert.match(block, /header \.brand\{[^}]*flex:0 0 auto;min-width:max-content;overflow:visible/);
+  assert.match(desk, /@media\(min-width:1400px\)\{header \.brand,header \.writer-identity,header \.hstat,header \[data-refresh-now\]\{flex:none\}/);
+});
