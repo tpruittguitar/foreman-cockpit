@@ -341,8 +341,10 @@ export function drawUsage(ctx, W, H, o) {
     /* card 94dfd7f489 (Tim, Nov 18): each plan shows its reset day and time again. */
     ctx.fillText(fit(ctx, u.measured + (u.resets_at ? ' · resets ' + resetClock(u.resets_at) : ''), 600 * s), 34 * s, y + 112 * s);
     ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${19 * s}px ${SANS}`; // 19 px: >= 14 px cap height from 3 m (GUI review 2026-11-18)
-    const pool = [L.fiveHourLine(u, o.now), L.creditLine(u), L.resetsLine(u)].filter(Boolean);
-    pool.forEach((t, j) => ctx.fillText(fit(ctx, t, 600 * s), 34 * s, y + (132 + j * 21) * s));
+    const pool = [u.failed && u.failed.text, L.fiveHourLine(u, o.now), L.creditLine(u), L.resetsLine(u)].filter(Boolean);
+    pool.forEach((t, j) => { const warn = u.failed && t === u.failed.text; if (warn) { ctx.fillStyle = C.stale; ctx.font = `700 ${19 * s}px ${SANS}`; } /* cs-bfacaacf: the failed run is highlighted */
+      ctx.fillText(fit(ctx, (warn ? '? ' : '') + t, 600 * s), 34 * s, y + (132 + j * 21) * s);
+      if (warn) { ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${19 * s}px ${SANS}`; } });
     ctx.textAlign = 'right'; ctx.fillStyle = col; ctx.font = `800 ${92 * s}px ${SANS}`;
     /* Tim (Nov 18, 10:46 AM ET, card bd3ecea): 'used' sits small under the %, and the prediction takes the column right of the %. Sizes unchanged. */
     const px = W - 200 * s;
