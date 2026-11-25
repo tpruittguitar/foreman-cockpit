@@ -38,9 +38,10 @@ test('endpoint serves a bounded precomputed summary and fails honestly on stale 
  assert.equal(d.recent.writes,1);assert.equal(calls,1);assert.doesNotMatch(JSON.stringify(d),/secretId|V2I-1/);
  await assert.rejects(()=>mod.loadActivity(async()=>new Response('down',{status:503}),now),/unavailable/);
  assert.equal((await mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+31*60000)).publicationStatus,'DELAYED');
- await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+91*60000),/stale/);
+ const old=await mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+91*60000);assert.equal(old.publicationStatus,'STALE');assert.equal(old.stale,true);assert.equal(old.asOf,summary.publishedAt);assert.equal(old.recent.writes,1);
+ await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+25*3600000),/stale/);
  await assert.rejects(()=>mod.loadActivity(async()=>new Response('x'.repeat(256*1024+1)),now),/size budget/);
- await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify({...summary,todayDate:'2026-10-27'})),now),/rollover/);
+ const roll=await mod.loadActivity(async()=>new Response(JSON.stringify({...summary,todayDate:'2026-10-27'})),now);assert.equal(roll.publicationStatus,'STALE');assert.match(roll.staleReason,/rollover pending: counts are for 2026-10-27/);assert.equal(roll.asOf,summary.publishedAt);
  let attempts=0;assert.equal((await mod.loadActivity(async()=>++attempts===1?new Response('temporary',{status:503}):new Response(JSON.stringify(summary)),now)).ok,true);
  assert.equal(attempts,2);
  const idle={...summary,indexUpdatedAt:'2026-10-20T00:00:00Z'};assert.equal((await mod.loadActivity(async()=>new Response(JSON.stringify(idle)),now)).ok,true,'a freshly read unchanged index is valid on an idle Writer');
@@ -84,4 +85,38 @@ test('waiting jobs deduplicate receipt aliases and mark missing identities incom
  assert.deepEqual(d.waitingJobs,{count:2,complete:true});
  d=A.aggregate(fixture({a:e,missing:entry('MISSING',[],'NOT_PERSISTED')}),now);
  assert.deepEqual(d.waitingJobs,{count:1,complete:false});
+});
+
+test('cs-e3a8680f: a failed read serves the last good copy marked STALE; fresh data is unchanged; nothing kept means an honest error',async()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../functions/api/writer-activity.js'),'utf8');
+ const mod=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ const summary={...A.aggregate(fixture({a:entry('W1')}),now),schema:'forge.writer-activity.v1',publishedAt:new Date(now).toISOString(),source:{repo:'tpruittguitar/forge-writer-state',sha:'a'.repeat(40)}};
+ const ok=async()=>new Response(JSON.stringify(summary)),down=async()=>new Response('down',{status:503}),kept={value:null};
+ await assert.rejects(()=>mod.loadActivityKept(kept,down,now),/unavailable/,'no last good copy yet');
+ const fresh=await mod.loadActivityKept(kept,ok,now);assert.equal(fresh.publicationStatus,'CURRENT');assert.equal(fresh.stale,undefined,'fresh data carries no STALE fields');
+ const s=await mod.loadActivityKept(kept,down,now+5*60000);assert.equal(s.publicationStatus,'STALE');assert.equal(s.asOf,summary.publishedAt);assert.match(s.staleReason,/refresh failed/);assert.equal(s.today.writes,fresh.today.writes);
+ await assert.rejects(()=>mod.loadActivityKept(kept,down,now+25*3600000),/unavailable/,'a copy older than 24 h is not served');
+});
+
+test('GUI review (cs-e3a8680f): after ET midnight a previous-day STALE summary keeps its numbers, shows the banner and claims no current-day today',()=>{
+ const bt=t=>new Date(t).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+ const d={...A.aggregate(fixture({a:entry('W1')}),now),ok:true};   // todayDate 2026-10-28, published 8:00 PM ET
+ const pub='2026-10-29T03:55:00Z',after=Date.parse('2026-10-29T04:30:00Z');   // 12:30 AM ET on Oct 29
+ const stale={...d,stale:true,publicationStatus:'STALE',asOf:pub,staleReason:'Eastern day rollover pending: counts are for '+d.todayDate};
+ const h=A.html({data:stale,now:after},{columns:()=>'<svg/>',bars:()=>'<svg/>'});
+ const banner='Writer activity is STALE · as of '+bt(pub)+' ET. Eastern day rollover pending: counts are for 2026-10-28';
+ assert.ok(h.includes('role="status" aria-label="'+banner+'"'),'accessible banner');assert.ok(h.includes('⚠ '+banner),'visible banner with glyph');
+ assert.match(bt(pub),/^Oct 28, 11:55 PM$/);
+ assert.doesNotMatch(h,/· today/,'no current-day today claim');assert.match(h,/Completed writes · Oct 28<\/h4><b>1<\/b>/,'numbers kept, labelled with their own day');assert.match(h,/Counts for: 2026-10-28/);
+ const fresh=A.html({data:d,now},{columns:()=>'<svg/>',bars:()=>'<svg/>'});assert.match(fresh,/Completed writes · today/);assert.doesNotMatch(fresh,/STALE/);
+});
+test('GUI round 2 (cs-e3a8680f): the Writer STALE banner is on the open Operations view, before the collapsed diagnostics',()=>{
+ const d={...A.aggregate(fixture({a:entry('W1')}),now),ok:true};
+ const stale={...d,stale:true,asOf:'2026-10-29T03:55:00Z',staleReason:'Eastern day rollover pending: counts are for '+d.todayDate};
+ const b=A.staleBanner(stale);assert.match(b,/role="status" aria-label="Writer activity is STALE · as of Oct 28, 11:55 PM ET\. Eastern day rollover pending/);assert.match(b,/⚠ Writer activity is STALE/);
+ assert.equal(A.staleBanner(d),'');assert.equal(A.staleBanner(null),'');assert.equal(A.staleBanner({ok:false,stale:true}),'');
+ const ops=fs.readFileSync(path.join(__dirname,'..','pipeline-operations-ui.js'),'utf8'),i=ops.indexOf('PipelineWriterActivity.staleBanner(activity.data)'),j=ops.indexOf('<details class="cr-diagnostics"');
+ assert.ok(i>0&&j>0&&i<j,'banner is rendered outside and before details.cr-diagnostics');
+ const page=fs.readFileSync(path.join(__dirname,'..','pipeline.html'),'utf8');
+ assert.match(page,/if\(index&&!PipelineWaitingQueues\.staleLabel\(st\)&&Date\.now\(\)-Date\.parse\(index\.at\)>30\*60000\)note\+=' · delayed evidence'/,'no "delayed evidence" after a STALE label');
 });
