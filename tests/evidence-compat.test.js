@@ -75,10 +75,12 @@ test('trust labels: legacy pay is known but never silently VERIFIED; estimates s
   assert.equal(T.salary({}),'UNKNOWN');
 });
 
-test('CODE_FIT contributes the same SCORE and confidence as missing fit',()=>{
+test('CODE_FIT and missing fit produce no overall SCORE',()=>{
   const cfg=S.defaults(),row={TITLE:'Director of Quality',COMPANY:'Fivetran',LOCATION:'Austin, TX',payload:{FLEX_CLASS:'HIGH_FLEX'}};
   const missing=S.scoreRow(row,cfg);
   const codeFit={SCOPE_FIT_RAW:'100',SCOPE_FIT_MODEL_REF:'CODE_FIT rev1',EXPERIENCE_FIT_BASIS:'CODE_FIT rev1: 6/9 resume competencies met'};
+  assert.equal(missing.overall,null);
+  assert.equal(missing.overallWithoutFlex,null);
   for(const fields of [
     codeFit,
     {SCOPE_FIT_RAW:'100',SCOPE_FIT_MODEL_REF:'code_fit rev1',GROK_SCOPE_FIT_RAW:'82'},
@@ -91,6 +93,8 @@ test('CODE_FIT contributes the same SCORE and confidence as missing fit',()=>{
     assert.equal(scored.parts.experience.basis,'Fit unknown · CODE_FIT keyword score ignored');
     assert.equal(scored.assessment.rawFit,null);
     assert.equal(scored.assessment.adjustedFit,null);
+    assert.equal(scored.overall,null);
+    assert.equal(scored.overallWithoutFlex,null);
     assert.equal(scored.overall,missing.overall);
     assert.equal(scored.confidence,missing.confidence);
   }
@@ -98,6 +102,7 @@ test('CODE_FIT contributes the same SCORE and confidence as missing fit',()=>{
   assert.equal(ai.parts.experience.known,true);
   assert.equal(ai.parts.experience.score,72);
   assert.equal(ai.assessment.rawFit,72);
+  assert.notEqual(ai.overall,null);
 });
 
 test('FIT cell displays a dash for unknown raw fit',()=>{
