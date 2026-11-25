@@ -33,3 +33,13 @@ test('a non-SHA source revision is an error and does not fetch a snapshot',async
  a.equal(c.state.error,'Queue snapshot revision is unverified');
  a.equal(urls.length,0);
 });
+
+test('cs-e3a8680f (4): a snapshot past 90 min is kept, marked STALE with its as-of time; fresh is unchanged; past 24 h still fails',async()=>{
+ const f=fixture(),t0=Date.parse(at);let clock=t0,fetches=0;
+ const c=Q.create({now:()=>clock,digest,fetch:async()=>{fetches++;return {ok:true,json:async()=>f.index};}});
+ await c.accept(f.health);a.equal(c.state.status,'ready');a.equal(c.state.stale,false);a.equal(c.state.asOf,at);
+ clock=t0+120*60000;const kept=await c.accept(f.health);
+ a.equal(kept,f.index);a.equal(c.state.index,f.index,'the last snapshot is kept, not cleared');a.equal(c.state.status,'ready');a.equal(c.state.stale,true);a.equal(c.state.asOf,at);a.equal(fetches,1);
+ a.equal(Q.validate(f.index,f.health,t0+120*60000),f.index,'a 2-hour-old snapshot still validates');
+ a.throws(()=>Q.validate(f.index,f.health,t0+25*3600000),/unavailable/,'older than 24 h still fails closed');
+});

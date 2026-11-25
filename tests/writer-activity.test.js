@@ -38,9 +38,10 @@ test('endpoint serves a bounded precomputed summary and fails honestly on stale 
  assert.equal(d.recent.writes,1);assert.equal(calls,1);assert.doesNotMatch(JSON.stringify(d),/secretId|V2I-1/);
  await assert.rejects(()=>mod.loadActivity(async()=>new Response('down',{status:503}),now),/unavailable/);
  assert.equal((await mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+31*60000)).publicationStatus,'DELAYED');
- await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+91*60000),/stale/);
+ const old=await mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+91*60000);assert.equal(old.publicationStatus,'STALE');assert.equal(old.stale,true);assert.equal(old.asOf,summary.publishedAt);assert.equal(old.recent.writes,1);
+ await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify(summary)),now+25*3600000),/stale/);
  await assert.rejects(()=>mod.loadActivity(async()=>new Response('x'.repeat(256*1024+1)),now),/size budget/);
- await assert.rejects(()=>mod.loadActivity(async()=>new Response(JSON.stringify({...summary,todayDate:'2026-10-27'})),now),/rollover/);
+ const roll=await mod.loadActivity(async()=>new Response(JSON.stringify({...summary,todayDate:'2026-10-27'})),now);assert.equal(roll.publicationStatus,'STALE');assert.match(roll.staleReason,/rollover pending: counts are for 2026-10-27/);assert.equal(roll.asOf,summary.publishedAt);
  let attempts=0;assert.equal((await mod.loadActivity(async()=>++attempts===1?new Response('temporary',{status:503}):new Response(JSON.stringify(summary)),now)).ok,true);
  assert.equal(attempts,2);
  const idle={...summary,indexUpdatedAt:'2026-10-20T00:00:00Z'};assert.equal((await mod.loadActivity(async()=>new Response(JSON.stringify(idle)),now)).ok,true,'a freshly read unchanged index is valid on an idle Writer');
@@ -84,4 +85,15 @@ test('waiting jobs deduplicate receipt aliases and mark missing identities incom
  assert.deepEqual(d.waitingJobs,{count:2,complete:true});
  d=A.aggregate(fixture({a:e,missing:entry('MISSING',[],'NOT_PERSISTED')}),now);
  assert.deepEqual(d.waitingJobs,{count:1,complete:false});
+});
+
+test('cs-e3a8680f: a failed read serves the last good copy marked STALE; fresh data is unchanged; nothing kept means an honest error',async()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../functions/api/writer-activity.js'),'utf8');
+ const mod=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+ const summary={...A.aggregate(fixture({a:entry('W1')}),now),schema:'forge.writer-activity.v1',publishedAt:new Date(now).toISOString(),source:{repo:'tpruittguitar/forge-writer-state',sha:'a'.repeat(40)}};
+ const ok=async()=>new Response(JSON.stringify(summary)),down=async()=>new Response('down',{status:503}),kept={value:null};
+ await assert.rejects(()=>mod.loadActivityKept(kept,down,now),/unavailable/,'no last good copy yet');
+ const fresh=await mod.loadActivityKept(kept,ok,now);assert.equal(fresh.publicationStatus,'CURRENT');assert.equal(fresh.stale,undefined,'fresh data carries no STALE fields');
+ const s=await mod.loadActivityKept(kept,down,now+5*60000);assert.equal(s.publicationStatus,'STALE');assert.equal(s.asOf,summary.publishedAt);assert.match(s.staleReason,/refresh failed/);assert.equal(s.today.writes,fresh.today.writes);
+ await assert.rejects(()=>mod.loadActivityKept(kept,down,now+25*3600000),/unavailable/,'a copy older than 24 h is not served');
 });
