@@ -1497,14 +1497,58 @@
   const USAGE_CHECK_SCHEDULE_ET = ['02:05', '08:05', '14:05', '20:05'];
   const USAGE_GRACE_MIN = 30;
   const USAGE_PROVIDERS = [{ id: 'CLAUDE', name: 'Claude' }, { id: 'CHATGPT', name: 'ChatGPT' }, { id: 'GROK', name: 'Grok' }];
-  const LIMIT_PROVIDERS = [{ id: 'GITHUB', name: 'GitHub' }, { id: 'DESKTOP_COMMANDER', name: 'Desktop Cmdr' }, { id: 'CLOUDFLARE', name: 'CloudFlare' }];
+  const LIMIT_PROVIDERS = [{ id: 'GITHUB', name: 'GitHub' }, { id: 'DESKTOP_COMMANDER', name: 'Desktop Cmdr' }, { id: 'CLOUDFLARE', name: 'CloudFlare' }, { id: 'DEEPSEEK', name: 'DeepSeek' }];
   const isLimitProvider = id => LIMIT_PROVIDERS.some(p => p.id === id);
+  /* cs-fd8af329: Claude Duet weekly promo credit (drawn as the second bar on the Claude row) and the DeepSeek API balance (fourth
+     Other Limits column). Both keep failed attempts so the wall can show the last good amounts with their age (same rule as cs-bfacaacf). */
+  const NO_READING_YET = 'no reading yet';
+  const okStatus = st => !st || st === 'OK' || st === 'WATCH';
+  const finNum = v => typeof v === 'number' && Number.isFinite(v);
+  const whyText = r => str(r.reason || r.error || r.note || (r.http != null ? 'HTTP ' + r.http : '')).slice(0, 160);
+  function parseDuet(r, at) {
+    if (r.meter !== 'weekly_promo_credit') return null;
+    const base = { at, provider: 'CLAUDE_DUET', meter: r.meter, status: str(r.status) };
+    if (!okStatus(r.status)) return Object.assign(base, { reason: whyText(r) });
+    const cap = r.weekly_cap_usd, left = r.left_usd;
+    if (!finNum(cap) || cap <= 0 || (r.used_usd != null && (!finNum(r.used_usd) || r.used_usd < 0)) || (left != null && (!finNum(left) || left < 0))) return null;
+    const used = finNum(r.used_usd) ? r.used_usd : finNum(left) ? Math.max(0, cap - left) : null;
+    if (used == null) return null;
+    const row = Object.assign(base, { used_usd: used, weekly_cap_usd: cap, left_usd: finNum(left) ? left : Math.max(0, cap - used) });
+    if (time(r.resetsAt) != null) row.resetsAt = str(r.resetsAt);
+    if (finNum(r.total_cap_usd) && r.total_cap_usd > 0) row.total_cap_usd = r.total_cap_usd;
+    if (/^\d{4}-\d{2}-\d{2}/.test(str(r.total_until))) row.total_until = str(r.total_until).slice(0, 10);
+    if (typeof r.unused_expires_weekly === 'boolean') row.unused_expires_weekly = r.unused_expires_weekly;
+    return row;
+  }
+  function parseDeepSeek(r, at) {
+    if (r.meter !== 'api_balance') return null;
+    const base = { at, provider: 'DEEPSEEK', meter: r.meter, status: str(r.status) };
+    if (!okStatus(r.status)) return Object.assign(base, { reason: whyText(r) });
+    if (typeof r.source !== 'string' || !r.source || !finNum(r.total_balance) || r.total_balance < 0) return null;
+    const row = Object.assign(base, { total_balance: r.total_balance, currency: str(r.currency || 'USD').toUpperCase().slice(0, 8) });
+    for (const k of ['granted_balance', 'topped_up_balance']) if (finNum(r[k]) && r[k] >= 0) row[k] = r[k];
+    return row;
+  }
+  /* A reading the wall can show: OK/WATCH with real numbers (usedPct, Duet dollars, DeepSeek balance). */
+  function readingMeasured(r) {
+    if (!r || !okStatus(r.status)) return false;
+    if (r.provider === 'CLAUDE_DUET') return finNum(r.used_usd) || (finNum(r.left_usd) && finNum(r.weekly_cap_usd));
+    if (r.provider === 'DEEPSEEK') return finNum(r.total_balance);
+    return finNum(r.usedPct);
+  }
   function parseReadings(text) {
     const out = [];
     for (const line of str(text).split(/\r?\n/)) {
       if (!line.trim()) continue; let r; try { r = JSON.parse(line); } catch (e) { continue; }
       if (!r || time(r.at) == null || !str(r.provider)) continue;
-      const rec = { at: str(r.at), provider: str(r.provider).toUpperCase(), usedPct: typeof r.usedPct === 'number' && Number.isFinite(r.usedPct) ? r.usedPct : null, meter: str(r.meter), label: str(r.label), resetsAt: str(r.resetsAt), status: str(r.status) };
+      const prov = str(r.provider).toUpperCase();
+      if (prov === 'CLAUDE_DUET' || prov === 'DEEPSEEK') {
+        if (r.provider !== prov) continue;
+        const row = prov === 'DEEPSEEK' ? parseDeepSeek(r, str(r.at)) : parseDuet(r, str(r.at));
+        if (row) out.push(row);
+        continue;
+      }
+      const rec = { at: str(r.at), provider: prov, usedPct: typeof r.usedPct === 'number' && Number.isFinite(r.usedPct) ? r.usedPct : null, meter: str(r.meter), label: str(r.label), resetsAt: str(r.resetsAt), status: str(r.status) };
       if (isLimitProvider(rec.provider)) {
         if (r.provider !== rec.provider || r.status !== 'OK' || typeof r.source !== 'string' || !r.source) continue;
         if (r.provider === 'GITHUB') {
@@ -1538,6 +1582,7 @@
         }
         continue;
       }
+      const why = whyText(r); if (why) rec.reason = why; /* cs-fd8af329: keep why a run failed, for the "Latest run failed" line */
       if ('resets_available' in r) rec.resets_available = r.resets_available;
       if ('resets_expire' in r) rec.resets_expire = r.resets_expire;
       if ('extra_usd' in r) rec.extra_usd = r.extra_usd;
@@ -1611,29 +1656,118 @@
   function usageLimitRows(readings, now) {
     const latest = latestPerProvider((readings || []).filter(r => isLimitProvider(r.provider)));
     return LIMIT_PROVIDERS.map(({ id, name }) => {
+      if (id === 'DEEPSEEK') {
+        const lg = lastGoodUsage(readings, id);
+        if (!lg.good) return { name, leftPct: null, stale: false, noReading: true };
+        return Object.assign({}, lg.good, { name, measured: measuredText(lg, now), stale: readingStale(lg.good, now) }, lg.failed ? { failed: failedNote(lg.failed) } : {});
+      }
       const r = latest[id];
       if (!r) return { name, leftPct: null, stale: false };
       return { ...r, name, measured: 'Measured ' + etClock(time(r.at)) + ' ET', stale: readingStale(r, now) };
     });
   }
+  function measuredText(lg, now) { return 'Measured ' + etClock(time(lg.good.at)) + ' ET' + (lg.failed ? ' · ' + relTime(lg.good.at, now) : ''); }
+  function failedNote(f) { const why = f.reason || f.error || f.note || ''; return { at: time(f.at), status: f.status || '', reason: why, text: 'Latest run failed ' + etClock(time(f.at)) + ' ET' + (f.status ? ' · ' + f.status : '') + (why ? ' · ' + why : '') }; }
+  const money = (v, whole) => '$' + (whole && v % 1 === 0 ? v.toLocaleString('en-US') : v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  function etResetShort(ms) { /* "Sun 11 AM ET", minutes only when not on the hour */
+    const p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', minute: '2-digit' }).formatToParts(new Date(ms));
+    const g = k => (p.find(x => x.type === k) || {}).value || '';
+    return g('weekday') + ' ' + g('hour') + (g('minute') !== '00' ? ':' + g('minute') : '') + ' ' + g('dayPeriod') + ' ET';
+  }
+  /* Claude Duet promo credit for the Claude row: { missing, pct_used, label, terms[], measured, stale, failed }. */
+  function duetRow(readings, now) {
+    const lg = lastGoodUsage(readings, 'CLAUDE_DUET'), r = lg.good;
+    if (!r) return { missing: true, pct_used: null, label: 'Duet credit · ' + NO_READING_YET, terms: [], stale: false };
+    const cap = r.weekly_cap_usd, used = finNum(r.used_usd) ? r.used_usd : Math.max(0, cap - r.left_usd), terms = [];
+    const capT = money(cap, true), reset = time(r.resetsAt);
+    terms.push(capT + ' each week' + (r.total_cap_usd ? ' · ' + money(r.total_cap_usd, true) + ' total cap' + (r.total_until ? ' to ' + monthDay(r.total_until) + ', ' + r.total_until.slice(0, 4) : '') : ''));
+    const renew = reset != null ? 'renews ' + etResetShort(reset) : '';
+    if (r.unused_expires_weekly === true) terms.push('Unused credit expires weekly' + (renew ? ' · ' + renew : ''));
+    else if (renew) terms.push(renew[0].toUpperCase() + renew.slice(1));
+    const row = { missing: false, pct_used: 100 * used / cap, used_usd: used, weekly_cap_usd: cap, label: 'Duet credit · ' + money(used) + ' of ' + capT + ' used', terms, at: time(r.at), resetsAt: r.resetsAt || '', measured: measuredText(lg, now), stale: readingStale(r, now) };
+    if (lg.failed) row.failed = failedNote(lg.failed);
+    return row;
+  }
+  /* DeepSeek column lines: balance, grant split, measured time (and age when stale or a newer run failed). */
+  function deepSeekLines(row) {
+    if (!row || row.total_balance == null) return [{ t: NO_READING_YET }];
+    const cur = v => (row.currency === 'USD' ? money(v) : v.toFixed(2) + ' ' + row.currency);
+    const out = [{ t: cur(row.total_balance) + ' left' }];
+    const split = [row.granted_balance != null ? 'granted ' + cur(row.granted_balance) : '', row.topped_up_balance != null ? 'topped up ' + cur(row.topped_up_balance) : ''].filter(Boolean).join(' · ');
+    if (split) out.push({ t: split });
+    out.push({ t: (row.stale ? '? STALE · ' : '') + row.measured, warn: !!row.stale });
+    if (row.failed) out.push({ t: '? ' + row.failed.text, warn: true });
+    return out;
+  }
+  /* Other Limits column lines, one array per column: { t, warn?, sample? }. Text is full; draw.js wraps it (no ellipsis).
+     Desktop Commander's cap size and reset have no feed source yet, so they stay tagged SAMPLE (v2 sample values). */
+  const DC_SAMPLE_LINES = ['cap 30 calls/month', 'resets in 6 days'];
+  function etDayClock(ms) { return new Date(ms).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET'; }
+  function limitLines(row) {
+    const fmt = n => Number(n).toLocaleString('en-US'), dash = [{ t: '—' }], staleLine = { t: '? STALE', warn: true };
+    if (!row) return dash;
+    if (row.name === 'DeepSeek') return deepSeekLines(row);
+    if (row.name === 'GitHub') {
+      if (row.leftPct == null || row.remaining == null || row.limit == null) return dash;
+      const out = [{ t: fmt(row.remaining) + ' / ' + fmt(row.limit) + ' left' }], resetAt = time(row.resetsAt);
+      if (resetAt != null) out.push({ t: 'resets ' + etClock(resetAt) + ' ET' });
+      if (row.stale) out.push(staleLine);
+      return out;
+    }
+    if (row.name === 'Desktop Cmdr') {
+      if (row.leftPct == null) return dash;
+      const out = [{ t: row.leftPct.toLocaleString('en-US') + '% of monthly cap left' }];
+      if (time(row.at) != null) out.push({ t: (row.stale ? '? STALE · ' : '') + 'read ' + etDayClock(time(row.at)), warn: !!row.stale });
+      else if (row.stale) out.push(staleLine);
+      return out.concat(DC_SAMPLE_LINES.map(t => ({ t, sample: true })));
+    }
+    const meterLine = (m, label, unit) => {
+      if (!m) return null;
+      if (m.na) return label + ' n/a';
+      if (m.scripts != null && m.used == null) return label + ' ' + fmt(m.scripts) + ' scripts';
+      return label + ' ' + fmt(m.used) + (m.limit != null ? ' / ' + fmt(m.limit) : '') + ' ' + unit;
+    };
+    const out = [meterLine(row.workersRequests, 'Workers', 'requests'), meterLine(row.pagesBuilds, 'Pages', 'builds')].filter(Boolean).map(t => ({ t }));
+    if (!out.length) return dash;
+    if (row.stale) out.push(staleLine);
+    return out;
+  }
+  /* Word wrap with a caller's measure(text) -> px. Never adds an ellipsis; a single word wider than maxW is split by characters. */
+  function wrapWords(text, maxW, measure) {
+    const out = [];
+    for (const para of str(text).split('\n')) {
+      let line = '';
+      for (const w of para.split(/\s+/).filter(Boolean)) {
+        const t = line ? line + ' ' + w : w;
+        if (measure(t) <= maxW) { line = t; continue; }
+        if (line) out.push(line);
+        line = '';
+        if (measure(w) <= maxW) { line = w; continue; }
+        for (const c of w) { if (line && measure(line + c) > maxW) { out.push(line); line = ''; } line += c; }
+      }
+      out.push(line);
+    }
+    return out;
+  }
   /* cs-bfacaacf: a failed newest attempt must not hide an earlier good reading. Pure: { good, failed } for one provider,
      where good is the newest measured reading (or null) and failed is the newest attempt when it failed after good. */
   function usageMeasured(r) { return !!r && (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct); }
   function lastGoodUsage(readings, provider) {
+    const ok = provider === 'CLAUDE_DUET' || provider === 'DEEPSEEK' ? readingMeasured : usageMeasured;
     const mine = (readings || []).filter(r => r && r.provider === provider && time(r.at) != null).sort((a, b) => time(b.at) - time(a.at));
-    const good = mine.find(usageMeasured) || null, newest = mine[0] || null;
-    const failed = newest && !usageMeasured(newest) && (!good || time(newest.at) > time(good.at)) ? newest : null;
+    const good = mine.find(ok) || null, newest = mine[0] || null;
+    const failed = newest && !ok(newest) && (!good || time(newest.at) > time(good.at)) ? newest : null;
     return { good, failed };
   }
   function usageRows(readings, now, fallback) {
-    const latest = latestPerProvider((readings || []).filter(r => !isLimitProvider(r.provider)));
+    const latest = latestPerProvider((readings || []).filter(r => !isLimitProvider(r.provider) && r.provider !== 'CLAUDE_DUET'));
     if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
     return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => {
       let r = latest[p.id], failed = null;
       if (!usageMeasured(r)) { const lg = lastGoodUsage(readings, p.id); if (lg.good) { failed = lg.failed; r = lg.good; } }
       const measured = usageMeasured(r);
       const row = { name: p.name, pct_used: measured ? r.usedPct : null, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: (measured ? 'Measured ' : 'Attempted ') + etClock(time(r.at)) + ' ET' + (failed ? ' · ' + relTime(r.at, now) : ''), stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
-      if (failed) { const why = failed.reason || failed.error || failed.note || ''; row.failed = { at: time(failed.at), status: failed.status || '', reason: why, text: 'Latest run failed ' + etClock(time(failed.at)) + ' ET' + (failed.status ? ' · ' + failed.status : '') + (why ? ' · ' + why : '') }; }
+      if (failed) row.failed = failedNote(failed);
       if (r.resets_available !== undefined) row.resets_available = r.resets_available;
       if (r.resets_expire !== undefined) row.resets_expire = r.resets_expire;
       if (r.extra_usd !== undefined) row.extra_usd = r.extra_usd;
@@ -1646,6 +1780,7 @@
       if (p.id === 'CLAUDE') {
         const f = latestFiveHour(readings || [], 'CLAUDE') || fiveHourFromReading(r);
         if (f) row.fiveHour = f;
+        row.duet = duetRow(readings, now); /* cs-fd8af329: second bar on the Claude row */
       }
       return row;
     });
@@ -2546,7 +2681,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
+    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, LIMIT_PROVIDERS, readingMeasured, duetRow, deepSeekLines, limitLines, DC_SAMPLE_LINES, wrapWords, NO_READING_YET, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, AGENT_NAMES, AGENT_TO, agentName, parseAgentChat, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
