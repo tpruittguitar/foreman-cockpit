@@ -568,13 +568,15 @@
       var down = qv === 'unavailable';
       hs = [down ? 'm-down-note' : 'caution', gl(down ? 'warn' : 'caution'), down ? 'QUEUE DOWN' : 'QUEUE STALE'];
     } else if (s.stale && h.state !== 'FAULT' && h.state !== 'LOADING') {   /* cs-e3a8680f: last reconciled flow kept, 90 min to 24 h old */
-      hs = ['caution', gl('caution'), 'STALE' + (s.ratesAsOf ? ' · as of ' + new Date(s.ratesAsOf).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : '')];
+      var staleAsOf = s.ratesAsOf ? 'as of ' + new Date(s.ratesAsOf).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : '';
+      hs = ['caution', gl('caution'), 'STALE' + (staleAsOf ? ' · ' + staleAsOf : '')]; freshAria = 'Process flow is STALE' + (staleAsOf ? ', ' + staleAsOf : '');
     } else if (hs[2] === 'SYS OK' && h.dataAge) {
       var lab = root.PipelineDataAge.words(h.dataAge);
       if (lab) { hs = ['caution', gl('caution'), ageWord(lab)]; freshAria = lab.aria; }
     }
     var sync = h.lastRead ? new Date(h.lastRead).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : 'unknown';
-    setHtml(p, '<p class="m-label m-sec-l">Pipeline constraint</p><ol class="m-flow" aria-label="Pipeline stages">' + flow + '</ol>' +
+    var noFlow = s.noFlow ? '<p class="m-alert m-caution-note" role="status" aria-label="' + esc(s.noFlow.title + '. ' + s.noFlow.detail) + '">' + gl('caution') + '<b>' + esc(s.noFlow.title) + '</b> ' + esc(s.noFlow.detail) + '</p>' : '';   /* over 24 h old (GUI, cs-e3a8680f) */
+    setHtml(p, '<p class="m-label m-sec-l">Pipeline constraint</p>' + noFlow + '<ol class="m-flow" aria-label="Pipeline stages">' + flow + '</ol>' +
       '<p class="m-cr-note">' + esc(s.constraintReason) + '</p>' +
       '<div class="m-tiles">' + tile('Need decision', queueState().view === 'unavailable' ? null : b.decideRows().length) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
       '<ul class="m-legend" aria-label="Legend"><li class="ok">' + gl('ok') + 'OK</li><li class="caution">' + gl('caution') + 'Caution</li><li class="attn">' + gl('warn') + 'Constraint</li><li class="fault">' + gl('no') + 'Fault</li></ul>' +
