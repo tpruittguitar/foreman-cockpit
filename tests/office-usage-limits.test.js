@@ -13,7 +13,8 @@ const cloudflare = { at, provider: 'CLOUDFLARE', status: 'OK', source: 'cloudfla
   workersRequests: { used: 12345, remaining: 87655, limit: 100000, resetsAt: '2026-11-24T00:00:00Z' },
   pagesBuilds: { used: 4, remaining: 496, limit: 500, resetsAt: '2026-12-01T00:00:00Z' } };
 const parse = (...rows) => L.parseReadings(rows.map(r => JSON.stringify(r)).join('\n'));
-const empty = [{ name: 'GitHub', leftPct: null, stale: false }, { name: 'Desktop Cmdr', leftPct: null, stale: false }, { name: 'CloudFlare', leftPct: null, stale: false }];
+const empty = [{ name: 'GitHub', leftPct: null, stale: false }, { name: 'Desktop Cmdr', leftPct: null, stale: false }, { name: 'CloudFlare', leftPct: null, stale: false },
+  { name: 'DeepSeek', leftPct: null, stale: false, noReading: true }];
 
 test('usage limits select the newest valid reading per provider regardless of file order', () => {
   const readings = parse(github, { ...github, at: older, remaining: 4500 },

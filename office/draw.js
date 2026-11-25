@@ -318,93 +318,126 @@ function wrap(ctx, text, x, y, maxW, lh) {
   ctx.fillText(fit(ctx, line, maxW), x, y + n * lh);
 }
 
-/* ---------- AI usage wall: latest reading per provider, "Measured h:mm ET", live "Next check in", stale mark ---------- */
-export function drawUsage(ctx, W, H, o) {
-  // o: { rows: L.usageRows(...), now, demo, failed }
-  const s = W / 1024;
-  ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${44 * s}px ${SANS}`; ctx.fillText('AI USAGE', 30 * s, 60 * s);
-  if (o.demo) exampleTag(ctx, 250 * s, 54 * s, 20 * s);
-  const rows = o.rows || [];
-  if (!rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText('Waiting for the first usage reading…', 30 * s, 140 * s); return; }
-  ctx.textAlign = 'right'; ctx.font = `600 ${22 * s}px ${SANS}`; ctx.fillStyle = '#9aa0a8'; ctx.fillText(L.usageHeader(rows, o.now) + ' · ' + rows[0].source, W - 30 * s, 56 * s); ctx.textAlign = 'left';
-  const rowH = (H - 90 * s) / Math.max(3, rows.length);
-  rows.slice(0, 4).forEach((u, i) => {
-    const y = 84 * s + i * rowH, w = L.usageWord(u.pct_used), col = TONE[w.tone];
+/* ---------- AI usage wall: latest reading per provider, "Measured h:mm ET", live "Next check in", stale mark ----------
+   cs-fd8af329 (v2, Tim signed off Nov 25): left edge 40s; Claude gets two bars side by side (Weekly plan 250s + 24s gap + Duet credit
+   250s, Duet filled by USED) so every bar ends at 564s; ChatGPT/Grok keep one 524s bar. The big % is right-aligned at W-40s (84s,
+   "used" 22s under it) and the run-out prediction sits between the bars and the %. Wall labels wrap to full text (L.wrapWords), never "…". */
+const UW = { left: 40, barW: 524, duetW: 250, duetGap: 24, pctRight: 40, predX: 584 };
+const UM = { full: { label: 16, labelLH: 20, term: 13, termLH: 17, meas: 18, measLH: 21, note: 15, noteLH: 20, pad: 14, minH: 150 },
+  compact: { label: 15, labelLH: 18, term: 12, termLH: 15, meas: 16, measLH: 18, note: 13, noteLH: 16, pad: 8, minH: 0 } };
+function usageWrap(ctx, text, maxW) { return L.wrapWords(text, maxW, t => ctx.measureText(t).width); }
+/* Draws one row's text block at top y (or only measures it when dry) and returns the row's natural height in px. */
+function usageRow(ctx, W, s, u, y, o, M, dry) {
+  const put = (t, x, by) => { if (!dry) ctx.fillText(t, x, by); };
+  const block = (text, x, by, w, lh) => { const ls = usageWrap(ctx, text, w); ls.forEach((t, j) => put(t, x, by + j * lh)); return by + (ls.length - 1) * lh; };
+  const w = L.usageWord(u.pct_used), col = TONE[w.tone], x0 = UW.left * s;
+  if (!dry) {
     ctx.fillStyle = '#22262b'; ctx.fillRect(24 * s, y, W - 48 * s, 2 * s);
-    ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${38 * s}px ${SANS}`; ctx.fillText(u.name, 34 * s, y + 48 * s);
+    ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${36 * s}px ${SANS}`; ctx.fillText(u.name, x0, y + 50 * s);
     const nw = ctx.measureText(u.name).width;
-    ctx.fillStyle = col; ctx.font = `800 ${26 * s}px ${SANS}`; ctx.fillText(w.glyph + ' ' + w.word + (u.stale ? '  ? STALE' : ''), 52 * s + nw, y + 46 * s);
-    ctx.fillStyle = '#2b2e33'; ctx.fillRect(34 * s, y + 64 * s, 560 * s, 18 * s);
-    ctx.fillStyle = col; ctx.fillRect(34 * s, y + 64 * s, 560 * s * (u.pct_used || 0) / 100, 18 * s);
-    ctx.fillStyle = u.stale ? C.stale : '#a9aeb6'; ctx.font = `600 ${22 * s}px ${SANS}`;
-    /* card 94dfd7f489 (Tim, Nov 18): each plan shows its reset day and time again. */
-    ctx.fillText(fit(ctx, u.measured + (u.resets_at ? ' · resets ' + resetClock(u.resets_at) : ''), 600 * s), 34 * s, y + 112 * s);
-    ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${19 * s}px ${SANS}`; // 19 px: >= 14 px cap height from 3 m (GUI review 2026-11-18)
-    const pool = [u.failed && u.failed.text, L.fiveHourLine(u, o.now), L.creditLine(u), L.resetsLine(u)].filter(Boolean);
-    pool.forEach((t, j) => { const warn = u.failed && t === u.failed.text; if (warn) { ctx.fillStyle = C.stale; ctx.font = `700 ${19 * s}px ${SANS}`; } /* cs-bfacaacf: the failed run is highlighted */
-      ctx.fillText(fit(ctx, (warn ? '? ' : '') + t, 600 * s), 34 * s, y + (132 + j * 21) * s);
-      if (warn) { ctx.fillStyle = '#a9aeb6'; ctx.font = `500 ${19 * s}px ${SANS}`; } });
-    ctx.textAlign = 'right'; ctx.fillStyle = col; ctx.font = `800 ${92 * s}px ${SANS}`;
-    /* Tim (Nov 18, 10:46 AM ET, card bd3ecea): 'used' sits small under the %, and the prediction takes the column right of the %. Sizes unchanged. */
-    const px = W - 200 * s;
-    ctx.fillText(u.pct_used == null ? '—' : Math.round(u.pct_used) + '%', px, y + 100 * s);
-    ctx.font = `700 ${24 * s}px ${SANS}`; ctx.fillText('used', px, y + 130 * s);
-    const pr = o.pred && o.pred[String(u.name).toUpperCase()]; /* same verdict and time as the flat view */
-    ctx.textAlign = 'left';
-    if (pr && pr.text) {
-      ctx.fillStyle = pr.bad ? '#ff6b6b' : '#a9aeb6'; ctx.font = `700 ${22 * s}px ${SANS}`;
-      const i = pr.text.indexOf(' ~'), lines = i > 0 ? [pr.text.slice(0, i), pr.text.slice(i + 1)] : pr.text.split(/ (?=reset$)/);
-      lines.forEach((t, j) => ctx.fillText(fit(ctx, t, W - px - 40 * s), px + 18 * s, y + (62 + j * 28) * s));
+    ctx.fillStyle = col; ctx.font = `800 ${24 * s}px ${SANS}`; ctx.fillText(w.glyph + ' ' + w.word + (u.stale ? '  ? STALE' : ''), x0 + nw + 18 * s, y + 48 * s);
+  }
+  const duet = u.duet || (u.name === 'Claude' && u.source === 'AI_USAGE_READINGS.jsonl' ? { missing: true, pct_used: null, label: 'Duet credit · ' + L.NO_READING_YET, terms: [] } : null);
+  let last; // baseline of the last line drawn so far (px)
+  if (duet) {
+    const bw = UW.duetW * s, x2 = x0 + bw + UW.duetGap * s, dw = L.usageWord(duet.pct_used);
+    if (!dry) {
+      ctx.fillStyle = '#2b2e33'; ctx.fillRect(x0, y + 66 * s, bw, 18 * s); ctx.fillRect(x2, y + 66 * s, bw, 18 * s);
+      ctx.fillStyle = col; ctx.fillRect(x0, y + 66 * s, bw * Math.min(100, u.pct_used || 0) / 100, 18 * s);
+      ctx.fillStyle = TONE[dw.tone]; ctx.fillRect(x2, y + 66 * s, bw * Math.min(100, duet.pct_used || 0) / 100, 18 * s); /* fill by used */
     }
-  });
+    ctx.fillStyle = '#c3c7cd'; ctx.font = `600 ${M.label * s}px ${SANS}`;
+    const plan = 'Weekly plan · ' + (u.pct_used == null ? L.NO_READING_YET : Math.round(u.pct_used) + '% used');
+    const end1 = block(plan, x0, y + 104 * s, bw, M.labelLH * s);
+    let end2 = block(duet.label, x2, y + 104 * s, bw, M.labelLH * s);
+    ctx.fillStyle = '#8b9099'; ctx.font = `500 ${M.term * s}px ${SANS}`; /* promo terms: small, under the Duet bar */
+    (duet.terms || []).forEach(t => { end2 = block(t, x2, end2 + M.termLH * s, bw, M.termLH * s); });
+    const warn = [duet.stale || duet.failed ? (duet.stale ? '? STALE · ' : '? ') + duet.measured : '', duet.failed ? '? ' + duet.failed.text : ''].filter(Boolean);
+    ctx.fillStyle = C.stale; ctx.font = `700 ${M.term * s}px ${SANS}`; /* same last-good rule as the plan: keep the amounts, show their age */
+    warn.forEach(t => { end2 = block(t, x2, end2 + M.termLH * s, bw, M.termLH * s); });
+    last = Math.max(end1, end2) + M.termLH * s + 16 * s - M.measLH * s;
+  } else {
+    if (!dry) {
+      ctx.fillStyle = '#2b2e33'; ctx.fillRect(x0, y + 66 * s, UW.barW * s, 18 * s);
+      ctx.fillStyle = col; ctx.fillRect(x0, y + 66 * s, UW.barW * s * Math.min(100, u.pct_used || 0) / 100, 18 * s);
+    }
+    last = y + (112 - M.measLH) * s;
+  }
+  ctx.fillStyle = u.stale ? C.stale : '#a9aeb6'; ctx.font = `600 ${M.meas * s}px ${SANS}`;
+  /* card 94dfd7f489 (Tim, Nov 18): each plan shows its reset day and time again. */
+  last = block(u.measured + (u.resets_at ? ' · resets ' + resetClock(u.resets_at) : ''), x0, last + M.measLH * s, UW.barW * s, M.measLH * s);
+  const pool = [u.failed && u.failed.text, L.fiveHourLine(u, o.now), L.creditLine(u), L.resetsLine(u)].filter(Boolean);
+  pool.forEach((t, j) => { const warn = u.failed && t === u.failed.text; /* cs-bfacaacf: the failed run is highlighted */
+    ctx.fillStyle = warn ? C.stale : '#8b9099'; ctx.font = `${warn ? 700 : 500} ${M.note * s}px ${SANS}`;
+    last = block((warn ? '? ' : '') + t, x0, last + (j ? M.noteLH : M.noteLH + 2) * s, UW.barW * s, M.noteLH * s); });
+  if (!dry) {
+    ctx.textAlign = 'right'; ctx.fillStyle = col; ctx.font = `800 ${84 * s}px ${SANS}`;
+    /* Tim (Nov 18, 10:46 AM ET, card bd3ecea): 'used' sits small under the %. v2: the % ends at W-40s, clear of the bars. */
+    const px = W - UW.pctRight * s, big = u.pct_used == null ? '—' : Math.round(u.pct_used) + '%';
+    ctx.fillText(big, px, y + 98 * s); const pctLeft = px - ctx.measureText(big).width;
+    ctx.font = `700 ${22 * s}px ${SANS}`; ctx.fillText('used', px, y + 126 * s);
+    ctx.textAlign = 'left';
+    const pr = o.pred && o.pred[String(u.name).toUpperCase()]; /* same verdict and time as the flat view */
+    if (pr && pr.text) { /* between the bars (end 564s) and the big % */
+      ctx.fillStyle = pr.bad ? '#ff6b6b' : '#a9aeb6'; ctx.font = `700 ${18 * s}px ${SANS}`;
+      const pw = Math.max(80 * s, pctLeft - 16 * s - UW.predX * s);
+      usageWrap(ctx, pr.text, pw).forEach((t, j) => ctx.fillText(t, UW.predX * s, y + (62 + j * 22) * s));
+    }
+  }
+  return Math.max(M.minH * s, last - y + M.pad * s);
+}
+export function drawUsage(ctx, W, H, o) {
+  // o: { rows: L.usageRows(...), now, demo, failed, pred }
+  const s = W / 1024;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${44 * s}px ${SANS}`; ctx.fillText('AI USAGE', UW.left * s, 62 * s);
+  if (o.demo) exampleTag(ctx, 262 * s, 56 * s, 20 * s);
+  const rows = (o.rows || []).slice(0, 4);
+  if (!rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText('Waiting for the first usage reading…', UW.left * s, 140 * s); return; }
+  ctx.textAlign = 'right'; ctx.font = `600 ${18 * s}px ${SANS}`; ctx.fillStyle = '#9aa0a8'; ctx.fillText(L.usageHeader(rows, o.now) + ' · ' + rows[0].source, W - UW.pctRight * s, 58 * s); ctx.textAlign = 'left';
+  const top = 88 * s, avail = H - top;
+  let M = UM.full, hs = rows.map(u => usageRow(ctx, W, s, u, 0, o, M, true));
+  if (hs.reduce((a, b) => a + b, 0) > avail) { M = UM.compact; hs = rows.map(u => usageRow(ctx, W, s, u, 0, o, M, true)); }
+  const extra = Math.max(0, avail - hs.reduce((a, b) => a + b, 0)) / rows.length; /* Claude's row may be taller than ChatGPT/Grok */
+  let y = top;
+  rows.forEach((u, i) => { usageRow(ctx, W, s, u, y, o, M, false); y += hs[i] + extra; });
 }
 
+/* Other Limits: title, then GitHub | Desktop Cmdr | CloudFlare | DeepSeek (v2 widths 160/214/150/300 of 824s). Lines come from
+   L.limitLines and wrap to full text; Desktop Commander's cap and reset carry a small SAMPLE tag until a feed source exists. */
+const LIM_COLS = [{ name: 'GitHub', w: 160 }, { name: 'Desktop Cmdr', w: 214 }, { name: 'CloudFlare', w: 150 }, { name: 'DeepSeek', w: 300 }];
+function sampleTag(ctx, x, yBase, s) {
+  ctx.font = `700 ${11 * s}px ${SANS}`; const tw = ctx.measureText('SAMPLE').width;
+  ctx.strokeStyle = C.stale; ctx.lineWidth = 1 * s; ctx.strokeRect(x, yBase - 11 * s, tw + 8 * s, 14 * s);
+  ctx.fillStyle = C.stale; ctx.fillText('SAMPLE', x + 4 * s, yBase); return tw + 8 * s;
+}
 export function drawUsageLimits(ctx, W, H, rows) {
-  const s = W / 1024, pad = 20 * s, inner = 16 * s, leftW = 210 * s, colW = (W - pad * 2 - leftW - inner * 2) / 3, y0 = 44 * s;
+  const s = W / 1024, pad = 20 * s, inner = 16 * s, leftW = 96 * s, y0 = 42 * s, colTotal = W - 2 * pad - leftW - inner * LIM_COLS.length;
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = '#8a8a8a'; ctx.lineWidth = 2 * s; ctx.strokeRect(1 * s, 1 * s, W - 2 * s, H - 2 * s);
   ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
-  ctx.fillStyle = '#9a9a9a'; ctx.font = `800 ${38 * s}px ${SANS}`; ctx.fillText('Other', 30 * s, 56 * s); ctx.fillText('Limits', 30 * s, 94 * s);
-  const heads = ['GitHub', 'Desktop Cmdr', 'CloudFlare'];
-  heads.forEach((t, i) => {
-    const x = pad + leftW + i * (colW + inner);
-    ctx.fillStyle = '#9a9a9a'; ctx.font = `800 ${28 * s}px ${SANS}`; ctx.fillText(t, x, 56 * s);
+  ctx.fillStyle = '#9a9a9a'; ctx.font = `800 ${26 * s}px ${SANS}`; ctx.fillText('Other', pad, y0); ctx.fillText('Limits', pad, y0 + 30 * s);
+  const byName = Object.fromEntries((rows || []).map(r => [r.name, r]));
+  let x = pad + leftW + inner;
+  LIM_COLS.forEach(c => {
+    const w = colTotal * c.w / 824;
+    ctx.fillStyle = '#9a9a9a'; ctx.font = `800 ${22 * s}px ${SANS}`;
+    usageWrap(ctx, c.name, w).forEach((t, j) => ctx.fillText(t, x, y0 + j * 22 * s));
+    const lines = [];
+    L.limitLines(byName[c.name]).forEach(l => {
+      ctx.font = `${l.warn ? 700 : 600} ${16 * s}px ${SANS}`;
+      const tagW = l.sample ? 60 * s : 0, parts = usageWrap(ctx, l.t, w - tagW);
+      parts.forEach((t, k) => lines.push({ t, warn: l.warn, sample: l.sample && k === parts.length - 1 }));
+    });
+    const first = y0 + 26 * s, lh = lines.length > 1 ? Math.min(21 * s, (H - 8 * s - first) / (lines.length - 1)) : 21 * s;
+    lines.forEach((l, i) => {
+      const ly = first + i * lh;
+      ctx.font = `${l.warn ? 700 : 600} ${16 * s}px ${SANS}`; ctx.fillStyle = l.warn ? C.stale : '#9a9a9a'; ctx.fillText(l.t, x, ly);
+      if (l.sample) sampleTag(ctx, x + ctx.measureText(l.t).width + 6 * s, ly, s);
+    });
+    x += w + inner;
   });
-  const byName = Object.fromEntries(rows.map(r => [r.name, r]));
-  const lineY = y => y0 + y * s;
-  const fmt = n => Number(n).toLocaleString('en-US');
-  const drawCell = (x, row) => {
-    ctx.fillStyle = '#9a9a9a'; ctx.font = `600 ${20 * s}px ${SANS}`; ctx.textAlign = 'left';
-    if (!row) { ctx.fillText('—', x, lineY(52)); return; }
-    if (row.name === 'GitHub') {
-      if (row.leftPct == null || row.remaining == null || row.limit == null) { ctx.fillText('—', x, lineY(52)); return; }
-      ctx.fillText(fmt(row.remaining) + ' / ' + fmt(row.limit) + ' left', x, lineY(52));
-      const resetAt = Date.parse(row.resetsAt);
-      let t = Number.isFinite(resetAt) ? 'resets ' + L.etClock(resetAt) + ' ET' : '';
-      if (row.stale) t = (t ? t + ' · ' : '') + '? STALE';
-      if (t) ctx.fillText(t, x, lineY(79));
-      return;
-    }
-    if (row.name === 'Desktop Cmdr') {
-      ctx.fillText(row.leftPct == null ? '—' : row.leftPct.toLocaleString('en-US') + '% left' + (row.stale ? ' · ? STALE' : ''), x, lineY(52));
-      return;
-    }
-    const meterLine = (m, label) => {
-      if (!m) return '—';
-      if (m.na) return label + ' n/a';
-      if (m.scripts != null && m.used == null) return label + ' ' + fmt(m.scripts) + ' scripts';
-      return m.limit != null ? label + ' ' + fmt(m.used) + ' / ' + fmt(m.limit) : label + ' ' + fmt(m.used);
-    };
-    const lines = (row.workersRequests || row.pagesBuilds)
-      ? [meterLine(row.workersRequests, 'Workers'), meterLine(row.pagesBuilds, 'Pages')]
-      : ['—'];
-    if (row.stale) lines.push('? STALE');
-    lines.forEach((t, i) => ctx.fillText(t, x, lineY(52 + i * 27)));
-  };
-  drawCell(pad + leftW, byName['GitHub']);
-  drawCell(pad + leftW + colW + inner, byName['Desktop Cmdr']);
-  drawCell(pad + leftW + (colW + inner) * 2, byName['CloudFlare']);
 }
 
 /* ---------- Pipeline constraint wall (back wall, left of the checksheet) ----------
