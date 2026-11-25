@@ -201,3 +201,38 @@ test('uncertain per-job holds retain their original evidence beside the run-leve
  const f=fixture();f.health.issues.push({id:'auto-intake-identity-hold:request',level:'ACTION',title:'Unconfirmed intake: Example',detail:'Original submission is unconfirmed',action:'Reconcile original evidence without replay'});
  const html=C.html(C.model(f));assert.match(html,/Original submission is unconfirmed/);assert.match(html,/Reconcile original evidence without replay/);
 });
+test('GUI review (cs-e3a8680f): one as-of format; a 2-hour flow is STALE with as-of and age; a 25-hour flow has no numbers and says why',()=>{
+ const bt=t=>new Date(t).toLocaleString('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+ const flow=at=>({at,population:{total:3,reconciled:true},queues:{verification:0,enrichment:2,readyForReview:1,blockedClosed:0}});
+ let f=fixture(),at2=new Date(now-120*60000).toISOString();f.health.processFlow=flow(at2);let m=C.model(f),s=C.summary(m,{});
+ assert.equal(C.asOfLabel(at2),'as of '+bt(at2)+' ET');assert.match(C.asOfLabel(at2),/^as of [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d\d (AM|PM) ET$/);
+ const w=m.warnings.find(x=>x.title==='Process flow is STALE');assert.ok(w);assert.equal(w.detail,'Showing the last reconciled job queues as of '+bt(at2)+' ET (2 h ago), not current live counts.');
+ assert.equal(s.ratesAsOf,at2);assert.ok(!('asOfText' in s),'no asOfText duplicate; fill uses ratesAsOf');assert.equal(s.needDecision,1);assert.equal(s.noFlow,null);
+ f=fixture();const at25=new Date(now-25*3600000).toISOString();f.health.processFlow=flow(at25);m=C.model(f);s=C.summary(m,{});
+ assert.equal(m.flow,null);assert.equal(s.needDecision,null);assert.equal(s.waiting[1].count,null,'numbers gone');
+ const detail='Last update over 24 h ago (as of '+bt(at25)+' ET). Queues are unknown.';
+ assert.deepEqual(s.noFlow,{title:'No process flow data',detail});
+ assert.ok(m.warnings.some(x=>x.title==='No process flow data'&&x.detail===detail));assert.ok(!m.warnings.some(x=>/cannot yet be reconciled/.test(x.title)));
+ const h=C.html(m,{});assert.ok(h.includes('No process flow data'));assert.ok(h.includes(detail.replace(/\(/g,'(')));
+ f=fixture();f.health.processFlow={...flow(at2),population:{total:9,reconciled:true}};m=C.model(f);
+ assert.ok(m.warnings.some(x=>/cannot yet be reconciled/.test(x.title)),'inconsistent keeps its own message');assert.equal(C.summary(m,{}).noFlow,null,'no invented as-of');
+});
+test('GUI review (cs-e3a8680f): mobile Status uses the summary strings for STALE and no-flow, in text and accessible name',()=>{
+ const src=require('fs').readFileSync(require('path').join(__dirname,'../pipeline-mobile.js'),'utf8');
+ assert.ok(src.includes("root.PipelineControlRoom.asOfLabel(s.ratesAsOf)"),'mobile STALE uses asOfLabel/boardTime, not a 24-hour clock');
+ assert.ok(src.includes("hs = ['caution', gl('caution'), 'STALE' + (staleAsOf ? ' · ' + staleAsOf : '')]"),'visible STALE · as of <boardTime> ET');
+ assert.ok(src.includes("freshAria = 'Process flow is STALE' + (staleAsOf ? ', ' + staleAsOf : '')"),'accessible name');
+ const staleBlk=src.slice(src.indexOf('s.stale && h.state'),src.indexOf("else if (hs[2] === 'SYS OK'"));
+ assert.ok(staleBlk.includes('asOfLabel(s.ratesAsOf)'));assert.doesNotMatch(staleBlk,/toLocaleTimeString/,'STALE as-of is not a raw clock');
+ assert.match(src,/role="status" aria-label="' \+ esc\(s\.noFlow\.title \+ '\. ' \+ s\.noFlow\.detail\)/);assert.ok(src.includes("gl('caution') + '<b>' + esc(s.noFlow.title)"),'word plus caution glyph');
+});
+test('GUI round 2 (cs-e3a8680f): health with overall ok:false still feeds processFlow and its checks into the room',()=>{
+ const f=fixture(),at=new Date(now-120*60000).toISOString();f.health.ok=false;f.health.checks.sources={ok:false,error:'Could not read sources evidence'};
+ f.health.processFlow={at,population:{total:3,reconciled:true},queues:{verification:0,enrichment:2,readyForReview:1,blockedClosed:0}};
+ const m=C.model(f);assert.ok(m.flow&&m.flowStale,'the kept flow is used');assert.ok(m.warnings.some(w=>w.title==='Process flow is STALE'));
+ assert.ok(m.warnings.some(w=>w.title==='Source discovery not reported'),'the failing check still shows as a warning');
+ assert.ok(!m.warnings.some(w=>w.title==='Incident feed is not current'),'a fresh attention check is still trusted');
+ const ops=fs.readFileSync(path.join(__dirname,'..','pipeline-operations-ui.js'),'utf8'),mon=ops.slice(ops.indexOf('async function monitor'),ops.indexOf('function start('));
+ assert.doesNotMatch(mon,/!d\.ok\)throw/,'monitor no longer drops an ok:false payload');
+ assert.ok(mon.indexOf('activity={data:wa.value')<mon.indexOf("throw Error('No supported health evidence')"),'Writer activity is applied before any health throw');
+});

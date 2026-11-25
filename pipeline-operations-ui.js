@@ -109,7 +109,10 @@
     async function monitor(){
       if(healthBusy||!api.health)return;healthBusy=true;
       if(api.refreshMaster)Promise.resolve().then(function(){return api.refreshMaster();}).then(masterChanged,function(){});
-      try{var reads=await Promise.allSettled([api.health(),api.activity?api.activity():Promise.resolve(null)]),d=reads[0].status==='fulfilled'&&reads[0].value;if(!d||!d.ok)throw Error('No supported health evidence');if(!d.checks.emailCoverage&&d.checks.execution&&d.checks.execution.ok===false&&health.data&&health.data.checks.emailCoverage){d.checks.emailCoverage=Object.assign({},health.data.checks.emailCoverage,{refreshError:'Execution evidence refresh failed; showing last verified coverage'});}health={data:d,error:''};var wa=reads[1];if(wa.status==='fulfilled'&&wa.value&&wa.value.ok)activity={data:wa.value,error:''};else if(api.activity)activity={data:activity.data,error:'Writer activity refresh failed'};}
+      try{var reads=await Promise.allSettled([api.health(),api.activity?api.activity():Promise.resolve(null)]),d=reads[0].status==='fulfilled'&&reads[0].value,wa=reads[1];/* GUI round 2 (cs-e3a8680f): Writer activity is applied whatever health says, and a health payload with ok:false is still used
+         when it carries checks; each check keeps its own ok, so failing parts stay visible as warnings while processFlow still shows. */
+      if(wa.status==='fulfilled'&&wa.value&&wa.value.ok)activity={data:wa.value,error:''};else if(api.activity)activity={data:activity.data,error:'Writer activity refresh failed'};
+      if(!d||!d.checks||typeof d.checks!=='object')throw Error('No supported health evidence');if(!d.checks.emailCoverage&&d.checks.execution&&d.checks.execution.ok===false&&health.data&&health.data.checks.emailCoverage){d.checks.emailCoverage=Object.assign({},health.data.checks.emailCoverage,{refreshError:'Execution evidence refresh failed; showing last verified coverage'});}health={data:d,error:''};}
       catch(e){health={data:health.data,error:e.message||'Health evidence unavailable'};}
       healthBusy=false;
       if(typeof PipelineControlRoom!=='undefined'){var m=roomModel();if(api.alert)api.alert(PipelineControlRoom.banner(m),m.severity);}
