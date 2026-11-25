@@ -24,9 +24,12 @@
   function when(iso,asOf){
     var t=ms(iso);if(!Number.isFinite(t))return DASH;
     var a=ms(asOf),d=new Date(t);
-    if(Number.isFinite(a)&&dayFmt.format(d)===dayFmt.format(new Date(a))){var p={};timeFmt.formatToParts(d).forEach(function(x){p[x.type]=x.value;});return p.hour+':'+p.minute+' '+String(p.dayPeriod||'').toUpperCase();}
-    var E=engine();return E&&E.boardTime?E.boardTime(t):d.toISOString();
+    if(Number.isFinite(a)&&dayFmt.format(d)===dayFmt.format(new Date(a))){var p={};timeFmt.formatToParts(d).forEach(function(x){p[x.type]=x.value;});return et(p.hour+':'+p.minute+' '+String(p.dayPeriod||'').toUpperCase());}
+    var E=engine();return E&&E.boardTime?et(E.boardTime(t)):d.toISOString();
   }
+  /* Every clock time shown here is America/New_York, so it says ET. Copy that already ends in ET is left alone. */
+  function et(s){s=String(s);return /\bET$/.test(s)?s:s+' ET';}
+  function asOfEt(s){return String(s==null?'':s).replace(/\(as of ([^)]*)\)/g,function(m,x){return '(as of '+et(x)+')';}).replace(/as of ([^()]*?)$/,function(m,x){return 'as of '+et(x);});}
   function engine(){return typeof PipelineEngineStatus!=='undefined'?PipelineEngineStatus:(typeof require==='function'?safeRequire():null);}
   function safeRequire(){try{return require('./pipeline-engine-status');}catch(e){return null;}}
 
@@ -40,8 +43,8 @@
   /* Banner from the evaluate() copy only. ok has none. */
   function banner(r){
     if(r.status==='ok')return '';
-    if(r.status==='stale')return '<div class="ex-banner ex-b-stale" role="status"><b class="ex-glyph">'+esc(r.copy)+'</b></div>';
-    if(r.status==='expired')return '<div class="ex-banner ex-b-stale" role="status"><b class="ex-glyph">'+esc(r.copy)+'</b><p>'+esc(r.copyDetail)+'</p></div>';
+    if(r.status==='stale')return '<div class="ex-banner ex-b-stale" role="status"><b class="ex-glyph">'+esc(asOfEt(r.copy))+'</b></div>';
+    if(r.status==='expired')return '<div class="ex-banner ex-b-stale" role="status"><b class="ex-glyph">'+esc(r.copy)+'</b><p>'+esc(asOfEt(r.copyDetail))+'</p></div>';
     if(r.status==='empty')return '<div class="ex-banner ex-b-empty" role="status"><b class="ex-glyph">'+DASH+'</b><p>'+esc(r.copy)+'</p></div>';
     return '<div class="ex-banner ex-b-error" role="alert"><b class="ex-glyph">'+esc(r.copy)+'</b></div>';
   }
@@ -152,5 +155,11 @@
     return refresh();
   }
 
-  return {ROUTES:ROUTES,API:API,FIXTURE:FIXTURE,FIXTURE_NOW:FIXTURE_NOW,render:render,load:load,open:open,stateOf:stateOf};
+  /* The route a pipeline.html hash ({"t":"steps",...}) names, when it is one of these three pages; null otherwise. The phone
+     shell uses it so a shared link opens the page, not Decide. */
+  function routeFromHash(hash){try{var h=String(hash||'');if(h.charAt(0)==='#')h=h.slice(1);if(!h)return null;var o=JSON.parse(decodeURIComponent(h));return o&&ROUTES.indexOf(o.t)>=0?o.t:null;}catch(e){return null;}}
+  /* Labels for the phone More sheet, in the order of the desktop section tabs. */
+  var PHONE_MORE=[['constraints','Constraints','The one step that limits the flow'],['steps','Steps','All 19 steps and their state'],['engine-health','Engine health','Scripts and automations, last and next run']];
+
+  return {ROUTES:ROUTES,API:API,FIXTURE:FIXTURE,FIXTURE_NOW:FIXTURE_NOW,PHONE_MORE:PHONE_MORE,render:render,load:load,open:open,stateOf:stateOf,routeFromHash:routeFromHash,asOfEt:asOfEt};
 });

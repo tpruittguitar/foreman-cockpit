@@ -39,7 +39,7 @@
     ['rulings', 'My Rulings', 'Decisions made on this device'],
     ['intake', 'Intake', 'Add a job by hand'],
     ['settings', 'Settings', 'Writer connection and preferences']
-  ];
+  ].concat(root.PipelineExplorerTabs ? root.PipelineExplorerTabs.PHONE_MORE : []);   // Constraints, Steps, Engine health (cs-32ab60a7)
   var TABS = [['decide', 'Decide'], ['jobs', 'Jobs'], ['status', 'Status']];
 
   function shellHtml() {
@@ -643,6 +643,9 @@
     if (mounted) return;
     var el = document.createElement('div'); el.id = 'm-root'; el.className = 'm-texture'; el.innerHTML = shellHtml();
     document.body.appendChild(el); mounted = true; bind(); setTab('decide'); refresh();
+    /* A link to Constraints, Steps or Engine health opens that page, not Decide; Mobile returns to the shell. */
+    var deep = root.PipelineExplorerTabs && root.PipelineExplorerTabs.routeFromHash(root.location && root.location.hash);
+    if (deep) openDesktop(deep);
     root.setInterval(renderSys, 15000);
     root.setInterval(function () { if ((tab === 'status' || tab === 'decide') && !document.hidden && !d.classList.contains('m-legacy')) refresh(); }, 5000);   // the health monitor updates on its own clock
   }

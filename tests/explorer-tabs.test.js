@@ -81,7 +81,7 @@ test('expired: exact copy, no current steps, numbers or constraint',()=>{
  const r=E.evaluate(load('expired'),AT_MS);assert.equal(r.status,'expired');
  for(const tab of TABS){
   const h=html(tab,r);
-  assert.match(h,/<b class="ex-glyph">No engine status<\/b><p>Last update over 24 h ago \(as of Nov 23, 1:40 PM\)\. Steps are unknown\.<\/p>/,tab);
+  assert.match(h,/<b class="ex-glyph">No engine status<\/b><p>Last update over 24 h ago \(as of Nov 23, 1:40 PM ET\)\. Steps are unknown\.<\/p>/,tab);
   assert.deepEqual(stepsOn(h),[],tab);assert.doesNotMatch(h,/ex-badge-red">CONSTRAINT|data-ex-state="constraint"|ex-grow|\b(118|311|42|27)\b|ROWS\/H SAVED/,tab);
  }
  assert.match(html('constraints',r),/data-go="pipeline" data-preset="DECISION_READY" disabled>/);
@@ -134,7 +134,7 @@ test('engine health: table and stacked cards, ET times from ISO, Writer outside 
  assert.match(h,/ENGINE HEALTH · SCRIPTS AND AUTOMATIONS/);
  assert.match(h,/17 OK<\/span> · <span class="ex-amber">1 DEGRADED<\/span> · <span class="ex-red">1 CONSTRAINT<\/span> · <span>0 FAILED<\/span> · <span>0 MISSED RUNS/);
  assert.deepEqual([...h.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map(m=>m[1]),['ENGINE','RUNS AS','METHOD','SCHEDULE','LAST RUN','RESULT','NEXT']);
- assert.match(h,/data-ex-step="jobspy"[^]*?<td class="ex-mono">2:03 PM<\/td>[^]*?<td class="ex-mono">2:33 PM<\/td>/);
+ assert.match(h,/data-ex-step="jobspy"[^]*?<td class="ex-mono">2:03 PM ET<\/td>[^]*?<td class="ex-mono">2:33 PM ET<\/td>/);
  assert.match(h,/<tr class="ex-r-amber" data-ex-step="boards"/);
  assert.match(h,/OUTSIDE THE FLOW[^]*data-ex-writer[^]*18 rows\/h/);
  assert.match(h,/<div class="ex-cards">/);
@@ -153,7 +153,7 @@ test('render takes an injected result; load uses the API by default and the fixt
 
 test('Jobs page untouched: mounts are new empty siblings; navigation keeps the seven Pipeline pages first',()=>{
  const page=fs.readFileSync(path.join(__dirname,'../pipeline.html'),'utf8');
- assert.match(page,/<div class="view" id="view-needs-tim"><\/div>\n  <div class="view" id="view-constraints"><\/div>\n  <div class="view" id="view-steps"><\/div>\n  <div class="view" id="view-engine-health"><\/div>\n<\/main>/);
+ assert.match(page,/<div class="view" id="view-needs-tim"><\/div>\n  <div class="view" id="view-constraints" tabindex="0" aria-label="Constraints"><\/div>\n  <div class="view" id="view-steps" tabindex="0" aria-label="Steps"><\/div>\n  <div class="view" id="view-engine-health" tabindex="0" aria-label="Engine health"><\/div>\n<\/main>/);
  assert.ok(page.indexOf('id="view-pipeline"')<page.indexOf('id="view-constraints"'));
  assert.match(page,/<link rel="stylesheet" href="tokens.css">\n<link rel="stylesheet" href="pipeline-explorer-tabs.css">/);
  assert.match(page,/<script src="pipeline-navigation.js"><\/script>\n<script src="pipeline-engine-status.js"><\/script>\n<script src="pipeline-explorer-tabs.js"><\/script>/);
@@ -166,4 +166,75 @@ test('Jobs page untouched: mounts are new empty siblings; navigation keeps the s
  for(const rule of css.replace(/\/\*[^]*?\*\//g,'').split('}').map(x=>x.split('{')[0].trim()).filter(x=>x&&!x.startsWith('@media')))
   for(const sel of rule.replace(/^@media[^{]*\{/,'').split(/,(?![^(]*\))/))assert.match(sel.trim(),/\.ex-root/,'scoped: '+sel);
  assert.doesNotMatch(css,/#[0-9a-f]{3,8}\b|rgba?\(|@import|font-family:\s*(?!var\()["a-z]/i,'tokens only');
+});
+
+// ---------- PR 3 fix round 1 (GUI review of PR 559) ----------
+const read=f=>fs.readFileSync(path.join(__dirname,'..',f),'utf8');
+
+test('fix 2: switchTab hides #mapfilters on the three new pages, the same way it hides #presets, and keeps it on Jobs and Map',()=>{
+ const page=read('pipeline.html'),i=page.indexOf('function switchTab('),sw=page.slice(i,page.indexOf('\n',i));
+ assert.ok(sw.includes("$('presets').style.display=t==='pipeline'?'flex':'none';$('mapfilters').style.display=PipelineExplorerTabs.ROUTES.indexOf(t)>=0?'none':'';"));
+ // The same expression, run per route: hidden on the three new pages, back to the stylesheet ('') on Jobs and Map (map runs as t='pipeline').
+ const expr=new Function('PipelineExplorerTabs','t',"return PipelineExplorerTabs.ROUTES.indexOf(t)>=0?'none':'';");
+ for(const t of T.ROUTES)assert.equal(expr(T,t),'none',t);
+ for(const t of ['pipeline','reports','automations','settings'])assert.equal(expr(T,t),'',t);
+});
+
+test('fix 3: a hash naming Constraints, Steps or Engine health opens that page on the phone; More lists all three',()=>{
+ for(const t of T.ROUTES){
+  const hash='#'+encodeURIComponent(JSON.stringify({t,p:'OPEN',s:'score',f:{}}));
+  assert.equal(T.routeFromHash(hash),t,t);
+  assert.equal(T.routeFromHash(hash.slice(1)),t,t+' without #');
+ }
+ for(const h of ['','#',null,'#'+encodeURIComponent(JSON.stringify({t:'pipeline'})),'#'+encodeURIComponent(JSON.stringify({t:'decide'})),'#not-json'])assert.equal(T.routeFromHash(h),null,String(h));
+ assert.deepEqual(T.PHONE_MORE.map(m=>m[0]),T.ROUTES);
+ assert.deepEqual(T.PHONE_MORE.map(m=>m[1]),['Constraints','Steps','Engine health']);
+ const mob=read('pipeline-mobile.js');
+ assert.ok(mob.includes("].concat(root.PipelineExplorerTabs ? root.PipelineExplorerTabs.PHONE_MORE : []);"),'More sheet lists the three routes');
+ assert.match(mob,/\['backlog', 'Discovery backlog'[^]*\['settings', 'Settings'/,'existing More items kept');
+ assert.ok(mob.includes("var TABS = [['decide', 'Decide'], ['jobs', 'Jobs'], ['status', 'Status']];"),'Decide, Jobs, Status kept');
+ assert.ok(mob.includes("setTab('decide'); refresh();\n    /* A link to Constraints, Steps or Engine health opens that page, not Decide; Mobile returns to the shell. */\n    var deep = root.PipelineExplorerTabs && root.PipelineExplorerTabs.routeFromHash(root.location && root.location.hash);\n    if (deep) openDesktop(deep);"),'mount opens the hashed page after Decide');
+ const page=read('pipeline.html');
+ // The phone path is the existing m-legacy bridge, which falls through to switchTab(k) for these keys.
+ assert.ok(page.includes("if(k==='compare'){switchTab('pipeline');var c=$('compare-open');if(c)c.click();return}switchTab(k)}"));
+ assert.ok(page.indexOf('<script src="pipeline-explorer-tabs.js">')<page.indexOf('<script src="pipeline-mobile.js">'),'tabs module loads before the phone shell');
+});
+
+test('fix 6: every new page scroller is a keyboard tab stop with a name',()=>{
+ const page=read('pipeline.html');
+ for(const [id,name] of [['constraints','Constraints'],['steps','Steps'],['engine-health','Engine health']])
+  assert.ok(page.includes('<div class="view" id="view-'+id+'" tabindex="0" aria-label="'+name+'"></div>'),id);
+});
+
+test('fix 1 and 7: Steps squares wrap inside their stage plate; CONSTRAINT badge uses a light label from tokens',()=>{
+ const css=read('pipeline-explorer-tabs.css'),tok=read('tokens.css');
+ assert.ok(css.includes('.ex-root .ex-squares { display: flex; flex-wrap: wrap;'));
+ assert.match(css,/\.ex-root \.ex-stage-group \{[^}]*flex: 1 1 auto; min-width: 0;/);
+ assert.ok(css.includes('.ex-root .ex-badge-red { background: var(--pe-badge-red); color: var(--pe-text-primary);'));
+ const hex=n=>tok.match(new RegExp('--pe-'+n+':\\s*(#[0-9A-Fa-f]{6})'))[1];
+ const lum=h=>{const c=[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255).map(v=>v<=0.03928?v/12.92:((v+0.055)/1.055)**2.4);return .2126*c[0]+.7152*c[1]+.0722*c[2];};
+ const ratio=(a,b)=>{const x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+ assert.ok(ratio(hex('text-primary'),hex('badge-red'))>=4.5,'CONSTRAINT label contrast');
+ assert.match(html('constraints',populated()),/<span class="ex-badge ex-badge-red">CONSTRAINT<\/span>/,'the word stays');
+});
+
+test('fix 8: as-of and clock times end in ET, once',()=>{
+ const ex=E.evaluate(load('expired'),AT_MS);
+ assert.equal(ex.copyDetail,'Last update over 24 h ago (as of Nov 23, 1:40 PM). Steps are unknown.','PR 1 copy unchanged');
+ for(const tab of TABS)assert.ok(html(tab,ex).includes('(as of Nov 23, 1:40 PM ET). Steps are unknown.'),tab);
+ const st=E.evaluate(load('populated'),AT_MS+2*HOUR);
+ for(const tab of TABS){const h=html(tab,st);assert.equal((h.match(/as of Nov 24, 2:15 PM ET/g)||[]).length,1,tab);assert.doesNotMatch(h,/ET ET/,tab);}
+ const h=html('engine-health',populated());
+ assert.match(h,/data-ex-step="jobspy"[^]*?2:03 PM ET[^]*?2:33 PM ET/);
+ assert.ok(h.includes('· last 2:03 PM ET · next 2:33 PM ET'),'stacked cards too');
+ assert.doesNotMatch(h,/ET ET/);
+ assert.equal(T.asOfEt('STALE · as of Nov 24, 2:15 PM ET'),'STALE · as of Nov 24, 2:15 PM ET');
+ assert.equal(T.asOfEt('(as of Nov 23, 1:40 PM)'),'(as of Nov 23, 1:40 PM ET)');
+ for(const r of [E.evaluate(load('empty'),AT_MS+MIN),E.evaluate(null,AT_MS)])for(const tab of TABS)assert.doesNotMatch(html(tab,r),/\bET\b|\d:\d\d/,tab+' '+r.status);
+});
+
+test('fix 5: the section strip wraps between 761 and 1279 px and shows its scrollbar on phones',()=>{
+ const nav=read('pipeline-navigation.js');
+ assert.ok(nav.includes('@media(min-width:761px) and (max-width:1279px){#section-tabs{overflow-x:visible}#section-tabs .st-row{flex-wrap:wrap}}'));
+ assert.ok(nav.includes('@media(max-width:760px){#section-tabs{scrollbar-width:thin;'));
 });
