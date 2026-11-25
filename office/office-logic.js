@@ -1616,13 +1616,24 @@
       return { ...r, name, measured: 'Measured ' + etClock(time(r.at)) + ' ET', stale: readingStale(r, now) };
     });
   }
+  /* cs-bfacaacf: a failed newest attempt must not hide an earlier good reading. Pure: { good, failed } for one provider,
+     where good is the newest measured reading (or null) and failed is the newest attempt when it failed after good. */
+  function usageMeasured(r) { return !!r && (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct); }
+  function lastGoodUsage(readings, provider) {
+    const mine = (readings || []).filter(r => r && r.provider === provider && time(r.at) != null).sort((a, b) => time(b.at) - time(a.at));
+    const good = mine.find(usageMeasured) || null, newest = mine[0] || null;
+    const failed = newest && !usageMeasured(newest) && (!good || time(newest.at) > time(good.at)) ? newest : null;
+    return { good, failed };
+  }
   function usageRows(readings, now, fallback) {
     const latest = latestPerProvider((readings || []).filter(r => !isLimitProvider(r.provider)));
     if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
     return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => {
-      const r = latest[p.id];
-      const measured = (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct);
-      const row = { name: p.name, pct_used: measured ? r.usedPct : null, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: (measured ? 'Measured ' : 'Attempted ') + etClock(time(r.at)) + ' ET', stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
+      let r = latest[p.id], failed = null;
+      if (!usageMeasured(r)) { const lg = lastGoodUsage(readings, p.id); if (lg.good) { failed = lg.failed; r = lg.good; } }
+      const measured = usageMeasured(r);
+      const row = { name: p.name, pct_used: measured ? r.usedPct : null, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: (measured ? 'Measured ' : 'Attempted ') + etClock(time(r.at)) + ' ET' + (failed ? ' · ' + relTime(r.at, now) : ''), stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
+      if (failed) { const why = failed.reason || failed.error || failed.note || ''; row.failed = { at: time(failed.at), status: failed.status || '', reason: why, text: 'Latest run failed ' + etClock(time(failed.at)) + ' ET' + (failed.status ? ' · ' + failed.status : '') + (why ? ' · ' + why : '') }; }
       if (r.resets_available !== undefined) row.resets_available = r.resets_available;
       if (r.resets_expire !== undefined) row.resets_expire = r.resets_expire;
       if (r.extra_usd !== undefined) row.extra_usd = r.extra_usd;
@@ -2535,7 +2546,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, usageLimitRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
+    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, usageLatest, usageHeader, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, AGENT_NAMES, AGENT_TO, agentName, parseAgentChat, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
