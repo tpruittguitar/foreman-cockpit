@@ -153,7 +153,7 @@ function constraintView(now) {
   if (!L.constraintHasNumbers(sum)) return lastGood(c.err);
   c.lastGood = sum;
   const flow = c.health.processFlow;
-  return { sum, age: L.constraintAge(flow && flow.at, now, !!c.err || now - c.at > 2 * SLOW_MS), err: c.err };
+  return { sum, age: L.constraintAge(flow && flow.at, now, !!c.err || now - c.at > 2 * SLOW_MS), err: c.err, lastGood: !!sum.stale };
 }
 async function poll() {
   const now = Date.now();
