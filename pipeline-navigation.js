@@ -92,6 +92,9 @@
    // Leaving Intake for Pipeline: drop the Intake-only filter so the job list is not silently narrowed.
    if(lastGroup==='pipeline'&&INTAKE_PRESETS[state().preset]){setTimeout(function(){var all=strip.querySelector('[data-st-reset]');if(all)all.click();setTimeout(update,0);},0);}}
   else{groups.forEach(function(g){g.items.forEach(function(item,i){if(item[1]===t.getAttribute('data-go')&&(item[2]||'')===(t.getAttribute('data-preset')||'')&&(item[3]||'')===(t.getAttribute('data-action')||'')){lastGroup=g.id;lastKey=g.id+':'+i;}});});}
+  // GUI-16: Jobs carries no preset, so after Review queue / Decline candidates / My rulings the route handler kept the
+  // decision preset and Jobs did nothing. Leaving a decision view for Jobs resets to the default job list.
+  if(t.getAttribute('data-go')==='pipeline'&&!t.getAttribute('data-preset')&&!t.getAttribute('data-action')&&DECISION_PRESETS[state().preset]){setTimeout(function(){var all=strip.querySelector('[data-st-reset]');if(all)all.click();setTimeout(update,0);},0);}
   setTimeout(update,0);
  });
  window.addEventListener('hashchange',function(){setTimeout(update,0);});
