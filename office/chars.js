@@ -506,8 +506,8 @@ export function makeBot(name, hiQuality, botId, override) {
       flatEyes.forEach((eye, i) => {
         const k = i ? 'e1' : 'e0', side = i ? 1 : -1, scale = x.eyeScale || 1;
         const open = Math.max(0.06, Math.min(p[k + 'o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
-        eye.set(eyeX + side * gap / 2 * g.spread + g.x - center.x, eyeY + g.y - center.y,
-          w * p[k + 'w'] / neutral[k + 'w'] * scale, h * p[k + 'h'] / neutral[k + 'h'] * open * scale);
+        const raw = L.uprightSize(w * p[k + 'w'] / neutral[k + 'w'] * scale, h * p[k + 'h'] / neutral[k + 'h'] * scale);
+        eye.set(eyeX + side * gap / 2 * g.spread + g.x - center.x, eyeY + g.y - center.y, raw.w, raw.h * open);
       });
     };
     face.userData.apply(neutral, 0);
@@ -520,8 +520,9 @@ export function makeBot(name, hiQuality, botId, override) {
       flatEyes.forEach((eye, i) => {
         const k = i ? 'e1' : 'e0', sx = (i ? 1 : -1) * 0.1 * gap * g.spread, scale = x.eyeScale || 1;
         const sz = L.slotSize(0.13 * p[k + 'w'] / neutral[k + 'w'] * scale, 0.24 * p[k + 'h'] / neutral[k + 'h'] * scale);
+        const raw = L.uprightSize(sz.w * 0.72, sz.h * 0.72);
         const open = Math.max(0.06, Math.min(p[k + 'o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
-        eye.set(dx + sx * Math.cos(g.roll) + g.x, dy + (rootCause || archive || gui ? 0 : sx * Math.sin(g.roll)) + g.y, sz.w * 0.72, sz.h * open * 0.72);
+        eye.set(dx + sx * Math.cos(g.roll) + g.x, dy + (rootCause || archive || gui ? 0 : sx * Math.sin(g.roll)) + g.y, raw.w, raw.h * open);
       });
     };
     face.userData.apply(neutral, 0);
@@ -546,7 +547,7 @@ export function makeBot(name, hiQuality, botId, override) {
     face.userData.studio = (p, blink, extra) => {
       const x = extra || {}, g = L.gazeShift(p, x), key = [g.x, g.y, g.roll, g.spread, p.e0w, p.e0h, p.e0t, p.e1w, p.e1h, p.e1t, x.eyeScale].map(v => Math.round((v || 0) * 5000)).join(',');
       face.userData.eyes.forEach((e, i) => {
-        const w = p[i ? 'e1w' : 'e0w'] * (x.eyeScale || 1), h = p[i ? 'e1h' : 'e0h'] * (x.eyeScale || 1), tilt = p[i ? 'e1t' : 'e0t'], sz = L.slotSize(w, h);
+        const w = p[i ? 'e1w' : 'e0w'] * (x.eyeScale || 1), h = p[i ? 'e1h' : 'e0h'] * (x.eyeScale || 1), tilt = p[i ? 'e1t' : 'e0t'], _sz = L.slotSize(w, h), sz = L.uprightSize(_sz.w, _sz.h);
         const open = Math.max(0.06, Math.min(p[i ? 'e1o' : 'e0o'], 1 - 0.92 * p.lid) * (1 - blink) * (i === 1 ? 1 - 0.93 * (x.wink || 0) : 1));
         if (face.userData.slotKey !== key) {
           const sx = (i ? 1 : -1) * 0.1 * GAP * g.spread, cx = sx * Math.cos(g.roll), cy = sx * Math.sin(g.roll);

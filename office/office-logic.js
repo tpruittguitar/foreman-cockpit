@@ -2504,6 +2504,8 @@
   /* Studio eye size -> metres, keeping the office slot-eye proportions: the neutral studio eye (0.186 x 0.412) is the existing 0.068 x 0.2 slot. */
   const SLOT_W_PER_UNIT = 0.068 / 0.186, SLOT_H_PER_UNIT = 0.2 / 0.412;
   const slotSize = (w, h) => ({ w: Math.max(0.01, w * SLOT_W_PER_UNIT), h: Math.max(0.01, h * SLOT_H_PER_UNIT) });
+  /* Keep the same pill size, but never let width exceed height. Applied to the open-eye size; blink and sleep still flatten height after this. */
+  const uprightSize = (w, h) => ({ w: Math.min(w, h), h: Math.max(w, h) });
   /* Studio "look" animation: the gaze drifts with slow layered noise (never still), plus a gentle breath. Returns degrees and a scale. */
   const noise1 = (t, period, ph) => { const r = t / period * Math.PI * 2; return 0.55 * Math.sin(r + ph) + 0.3 * Math.sin(2 * r + 1.7 * ph + 1.1) + 0.15 * Math.sin(3 * r + 2.3 * ph + 2.4); };
   function gazeWander(t, seed, amount) {
@@ -2687,6 +2689,6 @@
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
     needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, ZACH_KEY, zachShownFrom, readZachShown, saveZachShown, createZachSwitch, ZACH_SWITCH, zachSwitchPose, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, buildLaunchLine, RELEASE_PLATE_BOARD, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine, activityChip, blockedCue, blockedHopOffset,
-    groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
+    groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, uprightSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };
 });

@@ -173,3 +173,55 @@ test('sleep poses close the eyes (jelly slot eyes and President) and waking reop
   for (let i = 0; i < 120; i++) cur = L.blendExpression(cur, L.exprFor({ pose: 'stand', name: 'A', t: 0 }), 1 / 60);
   assert.ok(cur.e0o > 0.5 && cur.lid < 0.05, 'eyes reopen after waking');
 });
+
+test('slot-bot eyes stay upright (h >= w) on every studio expression; blink and sleep still flatten height', () => {
+  assert.equal(typeof L.uprightSize, 'function');
+  const already = L.uprightSize(0.068, 0.2);
+  assert.equal(already.w, 0.068);
+  assert.equal(already.h, 0.2);
+  const swapped = L.uprightSize(0.0987, 0.0825);
+  assert.ok(swapped.h >= swapped.w);
+  assert.equal(swapped.w, 0.0825);
+  assert.equal(swapped.h, 0.0987);
+
+  const neutral = L.exprParams('neutral');
+  const families = {
+    mesh: (w, h) => { const s = L.slotSize(w, h); return L.uprightSize(s.w, s.h); },
+    frontMask: (w, h) => L.uprightSize(0.045 * w / neutral.e0w, 0.0888 * h / neutral.e0h),
+    hr: (w, h) => L.uprightSize(0.0498 * w / neutral.e0w, 0.0984 * h / neutral.e0h),
+    pill: (w, h) => L.uprightSize(0.053 * w / neutral.e0w, 0.105 * h / neutral.e0h),
+    flatSlab: (w, h) => { const s = L.slotSize(0.13 * w / neutral.e0w, 0.24 * h / neutral.e0h); return L.uprightSize(s.w * 0.72, s.h * 0.72); }
+  };
+  for (const id of IDS) for (const k of [0, 1]) {
+    const ew = L.EXPR[id]['e' + k + 'w'], eh = L.EXPR[id]['e' + k + 'h'];
+    for (const [name, fn] of Object.entries(families)) {
+      const s = fn(ew, eh);
+      assert.ok(s.h + 1e-12 >= s.w, id + ' ' + name + ' eye' + k + ' ' + s.w + 'x' + s.h + ' should be upright');
+    }
+  }
+  const happyMesh = families.mesh(L.EXPR.happy.e0w, L.EXPR.happy.e0h);
+  const rawHappy = L.slotSize(L.EXPR.happy.e0w, L.EXPR.happy.e0h);
+  assert.ok(rawHappy.w > rawHappy.h, 'studio happy is still wider than tall before uprightSize');
+  assert.equal(happyMesh.w, rawHappy.h);
+  assert.equal(happyMesh.h, rawHappy.w);
+
+  // Same apply order as chars.js: uprightSize on the open-eye size, then multiply height by open.
+  // Sleep (lid=1) and a full blink clamp open to 0.06, so the pill squashes flatter than it is wide.
+  const openOf = (p, blink) => Math.max(0.06, Math.min(p.e0o, 1 - 0.92 * p.lid) * (1 - blink));
+  const sleep = L.exprParams('sleepy');
+  assert.equal(L.exprFor({ pose: 'nap', name: 'A' }), 'sleepy');
+  const sleepOpen = openOf(sleep, 0);
+  assert.ok(sleepOpen <= 0.06, 'sleep still flattens aperture');
+  for (const [name, fn] of Object.entries(families)) {
+    const raw = fn(sleep.e0w, sleep.e0h);
+    const flat = { w: raw.w, h: raw.h * sleepOpen };
+    assert.ok(flat.h < flat.w, name + ' sleep height is flatter than wide, not swapped back upright');
+    const blinked = { w: raw.w, h: raw.h * openOf(L.exprParams('neutral'), 1) };
+    assert.ok(blinked.h < blinked.w, name + ' blink flattens height');
+  }
+  // Asymmetric faces: each eye is upright on its own and can keep a different size.
+  const c0 = families.mesh(L.EXPR.confused.e0w, L.EXPR.confused.e0h);
+  const c1 = families.mesh(L.EXPR.confused.e1w, L.EXPR.confused.e1h);
+  assert.ok(c0.h >= c0.w && c1.h >= c1.w);
+  assert.ok(Math.abs(c0.h - c1.h) > 0.01, 'confused keeps different eye sizes');
+});
