@@ -64,3 +64,41 @@ test('stale feed keeps the last good numbers, labeled (P3 constraint wall)', () 
   const js = require('fs').readFileSync(require('path').join(__dirname, '..', 'office', 'office.js'), 'utf8');
   assert.match(js, /if \(!L\.constraintHasNumbers\(sum\)\) return lastGood\(c\.err\);\n  c\.lastGood = sum;/);
 });
+
+test('fresh load with flow older than 90 min keeps last numbers marked STALE (cs-5ae582a6)', () => {
+  const now = Date.parse('2026-10-29T00:00:00Z'), at = new Date(now - 120 * 60000).toISOString();
+  const f = {
+    now,
+    health: {
+      ok: true,
+      processFlow: {
+        at,
+        population: { total: 3, reconciled: true },
+        queues: { verification: 0, enrichment: 2, readyForReview: 1, blockedClosed: 0 },
+        completion: { enrichment: { available: true, perHour: 2.2, count36: 79, last24h: 50 } },
+        upstream: {
+          at, reconciled: true, total: 2, accounted: 2, waiting: 2,
+          counts: { WAITING: 2, PRESENT: 0, EXCLUDED: 0, HELD: 0, IDENTITY_HOLD: 0, MISSING_PREVIOUSLY_PRESENT: 0 },
+          rates: { discovery: { perHour: 9.1, available: true, unit: 'candidate identities' }, intake: { perHour: 4.1, available: true } }
+        }
+      }
+    },
+    master: { loaded: true, freshness: 'FRESH', rows: [] },
+    activity: { ok: true, today: { writes: 0 } }
+  };
+  const sum = CR.summary(CR.model(f), {});
+  assert.equal(sum.stale, true);
+  assert.equal(sum.ratesAsOf, at);
+  assert.equal(L.constraintHasNumbers(sum), true, 'fresh load has numbers, so the wall does not fall through to empty lastGood');
+  assert.ok(sum.stages.some(st => st.constraint), 'constraint watch names a real constraint');
+  assert.equal(sum.stages[2].perHour, 2.2);
+  assert.equal(sum.waiting[1].count, 2);
+  const js = fs.readFileSync(path.join(__dirname, '..', 'office', 'office.js'), 'utf8');
+  assert.match(js, /lastGood:\s*!!sum\.stale/, 'wall uses the existing STALE style when the kept flow is stale');
+  const c = fakeCtx();
+  D.drawConstraintWall(c, 1024, 512, { sum, age: L.constraintAge(at, now), err: '', lastGood: !!sum.stale });
+  const texts = c.texts.map(x => String(x.t));
+  assert.ok(texts.some(t => /\? STALE/.test(t) && /as of/.test(t)), 'STALE + as-of: ' + JSON.stringify(texts.filter(t => /STALE|as of|Waiting|unavailable/.test(t))));
+  assert.ok(texts.some(t => t === '2.2' || /2\.2/.test(t)), 'Enrichment rate still drawn: ' + JSON.stringify(texts.filter(t => /\d/.test(t)).slice(0, 12)));
+  assert.ok(!texts.some(t => /Waiting for the pipeline feed|Pipeline feed unavailable|all Unknown/.test(t)));
+});

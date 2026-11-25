@@ -42,3 +42,18 @@ test('mobile summary preserves partial coverage for every process rate',()=>{
  const m={...base,upstream:{rates:{discovery:{perHour:40,partial:true},intake:{perHour:44,partial:true}}},flow:{...base.flow,completion:{enrichment:{perHour:17,partial:true}}}};
  const s=CR.summary(m,{});assert.deepStrictEqual(s.stages.slice(0,3).map(x=>x.partial),[true,true,true]);
 });
+
+test('summary: a fresh load with flow older than 90 min keeps rates, names the constraint, and is STALE (cs-5ae582a6)',()=>{
+  const now=Date.parse('2026-10-29T00:00:00Z'),at=new Date(now-120*60000).toISOString();
+  const f={now,health:{ok:true,processFlow:{at,population:{total:3,reconciled:true},queues:{verification:0,enrichment:2,readyForReview:1,blockedClosed:0},completion:{enrichment:{available:true,perHour:2.2,count36:79,last24h:50}},upstream:{at,reconciled:true,total:2,accounted:2,waiting:2,counts:{WAITING:2,PRESENT:0,EXCLUDED:0,HELD:0,IDENTITY_HOLD:0,MISSING_PREVIOUSLY_PRESENT:0},rates:{discovery:{perHour:9.1,available:true,unit:'candidate identities'},intake:{perHour:4.1,available:true}}}}},master:{loaded:true,freshness:'FRESH',rows:[]},activity:{ok:true,today:{writes:0}}};
+  const s=CR.summary(CR.model(f),{});
+  assert.strictEqual(s.stale,true);
+  assert.strictEqual(s.ratesAsOf,at);
+  assert.deepStrictEqual(s.stages.slice(0,3).map(x=>x.perHour),[9.1,4.1,2.2]);
+  assert.ok(s.stages.some(x=>x.constraint),'names a real constraint on a feed older than 90 min');
+  assert.strictEqual(s.needDecision,1);
+  assert.strictEqual(s.waiting[1].count,2);
+  const dead=CR.summary(CR.model(Object.assign({},f,{now:now+25*3600000-120*60000})),{});
+  assert.notStrictEqual(dead.stale,true,'older than 24 h still fails closed');
+  assert.deepStrictEqual(dead.stages.slice(0,3).map(x=>x.perHour),[null,null,null]);
+});
