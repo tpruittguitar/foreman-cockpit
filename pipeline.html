@@ -2321,13 +2321,17 @@ function geocodePlace_(loc){
   if(GEO_CITY_OVERRIDES[key]){var o=GEO_CITY_OVERRIDES[key],hit={lat:o[0],lon:o[1],state:sc,approx:false,source:'local city cache'};cache[key]=hit;geoCacheSave_();return Promise.resolve(Object.assign({},loc,hit))}
   if(!city||city.length<2){var fb=stateFallback_(loc.label);return Promise.resolve(Object.assign({},loc,fb||{}))}
   var url='https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=10&language=en&format=json&countryCode=US';
-  return fetch(url,{cache:'force-cache'}).then(function(r){if(!r.ok)throw new Error('geocode '+r.status);return r.json()}).then(function(j){
+  /* GUI-18 (cs-fa411c2b): a map draw starts every lookup at once, before any answer is cached, so each job row sharing a place
+     asked the geocoder again (about 1,400 requests for about 50 places). One request per place is now in flight; the rest wait for it. */
+  var pk=key+'|'+(sc||''),inflight=GEO_.p||(GEO_.p={});
+  var job=inflight[pk]||(inflight[pk]=fetch(url,{cache:'force-cache'}).then(function(r){if(!r.ok)throw new Error('geocode '+r.status);return r.json()}).then(function(j){
     var rs=(j&&j.results)||[],want=sc?US_STATE_NAMES[sc]:'',hit=null;
     for(var i=0;i<rs.length;i++){if(!want||String(rs[i].admin1||'').toLowerCase()===want.toLowerCase()){hit=rs[i];break}}
     if(!hit)hit=rs[0];
     if(!hit)throw new Error('no geocode');
-    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,city:String(hit.name||''),approx:false,source:'city geocode'};cache[key]=val;geoCacheSave_();return Object.assign({},loc,val);
-  }).catch(function(e){if(e&&/no geocode/.test(e.message||'')){cache[key]={miss:Date.now(),sc:sc||''};geoCacheSave_()}var fb=stateFallback_(loc.label);return Object.assign({},loc,fb||{})});
+    var val={lat:+hit.latitude,lon:+hit.longitude,state:sc,city:String(hit.name||''),approx:false,source:'city geocode'};cache[key]=val;geoCacheSave_();return val;
+  }).catch(function(e){if(e&&/no geocode/.test(e.message||'')){cache[key]={miss:Date.now(),sc:sc||''};geoCacheSave_()}throw e}).then(function(v){delete inflight[pk];return v},function(e){delete inflight[pk];throw e}));
+  return job.then(function(val){return Object.assign({},loc,val)},function(){var fb=stateFallback_(loc.label);return Object.assign({},loc,fb||{})});
 }
 function projectUS_(lat,lon,state){return PipelineMap.project(lat,lon,state)}
 /* Step 5 map rebuild (golden F01 / F02 map panel, rev4 BUILD 1-2). Geometry in pipeline-map-hud.js; this part only draws it.
