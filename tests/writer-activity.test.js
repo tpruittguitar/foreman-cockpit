@@ -117,6 +117,9 @@ test('GUI round 2 (cs-e3a8680f): the Writer STALE banner is on the open Operatio
  assert.equal(A.staleBanner(d),'');assert.equal(A.staleBanner(null),'');assert.equal(A.staleBanner({ok:false,stale:true}),'');
  const ops=fs.readFileSync(path.join(__dirname,'..','pipeline-operations-ui.js'),'utf8'),i=ops.indexOf('PipelineWriterActivity.staleBanner(activity.data)'),j=ops.indexOf('<details class="cr-diagnostics"');
  assert.ok(i>0&&j>0&&i<j,'banner is rendered outside and before details.cr-diagnostics');
+ const k=ops.indexOf('PipelineControlRoom.html(roomModel()');assert.ok(k>0&&i<k,'cs-9e5be547 #5: banner is first on the open Operations view, before PipelineControlRoom.html (SYSTEM STATUS, issue cards)');
+ assert.match(ops,/return \(typeof PipelineWriterActivity!=='undefined'&&PipelineWriterActivity\.staleBanner\?PipelineWriterActivity\.staleBanner\(activity\.data\):''\)\+PipelineControlRoom\.html\(/);
+ assert.doesNotMatch(b,/· today/,'not-today counts never say today');assert.match(b,/class="panel cr-writer-stale"><p class="tip warn" role="status"/);
  const page=fs.readFileSync(path.join(__dirname,'..','pipeline.html'),'utf8');
  assert.match(page,/if\(index&&!PipelineWaitingQueues\.staleLabel\(st\)&&Date\.now\(\)-Date\.parse\(index\.at\)>30\*60000\)note\+=' · delayed evidence'/,'no "delayed evidence" after a STALE label');
 });
