@@ -91,6 +91,13 @@
   header .menu-btn{min-width:42px!important;min-height:42px!important;padding:0!important}
   header .brand{font-size:11.6px!important;letter-spacing:.85px!important;max-width:38vw!important}
   header .brand small{font-size:6.2px!important;letter-spacing:.75px!important}
+  /* cs-9755c866: html.touch-phone shows the Desktop layout toggle, and the brand (min-width:0;
+     overflow:hidden) shrinks under PIPELINE EXPLORER (74 vs 65). Keep the 11.6px type and the
+     two-line wrap. min-content is the longer title word; the subtitle is width:0 / min-width:100%
+     so it does not inflate that. Writer/status may shrink so Desktop stays on screen. */
+  html.touch-phone header .brand{min-width:min-content;overflow:visible}
+  html.touch-phone header .brand small{width:0;min-width:100%;max-width:100%}
+  html.touch-phone header .writer-identity,html.touch-phone header .hstat{min-width:0;flex:0 1 auto}
   header .hcell,header .writer-badge{min-height:36px!important;padding:0 5px!important}
   header .hcell b,header .writer-badge b{font-size:12.5px!important}
 
