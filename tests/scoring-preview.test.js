@@ -13,9 +13,13 @@ test('identical models change nothing: no rating, rank, or band moves',()=>{
   assert.equal(out.movers.length,0);assert.deepEqual(out.top.entered,[]);assert.deepEqual(out.top.left,[]);assert(out.population>0);
 });
 
-test('a weight change moves ratings and ranks on the real fixture, and the counts are internally consistent',()=>{
+test('a weight change moves ratings and ranks when a researched fit exists; fixture rows with no fit stay unrated',()=>{
   const before=base(),after=withWeights({experience:5,flex:5,compensation:70,geo:15,ats:0,title:5,culture:0,ownership:0});
-  const out=Prev.compare(rows,Scoring.scoreRow,before,after);
+  const empty=Prev.compare(rows,Scoring.scoreRow,before,after);
+  assert.equal(empty.identical,true);
+  assert.equal(empty.ratingUp+empty.ratingDown,0);
+  const fitted=rows.map((r,i)=>r.BUCKET!=='READY_TO_PURSUE'?r:Object.assign({},r,{payload:Object.assign({},r.payload||{},{SCOPE_FIT_RAW:'72',SCOPE_FIT_MODEL_REF:'grok-scope',FLEX_CLASS:'HIGH_FLEX'})}));
+  const out=Prev.compare(fitted,Scoring.scoreRow,before,after);
   assert.equal(out.identical,false);
   const both=out.ratingUp+out.ratingDown+out.ratingSame;
   assert.equal(both,out.rankUp+out.rankDown+out.rankSame,'every row rated under both models is classified once for rating and once for rank');
