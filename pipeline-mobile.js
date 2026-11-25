@@ -540,14 +540,17 @@
   function closeFields() { var s = $('m-fields'); if (!s || s.hidden) return false; s.hidden = true; $('m-scrim').hidden = true; if (lastFocus && lastFocus.focus) lastFocus.focus(); return true; }
 
   /* Status: the constraint viewer as a vertical flow; a stage that becomes the constraint gets a 250ms highlight ring. */
-  var lastConstraint = null;
+  /* The ring is kept for 1 s across repaints: a repaint right after the move (a queue-snapshot or health event in the same
+     second) used to drop m-flash before it was ever seen. */
+  var lastConstraint = null, flashUntil = 0;
   function n$(n) { return n == null ? null : Number(n).toLocaleString('en-US'); }
   function renderStatus(loaded) {
     var p = $('m-pane-status'); if (!loaded) { p.innerHTML = skeleton(); return; }
     var b = B(), s = b.status(), h = b.health();
     if (!s || s.error) { p.innerHTML = '<p class="m-label m-sec-l">Pipeline constraint</p><p class="m-alert m-caution-note">' + gl('caution') + 'Pipeline evidence is not available yet' + (s && s.error ? ' · ' + esc(s.error) : '') + '.</p>'; return; }
     var ci = s.stages.map(function (x, i) { return x.constraint ? i : -1; }).filter(function (i) { return i >= 0; }).join(',');
-    var moved = lastConstraint !== null && ci !== lastConstraint && ci !== ''; lastConstraint = ci;
+    if (lastConstraint !== null && ci !== lastConstraint && ci !== '') flashUntil = Date.now() + 1000;
+    lastConstraint = ci; var moved = ci !== '' && Date.now() < flashUntil;
     var flow = s.stages.map(function (st, i) {
       var state = st.manual ? ['', '', 'Manual'] : st.constraint ? ['attn', gl('warn'), 'Constraint'] : st.perHour == null ? ['caution', gl('caution'), 'Unknown'] : ['ok', gl('ok'), 'OK'];
       var card = '<li class="m-stage' + (st.constraint ? ' m-constraint m-brackets' : '') + (st.constraint && moved ? ' m-flash' : '') + '"><span class="m-stage-n m-num">0' + (i + 1) + '</span><div class="m-stage-t"><b>' + esc(st.name) + '</b><span class="m-stage-r m-num">' +
@@ -562,6 +565,8 @@
     if (h.state !== 'FAULT' && h.state !== 'LOADING' && (qv === 'unavailable' || qv === 'stale')) {
       var down = qv === 'unavailable';
       hs = [down ? 'm-down-note' : 'caution', gl(down ? 'warn' : 'caution'), down ? 'QUEUE DOWN' : 'QUEUE STALE'];
+    } else if (s.stale && h.state !== 'FAULT' && h.state !== 'LOADING') {   /* cs-e3a8680f: last reconciled flow kept, 90 min to 24 h old */
+      hs = ['caution', gl('caution'), 'STALE' + (s.ratesAsOf ? ' · as of ' + new Date(s.ratesAsOf).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : '')];
     } else if (hs[2] === 'SYS OK' && h.dataAge) {
       var lab = root.PipelineDataAge.words(h.dataAge);
       if (lab) { hs = ['caution', gl('caution'), ageWord(lab)]; freshAria = lab.aria; }
