@@ -219,9 +219,11 @@ test('GUI review (cs-e3a8680f): one as-of format; a 2-hour flow is STALE with as
 });
 test('GUI review (cs-e3a8680f): mobile Status uses the summary strings for STALE and no-flow, in text and accessible name',()=>{
  const src=require('fs').readFileSync(require('path').join(__dirname,'../pipeline-mobile.js'),'utf8');
- assert.ok(src.includes("hs = ['caution', gl('caution'), 'STALE' + (staleAsOf ? ' · ' + staleAsOf : '')]"),'visible STALE · as of <HH:MM> ET from ratesAsOf');
+ assert.ok(src.includes("root.PipelineControlRoom.asOfLabel(s.ratesAsOf)"),'mobile STALE uses asOfLabel/boardTime, not a 24-hour clock');
+ assert.ok(src.includes("hs = ['caution', gl('caution'), 'STALE' + (staleAsOf ? ' · ' + staleAsOf : '')]"),'visible STALE · as of <boardTime> ET');
  assert.ok(src.includes("freshAria = 'Process flow is STALE' + (staleAsOf ? ', ' + staleAsOf : '')"),'accessible name');
- assert.ok(src.includes("var staleAsOf = s.ratesAsOf ? 'as of '"),'uses ratesAsOf, not asOfText');
+ const staleBlk=src.slice(src.indexOf('s.stale && h.state'),src.indexOf("else if (hs[2] === 'SYS OK'"));
+ assert.ok(staleBlk.includes('asOfLabel(s.ratesAsOf)'));assert.doesNotMatch(staleBlk,/toLocaleTimeString/,'STALE as-of is not a raw clock');
  assert.match(src,/role="status" aria-label="' \+ esc\(s\.noFlow\.title \+ '\. ' \+ s\.noFlow\.detail\)/);assert.ok(src.includes("gl('caution') + '<b>' + esc(s.noFlow.title)"),'word plus caution glyph');
 });
 test('GUI round 2 (cs-e3a8680f): health with overall ok:false still feeds processFlow and its checks into the room',()=>{

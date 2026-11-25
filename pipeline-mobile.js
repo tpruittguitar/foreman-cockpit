@@ -568,7 +568,7 @@
       var down = qv === 'unavailable';
       hs = [down ? 'm-down-note' : 'caution', gl(down ? 'warn' : 'caution'), down ? 'QUEUE DOWN' : 'QUEUE STALE'];
     } else if (s.stale && h.state !== 'FAULT' && h.state !== 'LOADING') {   /* cs-e3a8680f: last reconciled flow kept, 90 min to 24 h old */
-      var staleAsOf = s.ratesAsOf ? 'as of ' + new Date(s.ratesAsOf).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }) + ' ET' : '';
+      var staleAsOf = s.ratesAsOf && root.PipelineControlRoom && root.PipelineControlRoom.asOfLabel ? root.PipelineControlRoom.asOfLabel(s.ratesAsOf) : '';
       hs = ['caution', gl('caution'), 'STALE' + (staleAsOf ? ' · ' + staleAsOf : '')]; freshAria = 'Process flow is STALE' + (staleAsOf ? ', ' + staleAsOf : '');
     } else if (hs[2] === 'SYS OK' && h.dataAge) {
       var lab = root.PipelineDataAge.words(h.dataAge);

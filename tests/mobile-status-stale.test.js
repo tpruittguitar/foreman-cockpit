@@ -130,6 +130,7 @@ test('fresh load with flow older than 90 min keeps last Status numbers marked ST
   };
 
   const root = {
+    PipelineControlRoom: CR,
     PEMobileBridge: {
       ready: () => true,
       status: () => sum,
@@ -169,8 +170,14 @@ test('fresh load with flow older than 90 min keeps last Status numbers marked ST
   const pane = byId['m-pane-status'];
   assert.ok(pane, 'Status pane exists');
   const html = pane.innerHTML || '';
-  assert.match(html, /\bSTALE\b/);
-  assert.match(html, /as of /);
+  const asOf = CR.asOfLabel(at);
+  const visible = 'STALE · ' + asOf;
+  const aria = 'Process flow is STALE, ' + asOf;
+  assert.match(asOf, /^as of [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d\d (AM|PM) ET$/, 'dated board-time format');
+  assert.equal(asOf, 'as of ' + new Date(at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET');
+  assert.ok(html.includes(visible), 'visible STALE text is ' + visible);
+  assert.ok(html.includes('aria-label="' + aria + '"'), 'aria is ' + aria);
+  assert.doesNotMatch(html, /STALE · as of \d{2}:\d{2} ET/, 'not 24-hour time with no date');
   assert.match(html, /2\.2/);
   assert.match(html, /Enrichment/);
   assert.doesNotMatch(html, /Pipeline evidence is not available yet/);
