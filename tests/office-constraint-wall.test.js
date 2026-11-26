@@ -65,6 +65,22 @@ test('stale feed keeps the last good numbers, labeled (P3 constraint wall)', () 
   assert.match(js, /if \(!L\.constraintHasNumbers\(sum\)\) return lastGood\(c\.err\);\n  c\.lastGood = sum;/);
 });
 
+test('last good stale banner stays above cards and footer on the constraint wall', () => {
+  const now = Date.parse('2026-11-18T06:00:00Z'), at = '2026-11-18T05:03:00Z';
+  const sum = Object.assign({}, L.demoConstraint(), { ratesAsOf: at, evidenceDelayed: true });
+  const c = fakeCtx();
+  D.drawConstraintWall(c, 1024, 512, { sum, age: L.constraintAge(at, now), err: '', demo: true, lastGood: true });
+  const title = c.texts.find(x => x.t === 'PIPELINE CONSTRAINT');
+  const stale = c.texts.find(x => String(x.t) === '? STALE · last good measure · as of 12:03 AM ET');
+  assert.ok(title && stale, JSON.stringify(c.texts.map(x => x.t).filter(t => /PIPELINE CONSTRAINT|STALE|as of/.test(String(t)))));
+  const titleBox = { x1: title.x, x2: title.x + 'PIPELINE CONSTRAINT'.length * 50 * 0.55, y1: title.y - 40, y2: title.y - 10 };
+  const staleBox = { x1: stale.x - 1, x2: 1024 - 24, y1: stale.y - 26, y2: stale.y };
+  assert.ok(titleBox.y2 <= staleBox.y1 || staleBox.y2 <= titleBox.y1, 'title/stale vertical overlap');
+  assert.ok(titleBox.x2 <= staleBox.x1 || staleBox.x2 <= titleBox.x1, 'title/stale horizontal overlap');
+  assert.ok(stale.y < 104, 'stale banner baseline should be above stage cards: ' + stale.y);
+  assert.ok(104 + 368 < 510, 'cards end before footer');
+});
+
 test('fresh load with flow older than 90 min keeps last numbers marked STALE (cs-5ae582a6)', () => {
   const now = Date.parse('2026-10-29T00:00:00Z'), at = new Date(now - 120 * 60000).toISOString();
   const f = {
