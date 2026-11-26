@@ -91,11 +91,12 @@ test('cs-9e5be547 #1: disabled Pursue takes the Research / Decline chrome; enabl
   assert.ok(oct15.indexOf(dis) > oct15.indexOf('#drawer .wh-decide [data-decide-key="1"] {'), 'the disabled rule comes after, and its extra selector part makes it win');
   assert.equal(typeof W.TITLE, 'string'); assert.ok(W.TITLE.length > 0, 'the Writer-off title still explains the state');
 });
-test('cs-9e5be547 #2: the content above the sticky decide bar reserves at least the bar height', () => {
+test('cs-ca5b83da #4: the drawer body (the scroll container) reserves at least the decide bar height plus a 12 px gap', () => {
   const tok = fs.readFileSync(path.join(__dirname, '..', 'tokens.css'), 'utf8'), decH = Number(/--pe-dec-h: (\d+)px/.exec(tok)[1]);
   const bar = /#drawer #d-body>\.wh-decide\{[^}]*padding:(\d+)px 0 (\d+)px/.exec(desk), barH = decH + Number(bar[1]) + Number(bar[2]);
-  const m = /#drawer #d-body>:not\(\.wh-decide\):has\(\+ \.wh-decide\)\{padding-bottom:calc\(var\(--pe-dec-h,50px\) \+ (\d+)px\)\}/.exec(desk);
-  assert.ok(m, 'reserved space on the content above the bar');
+  const m = /#drawer #d-body\{[^}]*padding-bottom:calc\(var\(--pe-dec-h,50px\) \+ (\d+)px\)/.exec(desk);
+  assert.ok(m, 'reserved space on #drawer #d-body itself');
+  assert.doesNotMatch(desk, /:has\(\+ \.wh-decide\)/, 'the sibling-only reserve that missed live (#561) is retired');
   assert.ok(decH + Number(m[1]) >= barH + 12, 'reserve ' + (decH + Number(m[1])) + ' >= bar ' + barH + ' + 12 gap');
   assert.match(desk, /#drawer #d-body\{[^}]*scroll-padding-bottom:calc\(var\(--pe-dec-h,50px\) \+ 24px\)/);
   assert.match(desk, /#drawer #d-body>\.wh-decide\{position:sticky;bottom:0/, 'the bar stays sticky');

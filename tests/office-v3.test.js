@@ -239,12 +239,13 @@ test('offline screen: last frame stays an image, dimmed, labeled from lastSeen i
   assert.equal(L.screenState(ix({}), 'id-1', NOW).offline, undefined);
 });
 test('liveStatus: idle row with a fresh busy screen or a running routine shows as working; nothing else changes', () => {
-  const at = m => new Date(NOW - m * 60000).toISOString(), ix = o => L.parseScreensIndex({ updated_at: at(0), screens: { 'id-1': o } });
+  const at = m => new Date(NOW - m * 60000).toISOString(), ix = o => L.parseScreensIndex({ updated_at: at(0), screens: { 'id-1': Object.assign({ task: 'Task: live card' }, o) } });
   const idle = { bot: 'Claude', status: 'idle', task: 'x' };
   assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3), busy: true }), null, NOW).status, 'working');
   assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3), busy: true }), null, NOW).live, 'screen');
   assert.equal(L.liveStatus({ bot: 'Claude' }, 'id-1', ix({ at: at(3), busy: true }), null, NOW).status, 'working', 'empty status too');
   assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3) }), null, NOW).status, 'idle', 'screen without the live-work terminal');
+  assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3), busy: true, task: 'IDLE \u2014 queued for QA' }), null, NOW).status, 'idle', 'cs-ca5b83da: no Task: line never promotes');
   assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(20), busy: true }), null, NOW).status, 'idle', 'screen older than 15 min');
   assert.equal(L.liveStatus(idle, 'id-1', ix({ at: at(3), busy: true, paused: true }), null, NOW).status, 'idle', 'paused screen');
   assert.equal(L.liveStatus(idle, 'other', ix({ at: at(3), busy: true }), null, NOW).status, 'idle', 'another bot\'s screen');

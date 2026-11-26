@@ -89,3 +89,58 @@ test('tagBoardHides: a tag covering a board past the sliver hides; a tag clear o
   const logic = fs.readFileSync(path.join(__dirname, '..', 'office', 'office-logic.js'), 'utf8'), fn = logic.slice(logic.indexOf('function tagBoardHides'), logic.indexOf('\n  }\n', logic.indexOf('function tagBoardHides')));
   assert.doesNotMatch(fn, /GUI|QA|Gauge|Root|Claude|Grok|Hermes|name/, 'no bot names');
 });
+
+// cs-ca5b83da #1: state comes only from a "Task:" line; anything else is unknown, never working.
+test('botActivity: no "Task:" line is unknown, whatever busy/activeAt/free text say; a Task: line still drives the state', () => {
+  const MIN = 60000, NOW = Date.parse('2026-11-26T13:35:00Z'), ago = m => new Date(NOW - m * MIN).toISOString();
+  const ctx = (id, task) => ({ screens: L.parseScreensIndex({ updated_at: ago(1), screens: { [id]: { at: ago(1), activeAt: ago(2), busy: true, paused: false, task } } }) });
+  const GPT = { bot: 'ChatGPT', bot_id: 'gpt-1', status: 'idle' }, QA = { bot: 'QA', bot_id: 'qa-1', status: 'idle' };
+  const gpt = L.botActivity(GPT, NOW, ctx('gpt-1', 'IDLE — cs-05e7c1fa deployed & queued for QA (5/5 tests pass); waiting on QA'));
+  assert.deepEqual([gpt.state, gpt.working, gpt.blocked, gpt.waiting, gpt.task], ['unknown', false, false, false, '']);
+  assert.equal(L.floorTag('ChatGPT', gpt, { title: 'IDLE — cs-05e7c1fa deployed & queued for QA' }).text, 'ChatGPT · unknown', 'no free-text title');
+  const qa = L.botActivity(QA, NOW, ctx('qa-1', 'QA proofs: cs-52703d0e WAITING (0/2 pos…)'));
+  assert.deepEqual([qa.state, qa.working], ['unknown', false]);
+  assert.equal(L.floorTag('QA', qa).text, 'QA · unknown');
+  const work = L.botActivity(QA, NOW, ctx('qa-1', 'Task: QA proofs: 91 queued, waiting on natural runs'));
+  assert.deepEqual([work.state, work.working, work.task], ['working', true, 'QA proofs: 91 queued, waiting on natural runs'], 'WAITING inside a title is not the state word');
+  assert.equal(L.botActivity(QA, NOW, ctx('qa-1', 'Task: waiting · proof run for #559')).task, 'proof run for #559', '"waiting ·" leads too');
+  assert.equal(L.botActivity(QA, NOW, ctx('qa-1', 'Task:')).state, 'idle', 'an empty Task: line is idle');
+  assert.equal(L.botActivity(QA, NOW, ctx('qa-1', 'blocked: no key')).state, 'unknown', 'a state word without Task: is free text');
+  assert.equal(L.botActivity(QA, NOW, ctx('qa-1', 'Task: Blocked · no key')).state, 'blocked');
+  assert.equal(L.floorTag('QA', { state: 'unknown', task: 'waiting: x' }).text, 'QA · unknown', 'unknown never falls back to a waiting read of the title');
+});
+test('parseScreensIndex keeps the stripped title and records whether the Task: line was there; liveStatus needs it to promote', () => {
+  const MIN = 60000, NOW = Date.parse('2026-11-26T13:35:00Z'), at = new Date(NOW - 2 * MIN).toISOString();
+  const ix = L.parseScreensIndex({ screens: { a1: { at, busy: true, activeAt: at, task: 'Task: P3 office floor tags (b16837c)' }, b2: { at, busy: true, activeAt: at, task: 'IDLE — queued' } } });
+  assert.deepEqual([ix.screens.a1.task, ix.screens.a1.hasTaskLine], ['P3 office floor tags (b16837c)', true]);
+  assert.deepEqual([ix.screens.b2.task, ix.screens.b2.hasTaskLine], ['IDLE — queued', false]);
+  assert.equal(L.hasTaskLine('task: x'), true); assert.equal(L.hasTaskLine('Tasks: x'), false);
+  const row = { bot: 'X', status: 'idle' };
+  assert.equal(L.liveStatus(row, 'a1', ix, null, NOW).status, 'working');
+  assert.equal(L.liveStatus(row, 'b2', ix, null, NOW).status, 'idle', 'no Task: line never promotes to working');
+  assert.equal(L.screenWorkAt(ix.screens.b2, ix, NOW), null);
+});
+
+// cs-ca5b83da #2: the state word is its own span that far tags never hide; only the card title (.tsub) drops.
+test('far tags keep the state word: .tstate sits outside .tsub and far CSS hides only .tsub', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'office', 'office.css'), 'utf8');
+  const tag = src.slice(src.indexOf('function updateLabels'), src.indexOf('const ys = L.nudgeLabels'));
+  assert.match(tag, /<span class="tstate\$\{alert\}">\$\{esc\(floor\.state\)\}<\/span>` \+ \(floor\.title \? `<span class="tsub\$\{alert\}">· \$\{esc\(floor\.title\)\}<\/span>`/);
+  assert.doesNotMatch(tag, /esc\(sub\)/, 'the whole subtitle is no longer inside .tsub');
+  assert.match(css, /\.tag\.far \.tsub:not\(\.alert\) \{ display: none; \}/);
+  for (const rule of css.match(/[^{}]*\{[^}]*display:\s*none[^}]*\}/g) || []) assert.doesNotMatch(rule.split('{')[0], /tstate/, 'no rule hides .tstate: ' + rule.trim());
+  assert.match(css, /\.tag \.tstate\.alert, \.tag \.tsub\.alert \{ color: #ff6b6b; font-weight: 800; \}/, 'blocked keeps its alert colour on the word');
+});
+
+// cs-ca5b83da #3: one freshness phrase; stale never adds the contradictory "(stale: no publisher run in 30 min)".
+test('asofLabel: stale is "Stale · updated N min ago", live quiet keeps checked/last change, failed unchanged', () => {
+  assert.equal(L.asofLabel({ state: 'stale', ageText: 'updated 18 min ago' }), 'Stale · updated 18 min ago');
+  assert.equal(L.asofLabel({ state: 'stale', ageText: 'updated 17 min ago', source: 'raw' }), 'Stale · updated 17 min ago · via raw (API rate limit)');
+  assert.equal(L.asofLabel({ state: 'live', ageText: 'updated 14 min ago', checkedText: 'updated 2 min ago', quiet: true }), 'checked 2 min ago · last change 14 min ago');
+  assert.equal(L.asofLabel({ state: 'live', ageText: 'updated just now' }), 'updated just now');
+  assert.equal(L.asofLabel({ state: 'failed', everOk: true, lastData: '8:10 AM', source: 'raw' }), '⚠ Data feed down · last data 8:10 AM');
+  assert.equal(L.asofLabel({ state: 'failed' }), '⚠ No office data');
+  assert.doesNotMatch(L.asofLabel({ state: 'stale', ageText: 'updated 18 min ago', source: 'raw' }), /no publisher run|\(stale/);
+  assert.match(src, /asof\.textContent = L\.asofLabel\(\{/);
+  assert.doesNotMatch(src, /\(stale: no publisher run in/, 'the old parenthetical cannot return');
+});

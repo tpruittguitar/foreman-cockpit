@@ -266,9 +266,8 @@ function refreshAll() {
   asof.className = 'asof ' + S.state;
   const age = S.parsed ? L.dataAge(S.parsed.updatedAt, now) : null;
   const quiet = S.state === 'live' && age && age.stale && !!S.checkedAt; // live by heartbeat, nothing changed lately
-  asof.textContent = S.state === 'failed' ? (S.everOk ? '⚠ Data feed down · last data ' + L.hhmm(S.parsed.updatedAt) : '⚠ No office data')
-    : (S.state === 'stale' ? '? ' : '') + (quiet ? 'checked ' + L.dataAge(S.checkedAt, now).text.replace(/^updated /, '') + ' · last change ' + age.text.replace(/^updated /, '') : age.text)
-      + (S.state === 'stale' ? ' (stale: no publisher run in ' + L.PUBLISHER_STALE_MIN + ' min)' : '') + (S.source === 'raw' ? ' · via raw (API rate limit)' : '');
+  asof.textContent = L.asofLabel({ state: S.state, ageText: age ? age.text : '', checkedText: quiet ? L.dataAge(S.checkedAt, now).text : '', quiet, source: S.source,
+    everOk: S.everOk, lastData: S.state === 'failed' && S.everOk ? L.hhmm(S.parsed.updatedAt) : '' });   /* cs-ca5b83da #3: one non-contradictory line */
   asof.title = S.state === 'stale' ? 'OFFICE_STATUS.json is over ' + L.STALE_MIN + ' min old and its publisher has not run in ' + L.PUBLISHER_STALE_MIN + ' min'
     : quiet ? 'No bot row or usage changed since the last change; the publisher last ran ' + L.dataAge(S.checkedAt, now).text.replace(/^updated /, '') : '';
   $('demo-badge').hidden = !DEMO;
@@ -1595,7 +1594,9 @@ function buildWorld() {
       const rp = c.goalNow && c.goalNow.recent;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
       const fr = !frozen && !needs ? L.activityChip(S.fresh[c.name], plan.training, c.name) : '';
-      /* cs-9e5be547 #3: tag is name · idle, or name · working|waiting|blocked · card (blocked shows its reason). Offline is a monitor caption, not the floor state. */
+      /* cs-9e5be547 #3: tag is name · idle, or name · working|waiting|blocked · card (blocked shows its reason). Offline is a monitor caption, not the floor state.
+         cs-ca5b83da #1/#2: name · unknown when the screen has no Task: line. The state word sits in .tstate, which far tags never hide;
+         only the card title / blocked reason (.tsub) may drop on a far tag. */
       const activity = S.fresh[c.name] || {};
       const sc = S.screens && S.screens.screens && S.screens.screens[idFor(c.name, c.botId)];
       const floor = L.floorTag(c.name, activity, { title: activity.task || (sc && sc.task) || '' });
@@ -1605,7 +1606,8 @@ function buildWorld() {
       if (key !== c.tagKey) {
         c.tagKey = key;
         c.tag.className = 'tag' + (frozen ? ' frozen' : '') + (hoverBot === c.name ? ' hl' : '');
-        const tail = sub ? ` · <span class="tsub${floor.state === 'blocked' ? ' alert' : ''}">${esc(sub)}</span>` : '';
+        const alert = floor.state === 'blocked' ? ' alert' : '';
+        const tail = sub ? ` · <span class="tstate${alert}">${esc(floor.state)}</span>` + (floor.title ? `<span class="tsub${alert}">· ${esc(floor.title)}</span>` : '') : '';
         c.tag.innerHTML = esc(c.name) + tail; c.tag.title = tip;
         const short = shortTag(c.name, c.botId);
         if (short !== c.name && c.tag.offsetWidth > Math.min(TAG_MAX_PX, w * 0.3)) { c.tag.innerHTML = esc(short) + tail; c.tag.title = c.name + (tip ? ' · ' + tip : ''); }
