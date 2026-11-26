@@ -29,7 +29,7 @@ function awaySeconds(slots, speed, start) {
   for (let t = 0; t < 180; t += step) {
     const at = NOW + (start + t) * 1000, id = '431e8cf1-f077-4548-82b7-46c1959dc4c9';
     const row = { bot: name, bot_id: id, status: 'working', last_action_at: new Date(at - 5 * MIN).toISOString() };
-    const ctx = { screens: L.parseScreensIndex({ updated_at: new Date(at).toISOString(), screens: { [id]: { at: new Date(at - 5 * MIN).toISOString(), busy: true, activeAt: new Date(at - 5 * MIN).toISOString(), task: 'live card' } } }) };
+    const ctx = { screens: L.parseScreensIndex({ updated_at: new Date(at).toISOString(), screens: { [id]: { at: new Date(at - 5 * MIN).toISOString(), busy: true, activeAt: new Date(at - 5 * MIN).toISOString(), task: 'Task: live card' } } }) };
     const p = L.planOffice([row], [], at, 'live', { [name]: L.botActivity(row, at, ctx) }).plans[name];
     let tgt = SEAT;
     if (p.act === 'coffee' || p.act === 'fridge') tgt = L.breakSpot(p.act, SEAT, slots, speed) || STAND;

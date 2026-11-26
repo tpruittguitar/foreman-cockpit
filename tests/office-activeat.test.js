@@ -4,7 +4,7 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const L = require('../office/office-logic.js');
 const MIN = 60000, NOW = Date.parse('2026-11-18T05:00:00Z'), ago = m => new Date(NOW - m * MIN).toISOString();
 const ROOT = { bot: 'Root', bot_id: '70f0889b-ecd4-457b-a69c-304cd2aff540', status: 'idle', last_action: 'Added usage summary', last_action_at: ago(2 * 1440) };
-const screens = entry => ({ screens: L.parseScreensIndex({ updated_at: ago(1), screens: { [ROOT.bot_id]: Object.assign({ at: ago(1), paused: false, busy: false }, entry) } }) });
+const screens = entry => ({ screens: L.parseScreensIndex({ updated_at: ago(1), screens: { [ROOT.bot_id]: Object.assign({ at: ago(1), paused: false, busy: false, task: 'Task: live card' }, entry)   /* cs-ca5b83da: standing Task: line */ } }) });
 
 test('activeAt present: the screen signal is activeAt, not the capture time', () => {
   const ctx = screens({ activeAt: ago(300), busy: true });
@@ -29,19 +29,19 @@ test('"no activity feed" for seeded or never-written rows with no other signal; 
   assert.deepEqual([L.freshness(seeded, NOW, [ago(30)]).stale, L.freshness(seeded, NOW, [ago(30)]).label], [false, '']);
 });
 test('idle or blocked task files win over fresh status-row time; working needs a real screen activeAt', () => {
-  const idle = screens({ activeAt: ago(1), busy: false, task: 'idle' });
+  const idle = screens({ activeAt: ago(1), busy: false, task: 'Task: idle' });
   assert.deepEqual([L.botActivity(ROOT, NOW, idle).working, L.botActivity(ROOT, NOW, idle).state], [false, 'idle']);
-  const busy = screens({ activeAt: ago(4), busy: true, task: 'my card' });
+  const busy = screens({ activeAt: ago(4), busy: true, task: 'Task: my card' });
   assert.deepEqual([L.botActivity(ROOT, NOW, busy).working, L.botActivity(ROOT, NOW, busy).state, L.botActivity(ROOT, NOW, busy).task], [true, 'working', 'my card']);
   const blocked = screens({ activeAt: ago(35 * 60), busy: true, blocked: true, task: 'blocked: card-pickup webhook needs Tim to copy URL/key into gauge.env' });
   assert.deepEqual([L.botActivity(ROOT, NOW, blocked).working, L.botActivity(ROOT, NOW, blocked).blocked, L.botActivity(ROOT, NOW, blocked).state, L.botActivity(ROOT, NOW, blocked).task], [false, true, 'blocked', 'card-pickup webhook needs Tim to copy URL/key into gauge.env']);
-  const statusOnly = L.botActivity(ROOT, NOW, screens({ activeAt: ago(1), busy: false, task: 'idle' }));
+  const statusOnly = L.botActivity(ROOT, NOW, screens({ activeAt: ago(1), busy: false, task: 'Task: idle' }));
   assert.equal(statusOnly.working, false);
   const batchAt = ago(4);
   const other = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
   const batch = { screens: L.parseScreensIndex({ updated_at: batchAt, screens: {
-    [ROOT.bot_id]: { at: batchAt, activeAt: batchAt, busy: true, task: 'board card title' },
-    [other]: { at: batchAt, activeAt: batchAt, busy: true, task: 'another board card' }
+    [ROOT.bot_id]: { at: batchAt, activeAt: batchAt, busy: true, task: 'Task: board card title' },
+    [other]: { at: batchAt, activeAt: batchAt, busy: true, task: 'Task: another board card' }
   } }) };
   assert.equal(L.botActivity(ROOT, NOW, batch).working, false, 'shared batch activeAt equal to updated_at is not a real per-screen time');
   assert.equal(L.botActivity({ bot: 'HR', bot_id: other, status: 'idle' }, NOW, batch).working, false);
@@ -69,7 +69,7 @@ test('QA #434: screen busy:false or offline:true wins over a fresh PR merge or s
   assert.equal(mergeOnly.state, 'idle');
 });
 test('cs-366c0fe4 (President fix b): fresh busy:true outranks offline for the working pose and tag; the screen keeps its offline caption', () => {
-  const ix = screens({ at: ago(1), activeAt: ago(1), busy: true, offline: true, lastSeen: ago(1), task: 'Pipeline Explorer dashboard' });
+  const ix = screens({ at: ago(1), activeAt: ago(1), busy: true, offline: true, lastSeen: ago(1), task: 'Task: Pipeline Explorer dashboard' });
   const a = L.botActivity(ROOT, NOW, ix);
   assert.deepEqual([a.working, a.stale, a.label], [true, false, '']);
   assert.equal(L.botActivity(ROOT, NOW, screens({ activeAt: ago(119), busy: true, offline: true, lastSeen: ago(119) })).working, true, 'inside 120 min');

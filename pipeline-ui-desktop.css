@@ -103,10 +103,10 @@
 /* Job drawer body fills leftover height; the four decision buttons stay pinned at the bottom. */
 @media(min-width:981px),(min-width:761px) and (pointer:fine){
   #drawer{min-height:0;overflow:hidden;flex-direction:column}
-  #drawer #d-body{flex:1 1 auto;min-height:0;overflow:auto;scroll-padding-bottom:calc(var(--pe-dec-h,50px) + 24px)}
-  /* cs-9e5be547 #2: the content above the sticky decide bar reserves the bar's height (50 px buttons + 8 + 4 padding) plus a 12 px gap,
-     so MY NOTE's whole textarea scrolls clear of the bar. Padding sits on the content, not #d-body, so it never ends up under the bar. */
-  #drawer #d-body>:not(.wh-decide):has(+ .wh-decide){padding-bottom:calc(var(--pe-dec-h,50px) + 24px)}
+  /* cs-ca5b83da #4 (replaces the cs-9e5be547 #2 sibling rule, which landed on the last overview card and missed live): the scroll
+     container itself reserves the sticky decide bar's height (50 px buttons + 8 + 4 padding) plus a 12 px gap, so any field,
+     MY NOTE's #edit-note included, scrolls fully clear of the bar. */
+  #drawer #d-body{flex:1 1 auto;min-height:0;overflow:auto;padding-bottom:calc(var(--pe-dec-h,50px) + 24px);scroll-padding-bottom:calc(var(--pe-dec-h,50px) + 24px)}
   #drawer .wh-top,#drawer .wh-chips,#drawer .wh-nav,#drawer #detail-tabs{flex-shrink:0}   /* GUI 13: only the body shrinks, so the tab strip never paints over the chips */
   #drawer #d-body>.wh-decide{position:sticky;bottom:0;z-index:3;flex:none;flex-wrap:nowrap;background:var(--pe-hull,#050707);padding:8px 0 4px;box-shadow:0 -1px 0 var(--pe-seam,var(--forge-line,#333))}
 }

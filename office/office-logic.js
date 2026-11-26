@@ -1009,6 +1009,16 @@
     const m = Math.max(0, Math.floor((now - t) / MIN));
     return { text: 'updated ' + (m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago'), stale: m > STALE_MIN, min: m };
   }
+  /* cs-ca5b83da #3: the one visible freshness line. Stale reads "Stale · updated 18 min ago" and nothing else, because the old
+     "(stale: no publisher run in 30 min)" tail contradicted the age beside it; the 10 / 30 min rule lives in the tooltip.
+     o = { state: 'live'|'stale'|'failed', ageText: dataAge(...).text, checkedText: dataAge(checkedAt).text, quiet, source, everOk, lastData } */
+  function asofLabel(o) {
+    const x = o || {}, bare = t => str(t).replace(/^updated /, ''), raw = x.source === 'raw' ? ' · via raw (API rate limit)' : '';
+    if (x.state === 'failed') return x.everOk ? '⚠ Data feed down · last data ' + str(x.lastData) : '⚠ No office data';
+    const age = str(x.ageText) || 'update time unknown';
+    if (x.state === 'stale') return 'Stale · ' + age + raw;
+    return (x.quiet ? 'checked ' + bare(x.checkedText) + ' · last change ' + bare(age) : age) + raw;
+  }
 
   /* ---------- Floor: desk layout for N bots (item 13), standing slots and separation (item 22) ---------- */
   /* Tim (Nov 16, 9:07 AM): President's desk and the whole back row keep their grid cells from the earlier (v2) layout.
@@ -1420,35 +1430,45 @@
      activeAt (within BOT_STALE_MIN, not the shared index.updated_at batch stamp). Status-row, PR, merge and automation
      times still fill freshness ages for the hover tip; they do not set working when the task file is idle, blocked, or
      not busy. Blocked stays visible even when activeAt is older than 2 h. */
-  function taskLine(task) { return str(task).replace(/^Task:\s*/i, '').trim(); }
-  /* cs-9e5be547 #3: "blocked: <reason>" and "waiting: <card>" lead with their state word; the title is what follows it. */
+  function taskLine(task) { return str(task).replace(/^\s*Task:\s*/i, '').trim(); }
+  /* cs-ca5b83da #1: the standing office format is line 1 "Task: <card>" (or "Task: idle"). Only that line carries a state;
+     free text such as "IDLE — cs-… queued for QA" with no "Task:" prefix is state unknown, never a work title. */
+  function hasTaskLine(task) { return /^\s*Task:/i.test(str(task)); }
+  /* A parsed screen keeps hasTaskLine (its .task is already stripped); a raw entry is read from its own text. */
+  function screenHasTask(sc) { return !!sc && (typeof sc.hasTaskLine === 'boolean' ? sc.hasTaskLine : hasTaskLine(sc.task)); }
+  const STATE_WORD_RE = /^(?:blocked|waiting)(?:\s*[:·]|\b)\s*/i;
+  /* cs-9e5be547 #3: "blocked: <reason>" and "waiting: <card>" (or "waiting · <card>") lead with their state word; the title is what follows it. */
   function taskTitle(task) {
-    const t = taskLine(task), m = /^(?:blocked|waiting)(?:\s*:|\b)\s*/i.exec(t);
+    const t = taskLine(task), m = STATE_WORD_RE.exec(t);
     if (m) return t.slice(m[0].length).trim();
     return /^idle$/i.test(t) ? '' : t;
   }
-  function isWaitingTask(task) { return /^waiting(?:\s*:|\b)/i.test(taskLine(task)); }
-  function isBlockedScreen(sc) { return !!(sc && (sc.blocked || /^blocked(?:\s*:|\b)/i.test(taskLine(sc.task)))); }
+  function isWaitingTask(task) { return /^waiting(?:\s*[:·]|\b)/i.test(taskLine(task)); }
+  function isBlockedScreen(sc) { return !!(sc && (sc.blocked || (screenHasTask(sc) && /^blocked(?:\s*[:·]|\b)/i.test(taskLine(sc.task))))); }
   function isIdleTask(task) { return /^idle$/i.test(taskLine(task)); }
+  /* Screen-side reads: a state word counts only on a "Task:" line; "Task:" with nothing after it is idle. */
+  function screenIdle(sc) { return screenHasTask(sc) && (!taskLine(sc.task) || isIdleTask(sc.task)); }
+  function screenWaiting(sc) { return screenHasTask(sc) && isWaitingTask(sc.task); }
   function batchActiveAt(index) {
     const s = index && index.screens, upd = index && index.updated_at; if (!s || !upd) return null;
     let n = 0; for (const id of Object.keys(s)) { const e = s[id]; if (e && e.hasActive && str(e.activeAt) === str(upd)) n++; }
     return n >= 2 ? str(upd) : null;
   }
   function screenWorkAt(sc, index, now) {
-    if (!sc || sc.paused || !sc.busy || isBlockedScreen(sc) || isIdleTask(sc.task) || isWaitingTask(sc.task)) return null;
+    if (!sc || !screenHasTask(sc) || sc.paused || !sc.busy || isBlockedScreen(sc) || screenIdle(sc) || screenWaiting(sc)) return null;
     if (!sc.hasActive) return null;
     const t = time(sc.activeAt); if (t == null || t > now + MIN || now - t > BOT_STALE_MIN * MIN) return null;
     const batch = batchActiveAt(index); if (batch && str(sc.activeAt) === batch) return null;
     return t;
   }
   /* cs-9e5be547 #3: name · idle (never a title) | name · waiting · card | name · working · card | name · blocked · reason.
-     The state is always a word, so blocked and waiting never rest on colour alone. */
+     The state is always a word, so blocked and waiting never rest on colour alone.
+     cs-ca5b83da #1: name · unknown (never a title) when the screen has no "Task:" line. */
   function floorTag(name, activity, opts) {
     const a = activity || {}, o = opts || {}, raw = o.title != null ? o.title : a.task;
     const state = a.blocked || a.state === 'blocked' ? 'blocked' : a.working || a.state === 'working' ? 'working'
-      : a.waiting || a.state === 'waiting' || isWaitingTask(raw) ? 'waiting' : 'idle';
-    let title = state === 'idle' ? '' : taskTitle(raw);
+      : a.waiting || a.state === 'waiting' ? 'waiting' : a.state === 'unknown' ? 'unknown' : isWaitingTask(raw) ? 'waiting' : 'idle';
+    let title = state === 'idle' || state === 'unknown' ? '' : taskTitle(raw);
     if (title.length > 40) title = title.slice(0, 39).trimEnd() + '…';
     const sub = title ? state + ' · ' + title : state;
     return { state, title, sub, text: str(name) + ' · ' + sub };
@@ -1460,15 +1480,21 @@
     if (isBlockedScreen(sc) || (!sc && /^blocked(?:\s*:|\b)/i.test(taskLine(bot && bot.task)))) {
       return Object.assign({}, f, { working: false, blocked: true, state: 'blocked', task: title });
     }
-    if (isWaitingTask(sc ? sc.task : (bot && bot.task))) {
+    if (sc ? screenWaiting(sc) : isWaitingTask(bot && bot.task)) {
       return Object.assign({}, f, { working: false, blocked: false, waiting: true, state: 'waiting', task: title });
+    }
+    /* cs-ca5b83da #1: a screen with no "Task:" line is unknown. Busy, activeAt, status rows and free text never make it working. */
+    if (sc && !screenHasTask(sc)) {
+      const t = time(sc.lastSeen || sc.activeAt || sc.at), m = t == null ? null : Math.max(0, Math.floor((now - t) / MIN));
+      const label = sc.offline ? 'offline · last seen ' + (m == null ? 'unknown' : ageText(m)) : 'state unknown · no Task: line';
+      return Object.assign({}, f, { working: false, blocked: false, waiting: false, state: 'unknown', task: '', label });
     }
     const wt = screenWorkAt(sc, index, now);
     if (wt != null) {
       const ageMin = Math.max(0, Math.floor((now - wt) / MIN));
       return Object.assign({}, f, { working: true, blocked: false, state: 'working', task: title, source: 'screen', lastSeen: wt, ageMin, stale: false, label: '' });
     }
-    if (sc && (sc.offline || (sc.hasActive && !sc.busy) || isIdleTask(sc.task))) {
+    if (sc && (sc.offline || (sc.hasActive && !sc.busy) || screenIdle(sc))) {
       const q = sig.find(v => v && v.idle), t = q ? time(q.at) : time(sc.lastSeen || sc.activeAt || sc.at);
       const m = t == null ? null : Math.max(0, Math.floor((now - t) / MIN));
       const label = (sc.offline ? 'offline · last seen ' : 'idle · last active ') + (m == null ? 'unknown' : ageText(m));
@@ -1942,25 +1968,27 @@
     if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
     out.updated_at = time(o.updated_at) != null ? str(o.updated_at) : '';
     const s = o.screens && typeof o.screens === 'object' && !Array.isArray(o.screens) ? o.screens : {};
-    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; const task = str(e.task).replace(/^Task:\s*/i, '').trim().slice(0, 120);
+    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; const hasTask = hasTaskLine(e.task), task = taskLine(e.task).slice(0, 120);
       out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true, offline: e.offline === true, lastSeen: time(e.lastSeen) != null ? str(e.lastSeen) : '',
-      activeAt: time(e.activeAt) != null ? str(e.activeAt) : '', hasActive: Object.prototype.hasOwnProperty.call(e, 'activeAt'), task, blocked: e.blocked === true || /^blocked(?:\s*:|\b)/i.test(task) }; }
+      activeAt: time(e.activeAt) != null ? str(e.activeAt) : '', hasActive: Object.prototype.hasOwnProperty.call(e, 'activeAt'), task, hasTaskLine: hasTask,
+      blocked: e.blocked === true || (hasTask && /^blocked(?:\s*[:·]|\b)/i.test(task)) }; }   /* cs-ca5b83da #1: state words count only on a Task: line */
     return out;
   }
   /* Tim (Nov 17): a bot drawn napping while it is actually working. OFFICE_STATUS rows only ever go working -> idle, so an idle or
      empty status is promoted to working when there is live proof right now: its mirrored desk screen is fresh (SCREEN_FRESH_MIN)
-     and shows its live-work terminal open (busy), or one of its routines is running. Alerts, blocked, needs_tim etc. are untouched. */
+     and shows its live-work terminal open (busy), or one of its routines is running. Alerts, blocked, needs_tim etc. are untouched.
+     cs-ca5b83da #1: a screen promotes to working only with a "Task: <card>" line; with none it never promotes. */
   function liveStatus(bot, botId, screens, auto, now) {
     const b = bot || {}, e = botId && screens && screens.screens && screens.screens[botId];
     if (isBlockedScreen(e) || (!e && /^blocked(?:\s*:|\b)/i.test(taskLine(b.task)))) return Object.assign({}, b, { status: 'blocked' });
-    if (e && (isIdleTask(e.task) || (e.hasActive && !e.busy))) {
+    if (e && (screenIdle(e) || (e.hasActive && !e.busy))) {
       const st0 = str(b.status).toLowerCase();
       if (!st0 || st0 === 'idle' || st0 === 'working') return st0 === 'idle' && !e.blocked ? b : Object.assign({}, b, { status: 'idle' });
     }
     const st = str(b.status).toLowerCase();
     if (st && st !== 'idle') return b;
     let screenLive = !!screenWorkAt(e, screens, now);
-    if (!screenLive && e && !e.hasActive && e.busy && !e.paused && !e.offline && !isIdleTask(e.task) && !isBlockedScreen(e)) {
+    if (!screenLive && e && screenHasTask(e) && !e.hasActive && e.busy && !e.paused && !e.offline && !screenIdle(e) && !screenWaiting(e) && !isBlockedScreen(e)) {
       const t = time(e.at), batch = batchActiveAt(screens);
       screenLive = t != null && t <= now + MIN && now - t <= SCREEN_FRESH_MIN * MIN && !(batch && str(e.at) === batch);
     }
@@ -2760,9 +2788,9 @@
     daylight, truncate, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
-    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, floorTag, screenWorkAt, taskTitle, isWaitingTask, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
+    needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, floorTag, screenWorkAt, taskTitle, isWaitingTask, hasTaskLine, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
-    createJsonSource, refreshSources, dataAge, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
+    createJsonSource, refreshSources, dataAge, asofLabel, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, LIMIT_PROVIDERS, readingMeasured, duetRow, deepSeekLines, limitLines, DC_SAMPLE_LINES, wrapWords, NO_READING_YET, usageLatest, usageHeader, fetchedClock, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, AGENT_NAMES, AGENT_TO, agentName, parseAgentChat, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,

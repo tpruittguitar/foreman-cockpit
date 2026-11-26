@@ -152,9 +152,10 @@ html.tv .hint { bottom: calc(var(--safe) + 3.2em); }
 .why { color: #ffd23f; }
 .chip.recent { background: #173a4a; color: #9fe8f5; margin-left: 6px; }
 .chip.learned { background: #1f4a2a; color: #b6f5c4; margin-left: 6px; font-weight: 700; }
-.tag .tsub { color: #aeb4bd; font-weight: 500; margin-left: 6px; }   /* card 653d851: neutral text, no chips */
-.tag .tsub.alert { color: #ff6b6b; font-weight: 800; }
-.tag.far .tsub:not(.alert) { display: none; }
+.tag .tstate, .tag .tsub { color: #aeb4bd; font-weight: 500; }   /* card 653d851: neutral text, no chips */
+.tag .tstate { margin-left: 6px; }   /* cs-ca5b83da #2: the state word, always shown, near or far */
+.tag .tstate.alert, .tag .tsub.alert { color: #ff6b6b; font-weight: 800; }
+.tag.far .tsub:not(.alert) { display: none; }   /* far tags drop the card title only; .tstate stays */
 .tag.fly { background: none; pointer-events: none; }
 .bubble.recent { border-color: #37e0ff; }
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
