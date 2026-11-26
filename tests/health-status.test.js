@@ -63,6 +63,27 @@ test('an evidence file that cannot be read is still not ok, and only readable re
  const response=await m.healthResponse(failing,cache,now),body=await response.json();
  assert.equal(body.checks.boards.ok,false);assert.equal(body.ok,false);assert.ok(puts.some(x=>x.includes('__health_response')),'an unhealthy but fully read result is still cached for the minute');
 });
+test('Workday HTTP 429 boards are blocked and left out of the failure rate; other failures still count',async()=>{
+ const m=await api(),board=(key,status,extra={})=>({key,companies:[key],status,...extra});
+ const wd429=i=>board('workday:host'+i+'.wd1.myworkdayjobs.com/Careers','TEMPORARY_FAILURE',{httpStatus:429,error:'HTTP 429'});
+ const history=list=>({schema:'forge.board-health.v1',at,boards:Object.fromEntries(list.map(b=>[b.key,b]))});
+ const live=[...Array.from({length:65},(_,i)=>board('greenhouse:co'+i,'OK')),...['ferrovial','bagelbrands','munters'].map(n=>board('workday:'+n+'.wd3.myworkdayjobs.com/Careers','OK')),...Array.from({length:19},(_,i)=>wd429(i))];
+ const r=await m.loadHealth(fixture({history:history(live)}),now,sha),c=r.checks.boardHealth;
+ assert.equal(c.ok,true);assert.equal(c.tracked,87);assert.equal(c.pending,0);assert.equal(c.blocked,19);assert.equal(c.failureRate,0);assert.equal(c.error,undefined);assert.equal(c.blockedReason,'Workday HTTP 429');
+ assert.equal(r.boardHealth.filter(x=>x.blocked===true).length,19);assert.ok(r.boardHealth.filter(x=>x.key.startsWith('workday:')&&x.status==='OK').every(x=>!x.blocked));
+ const b429=r.boardHealth.find(x=>x.blocked);assert.equal(b429.status,'TEMPORARY_FAILURE');assert.equal(b429.httpStatus,429);assert.equal(b429.error,'HTTP 429');
+ const textOnly=await m.loadHealth(fixture({history:history([board('a','OK'),board('workday:x.wd1.myworkdayjobs.com/y','TEMPORARY_FAILURE',{error:'HTTP 429'})])}),now,sha);
+ assert.equal(textOnly.checks.boardHealth.blocked,1);assert.equal(textOnly.checks.boardHealth.pending,0);
+ const other429=await m.loadHealth(fixture({history:history([...Array(9).fill(0).map((_,i)=>board('ok'+i,'OK')),board('greenhouse:limited','TEMPORARY_FAILURE',{httpStatus:429,error:'HTTP 429'})])}),now,sha);
+ assert.equal(other429.checks.boardHealth.pending,1);assert.equal(other429.checks.boardHealth.blocked,0);assert.equal(other429.checks.boardHealth.failureRate,0.1);assert.equal(other429.checks.boardHealth.ok,true);assert.ok(!other429.boardHealth.some(x=>x.blocked));
+ const other429High=await m.loadHealth(fixture({history:history([...Array(8).fill(0).map((_,i)=>board('ok'+i,'OK')),board('lever:a','TEMPORARY_FAILURE',{httpStatus:429}),board('lever:b','TEMPORARY_FAILURE',{httpStatus:429})])}),now,sha);
+ assert.equal(other429High.checks.boardHealth.ok,false);assert.match(other429High.checks.boardHealth.error,/2 of 10 boards failing/);
+ const wd500=await m.loadHealth(fixture({history:history([...Array(4).fill(0).map((_,i)=>board('ok'+i,'OK')),board('workday:down.wd1.myworkdayjobs.com/x','TEMPORARY_FAILURE',{httpStatus:500,error:'HTTP 500'}),wd429(1)])}),now,sha);
+ assert.equal(wd500.checks.boardHealth.pending,1);assert.equal(wd500.checks.boardHealth.blocked,1);assert.equal(wd500.checks.boardHealth.failureRate,0.2);assert.equal(wd500.checks.boardHealth.ok,false);assert.match(wd500.checks.boardHealth.error,/1 of 5 boards failing/);
+ assert.ok(!wd500.boardHealth.find(x=>x.httpStatus===500).blocked);
+ const stale=await m.loadHealth(fixture({history:{...history([wd429(1)]),at:iso(now-10*HOUR)}}),now,sha);assert.equal(stale.checks.boardHealth.ok,false);assert.equal(stale.checks.boardHealth.failureRate,0);
+});
+
 test('a source pass that read no boards reports failedBoards null; boards and boardHealth carry their labels',async()=>{
  const m=await api(),r=await m.loadHealth(fixture({sources:health(at,null)}),now,sha);
  assert.equal(r.checks.sources.ok,true);assert.equal(r.checks.sources.failedBoards,null);
