@@ -237,3 +237,28 @@ test('GUI round 2 (cs-e3a8680f): health with overall ok:false still feeds proces
  assert.ok(mon.indexOf('activity={data:wa.value')<mon.indexOf("throw Error('No supported health evidence')"),'Writer activity is applied before any health throw');
 });
 test('STALE outcomes, capture and coverage from the health API stay visible with their age and keep last-good recruiting counts',()=>{const f=fixture(),old='2026-10-08T22:00:00Z';f.operations.runs={};f.health.checks.emailCoverage={ok:false,status:'STALE',observed:true,at:old,error:'Data is 29880 minutes old (limit 360)',sourceFile:'receipts/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-20261030-1902ET.json'};f.health.checks.emailCapture={ok:false,status:'STALE',observed:true,at:old,messagesRead:752,pendingMessages:1382,sourceFile:'receipts/FORGE-CODE-CHATGPT-TEST_MAIL.json'};f.health.checks.applicationOutcomes={ok:false,status:'STALE',observed:true,at:old};f.health.applicationOutcomes={at:old,events:[]};const m=C.model(f),t=m.warnings.map(x=>x.title+' '+x.detail).join('\n');assert.match(t,/Email\/source coverage is overdue \(STALE\) Last verified coverage 20 d 2 h ago/);assert.doesNotMatch(t,/coverage is not reported/);assert.doesNotMatch(t,/Email processing is current/);assert.match(t,/Email message processing is overdue \(STALE\) Latest message-processing pass 20 d 2 h ago; 1382 messages/);assert.match(t,/Application outcomes are STALE Recruiting and rejection counts use the last verified outcomes from 20 d 2 h ago/);assert.equal(m.contactsKnown,true);});
+
+test('a schedule that is not ok because execution is unverified still shows discrepancies and is not called a missing readback',()=>{
+ const f=fixture();f.health.checks.schedules={ok:false,observed:true,at,configured:2,ids:['a','b'],executionVerified:false,unverified:['b'],configurationDiscrepancies:[{code:'TARGET_THREAD_MISMATCH'}]};
+ const w=C.model(f).warnings;
+ assert.ok(w.some(x=>/Automation configuration needs repair/.test(x.title)));
+ assert.ok(w.some(x=>/Scheduled execution is not yet verified/.test(x.title)&&/b lack a current proven run/.test(x.detail)));
+ assert.ok(!w.some(x=>/No current native configuration readback/.test(x.title+' '+x.detail)));
+});
+test('stale schedule configuration is labelled STALE with its true age and keeps the last-read schedules',()=>{
+ const f=fixture(),old='2026-10-27T18:00:00Z';f.health.checks.schedules={ok:false,status:'STALE',observed:true,at:old,configured:2,ids:['a','b'],executionVerified:true,configurationDiscrepancies:[]};
+ const w=C.model(f).warnings,s=w.find(x=>/Native schedule configuration is STALE/.test(x.title));
+ assert.ok(s);assert.match(s.detail,/30 h ago/);assert.match(s.detail,/a, b/);
+ assert.ok(!w.some(x=>/No current native configuration readback/.test(x.detail)));
+});
+test('a missing schedule readback is still reported as no current readback',()=>{
+ const f=fixture();f.health.checks.schedules={ok:false,error:'Schedule execution not reported'};
+ const w=C.model(f).warnings;assert.ok(w.some(x=>x.title==='Native schedule state is unverified'&&/No current native configuration readback/.test(x.detail)));
+ assert.ok(!w.some(x=>/Scheduled execution is not yet verified/.test(x.title)));
+});
+test('an email recovery summary past 24 hours is shown as overdue with its true age, never as a live waiting count',()=>{
+ const f=fixture(),old='2026-10-27T18:00:00Z';f.health.emailRecovery={at:old,capturedUniqueJobs:4,pendingJobs:2,awaitingIntake:2};f.health.checks.emailRecovery={ok:false,status:'STALE',observed:true,at:old};
+ const m=C.model(f),s=m.warnings.find(x=>/Email recovery queue is overdue \(STALE\)/.test(x.title));
+ assert.ok(s);assert.match(s.detail,/30 h ago/);assert.ok(!/current/i.test(s.title));assert.equal(m.waiting[0].count,null);
+ f.health.emailRecovery.at=at;f.health.checks.emailRecovery={ok:true,at};assert.ok(!C.model(f).warnings.some(x=>/Email recovery queue is overdue/.test(x.title)));
+});

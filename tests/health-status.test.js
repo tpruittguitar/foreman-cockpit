@@ -114,3 +114,57 @@ test('a fully read result with stale application outcomes is still cached for th
  const body=await (await m.healthResponse(fixture({extra:timed(iso(now-10*24*HOUR))}),cache,now)).json();
  assert.equal(body.checks.applicationOutcomes.status,'STALE');assert.equal(body.ok,false);assert.ok(puts.some(x=>x.includes('__health_response')));
 });
+// cs-d4f77128: recovery (24 h), process flow and process states (90 min) are judged on data age, keeping last-good payloads.
+const MIN=60000,sibling=(a,{ready=[],flowAt=a}={})=>({
+ 'PROCESS_COMPLETIONS.json':{schema:'forge.process-completions.v1',model:'four-stage-v2',at:a,states:Object.fromEntries(ready.map(id=>[id,{enrichment:true,closed:false}]))},
+ 'ENRICHMENT_FLOW.json':{schema:'forge.enrichment-flow.v1',at:flowAt,queues:{readyForReview:ready.length}},
+ 'EMAIL_RECOVERY_SUMMARY.json':{schema:'forge.email-recovery-summary.v1',at:a,capturedUniqueJobs:4,pendingJobs:2,awaitingIntake:2}});
+test('email recovery is ok inside 24 hours and STALE past it, keeping the last-good summary',async()=>{
+ const m=await api();
+ for(const ageMs of [0,24*HOUR-MIN]){const a=iso(now-ageMs),r=await m.loadHealth(fixture({extra:{'EMAIL_RECOVERY_SUMMARY.json':sibling(a)['EMAIL_RECOVERY_SUMMARY.json']}}),now,sha);const c=r.checks.emailRecovery;assert.equal(c.ok,true,a);assert.equal(c.status,undefined);assert.equal(c.at,a);}
+ const ageMs=24*HOUR+MIN,a=iso(now-ageMs),r=await m.loadHealth(fixture({extra:{'EMAIL_RECOVERY_SUMMARY.json':sibling(a)['EMAIL_RECOVERY_SUMMARY.json']}}),now,sha),c=r.checks.emailRecovery;
+ assert.equal(c.ok,false);assert.equal(c.status,'STALE');assert.equal(c.observed,true);assert.equal(c.at,a);assert.equal(c.ageMs,ageMs);assert.equal(c.ageMinutes,Math.round(ageMs/MIN));assert.match(c.error,/minutes old \(limit 1440\)/);
+ assert.equal(r.emailRecovery.pendingJobs,2);assert.equal(r.ok,false);
+ const future=await m.loadHealth(fixture({extra:{'EMAIL_RECOVERY_SUMMARY.json':sibling(iso(now+HOUR))['EMAIL_RECOVERY_SUMMARY.json']}}),now,sha);
+ assert.equal(future.checks.emailRecovery.ok,false);assert.equal(future.checks.emailRecovery.status,undefined);assert.equal(future.checks.emailRecovery.observed,undefined);assert.match(future.checks.emailRecovery.error,/future/);assert.equal(future.emailRecovery.pendingJobs,2);
+ const missing=await m.loadHealth(fixture({extra:{'EMAIL_RECOVERY_SUMMARY.json':{...sibling(at)['EMAIL_RECOVERY_SUMMARY.json'],at:undefined}}}),now,sha);
+ assert.equal(missing.checks.emailRecovery.ok,false);assert.equal(missing.checks.emailRecovery.status,undefined);
+});
+test('process flow and states are ok inside 90 minutes and STALE past it; stale reconciled states keep decisionReady',async()=>{
+ const m=await api();
+ for(const ageMs of [0,90*MIN-1000]){const a=iso(now-ageMs),r=await m.loadHealth(fixture({extra:sibling(a,{ready:['P1']})}),now,sha);for(const k of ['processFlow','processStates']){assert.equal(r.checks[k].ok,true,k+' '+a);assert.equal(r.checks[k].status,undefined,k);}assert.deepEqual(r.decisionReady.ids,['P1']);}
+ const ageMs=90*MIN+MIN,a=iso(now-ageMs),r=await m.loadHealth(fixture({extra:sibling(a,{ready:['P1','P2']})}),now,sha);
+ for(const k of ['processFlow','processStates']){const c=r.checks[k];assert.equal(c.ok,false,k);assert.equal(c.status,'STALE',k);assert.equal(c.observed,true,k);assert.equal(c.at,a,k);assert.equal(c.ageMs,ageMs,k);assert.match(c.error,/minutes old \(limit 90\)/,k);}
+ assert.equal(r.processFlow.queues.readyForReview,2);assert.deepEqual(r.decisionReady,{at:a,ids:['P1','P2']});assert.equal(r.ok,false);
+ const future=await m.loadHealth(fixture({extra:sibling(iso(now+HOUR))}),now,sha);
+ for(const k of ['processFlow','processStates']){assert.equal(future.checks[k].ok,false,k);assert.equal(future.checks[k].status,undefined,k);assert.match(future.checks[k].error,/future/,k);}
+ const missing=await m.loadHealth(fixture({extra:{'ENRICHMENT_FLOW.json':{schema:'forge.enrichment-flow.v1',queues:{readyForReview:0}}}}),now,sha);
+ assert.equal(missing.checks.processFlow.ok,false);assert.equal(missing.checks.processFlow.status,undefined);
+});
+test('a readiness snapshot that does not reconcile stays a reconcile failure, not STALE',async()=>{
+ const m=await api(),old=iso(now-5*HOUR),r=await m.loadHealth(fixture({extra:sibling(old,{ready:['P1'],flowAt:iso(now-4*HOUR)})}),now,sha);
+ assert.deepEqual(r.checks.processStates,{ok:false,error:'Readiness does not reconcile with process flow'});assert.equal(r.decisionReady,null);assert.equal(r.checks.processFlow.status,'STALE');
+});
+test('schedules.ok tracks fresh configuration and verified execution, and stale configuration is STALE',async()=>{
+ const m=await api(),b=base(at),cfg=a=>({...b['AUTOMATION_SCHEDULE_READBACK.json'],at:a}),ex=(a,verified=true)=>({...b['AUTOMATION_EXECUTION_EVIDENCE.json'],at:a,schedules:{active:[{id:'email',taskExecutionVerified:verified}]}});
+ const load=extra=>m.loadHealth(fixture({extra}),now,sha);
+ let s=(await load({})).checks.schedules;assert.equal(s.ok,true);assert.equal(s.executionVerified,true);assert.equal(s.status,undefined);
+ s=(await load({'AUTOMATION_SCHEDULE_READBACK.json':cfg(iso(now-24*HOUR+MIN))})).checks.schedules;assert.equal(s.ok,true);
+ s=(await load({'AUTOMATION_EXECUTION_EVIDENCE.json':ex(at,false)})).checks.schedules;
+ assert.equal(s.ok,false);assert.equal(s.executionVerified,false);assert.equal(s.status,undefined);assert.equal(s.observed,true);assert.deepEqual(s.unverified,['email']);
+ s=(await load({'AUTOMATION_EXECUTION_EVIDENCE.json':ex(iso(now-90*MIN))})).checks.schedules;assert.equal(s.ok,false);assert.equal(s.executionVerified,false);assert.equal(s.status,undefined);assert.equal(s.observed,true);
+ s=(await load({'AUTOMATION_EXECUTION_EVIDENCE.json':undefined})).checks.schedules;assert.equal(s.ok,false);assert.equal(s.status,undefined);assert.equal(s.observed,true);assert.deepEqual(s.ids,['email']);
+ const old=iso(now-24*HOUR-MIN);s=(await load({'AUTOMATION_SCHEDULE_READBACK.json':cfg(old)})).checks.schedules;
+ assert.equal(s.ok,false);assert.equal(s.status,'STALE');assert.equal(s.observed,true);assert.equal(s.at,old);assert.equal(s.configured,1);assert.deepEqual(s.ids,['email']);assert.equal(s.ageMs,24*HOUR+MIN);
+ assert.equal(s.executionVerified,true,'promotion still runs on a stale configuration');assert.equal(s.executionAt,at);
+ s=(await load({'AUTOMATION_SCHEDULE_READBACK.json':cfg(iso(now+HOUR))})).checks.schedules;assert.equal(s.ok,false);assert.equal(s.status,undefined);assert.equal(s.observed,undefined);assert.match(s.error,/future/);
+ s=(await load({'AUTOMATION_SCHEDULE_READBACK.json':cfg(undefined)})).checks.schedules;assert.equal(s.ok,false);assert.equal(s.status,undefined);assert.match(s.error,/Missing timestamp/);
+ s=(await load({'AUTOMATION_SCHEDULE_READBACK.json':undefined})).checks.schedules;assert.deepEqual(s,{ok:false,error:'Schedule execution not reported'});
+});
+test('stale recovery, process flow and schedule configuration are still observed and cached for the minute',async()=>{
+ const m=await api(),puts=[],cache={async match(){return undefined},async put(k){puts.push(k.url)}},b=base(at);
+ const extra={...sibling(iso(now-30*HOUR)),'AUTOMATION_SCHEDULE_READBACK.json':{...b['AUTOMATION_SCHEDULE_READBACK.json'],at:iso(now-30*HOUR)}};
+ const body=await (await m.healthResponse(fixture({extra}),cache,now)).json();
+ for(const k of ['emailRecovery','processFlow','processStates','schedules']){assert.equal(body.checks[k].status,'STALE',k);assert.equal(body.checks[k].observed,true,k);}
+ assert.equal(body.ok,false);assert.ok(puts.some(x=>x.includes('__health_response')));
+});
