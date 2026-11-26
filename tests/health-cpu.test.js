@@ -77,7 +77,9 @@ test('cache failures do not prevent a current, verified response',async()=>{
 });
 test('a new minute recomputes execution freshness without changing evidence timestamps',async()=>{
  const m=await api(),f=fetchFixture();const before=await(await m.healthResponse(f.fetcher,null,now)).json();assert.equal(before.checks.schedules.executionVerified,true);
- const after=await(await m.healthResponse(f.fetcher,null,now+90*60000)).json();assert.equal(after.checks.schedules.executionVerified,false);assert.equal(after.execution.at,at);assert.equal(after.observedAt,new Date(now+90*60000).toISOString());
+ const after=await(await m.healthResponse(f.fetcher,null,now+90*60000)).json();assert.equal(after.checks.schedules.executionVerified,false);
+ // Configuration is only 90 minutes old, so schedules is not ok because execution is unverified, never STALE.
+ assert.equal(after.checks.schedules.ok,false);assert.equal(after.checks.schedules.status,undefined);assert.equal(after.execution.at,at);assert.equal(after.observedAt,new Date(now+90*60000).toISOString());
 });
 test('the final millisecond of a minute never grants a fresh minute to the browser',async()=>{
  const m=await api(),f=fetchFixture();const response=await m.healthResponse(f.fetcher,null,now+49999);assert.equal(response.headers.get('cache-control'),'public, max-age=0');
