@@ -46,6 +46,29 @@
   }
 
   /* status -> look. Bright colour only for state, never colour alone: every state has a glyph and a word. */
+  function liveDeskBot(bot, items, now, signalCtx) {
+    const b = bot || {};
+    const t = typeof now === 'number' ? now : Date.now();
+    const staleAt = v => { const x = time(v); return x == null || t - x > 24 * 60 * MIN; };
+    const botStale = staleAt(b.updated_at);
+    const sigAt = b.last_signal && time(b.last_signal.at);
+    const freshSignal = b.last_signal && sigAt != null && t - sigAt <= BOT_STALE_MIN * MIN ? b.last_signal : null;
+    const mine = sortItems((Array.isArray(items) ? items : []).filter(i => i && i.owner === b.bot && i.status !== 'done'));
+    const active = mine.filter(i => ['in_progress', 'needs_tim', 'review'].includes(i.status));
+    const top = active[0] || null;
+    const needsTim = mine.filter(i => i.status === 'needs_tim');
+    const liveQuestion = needsTim.find(i => str(i.question).trim()) || null;
+    const task = top ? cardTitle(top) || top.title : (!botStale && str(b.task).trim() ? b.task : 'Idle — no active card');
+    let lastAction = 'Idle', lastActionAt = '';
+    if (freshSignal) { lastAction = str(freshSignal.source).trim() || 'Signal'; lastActionAt = str(freshSignal.at); }
+    else if (top) { lastAction = str(top.note).trim() || str(top.status).trim() || 'Working'; lastActionAt = str(top.updated_at); }
+    else if (b.last_action_at && !staleAt(b.last_action_at)) { lastAction = str(b.last_action).trim() || 'Idle'; lastActionAt = str(b.last_action_at); }
+    const screen = b.screen && !staleAt(b.screen.updated_at) ? b.screen : null;
+    const question = !botStale ? str(b.question).trim() : (liveQuestion ? str(liveQuestion.question).trim() : '');
+    const status = active.some(i => i.status === 'needs_tim') ? 'blocked' : (active.length || freshSignal ? 'working' : 'idle');
+    return Object.assign({}, b, { status, task, last_action: lastAction, last_action_at: lastActionAt, screen, question });
+  }
+
   function statusStyle(status) {
     switch (normStatus(status)) {
       case 'working': return { status: 'working', color: COLORS.working, glyph: '▶', word: 'WORKING', flag: false, alert: false, behavior: 'work' };
@@ -2733,6 +2756,7 @@
     GLIDE_MS, TOUR_IDLE_MS, GAME_SLOW_M, COLORS,
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle, CARD_TEXT_MAX, cardMessage, cardRecipient, cardBoxHTML, sendCardDirection,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, publisherCheckedAt, behaviorFor, relTime, waitingMinutes, hhmm,
+    liveDeskBot,
     daylight, truncate, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,

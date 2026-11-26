@@ -1761,14 +1761,15 @@ function buildWorld() {
     const now = Date.now(), dist = camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2));
     const sc = mirrorFor(d, b, now), image = sc.show === 'image' && d.img;
     const mine = L.sortItems(items().filter(i => i.owner === d.name && L.columnFor(i) !== 'done'));
-    const oc = chars.get(d.name), sched = (plan.plans[d.name] || {}).act || '', act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (oc ? L.actionLabel(oc.goalNow, oc.pose, sched) : sched), mode = S.state === 'failed' ? L.monitorMode(b, '', {}) : L.monitorMode(b, act, { image: !!image });
-    const key = mode + JSON.stringify(b) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + (sc.offline ? 'off' : '') + sc.why + Math.floor(now / (mode === 'game' ? (dist > L.GAME_SLOW_M ? 400 : 120) : 30000));
+    const deskBot = L.liveDeskBot(b, mine, now, signalCtx());
+    const oc = chars.get(d.name), sched = (plan.plans[d.name] || {}).act || '', act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (oc ? L.actionLabel(oc.goalNow, oc.pose, sched) : sched), mode = S.state === 'failed' ? L.monitorMode(deskBot, '', {}) : L.monitorMode(deskBot, act, { image: !!image });
+    const key = mode + JSON.stringify(deskBot) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + (sc.offline ? 'off' : '') + sc.why + Math.floor(now / (mode === 'game' ? (dist > L.GAME_SLOW_M ? 400 : 120) : 30000));
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;
-    drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: b, now, items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', mode, image: image || null, screenWhy: sc.why, offline: !!sc.offline,
-      chat: S.chat, chatErr: S.chatErr, usageRows: L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null), replay: L.replayFor(b, now) });
+    drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: deskBot, now, items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', mode, image: image || null, screenWhy: sc.why, offline: !!sc.offline,
+      chat: S.chat, chatErr: S.chatErr, usageRows: L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null), replay: L.replayFor(deskBot, now) });
     d.scr.t.needsUpdate = true;
-    const st = L.statusStyle(b.status), col = new THREE.Color(S.state === 'failed' ? '#8b9099' : st.color);
+    const st = L.statusStyle(deskBot.status), col = new THREE.Color(S.state === 'failed' ? '#8b9099' : st.color);
     d.ledMat.color.copy(col); d.ledMat.emissive.copy(col);
     const ask = S.needsSet.has(d.name) && S.state !== 'failed';
     d.shadeMat.color.set(ask ? 0xff3030 : 0xd8dde4);
