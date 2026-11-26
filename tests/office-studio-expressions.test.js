@@ -73,12 +73,12 @@ test('situation mapping', () => {
   assert.ok(['suspicious', 'confused'].includes(f({ pose: 'wave', needsTim: true, name: 'B' })));
   assert.equal(f({ pose: 'nap', name: 'A' }), 'sleepy');
   assert.equal(f({ pose: 'deskSleep', name: 'A' }), 'sleepy');
-  assert.equal(f({ pose: 'talk', ambient: 'chat', name: 'A', t: 1 }).match(/happy|laughing/) !== null, true, 'chatting');
+  assert.ok(['neutral', 'happy', 'laughing'].includes(f({ pose: 'talk', ambient: 'chat', name: 'A', t: 1 })), 'chatting with brief reactions');
   assert.equal(f({ pose: 'stand', name: 'A', failed: true }), 'scared', 'errors');
   assert.equal(f({ pose: 'stand', name: 'A', near: true }), 'shy');
   assert.equal(f({ pose: 'type', name: 'A', greeted: true }), 'shy', 'greeted beats working');
   assert.equal(f({ pose: 'stand', name: 'A', surprised: true }), 'surprised');
-  assert.equal(f({ pose: 'sit', name: 'A', stale: true }), 'unimpressed');
+  assert.ok(['neutral', 'unimpressed'].includes(f({ pose: 'sit', name: 'A', stale: true })), 'stale data with a brief reaction');
   assert.equal(f({ pose: 'game', name: 'A' }), 'excited');
   assert.ok(['curious', 'neutral'].includes(f({ pose: 'stand', name: 'A', t: 5 })), 'idle');
   assert.equal(f({ pose: 'lounge', name: 'A' }), 'neutral');

@@ -2566,6 +2566,12 @@
   /* Which face for which situation. ctx = { pose, status, needsTim, failed, stale, mergedRecently, near, greeted, surprised, ambient, act, t, name }.
      Order matters: alarms first, then rest, then the bot's own work, then idle life. Deterministic: same ctx -> same face. */
   const slotPick = (t, name, tag, list, secs) => list[(Math.floor(Math.max(0, t || 0) / (secs || 12)) + hash(tag + ':' + name)) % list.length];
+  // Routine activities keep upright eyes for 12 seconds, with a 3-second reaction between them.
+  // Stagger the timing per bot and alternate reactions without holding a squint for an entire activity.
+  function briefReaction(t, name, tag, upright, reactions) {
+    const slot = Math.floor(Math.max(0, t || 0) / 3) + hash(tag + ':' + name);
+    return slot % 5 === 4 ? reactions[Math.floor(slot / 5) % reactions.length] : upright;
+  }
   function exprFor(ctx) {
     const c = ctx || {}, pose = c.pose || 'stand', name = c.name || '', t = c.t || 0;
     if (c.failed) return 'scared';
@@ -2575,14 +2581,14 @@
     if (c.status === 'blocked') return 'sad';
     if (c.surprised) return 'surprised';
     if (c.greeted || c.near) return 'shy';
-    if (c.mergedRecently) return slotPick(t, name, 'merged', ['proud', 'proud', 'excited'], 6);
-    if (c.stale) return 'unimpressed';
-    if (pose === 'talk' && (c.ambient === 'chat' || c.ambient === 'group' || c.ambient === 'reply')) return slotPick(t, name, 'chat', ['happy', 'laughing', 'happy'], 5);
+    if (c.mergedRecently) return briefReaction(t, name, 'merged', 'excited', ['proud']);
+    if (c.stale) return briefReaction(t, name, 'stale', 'neutral', ['unimpressed']);
+    if (pose === 'talk' && (c.ambient === 'chat' || c.ambient === 'group' || c.ambient === 'reply')) return briefReaction(t, name, 'chat', 'neutral', ['happy', 'laughing']);
     if (pose === 'game') return 'excited';
     if (pose === 'bike') return 'excited';
-    if (pose === 'pool') return 'proud';
+    if (pose === 'pool') return briefReaction(t, name, 'pool', 'attentive', ['proud']);
     if (pose === 'type' || pose === 'board' || c.status === 'working') return 'attentive';
-    if (pose === 'coffee' || pose === 'fridge') return 'happy';
+    if (pose === 'coffee' || pose === 'fridge') return briefReaction(t, name, 'refreshment', 'neutral', ['happy']);
     if (pose === 'meet') return 'attentive';
     if (pose === 'lounge') return 'neutral';
     if (pose === 'stand' || pose === 'walk' || pose === 'stretch' || pose === 'talk' || pose === 'sit') return slotPick(t, name, 'idle', ['curious', 'neutral', 'curious', 'neutral'], 14);

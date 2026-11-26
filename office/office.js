@@ -1124,8 +1124,9 @@ function buildWorld() {
   layoutCans([]); // stocked from the first frame, even before any desk data arrives
 
   /* ---------- meeting room: back-left corner, conference table, chairs and the "New skills" whiteboard ---------- */
+  const DESK_SCREEN_SCALE = 1.15;
   const deskGeo = { top: box(1.6, 0.05, 0.8), leg: box(0.05, 0.72, 0.05), kb: box(0.46, 0.025, 0.15), mouse: new THREE.CapsuleGeometry(0.022, 0.03, 3, 8),
-    mon: box(0.95, 0.6, 0.04), stand: new THREE.CylinderGeometry(0.025, 0.025, 0.28, 8), base: box(0.26, 0.02, 0.18), led: box(0.9, 0.018, 0.012),
+    mon: box(0.95 * DESK_SCREEN_SCALE, 0.6 * DESK_SCREEN_SCALE, 0.04), stand: new THREE.CylinderGeometry(0.025, 0.025, 0.28, 8), base: box(0.26, 0.02, 0.18), led: box(0.9 * DESK_SCREEN_SCALE, 0.018, 0.012),
     lampBase: new THREE.CylinderGeometry(0.07, 0.08, 0.025, 14), lampArm: new THREE.CylinderGeometry(0.012, 0.012, 0.42, 6), shade: new THREE.ConeGeometry(0.09, 0.12, 14, 1, true), bulb: new THREE.SphereGeometry(0.035, 10, 8),
     plate: box(0.42, 0.09, 0.05), mug: new THREE.CylinderGeometry(0.04, 0.035, 0.1, 12), card: box(0.12, 0.004, 0.09),
     seat: box(0.5, 0.07, 0.48), back: box(0.48, 0.5, 0.06), pole: new THREE.CylinderGeometry(0.03, 0.03, 0.38, 8), spoke: box(0.04, 0.03, 0.32), ring: new THREE.TorusGeometry(1.15, 0.035, 8, 48) };
@@ -1168,7 +1169,7 @@ function buildWorld() {
 
   /* ---------- desks: built from OFFICE_STATUS bots[] (any N), laid out by L.deskLayout ---------- */
   const desks = [];
-  const monW = LOW ? 320 : 640, monH = LOW ? 200 : 400; // small monitor textures; the popup loads full size
+  const monW = Math.round((LOW ? 320 : 640) * DESK_SCREEN_SCALE), monH = Math.round((LOW ? 200 : 400) * DESK_SCREEN_SCALE); // match the larger screens' pixel density; the popup loads full size
   function makeDesk(name, x, z) {
     const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
     add(deskGeo.top, MAT.desk, 0, 0.745, 0, g); add(box(1.6, 0.012, 0.012), MAT.cyan, 0, 0.72, 0.4, g);
@@ -1176,16 +1177,16 @@ function buildWorld() {
     add(deskGeo.kb, MAT.dark, 0, 0.785, 0.12, g); add(deskGeo.mouse, MAT.dark, 0.36, 0.79, 0.14, g).rotation.x = Math.PI / 2;
     const scr = canvasTex(monW, monH);
     const monScr = screenMat(scr.t);
-    const mon = add(deskGeo.mon, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, monScr, MAT.dark], 0, 1.2, -0.22, g);
+    const mon = add(deskGeo.mon, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, monScr, MAT.dark], 0, 0.9 + 0.6 * DESK_SCREEN_SCALE / 2, -0.22, g); // preserve the bottom edge above the stand and desk props
     add(deskGeo.stand, MAT.metal, 0, 0.9, -0.25, g); add(deskGeo.base, MAT.metal, 0, 0.78, -0.24, g);
     const ledMat = new THREE.MeshStandardMaterial({ color: 0x888888, emissive: 0x888888, emissiveIntensity: 1 });
     add(deskGeo.led, ledMat, 0, 0.893, -0.195, g);
     const shadeMat = std(0xd8dde4, 0.4, { side: THREE.DoubleSide, metalness: 0.3 }), bulbMat = MAT.bulb.clone();
-    add(deskGeo.lampBase, MAT.dark, 0.66, 0.78, -0.22, g); const arm = add(deskGeo.lampArm, MAT.metal, 0.66, 0.99, -0.22, g); arm.rotation.z = 0.12;
-    add(deskGeo.shade, shadeMat, 0.63, 1.21, -0.2, g); add(deskGeo.bulb, bulbMat, 0.63, 1.17, -0.2, g);
+    add(deskGeo.lampBase, MAT.dark, 0.70, 0.78, -0.22, g); const arm = add(deskGeo.lampArm, MAT.metal, 0.70, 0.99, -0.22, g); arm.rotation.z = 0.12;
+    add(deskGeo.shade, shadeMat, 0.67, 1.21, -0.2, g); add(deskGeo.bulb, bulbMat, 0.67, 1.17, -0.2, g); // 4 cm to the right, clear of the wider screen
     const np = canvasTex(256, 56); drawSign(np.ctx, 256, 56, name, '#141416', '#eceef1'); np.t.needsUpdate = true;
     add(deskGeo.plate, [MAT.dark, MAT.dark, MAT.dark, MAT.dark, screenMat(np.t), MAT.dark], 0.5, 0.815, 0.36, g);
-    if (name === 'President') { // Tim's desk: upright plaque about the monitor-base footprint (0.27 x 0.11 m), on the desk LEFT of the monitor stand: x -0.78..-0.51 (2 cm in from the desk side, 3.5 cm clear of the screen's left edge at -0.475), top ~0.88, 2 cm below the screen's bottom edge at 0.90, behind the can, leaning back slightly to face the chair (no collider, like the other small props)
+    if (name === 'President') { // Tim's desk: upright plaque about the monitor-base footprint (0.27 x 0.11 m), on the desk LEFT of the monitor stand: x -0.78..-0.51 (2 cm in from the desk side), top ~0.88, 2 cm below the screen's bottom edge at 0.90, behind the can, leaning back slightly to face the chair (no collider, like the other small props)
       const pq = canvasTex(1350, 550); drawPlaque(pq.ctx, 1350, 550, ["We're not here to make friends...", "We're here to make cars."]); pq.t.needsUpdate = true;
       add(box(0.27, 0.11, 0.018), [MAT.metal, MAT.metal, MAT.metal, MAT.metal, screenMat(pq.t), MAT.dark], -0.645, 0.825, -0.2, g).rotation.x = -0.2;
     }
