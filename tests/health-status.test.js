@@ -14,8 +14,8 @@ const base=a=>({
 });
 const health=(a,failed,candidates=3)=>({schema:'forge.discovery-health.v1',at:a,failedBoards:failed,candidates,urls:[]});
 const boardHealth=(a,statuses)=>({schema:'forge.board-health.v1',at:a,boards:Object.fromEntries(statuses.map((s,i)=>['b'+i,{key:'b'+i,companies:['Co'+i],status:s}]))});
-function fixture({sources=health(at,0),boards=health(at,0),history=boardHealth(at,['OK'])}={}){
- const files={...base(at),'board-health.json':history};
+function fixture({sources=health(at,0),boards=health(at,0),history=boardHealth(at,['OK']),extra={}}={}){
+ const files={...base(at),'board-health.json':history,...extra};
  return async url=>{
   if(url.startsWith('https://api.github.com/'))return Response.json({ref:'refs/heads/main',object:{type:'commit',sha}});
   const name=new URL(url).pathname.split('/').pop();
@@ -67,4 +67,50 @@ test('a source pass that read no boards reports failedBoards null; boards and bo
  const m=await api(),r=await m.loadHealth(fixture({sources:health(at,null)}),now,sha);
  assert.equal(r.checks.sources.ok,true);assert.equal(r.checks.sources.failedBoards,null);
  assert.equal(r.checks.boards.label,'latest pass');assert.equal(r.checks.boardHealth.label,'currently failing');assert.equal(r.checks.sources.label,undefined);
+});
+const capture=(a,o={})=>({corroborated:true,coverageComplete:false,at:a,messagesRead:752,pendingMessages:1382,sourceFile:'receipts/FORGE-CODE-CHATGPT-TEST_MAIL.json',...o});
+const coverage=(a,o={})=>({writerProofsVerified:true,at:a,pendingSourceWindows:2,sourceFile:'receipts/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-20261030-1902ET.json',...o});
+const timed=(a,{cap=capture(a),cov=coverage(a)}={})=>{const b=base(at);return {'APPLICATION_OUTCOMES.json':{...b['APPLICATION_OUTCOMES.json'],at:a,events:[{primaryId:'P1',type:'APPLIED',evidenceVerified:true}]},'AUTOMATION_EXECUTION_EVIDENCE.json':{...b['AUTOMATION_EXECUTION_EVIDENCE.json'],emailCapture:cap,emailCoverage:cov}};};
+const AGED=['applicationOutcomes','emailCapture','emailCoverage'];
+test('outcomes, email capture and email coverage stay ok when fresh and at exactly 6 hours',async()=>{
+ const m=await api();
+ for(const a of [at,iso(now-6*HOUR)]){
+  const r=await m.loadHealth(fixture({extra:timed(a)}),now,sha);
+  for(const k of AGED){assert.equal(r.checks[k].ok,true,k+' '+a);assert.equal(r.checks[k].status,undefined,k);assert.equal(r.checks[k].at,a,k);}
+  assert.equal(r.checks.emailCapture.messagesRead,752);assert.equal(r.checks.emailCoverage.pendingSourceWindows,2);assert.equal(r.ok,true);
+ }
+});
+test('outcomes, email capture and email coverage past 6 hours are STALE with their true age, and the whole result is not ok',async()=>{
+ const m=await api();
+ for(const ageMs of [6*HOUR+60000,20*24*HOUR+8*HOUR]){
+  const a=iso(now-ageMs),r=await m.loadHealth(fixture({extra:timed(a)}),now,sha);
+  for(const k of AGED){const c=r.checks[k];assert.equal(c.ok,false,k);assert.equal(c.status,'STALE',k);assert.equal(c.observed,true,k);assert.equal(c.at,a,k);assert.match(c.error,/minutes old \(limit 360\)/,k);assert.equal(c.ageMs,ageMs,k);assert.equal(c.ageMinutes,Math.round(ageMs/60000),k);}
+  assert.equal(r.checks.emailCapture.messagesRead,752);assert.equal(r.checks.emailCapture.corroborated,true);assert.equal(r.checks.emailCoverage.writerProofsVerified,true);
+  assert.equal(r.checks.sources.ok,true);assert.equal(r.checks.boards.ok,true);assert.equal(r.ok,false);
+ }
+ for(const k of AGED){const ex={...timed(at),...(k==='applicationOutcomes'?{'APPLICATION_OUTCOMES.json':timed(iso(now-7*HOUR))['APPLICATION_OUTCOMES.json']}:{'AUTOMATION_EXECUTION_EVIDENCE.json':timed(at,k==='emailCapture'?{cap:capture(iso(now-7*HOUR))}:{cov:coverage(iso(now-7*HOUR))})['AUTOMATION_EXECUTION_EVIDENCE.json']})};
+  const r=await m.loadHealth(fixture({extra:ex}),now,sha);assert.equal(r.checks[k].status,'STALE',k);assert.equal(r.ok,false,k);assert.equal(r.checks.execution.ok,true,k);}
+});
+test('stale application outcomes keep serving the last-good events',async()=>{
+ const m=await api(),r=await m.loadHealth(fixture({extra:timed(iso(now-10*24*HOUR))}),now,sha);
+ assert.equal(r.checks.applicationOutcomes.status,'STALE');assert.equal(r.applicationOutcomes.events.length,1);assert.equal(r.applicationOutcomes.events[0].primaryId,'P1');
+});
+test('a missing or future outcomes timestamp is not ok and is not labelled STALE',async()=>{
+ const m=await api(),b=base(at);
+ const missing=await m.loadHealth(fixture({extra:{'APPLICATION_OUTCOMES.json':{...b['APPLICATION_OUTCOMES.json'],at:undefined}}}),now,sha);
+ assert.equal(missing.checks.applicationOutcomes.ok,false);assert.equal(missing.checks.applicationOutcomes.status,undefined);assert.equal(missing.checks.applicationOutcomes.observed,undefined);assert.match(missing.checks.applicationOutcomes.error,/Missing timestamp/);
+ const future=await m.loadHealth(fixture({extra:timed(iso(now+HOUR))}),now,sha);
+ for(const k of AGED){assert.equal(future.checks[k].ok,false,k);assert.equal(future.checks[k].status,undefined,k);assert.match(future.checks[k].error,/future/,k);}
+});
+test('proof gates still hide unverified coverage and uncorroborated or unmatched capture, even when stale',async()=>{
+ const m=await api(),old=iso(now-10*24*HOUR);
+ const r=await m.loadHealth(fixture({extra:timed(old,{cov:coverage(old,{writerProofsVerified:false}),cap:capture(old,{corroborated:false})})}),now,sha);
+ assert.equal(r.checks.emailCoverage,undefined);assert.equal(r.checks.emailCapture,undefined);
+ const bad=await m.loadHealth(fixture({extra:timed(old,{cap:capture(old,{sourceFile:'receipts/OTHER_MAIL.json'})})}),now,sha);
+ assert.equal(bad.checks.emailCapture,undefined);assert.equal(bad.checks.emailCoverage.status,'STALE');
+});
+test('a fully read result with stale application outcomes is still cached for the minute',async()=>{
+ const m=await api(),puts=[],cache={async match(){return undefined},async put(k){puts.push(k.url)}};
+ const body=await (await m.healthResponse(fixture({extra:timed(iso(now-10*24*HOUR))}),cache,now)).json();
+ assert.equal(body.checks.applicationOutcomes.status,'STALE');assert.equal(body.ok,false);assert.ok(puts.some(x=>x.includes('__health_response')));
 });
