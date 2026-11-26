@@ -3384,6 +3384,10 @@ window.PEMobileBridge={
       var b=String(r.BUCKET||'').toUpperCase();if(terminalJob_(r)||b==='APPLIED'||b!=='TIM_DECISION_REQUIRED'&&!ready.has(r.PRIMARY_ID))return false;
       var ru=ruling(r);if(!ru||ru.undone||!/^(APPLY_NOW|MANUAL_RESEARCH|DECLINE)$/.test(ru.kind)&&!PipelineActNow.DECIDING[ru.kind])return true;
       return PipelineActNow.saveState(ru)==='NOT_SAVED'||PipelineActNow.changes(r,ru,(scoreFor_(r)||{}).overall).length>0})},
+  /* cs-d1de0de4: the desktop "Needs decision" count (open rows in PRESETS.NEEDS_TIM) and the band population n (eligible
+     open jobs with a computed overall), so the phone can tell "nothing to decide" from "scores withheld". Read-only. */
+  needsDecisionCount:function(){if(!S.master)return 0;return distinctRows_().filter(function(r){return !terminalJob_(r)&&PRESETS.NEEDS_TIM.fn(r)}).length},
+  eligibleScoreCount:function(){var b=bands_();return (b&&b.n)||0},
   /* Stage 4. Jobs list: mine = the Decide queue; applied = APPLIED bucket; all = open jobs plus applied ones. */
   jobsRows:function(filter){if(!S.master)return [];if(filter==='mine')return this.decideRows();
     return distinctRows_().filter(function(r){var b=String(r.BUCKET||'').toUpperCase();return filter==='applied'?b==='APPLIED':(b==='APPLIED'||!terminalJob_(r))})},
