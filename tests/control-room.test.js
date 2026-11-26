@@ -65,6 +65,20 @@ test('fresh board history replaces obsolete failure counts and exposes each last
  f.health.checks.boardHealth.at='2026-10-25T00:00:00Z';assert.ok(C.model(f).warnings.some(x=>/history is unavailable or stale/.test(x.title)));assert.ok(C.model(f).warnings.some(x=>/6 employer boards/.test(x.title)));
 });
 
+test('blocked Workday HTTP 429 boards get their own note and never count as boards needing another check',()=>{
+ const f=fixture();f.health.checks.boardHealth={ok:true,at,tracked:5,pending:0,blocked:2,failureRate:0};
+ const wd=(name,i)=>({key:'workday:'+name+'.wd1.myworkdayjobs.com/x',companies:[name],status:'TEMPORARY_FAILURE',httpStatus:429,error:'HTTP 429',blocked:true,blockedReason:'Workday HTTP 429',lastAttemptAt:at,lastSuccessAt:'2026-10-27T12:00:00Z'});
+ f.health.boardHealth=[{key:'fine',companies:['Fine Co'],status:'OK',lastSuccessAt:at},wd('Blue Origin'),wd('Graco')];
+ const m=C.model(f),h=C.html(m);
+ assert.ok(!m.warnings.some(x=>/employer boards need another check/.test(x.title)));assert.ok(!m.warnings.some(x=>/history is unavailable or stale/.test(x.title)));assert.notEqual(m.severity,'blocked');
+ assert.doesNotMatch(h,/Current failed checks/);assert.doesNotMatch(h,/Employer boards needing attention/);
+ assert.match(h,/Workday HTTP 429 · 2 employer boards blocked/);assert.match(h,/rate limited/);assert.match(h,/Blue Origin/);assert.match(h,/Graco/);
+ f.health.boardHealth.push({key:'down',companies:['Charter Steel'],status:'TEMPORARY_FAILURE',httpStatus:500,lastAttemptAt:at},{key:'greenhouse:limited',companies:['Other 429'],status:'TEMPORARY_FAILURE',httpStatus:429,error:'HTTP 429',lastAttemptAt:at});
+ const m2=C.model(f),h2=C.html(m2),need=m2.warnings.find(x=>/employer boards need another check/.test(x.title));
+ assert.equal(need.title,'2 employer boards need another check');assert.match(need.detail,/Charter Steel/);assert.match(need.detail,/Other 429/);assert.doesNotMatch(need.detail,/Blue Origin|Graco/);
+ assert.match(h2,/Employer boards needing attention · 2 unresolved/);assert.match(h2,/Workday HTTP 429 · 2 employer boards blocked/);
+});
+
 test('completed recovery and successful board checks leave no historical fault panel',()=>{
  const f=fixture();f.activity.problemReceipts=0;f.activity.recoveredReceipts=17;f.activity.recovery={status:'CURRENT',at,groups:[],deferred:0};f.health.checks.boardHealth={ok:true,at};f.health.boardHealth=[{key:'fixed',companies:['Recovered employer'],status:'OK',lastSuccessAt:at}];
  const html=C.html(C.model(f));assert.doesNotMatch(html,/cr-recovery|proven recovered|Recovered employer|Employer boards needing attention/);

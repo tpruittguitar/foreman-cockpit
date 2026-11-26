@@ -4,6 +4,8 @@ const FILES={processStates:'state/PROCESS_COMPLETIONS.json',processFlow:'state/E
 const MAX_DISCOVERY_AGE_MS=9*3600000;
 const MAX_FAILED_BOARDS=10;
 const MAX_BOARD_HEALTH_FAILURE_RATE=0.10;
+const WORKDAY_429_REASON='Workday HTTP 429';
+const workdayRateLimited=b=>b.key.startsWith('workday:')&&b.status!=='OK'&&(b.httpStatus===429||/\bHTTP 429\b/.test(b.error));
 const MAX_FUTURE_SKEW_MS=5*60000;
 // Outcomes and email capture/coverage share the Explorer's 6-hour freshness window.
 const MAX_OUTCOME_AGE_MS=6*3600000;
@@ -78,10 +80,11 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
         if(c&&c.writerProofsVerified===true&&Number.isFinite(Date.parse(c.at))&&/^receipts\/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-/.test(c.sourceFile||'')){const f=freshness(c.at,now,MAX_OUTCOME_AGE_MS);output.checks.emailCoverage=f.ok?{ok:true,...c}:{...c,...f};}
       }else if(key==='boardHealth'){
         if(j.schema!=='forge.board-health.v1'||!j.boards||Array.isArray(j.boards))throw Error('Unsupported board history');
-        output.boardHealth=Object.values(j.boards).filter(x=>x&&!x.paused&&typeof x.key==='string').map(x=>({key:x.key,companies:Array.isArray(x.companies)?x.companies.slice(0,10).map(c=>String(c).slice(0,150)):[],status:String(x.status||'UNKNOWN'),error:String(x.error||'').slice(0,150),httpStatus:Number.isInteger(x.httpStatus)?x.httpStatus:null,lastAttemptAt:x.lastAttemptAt||null,lastSuccessAt:x.lastSuccessAt||null,retryAt:x.retryAt||null,consecutiveFailures:Math.max(0,+x.consecutiveFailures||0)}));
-        const tracked=output.boardHealth.length,pending=output.boardHealth.filter(x=>x.status!=='OK').length,rate=tracked?pending/tracked:0;
-        const problem=ageProblem(j.at,now,MAX_DISCOVERY_AGE_MS)||(rate>MAX_BOARD_HEALTH_FAILURE_RATE?pending+' of '+tracked+' boards failing (limit '+Math.round(MAX_BOARD_HEALTH_FAILURE_RATE*100)+'%)':'');
-        output.checks[key]={ok:!problem,observed:true,label:'currently failing',at:j.at,tracked,pending,failureRate:Math.round(rate*1000)/1000,...(problem?{error:problem}:{})};
+        output.boardHealth=Object.values(j.boards).filter(x=>x&&!x.paused&&typeof x.key==='string').map(x=>({key:x.key,companies:Array.isArray(x.companies)?x.companies.slice(0,10).map(c=>String(c).slice(0,150)):[],status:String(x.status||'UNKNOWN'),error:String(x.error||'').slice(0,150),httpStatus:Number.isInteger(x.httpStatus)?x.httpStatus:null,lastAttemptAt:x.lastAttemptAt||null,lastSuccessAt:x.lastSuccessAt||null,retryAt:x.retryAt||null,consecutiveFailures:Math.max(0,+x.consecutiveFailures||0)})).map(b=>workdayRateLimited(b)?{...b,blocked:true,blockedReason:WORKDAY_429_REASON}:b);
+        // Workday HTTP 429 boards are rate-limited by the employer host, so they are counted as blocked and left out of the failure rate.
+        const tracked=output.boardHealth.length,blocked=output.boardHealth.filter(x=>x.blocked).length,pending=output.boardHealth.filter(x=>x.status!=='OK'&&!x.blocked).length,judged=tracked-blocked,rate=judged>0?pending/judged:0;
+        const problem=ageProblem(j.at,now,MAX_DISCOVERY_AGE_MS)||(rate>MAX_BOARD_HEALTH_FAILURE_RATE?pending+' of '+judged+' boards failing (limit '+Math.round(MAX_BOARD_HEALTH_FAILURE_RATE*100)+'%)':'');
+        output.checks[key]={ok:!problem,observed:true,label:'currently failing',at:j.at,tracked,pending,blocked,failureRate:Math.round(rate*1000)/1000,...(blocked?{blockedReason:WORKDAY_429_REASON}:{}),...(problem?{error:problem}:{})};
       }else if(key==='schedules'){
         if(j.schema!=='forge.schedule-readback.v1'||!Array.isArray(j.local))throw Error('Unsupported schedule readback');
         // A parsed readback is never ok by itself: ok needs fresh configuration and verified execution (below).
