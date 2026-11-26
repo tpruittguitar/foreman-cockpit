@@ -236,6 +236,25 @@
       '<button type="button" role="menuitem" data-m-do="applied" data-id="' + esc(id) + '">Mark applied<small>I already applied to this job</small></button>' +
       '<button type="button" role="menuitem" data-m-open="' + esc(id) + '">Open details<small>Posting, fit and score, my application</small></button></div>';
   }
+  /* cs-d1de0de4: the Decide count and empty view. decideRows() is only the scored waiting queue; when no job has a score
+     (bands N 0, #560 withholds the overall) that queue is empty while needsCount jobs still need a decision (the desktop
+     "Needs decision" tile, PRESETS.NEEDS_TIM). Then say so and point to Jobs; never "All caught up" or "0 need you".
+     Pure: {decideCount, needsCount, eligibleScored, queueView} -> {kind, count, html}. count feeds the Decide header and
+     the Status "Need decision" tile ('—' when the queue snapshot is unavailable). */
+  function decideEmptyState(o) {
+    o = o || {};
+    var dc = Number(o.decideCount) || 0, n = Number(o.needsCount) || 0, sc = Number(o.eligibleScored) || 0, view = o.queueView;
+    if (view === 'unavailable') return { kind: 'unavailable', count: '—', html: '' };
+    if (dc > 0) return { kind: 'queue', count: dc, html: '' };
+    if (view === 'loading') return { kind: 'loading', count: dc, html: '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Decision queue loading</b><p>Jobs that need your decision come from the pipeline evidence, which has not loaded yet. This updates on its own.</p></div>' };
+    if (sc === 0 && n > 0) return { kind: 'scores-unavailable', count: n, html: '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Scores unavailable: ' + n$(n) + ' need a decision</b><button type="button" class="m-btn m-quiet" data-m-browse>Open Jobs</button></div>' };
+    return { kind: 'caught-up', count: 0, html: '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>' };
+  }
+  function decideEmpty(view) {
+    var b = B();
+    return decideEmptyState({ decideCount: b.decideRows().length, needsCount: b.needsDecisionCount ? b.needsDecisionCount() : 0,
+      eligibleScored: b.eligibleScoreCount ? b.eligibleScoreCount() : 0, queueView: view });
+  }
   function renderDecide(loaded) {
     var p = $('m-pane-decide');
     var bothFailEarly = queueState().view === 'unavailable' && !loaded;
@@ -245,9 +264,7 @@
       return;
     }
     if (!loaded) { p.innerHTML = skeleton(); return; }
-    var q = queue(), rows = B().decideRows(), all = rows.length;
-    var qs0 = queueState(), unknown = qs0.view === 'unavailable';   // queue failed to load: the counts are not known, so say "—" (Tim, Stage 5 review)
-    if (unknown) all = '—';
+    var q = queue(), qs0 = queueState(), es = decideEmpty(qs0.view), all = es.count;   // queue failed to load: "—" (Tim, Stage 5 review); scores withheld: N (cs-d1de0de4)
     var head = '<div class="m-count"><p><b class="m-num m-attn">' + all + '</b> need you</p><span class="m-label">Sort: score ↓</span></div>';
     var h = B().health(), qs = queueState();
     /* Down = orange ⚠ everywhere (header "QUEUE DOWN", this banner, the empty view); loading and stale = yellow "?" (Tim, Stage 5 polish). */
@@ -269,12 +286,8 @@
       body = '<div class="m-done m-pending m-down" role="alert">' + gl('warn') + '<b>—</b><p>Decision queue snapshot unavailable.</p>' + retryBtn('m-btn m-quiet') + '</div>';
     } else if (q.length) {
       body = '<div class="m-stack">' + q.map(function (v, i) { return cardHtml(v, i === 0); }).join('') + '</div>';
-    } else if (qs.view === 'loading') {
-      body = '<div class="m-done m-pending" role="status">' + gl('caution') + '<b>Decision queue loading</b><p>Jobs that need your decision come from the pipeline evidence, which has not loaded yet. This updates on its own.</p></div>';
-    } else if (qs.view === 'unavailable') {
-      body = '';
     } else {
-      body = '<div class="m-done">' + gl('ok') + '<b>All caught up</b><p>No jobs need a decision. New matches arrive after the next sync.</p><button type="button" class="m-btn m-quiet" data-m-browse>Browse all jobs</button></div>';
+      body = es.html;   // loading, unavailable (''), scores unavailable, or all caught up
     }
     var changed = setHtml(p, head + body);
     if (changed) bindDecide(p);
@@ -578,7 +591,7 @@
     var noFlow = s.noFlow ? '<p class="m-alert m-caution-note" role="status" aria-label="' + esc(s.noFlow.title + '. ' + s.noFlow.detail) + '">' + gl('caution') + '<b>' + esc(s.noFlow.title) + '</b> ' + esc(s.noFlow.detail) + '</p>' : '';   /* over 24 h old (GUI, cs-e3a8680f) */
     setHtml(p, '<p class="m-label m-sec-l">Pipeline constraint</p>' + noFlow + '<ol class="m-flow" aria-label="Pipeline stages">' + flow + '</ol>' +
       '<p class="m-cr-note">' + esc(s.constraintReason) + '</p>' +
-      '<div class="m-tiles">' + tile('Need decision', queueState().view === 'unavailable' ? null : b.decideRows().length) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
+      '<div class="m-tiles">' + tile('Need decision', (function (c) { return c === '—' ? null : c; })(decideEmpty(queueState().view).count)) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
       '<ul class="m-legend" aria-label="Legend"><li class="ok">' + gl('ok') + 'OK</li><li class="caution">' + gl('caution') + 'Caution</li><li class="attn">' + gl('warn') + 'Constraint</li><li class="fault">' + gl('no') + 'Fault</li></ul>' +
       '<p class="m-fresh ' + hs[0] + '"' + (freshAria ? ' aria-label="' + esc(freshAria) + '"' : '') + '>' + hs[1] + hs[2] + ' · SYNC ' + esc(sync) + (h.writer === false ? ' · ' + gl('warn') + 'NO WRITER' : '') + '</p>' +
       (s.details ? '<details class="m-sec"><summary>Details</summary><div class="m-sec-b"><p>' + esc(s.details) + '</p></div></details>' : ''));
@@ -662,5 +675,6 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sync); else sync();
   }
 
-  root.PEMobile = { refresh: refresh, setTab: setTab, query: Q };
+  root.PEMobile = { refresh: refresh, setTab: setTab, query: Q, decideEmptyState: decideEmptyState };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { decideEmptyState: decideEmptyState };
 })(typeof window !== 'undefined' ? window : globalThis);
