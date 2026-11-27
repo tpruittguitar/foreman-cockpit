@@ -100,17 +100,38 @@ test('DeepSeek: fourth Other Limits column, lines, missing, last good with a fai
   assert.deepEqual(L.limitLines(L.usageLimitRows(parse(failed), fresh)[3]), [{ t: 'no reading yet' }], 'all failed: no failed note');
 });
 
-test('Other Limits lines: Desktop Cmdr real leftPct plus SAMPLE cap/reset, CloudFlare full text, empty stays a dash', () => {
+test('Other Limits lines: Desktop Cmdr real leftPct and missing reset, CloudFlare full text, empty stays a dash', () => {
   const at = '2026-11-23T01:58:42-05:00', t = Date.parse(at);
   const rows = L.usageLimitRows(parse(
     { at, provider: 'DESKTOP_COMMANDER', meter: 'remote_calls_monthly', leftPct: 18, status: 'OK', source: 'who_am_i' },
     { at, provider: 'CLOUDFLARE', status: 'OK', source: 'cloudflare api', workersRequests: { used: 0, remaining: 100000, limit: 100000, resetsAt: '2026-11-24T00:00:00Z' }, pagesBuilds: { na: true } }), t + 10 * 60000);
   assert.deepEqual(L.limitLines(rows[1]), [{ t: '18% of monthly cap left' }, { t: 'read Nov 23, 1:58 AM ET', warn: false },
-    { t: 'cap 30 calls/month', sample: true }, { t: 'resets in 6 days', sample: true }]);
+    { t: 'Monthly reset —' }]);
   assert.deepEqual(L.limitLines(rows[2]), [{ t: 'Workers 0 / 100,000 requests' }, { t: 'Pages n/a' }]);
   assert.deepEqual(L.limitLines(rows[0]), [{ t: '—' }]);
   assert.equal(L.limitLines(L.usageLimitRows(rows.length && parse({ at, provider: 'DESKTOP_COMMANDER', meter: 'remote_calls_monthly', leftPct: 18, status: 'OK', source: 'x' }), t + 27 * HOUR)[1])[1].t,
     '? STALE · read Nov 23, 1:58 AM ET');
+});
+
+test('Desktop Commander reset accepts either feed spelling and preserves date-only values', () => {
+  const dc = { at: '2026-11-24T21:00:00-05:00', provider: 'DESKTOP_COMMANDER', meter: 'remote_calls_monthly', leftPct: 18, status: 'OK', source: 'who_am_i' };
+  const line = reset => L.limitLines(L.usageLimitRows(parse({ ...dc, ...reset }), NOW)[1]).at(-1).t;
+  assert.equal(line({ resetsAt: '2026-12-01' }), 'Monthly reset Dec 1, 2026');
+  assert.equal(line({ resetsAt: 'bad', resets_at: '2026-12-01T02:00:00Z' }), 'Monthly reset Nov 30, 2026');
+  assert.equal(line({ resetsAt: '2026-02-30', next_read_after: '2026-11-25T08:00:00-05:00' }), 'Monthly reset —');
+});
+
+test('flat usage includes the feed-backed limits even with no plan readings', () => {
+  const office = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
+  const render = office.slice(office.indexOf('function usageListHTML()'), office.indexOf('function openUsage()'));
+  const readings = parse({ ...deepseek, total_balance: 0 }, {
+    at: deepseek.at, provider: 'DESKTOP_COMMANDER', meter: 'remote_calls_monthly',
+    leftPct: 18, resets_at: '2026-12-01', status: 'OK', source: 'who_am_i'
+  });
+  const html = require('node:vm').runInNewContext(render + 'usageListHTML()', { L, S: { readings }, esc: String });
+  assert.match(html, /Other Limits/);
+  assert.match(html, /DeepSeek<\/b><div class="meta">\$0\.00 left/);
+  assert.match(html, /Monthly reset Dec 1, 2026/);
 });
 
 test('wrapWords keeps every character, never adds an ellipsis, splits a word wider than the line', () => {
@@ -171,17 +192,20 @@ test('wall draw: no Duet reading shows no reading yet and no dollar amount', () 
   assert.match(all, /no reading yet/); assert.doesNotMatch(all, /\$/);
 });
 
-test('limits draw: four columns, every line inside its column, SAMPLE only on Desktop Cmdr cap and reset', () => {
+test('limits draw: four columns with DeepSeek credit and Desktop Commander reset, no sample values', () => {
   const at = '2026-11-24T21:00:00-05:00';
   const rows = L.usageLimitRows(parse(
     { at, provider: 'GITHUB', meter: 'core_api', remaining: 3624, limit: 5000, resetsAt: '2026-11-25T03:40:00Z', status: 'OK', source: 'gh' },
-    { at, provider: 'DESKTOP_COMMANDER', meter: 'remote_calls_monthly', leftPct: 18, status: 'OK', source: 'who_am_i' },
+    { at, provider: 'DESKTOP_COMMANDER', meter: 'remote_calls_monthly', leftPct: 18, resetsAt: '2026-12-01', status: 'OK', source: 'who_am_i' },
     { at, provider: 'CLOUDFLARE', status: 'OK', source: 'cf', workersRequests: { used: 0, remaining: 100000, limit: 100000 }, pagesBuilds: { na: true } }, deepseek), Date.parse(at) + HOUR);
   const c = fakeCtx();
   D.drawUsageLimits(c, 1024, 158, rows);
   assert.deepEqual(['GitHub', 'Desktop Cmdr', 'CloudFlare', 'DeepSeek'].map(h => c.texts.some(x => x.t === h)), [true, true, true, true]);
   assert.ok(!c.texts.some(x => String(x.t).includes('…')));
-  assert.equal(c.texts.filter(x => x.t === 'SAMPLE').length, 2);
+  assert.ok(c.texts.some(x => x.t === '$12.34 left'));
+  assert.ok(c.texts.some(x => x.t === 'Monthly reset'));
+  assert.ok(c.texts.some(x => x.t === 'Dec 1, 2026'));
+  assert.ok(!c.texts.some(x => /SAMPLE|30 calls/.test(x.t)));
   assert.ok(c.texts.some(x => x.t.endsWith('requests') && !x.t.startsWith('Workers')), 'CloudFlare wraps onto a second line, full text');
   assert.ok(c.texts.every(x => x.x + x.w <= 1024 - 20 && x.y <= 158), 'inside the panel');
 });

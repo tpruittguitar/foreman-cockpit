@@ -412,13 +412,8 @@ export function drawUsage(ctx, W, H, o) {
 }
 
 /* Other Limits: title, then GitHub | Desktop Cmdr | CloudFlare | DeepSeek (v2 widths 160/214/150/300 of 824s). Lines come from
-   L.limitLines and wrap to full text; Desktop Commander's cap and reset carry a small SAMPLE tag until a feed source exists. */
+   L.limitLines and wrap to full text. */
 const LIM_COLS = [{ name: 'GitHub', w: 160 }, { name: 'Desktop Cmdr', w: 214 }, { name: 'CloudFlare', w: 150 }, { name: 'DeepSeek', w: 300 }];
-function sampleTag(ctx, x, yBase, s) {
-  ctx.font = `700 ${11 * s}px ${SANS}`; const tw = ctx.measureText('SAMPLE').width;
-  ctx.strokeStyle = C.stale; ctx.lineWidth = 1 * s; ctx.strokeRect(x, yBase - 11 * s, tw + 8 * s, 14 * s);
-  ctx.fillStyle = C.stale; ctx.fillText('SAMPLE', x + 4 * s, yBase); return tw + 8 * s;
-}
 export function drawUsageLimits(ctx, W, H, rows) {
   const s = W / 1024, pad = 20 * s, inner = 16 * s, leftW = 96 * s, y0 = 42 * s, colTotal = W - 2 * pad - leftW - inner * LIM_COLS.length;
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, W, H);
@@ -434,14 +429,12 @@ export function drawUsageLimits(ctx, W, H, rows) {
     const lines = [];
     L.limitLines(byName[c.name]).forEach(l => {
       ctx.font = `${l.warn ? 700 : 600} ${16 * s}px ${SANS}`;
-      const tagW = l.sample ? 60 * s : 0, parts = usageWrap(ctx, l.t, w - tagW);
-      parts.forEach((t, k) => lines.push({ t, warn: l.warn, sample: l.sample && k === parts.length - 1 }));
+      usageWrap(ctx, l.t, w).forEach(t => lines.push({ t, warn: l.warn }));
     });
     const first = y0 + 26 * s, lh = lines.length > 1 ? Math.min(21 * s, (H - 8 * s - first) / (lines.length - 1)) : 21 * s;
     lines.forEach((l, i) => {
       const ly = first + i * lh;
       ctx.font = `${l.warn ? 700 : 600} ${16 * s}px ${SANS}`; ctx.fillStyle = l.warn ? C.stale : '#9a9a9a'; ctx.fillText(l.t, x, ly);
-      if (l.sample) sampleTag(ctx, x + ctx.measureText(l.t).width + 6 * s, ly, s);
     });
     x += w + inner;
   });
