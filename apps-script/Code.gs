@@ -2305,8 +2305,11 @@ function mutateRow(line, ruling, flexPolicy) {
   } else if (kind === 'CLOSED_DEAD') {
     if ((g = guardProtected('close'))) return g;
     fixed[4] = 'CLOSED_DEAD'; fixed[5] = 'RESOLVED/CLOSED_DEAD';
-    set('TIM_RULING', 'CLOSED_DEAD'); set('POSTING_STATE', note || 'Closed per Tim ' + d); set('TIM_DISPOSITION', 'TIM_CLOSED_' + d + '_EXPLORER'); tags.push('TIM_CLOSED_' + d);
-    changes.push('BUCKET', 'DISPOSITION', 'POSTING_STATE', 'TIM_DISPOSITION');
+    if (String(ruling.actor || '').toUpperCase() === 'WRITER_ATS') { set('POSTING_STATE', note); tags.push('ATS_CLOSED_' + d); changes.push('BUCKET', 'DISPOSITION', 'POSTING_STATE'); }
+    else {
+      set('TIM_RULING', 'CLOSED_DEAD'); set('POSTING_STATE', note || 'Closed per Tim ' + d); set('TIM_DISPOSITION', 'TIM_CLOSED_' + d + '_EXPLORER'); tags.push('TIM_CLOSED_' + d);
+      changes.push('BUCKET', 'DISPOSITION', 'POSTING_STATE', 'TIM_DISPOSITION');
+    }
   } else if (kind === 'INVALID_DISCOVERY') {
     if ((g = guardProtected('invalidate'))) return g;
     fixed[4] = 'INVALID_DISCOVERY'; fixed[5] = 'RESOLVED/INVALID_DISCOVERY';
