@@ -16,6 +16,9 @@ const MAX_SCHEDULE_CONFIG_AGE_MS=24*3600000;
 const ageProblem=(at,now,maxAge)=>{const t=Date.parse(at);if(!Number.isFinite(t))return 'Missing timestamp';if(t-now>MAX_FUTURE_SKEW_MS)return 'Timestamp is in the future';return now-t>maxAge?'Data is '+Math.round((now-t)/60000)+' minutes old (limit '+Math.round(maxAge/60000)+')':'';};
 // Past the window the check is STALE but still observed, with its true age; a missing or future timestamp is only not ok.
 const freshness=(at,now,maxAge)=>{const problem=ageProblem(at,now,maxAge);if(!problem)return {ok:true};if(!/minutes old/.test(problem))return {ok:false,error:problem};const ageMs=now-Date.parse(at);return {ok:false,status:'STALE',observed:true,error:problem,ageMs,ageMinutes:Math.round(ageMs/60000)};};
+// Receipt details are evidence, not API health fields. In particular, only
+// verified workflow metadata can mark a check PAUSED.
+const receiptCheck=({ok,status,observed,error,ageMs,ageMinutes,...proof},now)=>({...proof,...freshness(proof.at,now,MAX_OUTCOME_AGE_MS)});
 async function readSnapshot(fetcher,url){
   for(let attempt=0;attempt<2;attempt++){
     try{const r=await fetcher(url,{cache:'no-store',headers:{'Accept':'application/json'},signal:AbortSignal.timeout(7000)});if(attempt===0&&[408,500,502,503,504].includes(r.status)){await r.body?.cancel();continue;}return r;}
@@ -75,10 +78,10 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main',to
       }else if(key==='processFlow'){
         if(j.schema!=='forge.enrichment-flow.v1'||!Number.isFinite(Date.parse(j.at)))throw Error('Invalid process flow');output.processFlow=j;output.checks[key]={ok:true,at:j.at,...freshness(j.at,now,MAX_FLOW_AGE_MS)};
       }else if(key==='applicationOutcomes'){
-        if(j.schema!=='forge.application-outcomes.v1'||!Array.isArray(j.events))throw Error('Invalid application outcomes');output.applicationOutcomes={at:j.at,events:j.events.map(e=>({primaryId:e.primaryId,type:e.type,eventDate:e.eventDate,stage:e.stage,progress:e.progress,sourceType:e.sourceType||(e.gmailMessageId?'EMAIL':undefined),evidenceVerified:e.evidenceVerified===true})),coverageComplete:j.coverageComplete===true};output.checks[key]={ok:true,at:j.at,...freshness(j.at,now,MAX_OUTCOME_AGE_MS)};
+        if(j.schema!=='forge.application-outcomes.v1'||!Array.isArray(j.events))throw Error('Invalid application outcomes');output.applicationOutcomes={at:j.at,events:j.events.map(e=>({primaryId:e.primaryId,type:e.type,eventDate:e.eventDate,stage:e.stage,progress:e.progress,sourceType:e.sourceType||(e.gmailMessageId?'EMAIL':undefined),evidenceVerified:e.evidenceVerified===true})),coverageComplete:j.coverageComplete===true};output.checks[key]={at:j.at,...freshness(j.at,now,MAX_OUTCOME_AGE_MS)};
       }else if(key==='emailRecovery'){
         if(j.schema!=='forge.email-recovery-summary.v1'||!Number.isFinite(Date.parse(j.at))||!Number.isInteger(j.capturedUniqueJobs)||j.capturedUniqueJobs<0||!Number.isInteger(j.pendingJobs)||j.pendingJobs<0)throw Error('Invalid recovery summary');
-        output.emailRecovery=j;output.checks[key]={ok:true,at:j.at,...freshness(j.at,now,MAX_RECOVERY_AGE_MS)};
+        output.emailRecovery=j;output.checks[key]={at:j.at,...freshness(j.at,now,MAX_RECOVERY_AGE_MS)};
       }else if(key==='attention'){
         if(j.schema!=='forge.bot-incidents.v1'||!Array.isArray(j.items))throw Error('Unsupported incident feed');
         output.checks[key]={ok:true,at:j.builtAt};
@@ -88,9 +91,9 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main',to
         output.execution=j;
         output.checks[key]={ok:true,at:j.at};
         const capture=j.emailCapture;
-        if(capture&&capture.corroborated===true&&capture.coverageComplete===false&&Number.isFinite(Date.parse(capture.at))&&Number.isSafeInteger(capture.messagesRead)&&capture.messagesRead>0&&/^receipts\/FORGE-CODE-CHATGPT-[A-Za-z0-9_-]+_MAIL\.json$/.test(capture.sourceFile||'')){const f=freshness(capture.at,now,MAX_OUTCOME_AGE_MS);output.checks.emailCapture=f.ok?{ok:true,...capture}:{...capture,...f};}
+        if(capture&&capture.corroborated===true&&capture.coverageComplete===false&&Number.isFinite(Date.parse(capture.at))&&Number.isSafeInteger(capture.messagesRead)&&capture.messagesRead>0&&/^receipts\/FORGE-CODE-CHATGPT-[A-Za-z0-9_-]+_MAIL\.json$/.test(capture.sourceFile||''))output.checks.emailCapture=receiptCheck(capture,now);
         const c=j.emailCoverage;
-        if(c&&c.writerProofsVerified===true&&Number.isFinite(Date.parse(c.at))&&/^receipts\/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-/.test(c.sourceFile||'')){const f=freshness(c.at,now,MAX_OUTCOME_AGE_MS);output.checks.emailCoverage=f.ok?{ok:true,...c}:{...c,...f};}
+        if(c&&c.writerProofsVerified===true&&Number.isFinite(Date.parse(c.at))&&/^receipts\/EMAIL_FINAL_FORGE-EMAIL-CHATGPT-/.test(c.sourceFile||''))output.checks.emailCoverage=receiptCheck(c,now);
       }else if(key==='boardHealth'){
         if(j.schema!=='forge.board-health.v1'||!j.boards||Array.isArray(j.boards))throw Error('Unsupported board history');
         output.boardHealth=Object.values(j.boards).filter(x=>x&&!x.paused&&typeof x.key==='string').map(x=>({key:x.key,companies:Array.isArray(x.companies)?x.companies.slice(0,10).map(c=>String(c).slice(0,150)):[],status:String(x.status||'UNKNOWN'),error:String(x.error||'').slice(0,150),httpStatus:Number.isInteger(x.httpStatus)?x.httpStatus:null,lastAttemptAt:x.lastAttemptAt||null,lastSuccessAt:x.lastSuccessAt||null,retryAt:x.retryAt||null,consecutiveFailures:Math.max(0,+x.consecutiveFailures||0)})).map(b=>workdayRateLimited(b)?{...b,blocked:true,blockedReason:WORKDAY_429_REASON}:b);
