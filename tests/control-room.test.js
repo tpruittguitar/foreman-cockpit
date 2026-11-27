@@ -276,3 +276,12 @@ test('an email recovery summary past 24 hours is shown as overdue with its true 
  assert.ok(s);assert.match(s.detail,/30 h ago/);assert.ok(!/current/i.test(s.title));assert.equal(m.waiting[0].count,null);
  f.health.emailRecovery.at=at;f.health.checks.emailRecovery={ok:true,at};assert.ok(!C.model(f).warnings.some(x=>/Email recovery queue is overdue/.test(x.title)));
 });
+test('paused discovery has a neutral badge and does not create a stale warning or hide an active sibling fault',()=>{
+ const f=fixture();
+ f.health.checks.boards={ok:false,status:'PAUSED',at:'2026-10-27T00:00:00Z'};
+ f.health.checks.sources={ok:true,at:'2026-10-27T00:00:00Z'};
+ const m=C.model(f),html=C.html(m);
+ assert.match(html,/class="cr-paused-workflows"[^>]*><li><span class="cr-signal">PAUSED<\/span> Board discovery/);
+ assert.doesNotMatch(html,/Board discovery not reported|Board discovery is overdue|Employer-board history is unavailable or stale/);
+ assert.ok(m.warnings.some(w=>w.title==='Source discovery is overdue'));
+});
