@@ -274,7 +274,7 @@ function refreshAll() {
   const banner = $('banner');
   if (S.state === 'failed') { banner.hidden = false; banner.textContent = '⚠ Office data unavailable: ' + (S.error || 'no data') + '. Bots are greyed out where they stand.'; }
   else banner.hidden = true;
-  const n = needsCount(); $('needs-n').textContent = n; $('needs-btn').classList.toggle('zero', !n);
+  const n = needsCount(); $('needs-n').textContent = n; $('needs-n').hidden = !n; $('needs-btn').classList.toggle('zero', !n);
   if (S.refreshedAt && !$('refresh-btn').disabled) $('refresh-lbl').textContent = 'Refresh · ' + L.dataAge(new Date(S.refreshedAt).toISOString(), now).text;
   renderFlat();
   if (world) world.refresh();
@@ -616,9 +616,9 @@ function openBoard() {
   showPanel(`<h2 id="panel-title">Forge checksheet</h2>
     <div class="tabs" role="tablist">${tabs.map(t => `<button class="tab${t === boardTab ? ' on' : ''}" role="tab" aria-selected="${t === boardTab}" data-tab="${esc(t)}">${esc(t)} (${t === 'All' ? items().length : items().filter(i => i.project === t).length})</button>`).join('')}</div>
     <div class="cols">${cols.map(c => `<section class="bcol ${c.id}"><h3>${c.id === 'needs_tim' ? '⚠ ' : ''}${esc(c.label)} (${c.total})${c.id === 'done' ? ` <button class="linkbtn" data-done="1">${c.collapsed ? 'show' : 'hide'}</button>` : ''}</h3>
-      ${c.cards.map(i => { const w = L.statusWord(i), pb = L.priorityBadge(i.priority); return `<div class="bcard"><button class="linkbtn" data-item="${esc(i.id)}"><span class="pbadge ${pb.loud ? 'loud' : ''}">${esc(pb.text)}</span> ${esc(L.cardTitle(i))}</button>
+      ${c.cards.map(i => { const w = L.statusWord(i), pb = L.priorityBadge(i.priority), note = L.cardFaceNote(i); return `<div class="bcard"><button class="linkbtn" data-item="${esc(i.id)}"><span class="pbadge ${pb.loud ? 'loud' : ''}">${esc(pb.text)}</span> ${esc(L.cardTitle(i))}</button>
         <div class="meta">${esc(i.owner || '—')} · <span class="st ${w.tone}" ${w.why ? `title="${esc(w.why)}"` : ''}>${w.glyph} ${w.word}</span>${i.updated_at ? ' · ' + L.etClock(Date.parse(i.updated_at)) + ' ET' : ''}${i.owner && botByName(i.owner) ? ` · <a href="#" data-go="${esc(i.owner)}">desk</a>` : ''}</div>
-        ${i.note ? `<div class="meta note">${esc(i.note)}</div>` : ''}${w.why ? `<div class="meta why">? ${esc(w.why)}</div>` : ''}</div>`; }).join('') || (c.collapsed ? '<p class="fallback">collapsed</p>' : '<p class="fallback">none</p>')}</section>`).join('')}</div>
+        ${note ? `<div class="meta note">${esc(note)}</div>` : ''}${w.why ? `<div class="meta why">? ${esc(w.why)}</div>` : ''}</div>`; }).join('') || (c.collapsed ? '<p class="fallback">collapsed</p>' : '<p class="fallback">none</p>')}</section>`).join('')}</div>
     ${DEMO ? '<p class="fallback">EXAMPLE DATA</p>' : ''}`);
   $('panel').classList.add('wide');
 }
@@ -1575,10 +1575,10 @@ function buildWorld() {
   }
 
   /* ---------- labels & speech bubbles ---------- */
-  const activeConvos = new Map(); let convoLines = [];
+  const activeConvos = new Map();
   function updateConvos() {
     activeConvos.clear();
-    convoLines = S.state === 'failed' ? [] : L.recentConversations(S.parsed ? S.parsed.conversations : [], Date.now());
+    const convoLines = S.state === 'failed' ? [] : L.recentConversations(S.parsed ? S.parsed.conversations : [], Date.now());
     for (const c of convoLines) activeConvos.set(c.from, c);
   }
   /* Card 7077752: per-provider run-out prediction from the flat view's own code (pipeline-ai-usage.js), so both views say the same thing. */
@@ -1591,7 +1591,8 @@ function buildWorld() {
     const w = innerWidth, h = innerHeight, max = TV ? 40 : 22, now = Date.now(), shown = [];
     for (const c of chars.values()) {
       const b = botByName(c.name), st = L.statusStyle(b ? b.status : 'idle'), frozen = S.state === 'failed', needs = S.needsSet.has(c.name) && !frozen;
-      const rp = c.goalNow && c.goalNow.recent;
+      const replay = c.goalNow && c.goalNow.recent;
+      const rp = !frozen && replay && b && replay.text === b.last_action && L.bubbleIsFresh(b.last_action_at, now) ? replay : null;
       const why = frozen ? 'office data unavailable' : S.state === 'stale' ? 'office data is stale (' + L.dataAge(S.parsed.updatedAt, now).text + ')' : b && b.why ? b.why : '';
       const fr = !frozen && !needs ? L.activityChip(S.fresh[c.name], plan.training, c.name) : '';
       /* cs-9e5be547 #3: tag is name · idle, or name · working|waiting|blocked · card (blocked shows its reason). Offline is a monitor caption, not the floor state.
@@ -1620,18 +1621,26 @@ function buildWorld() {
       if (L.tagFar(dist) !== c.tagFarNow) { c.tagFarNow = L.tagFar(dist); c.tagBox = null; }
       const sx = (tmpV.x * 0.5 + 0.5) * w, sy = (-tmpV.y * 0.5 + 0.5) * h;
       if (vis) { if (!c.tagBox) c.tagBox = { w: c.tag.offsetWidth, h: c.tag.offsetHeight }; shown.push({ c, x: sx, y: sy, w: c.tagBox.w, h: c.tagBox.h, needs }); }
-      const lines = convoLines.filter(l => l.from === c.name).slice(-1), amb = lines.length ? '' : rp ? '' : ambientText(c);
-      const bk = lines.length ? lines.map(l => l.at + l.text).join('|') : rp ? 'rp' + rp.text : amb;
+      const convo = activeConvos.get(c.name);
+      const line = !frozen && convo && L.bubbleIsFresh(convo.at, now) ? convo : null;
+      const amb = line || rp ? '' : ambientText(c);
+      const bk = line ? line.at + L.bubbleText(line) : rp ? 'rp' + rp.text : amb;
       if (bk !== c.bubKey) {
         c.bubKey = bk;
-        c.bub.innerHTML = lines.length ? lines.map(l => `<div class="bubble${l.text ? '' : ' who'}">${esc(L.bubbleText(l))}</div>`).join('')
+        c.bub.innerHTML = line ? `<div class="bubble${line.text ? '' : ' who'}">${esc(L.bubbleText(line))}</div>`
           : rp ? `<div class="bubble recent">${esc(L.truncate(rp.text, L.BUBBLE_MAX))}</div>`
           : amb ? `<div class="bubble ambient${c.goalNow && ['group', 'invite'].includes(c.goalNow.ambient) ? ' speech' : ''}">${esc(L.truncate(amb, L.BUBBLE_MAX))}</div>` : '';
       }
-      const show = lines.length || amb || rp;
+      const show = line || amb || rp;
       c.bub.hidden = !show || !vis;
-      c.bub.style.pointerEvents = lines.length ? '' : 'none';
-      if (show && vis) c.bub.style.transform = `translate(-50%,-100%) translate(${sx}px,${sy - (TV ? 46 : 26)}px)`;
+      c.bub.style.pointerEvents = line ? '' : 'none';
+      if (show && vis) {
+        const bottom = sy - (TV ? 46 : 26);
+        // Skip bubbles that cannot fit without covering a projected wall board.
+        if (L.bubbleClearsBoards(sx, bottom, c.bub.offsetWidth, c.bub.offsetHeight, boardRects))
+          c.bub.style.transform = `translate(-50%,-100%) translate(${sx}px,${bottom}px)`;
+        else c.bub.hidden = true;
+      }
     }
     if (zachSw.on) { /* Zach: a plain name tag, no status word or chips (he is a visitor, not a bot); none while he is hidden */
       if (!zach.tag.parentNode) $('labels').appendChild(zach.tag);
