@@ -12,22 +12,22 @@ test.before(async () => {
   D = await import(pathToFileURL(path.join(dir, 'draw.js')).href);
 });
 function fakeCtx() {
-  const texts = [];
-  return { font: '', fillStyle: '', textAlign: 'left', texts,
+  const texts = [], rects = [];
+  return { font: '', fillStyle: '', textAlign: 'left', texts, rects,
     measureText(t) { const px = Number((/(\d+(?:\.\d+)?)px/.exec(this.font) || [0, 10])[1]); return { width: String(t).length * px * 0.55 }; },
-    fillText(t, x, y) { texts.push({ t, x, y }); }, fillRect() {}, strokeRect() {}, beginPath() {}, arc() {}, fill() {} };
+    fillText(t, x, y) { texts.push({ t, x, y, right: x + this.measureText(t).width }); }, fillRect(x, y, w, h) { rects.push({ x, y, w, h, color: this.fillStyle }); }, strokeRect() {}, beginPath() {}, arc() {}, fill() {} };
 }
 const NOW = Date.parse('2026-11-18T05:30:00Z'), MIN = 60000, iso = ms => new Date(ms).toISOString();
 const STATUS = { generated_at: iso(NOW - 2 * MIN), automations: [
   { ai: 'ChatGPT', name: 'usage reader', result: 'success', last_run_at: iso(Date.parse('2026-11-18T05:05:00Z')), next_run_at: iso(NOW + 12 * MIN + 3000), est_per_run: '0 calls, 48 s', est_week: '0 calls, 2.2 h' },
   { ai: 'Claude', name: 'intake', result: 'failure', last_run_at: iso(NOW - 3 * 60 * MIN), next_run_at: iso(NOW + 90 * MIN) },
   { ai: 'Grok', name: 'helper', result: 'skipped', last_run_at: iso(NOW - 10 * MIN), next_run_at: iso(NOW + 26 * 60 * MIN) },
-  { ai: 'Gauge', name: 'audit', result: 'empty', last_run_at: '', next_run_at: '', running: true, started_at: iso(NOW - MIN) }] };
+  { ai: 'Gauge', name: 'audit', result: 'failure', last_run_at: 'never', next_run_at: '', running: true, started_at: iso(NOW - MIN) }] };
 
 test('rows: simplified result, last ran in ET, countdown to the next run', () => {
   const rows = L.automationBoardRows(L.parseAutomations(STATUS, NOW), NOW);
   assert.deepEqual(rows.map(r => r.label), ['ChatGPT · usage reader', 'Claude · intake', 'Grok · helper', 'Gauge · audit']);
-  assert.deepEqual(rows.map(r => r.result), ['OK', 'FAIL', 'SKIPPED', 'SKIPPED']);
+  assert.deepEqual(rows.map(r => r.result), ['OK', 'FAIL', 'SKIPPED', 'never run']);
   assert.equal(rows[0].last, '12:05 AM ET');
   assert.equal(rows[3].last, 'never');
   assert.deepEqual(rows.map(r => r.next), ['in 12m 03s', 'in 1h 30m', 'in 1d 2h', 'running now']);
@@ -43,24 +43,26 @@ test('the wall board draws one row per automation with headers, and the board re
   const c = fakeCtx();
   D.drawAutomations(c, 1024, 625, { auto: L.parseAutomations(STATUS, NOW), err: '', now: NOW, demo: false });
   const t = c.texts.map(x => x.t);
-  for (const h of ['Automation', 'Result', 'Last ran', 'Last run by', 'Next run', 'est. / run', 'est. / week']) assert.ok(t.includes(h), h);
-  for (const v of ['ChatGPT · usage reader', 'OK', 'FAIL', 'SKIPPED', '12:05 AM ET', 'in 12m 03s', 'running now']) assert.ok(t.includes(v), v);
+  for (const h of ['Automation', 'Result', 'Last ran', 'Last run by', 'Next run', 'est. / run']) assert.ok(t.includes(h), h);
+  for (const v of ['ChatGPT · usage reader', 'OK', 'FAIL', 'SKIPPED', 'never run', '12:05 AM ET', 'in 12m 03s', 'running now']) assert.ok(t.includes(v), v);
   assert.ok(!t.includes('runs / hour'), 'the timeline moved to the click panel');
   const office = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
   assert.match(office, /else if \(clock - autosAt >= 1\) drawAutos\(\);/);
 });
 
-test('wall rows show est. per-run and weekly totals, or an em dash when unknown', () => {
+test('wall shows only per-run estimates, within the right edge', () => {
   const rows = L.automationBoardRows(L.parseAutomations(STATUS, NOW), NOW);
   assert.equal(rows[0].estRun, '0 calls, 48 s');
-  assert.equal(rows[0].estWeek, '0 calls, 2.2 h');
   assert.equal(rows[1].estRun, '—');
-  assert.equal(rows[1].estWeek, '—');
   const c = fakeCtx();
   D.drawAutomations(c, 1024, 625, { auto: L.parseAutomations(STATUS, NOW), err: '', now: NOW, demo: false });
   const t = c.texts.map(x => x.t);
-  assert.ok(t.includes('est. / run') && t.includes('est. / week'));
-  assert.ok(t.includes('0 calls, 48 s') && t.includes('0 calls, 2.2 h'));
+  assert.ok(t.includes('est. / run') && !t.includes('est. / week'));
+  assert.ok(t.includes('0 calls, 48 s') && !t.includes('0 calls, 2.2 h'));
+  assert.ok(c.texts.find(x => x.t === '0 calls, 48 s').right <= 1008);
+  assert.equal(t.filter(x => x === 'FAIL').length, 1, 'only the recorded failure shows FAIL');
+  const badge = c.texts.find(x => x.t === 'never run');
+  assert.ok(c.rects.some(r => r.color === '#8b9099' && r.x < badge.x && badge.x < r.x + r.w && r.y < badge.y && badge.y < r.y + r.h));
   assert.ok(t.filter(x => x === '—').length >= 2, 'missing estimates render as —');
 });
 test('all 15 source rows paint, including FORGE_CLAUDE_SHARED_HELPER, with no +N more', () => {

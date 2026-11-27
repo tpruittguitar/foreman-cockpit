@@ -72,3 +72,16 @@ test('wall Detail layout shows exactly 6 card rows per column and pages the rest
   assert.deepEqual(ids(L.columnPage(col, 6, 1)), ['ip-6', 'ip-7', 'ip-8', 'ip-9', 'ip-10', 'ip-11']);
   assert.equal(L.columnPage(col, 9, 0).items.length, 9, 'without the 6-row cap a tall board would show 9');
 });
+
+test('checksheet faces omit redundant cost metadata but retain ordinary notes', () => {
+  const item = { note: 'Cost: ~0 pts (est.), pool Shared. Owner: Cursor' };
+  assert.equal(L.cardFaceNote(item), '');
+  assert.match(item.note, /Owner: Cursor/, 'the detail view still has the original note');
+  assert.equal(L.cardFaceNote({ note: 'Waiting for review' }), 'Waiting for review');
+  const fs = require('fs'), path = require('path');
+  const draw = fs.readFileSync(path.join(__dirname, '../office/draw.js'), 'utf8');
+  assert.match(draw, /note = L\.cardFaceNote\(it\)/);
+  assert.match(draw, /if \(titleLines.length > 1\) ctx.fillText/);
+  const html = fs.readFileSync(path.join(__dirname, '../office.html'), 'utf8');
+  assert.match(html, /id="needs-btn"[^>]*>⚠ Needs Tim <b id="needs-n" hidden>0<\/b>/);
+});

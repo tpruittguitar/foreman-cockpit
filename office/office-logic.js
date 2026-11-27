@@ -658,6 +658,16 @@
     const len = top * scale;
     return { scale, halfW: halfW * scale, halfD: halfD * scale, len, lieY: seat.top + halfW * scale, rigX: len / 2, span: [-len / 2, len / 2] };
   }
+  const BUBBLE_TTL_MS = 5 * MIN;
+  function bubbleIsFresh(at, now) {
+    const t = time(at);
+    return t != null && t <= now + MIN && now - t < BUBBLE_TTL_MS;
+  }
+  function bubbleClearsBoards(x, bottom, width, height, boards) {
+    const box = { x0: x - width / 2, x1: x + width / 2, y0: bottom - height, y1: bottom };
+    return !boards.some(b => rectsOverlap(box, b));
+  }
+  const cardFaceNote = item => /^Cost:/i.test(item.note || '') ? '' : item.note;
   const BUBBLE_MAX = 130; // wrap up to about 3 lines; typical and recent sentences fit with no ellipsis
   function bubbleText(c) { return c.text ? truncate(c.text, BUBBLE_MAX) : 'talking with ' + c.to; }
 
@@ -2182,7 +2192,7 @@
   function automationBoardRows(a, now) {
     return ((a && a.rows) || []).map(r => { const last = time(r.last_run_at);
       const paused = r.paused === true || r.result === 'PAUSED';
-      return { label: r.ai + ' · ' + r.name, result: paused ? 'PAUSED' : (BOARD_RESULT[r.result] || 'FAIL'), last: last != null ? etClock(last) + ' ET' : 'never', lastBy: r.last_run_by ? r.last_run_by : '—', next: nextRunText(r, now), running: r.running, paused, estRun: str(r.est_per_run) || '—', estWeek: str(r.est_week) || '—' }; });
+      return { label: r.ai + ' · ' + r.name, result: paused ? 'PAUSED' : last == null ? 'never run' : (BOARD_RESULT[r.result] || 'FAIL'), last: last != null ? etClock(last) + ' ET' : 'never', lastBy: r.last_run_by ? r.last_run_by : '—', next: nextRunText(r, now), running: r.running, paused, estRun: str(r.est_per_run) || '—' }; });
   }
   /* Writer health rows with units (Tim Nov 17: no Last ping / Queue depth / Timeouts). Writer heartbeat = time of the last
      successful Writer write, i.e. AUTOMATIONS_STATUS.json generated_at minus writer_health.last_write_age_min. Public data only. */
@@ -2796,7 +2806,7 @@
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, AGENT_NAMES, AGENT_TO, agentName, parseAgentChat, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,
-    needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, ZACH_KEY, zachShownFrom, readZachShown, saveZachShown, createZachSwitch, ZACH_SWITCH, zachSwitchPose, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, buildLaunchLine, RELEASE_PLATE_BOARD, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
+    needsTimNames, ZACH, ZACH_TASKS, zachPick, zachMotion, ZACH_KEY, zachShownFrom, readZachShown, saveZachShown, createZachSwitch, ZACH_SWITCH, zachSwitchPose, waterfallOffset, buildBadge, buildPrPopup, wireBuildBadge, buildPlate, buildLaunchLine, RELEASE_PLATE_BOARD, etDate, skyState, makeRng, GAME_STYLES, gameStyleFor, chatGroups, groupSpeaker, groupFace, inviteText, INVITE_MAX, INVITE_SAY_S, INVITE_WAIT_S, inviteStart, inviteCurrent, inviteStep, inviteGoesToRoom, BUBBLE_MAX, bubbleIsFresh, bubbleClearsBoards, cardFaceNote, NAP_CUSHION_TOP, NAP_SEAT_FRONT, NAP_BACKREST, NAP_ARM, NAP_MARGIN, napSeat, napFit, IDLE_ACTIVITIES, IDLE_ACT_MIN_S, IDLE_ACT_MAX_S, FRIDGE_CAP, FRIDGE_LOW, FRIDGE_MIN, FRIDGE_REFILL_S, SHELF_CAP, SHELF_REFILL_S, fridgeTake, fridgeAutoRefill, shelfTake, shelfAutoRefill, createIdleState, showsGame, firstGameSlot, fridgeLow, idleTick,
     SKILL_CYCLE_MS, parseSkills, skillSlide, TRAINING_PATH, INVITE_S, parseTraining, activeTraining, visibleTrainingSessions, formatTrainingSession, trainingPlan, trainingSlide, REPLAY_CYCLE_MS, REPLAY_MS, PICK_MS, LEARNED_TAG_MS, replayTraining, skillTags, trainLine, activityChip, blockedCue, blockedHopOffset,
     groupChatSlots, pickRestocker, JOB_PHASES, JOB_HOLD_S, JOB_WORK_MAX_S, jobStart, jobGoal, jobStep, JOB_ASSIGN_REASONS, deskCards, CARD_STYLE, cardStyle, cardStack, cardLines, POOL, poolShot, EXPR, exprParams, blendExpression, STUDIO_FACES, STUDIO_FACE_IDS, exprFor, failedPr, gazeShift, slotSize, uprightSize, gazeWander, FIDGETS, FIDGET_SLOT_S, fidgetAt, fidgetPose, mergedRecently, BLINK_DUR, createBlinker, blinkAmount
   };

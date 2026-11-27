@@ -77,6 +77,7 @@ test('last good stale banner stays above cards and footer on the constraint wall
   const staleBox = { x1: stale.x - 1, x2: 1024 - 24, y1: stale.y - 26, y2: stale.y };
   assert.ok(titleBox.y2 <= staleBox.y1 || staleBox.y2 <= titleBox.y1, 'title/stale vertical overlap');
   assert.ok(titleBox.x2 <= staleBox.x1 || staleBox.x2 <= titleBox.x1, 'title/stale horizontal overlap');
+  assert.equal(c.texts.filter(x => /STALE|Evidence refresh delayed/.test(x.t)).length, 1);
   assert.ok(stale.y < 104, 'stale banner baseline should be above stage cards: ' + stale.y);
   assert.ok(104 + 368 < 510, 'cards end before footer');
 });
