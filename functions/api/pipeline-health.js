@@ -48,10 +48,23 @@ async function readDiscovery(fetcher,url){
     return {at:j.summary.at,failedBoards:j.summary.boards?.read===0?null:j.summary.boards?.failed||0,candidates:j.new_roles.length,urls:j.new_roles.filter(x=>x&&typeof x.url==='string'&&/^https:\/\//.test(x.url)).map(x=>x.url)};
   }
 }
-export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
+const DISCOVERY_WORKFLOWS={sources:'source-trial.yml',boards:'board-discovery.yml'};
+async function readWorkflowState(fetcher,workflow,token){
+  try{
+    const headers={Accept:'application/vnd.github+json','User-Agent':'forge-pipeline-health'};
+    if(token)headers.Authorization='Bearer '+token;
+    const url='https://api.github.com/repos/tpruittguitar/forge-coordination/actions/workflows/'+workflow;
+    const {state}=await readJson((url,options)=>fetcher(url,{...options,headers}),url,64*1024);
+    return typeof state==='string'?state:null;
+  }catch{return null;}
+}
+const pausedWorkflow=state=>/^(?:paused|disabled(?:_.*)?)$/i.test(state||'');
+export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main',token=null){
   if(revision!=='main'&&!/^[a-f0-9]{40}$/.test(revision))throw Error('Invalid evidence revision');
   const output={ok:true,sourceRevision:revision,observedAt:new Date(now).toISOString(),checks:{},issues:[],candidates:null};
   const urls=new Set();let reports=0;
+  // Workflow state is live GitHub metadata, not part of the pinned report revision.
+  const workflowStates=Promise.all(Object.entries(DISCOVERY_WORKFLOWS).map(async([key,workflow])=>[key,await readWorkflowState(fetcher,workflow,token)]));
   await Promise.all(Object.entries(FILES).map(async([key,file])=>{
     try{
       const url=BASE+revision+'/'+file+'?cb='+Math.floor(now/60000);
@@ -116,7 +129,18 @@ export async function loadHealth(fetcher=fetch,now=Date.now(),revision='main'){
   if(Array.isArray(output.checks.schedules?.ids))output.checks.schedules.ok=freshness(output.checks.schedules.at,now,MAX_SCHEDULE_CONFIG_AGE_MS).ok&&output.checks.schedules.executionVerified===true;
   if(reports)output.candidates=urls.size;
   if(output.decisionReady&&(!output.processFlow||output.decisionReady.at!==output.processFlow.at||output.decisionReady.ids.length!==output.processFlow.queues.readyForReview)){output.decisionReady=null;output.checks.processStates={ok:false,error:'Readiness does not reconcile with process flow'};}
-  output.ok=Object.values(output.checks).every(c=>c.ok===true);
+  for(const [key,state] of await workflowStates){
+    if(!state)continue;
+    for(const check of key==='boards'?['boards','boardHealth']:[key]){
+      const c=output.checks[check];
+      c.workflowState=state;
+      if(pausedWorkflow(state)){
+        delete c.error;
+        Object.assign(c,{ok:false,observed:true,status:'PAUSED'});
+      }
+    }
+  }
+  output.ok=Object.values(output.checks).every(c=>c.ok===true||c.status==='PAUSED');
   return output;
 }
 // Resolve once per minute and pin every file to one immutable commit. Branch raw URLs can lag main.
@@ -177,13 +201,13 @@ export async function healthResponse(fetcher=fetch,cache=null,now=Date.now(),tok
   const id=revision+'/'+minute;
   if(!error&&healthMemo?.id===id)return new Response(healthMemo.body,{headers:headers(true)});
   if(!error&&healthPending?.id===id){const result=await healthPending.result;return new Response(result.body,{headers:headers(result.complete)});}
-  const key=new Request('https://foreman-cockpit.pages.dev/__health_response/v1/'+id);
+  const key=new Request('https://foreman-cockpit.pages.dev/__health_response/v2/'+id);
   const build=async()=>{
     if(!error&&cache)try{
       const hit=await cache.match(key);
       if(hit){const body=await hit.text();healthMemo={id,body};return {body,complete:true};}
     }catch{}
-    const result=await loadHealth(fetcher,now,revision);
+    const result=await loadHealth(fetcher,now,revision,token);
     result.checks.revision={ok:!error,sha:error?null:revision,error:error||undefined};
     result.ok=result.ok&&!error;
     const body=JSON.stringify(result);

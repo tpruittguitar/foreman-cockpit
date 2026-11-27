@@ -32,8 +32,8 @@ test('compact discovery preserves full-report output without reading description
  const m=await api(),small=fetchFixture(),large=fetchFixture({summaries:false});
  const actual=await m.loadHealth(small.fetcher,now,sha),expected=await m.loadHealth(large.fetcher,now,sha);
  assert.deepEqual(actual,expected);assert.equal(actual.candidates,2);assert.equal(actual.checks.sources.candidates,5);assert.equal(actual.checks.boards.candidates,2);
- assert.equal(small.calls.length,10);assert.ok(small.calls.every(x=>!/-report\.json\?/.test(x)));assert.equal(large.calls.length,12);
- assert.ok(small.calls.every(x=>x.includes('/'+sha+'/')));
+ assert.equal(small.calls.length,12);assert.ok(small.calls.every(x=>!/-report\.json\?/.test(x)));assert.equal(large.calls.length,14);
+ assert.ok(small.calls.filter(x=>!x.includes('/actions/workflows/')).every(x=>x.includes('/'+sha+'/')));
 });
 test('invalid or missing sidecars fall back independently and preserve partial failures',async()=>{
  for(const bad of [{schema:'wrong'}, {...compact(sourceReport),candidates:0}, {...compact(sourceReport),failedBoards:-1}, {...compact(sourceReport),urls:['http://unsafe.test/']}, {...compact(sourceReport),at:'bad'}]){
@@ -53,23 +53,23 @@ test('oversized summary is cancelled before decoding and falls back',async()=>{
 test('concurrent and repeat requests share one verified build without extending minute freshness',async()=>{
  const m=await api(),f=fetchFixture(),cache=cacheFixture();
  const responses=await Promise.all(Array.from({length:8},()=>m.healthResponse(f.fetcher,cache,now)));
- const bodies=await Promise.all(responses.map(x=>x.text()));assert.equal(new Set(bodies).size,1);assert.equal(f.calls.length,11);
- const repeated=await m.healthResponse(f.fetcher,cache,now+20000);assert.equal(await repeated.text(),bodies[0]);assert.equal(f.calls.length,11);assert.match(repeated.headers.get('cache-control'),/^public, max-age=(29|30)$/);
- await m.healthResponse(f.fetcher,cache,now+50000);assert.equal(f.calls.length,21,'minute boundary rebuilds even with unchanged source revision');
+ const bodies=await Promise.all(responses.map(x=>x.text()));assert.equal(new Set(bodies).size,1);assert.equal(f.calls.length,13);
+ const repeated=await m.healthResponse(f.fetcher,cache,now+20000);assert.equal(await repeated.text(),bodies[0]);assert.equal(f.calls.length,13);assert.match(repeated.headers.get('cache-control'),/^public, max-age=(29|30)$/);
+ await m.healthResponse(f.fetcher,cache,now+50000);assert.equal(f.calls.length,25,'minute boundary rebuilds even with unchanged source revision');
 });
 test('edge hits need no report parsing and a changed verified revision cannot reuse an old result',async()=>{
  const cache=cacheFixture(),first=await api(),f=fetchFixture();await first.healthResponse(f.fetcher,cache,now);
  const cold=await api(),next=fetchFixture();const hit=await cold.healthResponse(next.fetcher,cache,now+2000);assert.equal(next.calls.length,0);assert.equal((await hit.json()).sourceRevision,sha);
  const changed='b'.repeat(40);cache.entries.set('https://foreman-cockpit.pages.dev/__health_source_revision',Response.json({sha:changed,at:new Date(now+3000).toISOString()}));
- const fresh=await api(),last=fetchFixture({revision:()=>changed});const result=await fresh.healthResponse(last.fetcher,cache,now+4000);assert.equal((await result.json()).sourceRevision,changed);assert.equal(last.calls.length,10);assert.ok(last.calls.every(x=>x.includes('/'+changed+'/')));
+ const fresh=await api(),last=fetchFixture({revision:()=>changed});const result=await fresh.healthResponse(last.fetcher,cache,now+4000);assert.equal((await result.json()).sourceRevision,changed);assert.equal(last.calls.length,12);assert.ok(last.calls.filter(x=>!x.includes('/actions/workflows/')).every(x=>x.includes('/'+changed+'/')));
 });
 test('partial evidence and unverified revisions are not memoized as a healthy result',async()=>{
  let fail=true;const m=await api(),cache=cacheFixture(),f=fetchFixture({override:name=>fail&&name==='PROCESS_COMPLETIONS.json'?new Response('',{status:404}):undefined});
  const partial=await m.healthResponse(f.fetcher,cache,now);assert.equal(partial.headers.get('cache-control'),'no-store');assert.equal((await partial.json()).checks.processStates.ok,false);assert.ok(cache.puts.every(x=>!x.includes('__health_response')));
- fail=false;assert.equal((await(await m.healthResponse(f.fetcher,cache,now+1)).json()).checks.processStates.ok,true);assert.equal(f.calls.length,21);
+ fail=false;assert.equal((await(await m.healthResponse(f.fetcher,cache,now+1)).json()).checks.processStates.ok,true);assert.equal(f.calls.length,25);
  const down=await api(),g=fetchFixture({override:(_,url)=>url.startsWith('https://api.github.com/')?new Response('',{status:429}):undefined}),other=cacheFixture();
  for(let i=0;i<2;i++){const response=await down.healthResponse(g.fetcher,other,now+i);assert.equal(response.headers.get('cache-control'),'no-store');const result=await response.json();assert.equal(result.checks.revision.ok,false);assert.equal(result.sourceRevision,'main');}
- assert.equal(other.puts.length,0);assert.equal(g.calls.length,21);
+ assert.equal(other.puts.length,0);assert.equal(g.calls.length,25);
 });
 test('cache failures do not prevent a current, verified response',async()=>{
  const m=await api(),f=fetchFixture(),cache={async match(){throw Error('unavailable');},async put(){throw Error('unavailable');}};

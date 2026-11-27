@@ -189,3 +189,35 @@ test('stale recovery, process flow and schedule configuration are still observed
  for(const k of ['emailRecovery','processFlow','processStates','schedules']){assert.equal(body.checks[k].status,'STALE',k);assert.equal(body.checks[k].observed,true,k);}
  assert.equal(body.ok,false);assert.ok(puts.some(x=>x.includes('__health_response')));
 });
+test('confirmed paused workflow metadata overrides old or missing discovery evidence, but a failed lookup does not',async()=>{
+ const m=await api(),old=iso(now-10*HOUR),get=fixture({sources:health(old,0),history:boardHealth(old,['OK'])});
+ const states={};
+ const fetcher=async(url,options)=>{
+  if(!url.includes('/actions/workflows/'))return get(url);
+  assert.equal(options.headers.Authorization,'Bearer test-token');
+  const state=states[new URL(url).pathname.split('/').pop()];
+  return state?Response.json({state}):new Response('',{status:403});
+ };
+ for(const state of ['disabled_manually','disabled','disabled_inactivity','paused']){
+  states['source-trial.yml']=state;
+  const r=await m.loadHealth(fetcher,now,sha,'test-token');
+  assert.equal(r.checks.sources.status,'PAUSED');
+  assert.equal(r.checks.sources.at,old);
+  assert.equal(r.checks.sources.workflowState,state);
+  assert.equal(r.checks.sources.ok,false);
+  assert.equal(r.checks.sources.error,undefined);
+  assert.equal(r.checks.boards.ok,true);
+  assert.equal(r.ok,false,'unrelated stale board history still counts');
+ }
+ states['board-discovery.yml']='disabled_fork';
+ const missing=await m.loadHealth((url,options)=>url.includes('board-discovery-report')?new Response('',{status:404}):fetcher(url,options),now,sha,'test-token');
+ assert.equal(missing.checks.boards.status,'PAUSED');
+ assert.equal(missing.checks.boardHealth.status,'PAUSED');
+ assert.equal(missing.ok,true,'paused checks do not degrade aggregate health');
+ for(const state of ['active',undefined]){
+  states['source-trial.yml']=state;
+  const r=await m.loadHealth(fetcher,now,sha,'test-token');
+  assert.notEqual(r.checks.sources.status,'PAUSED');
+  assert.match(r.checks.sources.error,/minutes old/);
+ }
+});
