@@ -1,5 +1,5 @@
 /* Writer connection set on purpose (Tim 2026-11-02). A device with no saved connection reads the jobs through the built-in
-   defaults but sends nothing: the phone header shows NO WRITER with a warning glyph, Decide explains it, Pursue queues
+   defaults but sends nothing: the phone header shows Writer off with a warning glyph, Decide explains it, Pursue queues
    nothing; desktop shows "Writer ⚠ not connected" in the status cells; even the desktop decision form's send is stopped by
    the last check in gsPost. A connection already saved before this change keeps sending. Clear asks first, then shows the
    not-connected state, and stays cleared after a reload.
@@ -31,9 +31,9 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
     return {ctx,page,errors,posts};
   }
 
-  // 1. Phone, first visit (nothing saved): jobs load through the defaults, NO WRITER, Pursue sends nothing.
+  // 1. Phone, first visit (nothing saved): jobs load through the defaults, Writer off, Pursue sends nothing.
   let {ctx,page,errors,posts}=await open(phone);await page.waitForSelector('#m-pane-decide .m-card');await page.waitForTimeout(300);
-  assert.strictEqual(await page.textContent('#m-sys-word'),'NO WRITER','phone header says NO WRITER');
+  assert.strictEqual(await page.textContent('#m-sys-word'),'Writer off','phone header says Writer off');
   assert.ok(await page.$('#m-sys.m-nowriter svg'),'with a warning glyph');
   assert.strictEqual(await page.evaluate(()=>getComputedStyle(document.querySelector('.m-nowriter-note')).color),'rgb(232, 134, 42)','banner text orange, like the header');assert.match(await page.textContent('.m-nowriter-note'),/Writer not connected/,'Decide explains it');
   await page.click('.m-card.m-top [data-m-do="pursue"]');await page.waitForTimeout(500);
@@ -65,7 +65,7 @@ const fixture=fs.readFileSync(repo+'/tests/fixtures/master.sample.txt','utf8').s
 
   // 3. A connection saved before this change (no deliberate flag) keeps sending, with no warning.
   ({ctx,page,errors,posts}=await open(phone,{url:base+'/writer',key:'test-only'}));await page.waitForSelector('#m-pane-decide .m-card');await page.waitForTimeout(300);
-  assert.notStrictEqual(await page.textContent('#m-sys-word'),'NO WRITER','saved device is connected');assert.ok(!(await page.$('.m-nowriter-note')),'no warning');
+  assert.notStrictEqual(await page.textContent('#m-sys-word'),'Writer off','saved device is connected');assert.ok(!(await page.$('.m-nowriter-note')),'no warning');
   await page.click('.m-card.m-top [data-m-do="pursue"]');await page.waitForSelector('#m-toast:not([hidden])');await page.waitForTimeout(600);
   assert.strictEqual(posts.length,1,'saved device sends its decision');assert.ok(posts[0].startsWith(base+'/writer'),'to its own Writer');
   assert.deepStrictEqual(errors,[]);await ctx.close();
