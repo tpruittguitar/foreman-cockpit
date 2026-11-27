@@ -83,10 +83,10 @@
     var el = $('m-sys'); if (!el) return;
     var k = { OK: 'ok', DELAYED: 'delayed', FAULT: 'fault' }[h.state] || 'loading';
     /* No Writer connection set on purpose: that outranks system health, because nothing can be sent. */
-    if (h.state !== 'LOADING' && h.writer === false) { el.className = 'm-sys m-nowriter'; $('m-sys-word').textContent = 'NO WRITER'; $('m-sys-ic').innerHTML = svg('warn', 14); el.setAttribute('aria-label', 'Writer not connected: decisions cannot be sent from this device. Open Status.'); return; }
+    if (h.state !== 'LOADING' && h.writer === false) { el.className = 'm-sys m-nowriter'; $('m-sys-word').textContent = root.PipelineWriterOff.LABEL; $('m-sys-ic').innerHTML = svg('warn', 14); el.setAttribute('aria-label', 'Writer not connected: decisions cannot be sent from this device. Open Status.'); return; }
     /* Decision queue failing (Tim, Stage 5 review): the header must not say "SYS OK" while Decide cannot load its queue.
        Down (nothing loaded) is orange with the warning glyph; stale (an older queue on screen) is yellow with "?". A system
-       FAULT and NO WRITER still outrank it. */
+       FAULT and Writer off still outrank it. */
     if (h.state !== 'FAULT' && h.state !== 'LOADING' && b.ready && b.ready()) {
       var qv = queueState().view;
       if (qv === 'unavailable' || qv === 'stale') {
@@ -593,7 +593,7 @@
       '<p class="m-cr-note">' + esc(s.constraintReason) + '</p>' +
       '<div class="m-tiles">' + tile('Need decision', (function (c) { return c === '—' ? null : c; })(decideEmpty(queueState().view).count)) + tile('Applied', s.applied) + tile('Interviews', s.interviews) + '</div>' +
       '<ul class="m-legend" aria-label="Legend"><li class="ok">' + gl('ok') + 'OK</li><li class="caution">' + gl('caution') + 'Caution</li><li class="attn">' + gl('warn') + 'Constraint</li><li class="fault">' + gl('no') + 'Fault</li></ul>' +
-      '<p class="m-fresh ' + hs[0] + '"' + (freshAria ? ' aria-label="' + esc(freshAria) + '"' : '') + '>' + hs[1] + hs[2] + ' · SYNC ' + esc(sync) + (h.writer === false ? ' · ' + gl('warn') + 'NO WRITER' : '') + '</p>' +
+      '<p class="m-fresh ' + hs[0] + '"' + (freshAria ? ' aria-label="' + esc(freshAria) + '"' : '') + '>' + hs[1] + hs[2] + ' · SYNC ' + esc(sync) + (h.writer === false ? ' · ' + gl('warn') + root.PipelineWriterOff.LABEL : '') + '</p>' +
       (s.details ? '<details class="m-sec"><summary>Details</summary><div class="m-sec-b"><p>' + esc(s.details) + '</p></div></details>' : ''));
   }
 
