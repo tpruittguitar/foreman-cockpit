@@ -1,6 +1,8 @@
 // Office revision badge: pure formatter + PR-number parsing. Run: node --test tests/office-build-badge.test.js
 const test = require('node:test'), assert = require('node:assert/strict');
 const L = require('../office/office-logic.js');
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
 const { prFromSubject, prTitleFromSubject, parseGitLog } = require('../scripts/write-build-info.cjs');
 
 test('badge renders PR, short SHA and ET build time', () => {
@@ -40,4 +42,8 @@ test('wall plate matches the corner badge data and falls back when unknown', () 
   const p = L.buildPlate(info);
   assert.equal(L.buildBadge(info), p.title + ' · ' + p.sha + ' · ' + p.when);
   assert.equal(L.buildPlate(null).title, 'BUILD UNKNOWN');
+});
+test('the corner badge is hidden on phones only while the flat list is visible', () => {
+  const css = readFileSync(join(__dirname, '../office/office.css'), 'utf8');
+  assert.match(css, /@media \(width < 760px\), \(pointer: coarse\)\s*\{\s*body:has\(#flat:not\(\[hidden\]\)\) #build-badge\s*\{\s*display: none;/);
 });
