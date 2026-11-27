@@ -1634,7 +1634,10 @@
               || r.limit <= 0 || r.remaining < 0 || r.remaining > r.limit || time(r.resetsAt) == null) continue;
           out.push({ at: rec.at, provider: r.provider, remaining: r.remaining, limit: r.limit, leftPct: 100 * r.remaining / r.limit, resetsAt: rec.resetsAt });
         } else if (r.provider === 'DESKTOP_COMMANDER' && r.meter === 'remote_calls_monthly' && Number.isFinite(r.leftPct) && r.leftPct >= 0 && r.leftPct <= 100) {
-          out.push({ at: rec.at, provider: r.provider, leftPct: r.leftPct });
+          const row = { at: rec.at, provider: r.provider, leftPct: r.leftPct };
+          const resetsAt = [r.resetsAt, r.resets_at].find(v => desktopResetDate(v));
+          if (resetsAt) row.resetsAt = resetsAt;
+          out.push(row);
         } else if (r.provider === 'CLOUDFLARE') {
           const row = { at: rec.at, provider: r.provider };
           let ok = false;
@@ -1777,9 +1780,16 @@
     if (row.failed) out.push({ t: '? ' + row.failed.text, warn: true });
     return out;
   }
-  /* Other Limits column lines, one array per column: { t, warn?, sample? }. Text is full; draw.js wraps it (no ellipsis).
-     Desktop Commander's cap size and reset have no feed source yet, so they stay tagged SAMPLE (v2 sample values). */
-  const DC_SAMPLE_LINES = ['cap 30 calls/month', 'resets in 6 days'];
+  /* Keep a date-only reset on its stated calendar day. Format a timestamp in ET. */
+  function desktopResetDate(value) {
+    const iso = str(value), ms = time(iso);
+    if (ms == null || !/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(iso)) return '';
+    const dateOnly = iso.length === 10;
+    if (dateOnly && new Date(ms).toISOString().slice(0, 10) !== iso) return '';
+    if (!dateOnly && !/(?:Z|[+-]\d{2}:\d{2})$/i.test(iso)) return '';
+    return new Date(ms).toLocaleDateString('en-US', { timeZone: dateOnly ? 'UTC' : 'America/New_York', month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  /* Other Limits column lines, one array per column: { t, warn? }. */
   function etDayClock(ms) { return new Date(ms).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET'; }
   function limitLines(row) {
     const fmt = n => Number(n).toLocaleString('en-US'), dash = [{ t: '—' }], staleLine = { t: '? STALE', warn: true };
@@ -1797,7 +1807,8 @@
       const out = [{ t: row.leftPct.toLocaleString('en-US') + '% of monthly cap left' }];
       if (time(row.at) != null) out.push({ t: (row.stale ? '? STALE · ' : '') + 'read ' + etDayClock(time(row.at)), warn: !!row.stale });
       else if (row.stale) out.push(staleLine);
-      return out.concat(DC_SAMPLE_LINES.map(t => ({ t, sample: true })));
+      out.push({ t: 'Monthly reset ' + (desktopResetDate(row.resetsAt) || '—') });
+      return out;
     }
     const meterLine = (m, label, unit) => {
       if (!m) return null;
@@ -2813,7 +2824,7 @@
     httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, asofLabel, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
-    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, LIMIT_PROVIDERS, readingMeasured, duetRow, deepSeekLines, limitLines, DC_SAMPLE_LINES, wrapWords, NO_READING_YET, usageLatest, usageHeader, fetchedClock, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
+    latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, LIMIT_PROVIDERS, readingMeasured, duetRow, deepSeekLines, limitLines, wrapWords, NO_READING_YET, usageLatest, usageHeader, fetchedClock, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,
     screenTarget, PRESIDENT_SCREEN_URL, PRESIDENT_ID, maskText, parseChatFeed, AGENT_NAMES, AGENT_TO, agentName, parseAgentChat, CHAT_MAX, CHAT_PROBE_MS, CHAT_NOT_PUBLISHED, CHAT_UNAVAILABLE, chatFeedFromResponse, createChatFeed, AUDIT_CHECKS, AUDIT_STALE_H, parseAudit,
     auditStale, parseRoutine, WORK_MAX, parseWork, workLabel, diffWork, allWork, AUTOMATION_RESULTS, simpleResult, parseAutomations, automationBoardRows, nextRunText, writerRows,
     writerOverlaps, concurrencyByHour, etDayStart, BOT_ID_NAMES, demoAutomations,

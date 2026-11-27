@@ -623,11 +623,13 @@ function openBoard() {
   $('panel').classList.add('wide');
 }
 function usageListHTML() {
-  const rows = L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null);
-  if (!rows.length) return '<p class="fallback">Waiting for the first usage reading (usage/AI_USAGE_READINGS.jsonl)…</p>';
+  const now = Date.now(), rows = L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null);
+  const limits = '<h3>Other Limits</h3><ul class="usage">' + L.usageLimitRows(S.readings, now).map(r =>
+    `<li><b>${esc(r.name)}</b>${L.limitLines(r).map(l => `<div class="meta${l.warn ? ' st stale' : ''}">${esc(l.t)}</div>`).join('')}</li>`).join('') + '</ul>';
+  if (!rows.length) return '<p class="fallback">Waiting for the first usage reading (usage/AI_USAGE_READINGS.jsonl)…</p>' + limits;
   return '<ul class="usage">' + rows.map(r => { const w = L.usageWord(r.pct_used); return `<li><b>${esc(r.name)}</b> <span class="st ${w.tone}">${w.glyph} ${w.word}</span> · ${r.pct_used == null ? 'reading failed' : Math.round(r.pct_used) + '% used'}${r.stale ? ' · <span class="st stale">? stale</span>' : ''}${r.failed ? ' · <span class="st stale">? ' + esc(r.failed.text) + '</span>' : ''}
     <div class="ubar"><i style="width:${Math.round(r.pct_used || 0)}%" class="${w.tone}"></i></div><div class="meta">${esc(r.label)} · ${esc(r.measured)}${r.resets_at ? ' · resets ' + esc(new Date(r.resets_at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + ' ET' : ''}</div></li>`; }).join('') + '</ul>'
-    + `<p class="fallback">Source: ${esc(rows[0].source)}${rows[0].source === 'OFFICE_STATUS.json' ? ' (fallback: readings file unavailable)' : ' (forge-coordination usage/AI_USAGE_READINGS.jsonl)'}</p>`;
+    + `<p class="fallback">Source: ${esc(rows[0].source)}${rows[0].source === 'OFFICE_STATUS.json' ? ' (fallback: readings file unavailable)' : ' (forge-coordination usage/AI_USAGE_READINGS.jsonl)'}</p>` + limits;
 }
 function openUsage() { showPanel(`<h2 id="panel-title">AI usage</h2>${usageListHTML()}`); $('panel').classList.add('wide'); if (location.hash !== '#usage') history.replaceState(null, '', '#usage'); }
 addEventListener('hashchange', () => { if (location.hash === '#usage') openUsage(); });
