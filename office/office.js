@@ -47,7 +47,7 @@ if (TV) document.documentElement.classList.add('tv');
 const S = {
   raw: null, parsed: null, fetchOk: false, everOk: false, state: 'failed', error: '', source: '',
   pulls: [], pullsErr: '', pullsAt: 0, prStates: new Map(), prTimes: new Map(), merges: new Map(), fresh: {}, asks: [], asksErr: '', asksAt: 0, checkCache: new Map(),
-  readings: [], cons: { health: null, activity: null, err: '', tried: 0, at: 0 }, readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '', fetched: {}, refreshedAt: 0,
+  readings: [], grokLastGood: null, cons: { health: null, activity: null, err: '', tried: 0, at: 0 }, readingsAt: 0, readingsErr: '', screens: { screens: {} }, chat: null, chatErr: '', training: [], auto: null, autoErr: '', fetched: {}, refreshedAt: 0,
   checkedAt: null, checkedAtTried: 0, glow: new Set(), demoStep: 0, work: null, needsSet: new Set(), restocker: null, invite: null, hrFree: false
 };
 // Revision badge: build-info.json is baked in at deploy time; missing/bad file shows "build unknown".
@@ -109,6 +109,13 @@ async function loadPulls() {
   if (folded.errors.length && folded.merges.size === 0) throw new Error(folded.errors.join('; '));
   return { out, states: folded.states, times: folded.times, merges: folded.merges, err: folded.errors.join('; ') };
 }
+/* Keep one Grok measurement across responses that omit it, without altering the live feed or other providers. */
+function applyReadings(t, now) {
+  S.readings = L.parseReadings(t);
+  const { good } = L.lastGoodUsage(S.readings, 'GROK');
+  if (good && (!S.grokLastGood || Date.parse(good.at) >= Date.parse(S.grokLastGood.at))) S.grokLastGood = good;
+  S.readingsText = t; S.readingsErr = ''; S.readingsAt = now;
+}
 function slowLoads(now) {
   if (now - S.pullsAt >= L.PR_CACHE_MS || S.pullsErr) {
     S.pullsAt = now;
@@ -126,7 +133,7 @@ function slowLoads(now) {
   }
   if (now - S.readingsAt >= SLOW_MS) {
     S.readingsAt = now;
-    rawText(READINGS_URL).then(t => { S.readings = L.parseReadings(t); S.readingsText = t; S.readingsErr = ''; S.fetched.readings = Date.now(); }, e => { S.readingsErr = e.message; }).then(refreshAll);
+    rawText(READINGS_URL).then(t => { applyReadings(t, now); S.fetched.readings = Date.now(); }, e => { S.readingsErr = e.message; }).then(refreshAll);
   }
   fetch(SCREENS_BASE + 'index.json?t=' + Math.floor(now / POLL_MS), { cache: 'no-cache' }).then(r => (r.ok ? r.json() : null)).then(j => { S.screens = L.parseScreensIndex(j); if (j) S.fetched.screens = Date.now(); }, () => { S.screens = { screens: {} }; }).then(refreshAll);
   /* missing or 404 OFFICE_TRAINING.json = no sessions, not an error */
@@ -183,7 +190,7 @@ function settleStatus() {
 const REFRESH = {
   status: { url: RAW_FILE(STATUS_PATH), apply: t => { S.raw = JSON.parse(t); S.fetchOk = true; S.error = ''; S.source = 'raw'; },
     fail: (e, st) => { S.fetchOk = false; S.error = st === 404 ? 'control/OFFICE_STATUS.json not found on forge-coordination main' : 'OFFICE_STATUS.json could not be loaded (' + e + ')'; } },
-  readings: { url: READINGS_URL, apply: (t, now) => { S.readings = L.parseReadings(t); S.readingsText = t; S.readingsErr = ''; S.readingsAt = now; }, fail: e => { S.readingsErr = e; } },
+  readings: { url: READINGS_URL, apply: applyReadings, fail: e => { S.readingsErr = e; } },
   automations: { url: RAW_FILE(AUTO_PATH), apply: t => { S.auto = L.parseAutomations(JSON.parse(t), Date.now()); S.autoErr = ''; },
     fail: (e, st) => { S.autoErr = st === 404 ? 'AUTOMATIONS_STATUS.json not published yet' : e; } },
   pipelineHealth: { url: '/api/pipeline-health', apply: (t, now) => { Object.assign(S.cons, { health: JSON.parse(t), err: '', at: now, tried: now }); }, fail: e => { S.cons.err = e; } },
@@ -277,6 +284,8 @@ function refreshAll() {
   const n = needsCount(); $('needs-n').textContent = n; $('needs-n').hidden = !n; $('needs-btn').classList.toggle('zero', !n);
   if (S.refreshedAt && !$('refresh-btn').disabled) $('refresh-lbl').textContent = 'Refresh · ' + L.dataAge(new Date(S.refreshedAt).toISOString(), now).text;
   renderFlat();
+  const usagePanel = $('usage-panel-content');
+  if (usagePanel && !$('panel').hidden) usagePanel.innerHTML = usageListHTML();
   if (world) world.refresh();
 }
 
@@ -623,7 +632,7 @@ function openBoard() {
   $('panel').classList.add('wide');
 }
 function usageListHTML() {
-  const now = Date.now(), rows = L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null);
+  const now = Date.now(), rows = L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null, S);
   const limits = '<h3>Other Limits</h3><ul class="usage">' + L.usageLimitRows(S.readings, now).map(r =>
     `<li><b>${esc(r.name)}</b>${L.limitLines(r).map(l => `<div class="meta${l.warn ? ' st stale' : ''}">${esc(l.t)}</div>`).join('')}</li>`).join('') + '</ul>';
   if (!rows.length) return '<p class="fallback">Waiting for the first usage reading (usage/AI_USAGE_READINGS.jsonl)…</p>' + limits;
@@ -631,7 +640,7 @@ function usageListHTML() {
     <div class="ubar"><i style="width:${Math.round(r.pct_used || 0)}%" class="${w.tone}"></i></div><div class="meta">${esc(r.label)} · ${esc(r.measured)}${r.resets_at ? ' · resets ' + esc(new Date(r.resets_at).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + ' ET' : ''}</div></li>`; }).join('') + '</ul>'
     + `<p class="fallback">Source: ${esc(rows[0].source)}${rows[0].source === 'OFFICE_STATUS.json' ? ' (fallback: readings file unavailable)' : ' (forge-coordination usage/AI_USAGE_READINGS.jsonl)'}</p>` + limits;
 }
-function openUsage() { showPanel(`<h2 id="panel-title">AI usage</h2>${usageListHTML()}`); $('panel').classList.add('wide'); if (location.hash !== '#usage') history.replaceState(null, '', '#usage'); }
+function openUsage() { showPanel(`<h2 id="panel-title">AI usage</h2><div id="usage-panel-content">${usageListHTML()}</div>`); $('panel').classList.add('wide'); if (location.hash !== '#usage') history.replaceState(null, '', '#usage'); }
 addEventListener('hashchange', () => { if (location.hash === '#usage') openUsage(); });
 function openConvo(name) {
   const lines = L.recentConversations(S.parsed ? S.parsed.conversations : [], Date.now()).filter(c => c.from === name);
@@ -1708,7 +1717,7 @@ function buildWorld() {
     project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
     pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
-    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred(), fetchedAt: S.fetched.readings }); u.t.needsUpdate = true;   /* cs-9e5be547 #7: fetched stamp is in the usage header */
+    const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null, S), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred(), fetchedAt: S.fetched.readings }); u.t.needsUpdate = true;   /* cs-9e5be547 #7: fetched stamp is in the usage header */
     const lim = limits.tex; drawUsageLimits(lim.ctx, lim.c.width, lim.c.height, L.usageLimitRows(S.readings, Date.now())); lim.t.needsUpdate = true;
     drawAutos();
     const sw = schedule.tex; drawTrainingSchedule(sw.ctx, sw.c.width, sw.c.height, { rows: L.visibleTrainingSessions(S.training, Date.now()).map(L.formatTrainingSession), fetchedAt: S.fetched.training, boardM: schedule.w }); sw.t.needsUpdate = true;
@@ -1782,7 +1791,7 @@ function buildWorld() {
     if (!force && key === d.drawnKey) return;
     d.drawnKey = key;
     drawDesk(d.scr.ctx, d.scr.c.width, d.scr.c.height, { bot: deskBot, now, items: mine, allItems: items(), demo: DEMO, frozen: S.state === 'failed', mode, image: image || null, screenWhy: sc.why, offline: !!sc.offline,
-      chat: S.chat, chatErr: S.chatErr, usageRows: L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null), replay: L.replayFor(deskBot, now) });
+      chat: S.chat, chatErr: S.chatErr, usageRows: L.usageRows(S.readings, now, S.parsed ? S.parsed.usage : null, S), replay: L.replayFor(deskBot, now) });
     d.scr.t.needsUpdate = true;
     const st = L.statusStyle(deskBot.status), col = new THREE.Color(S.state === 'failed' ? '#8b9099' : st.color);
     d.ledMat.color.copy(col); d.ledMat.emissive.copy(col);

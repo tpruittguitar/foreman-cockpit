@@ -237,3 +237,60 @@ test('usage wall: the fetched stamp sits in the header with Latest reading, not 
   assert.ok(c.texts.some(x => /^Measured \d/.test(x.t) && x.y > 88), 'provider Measured lines stay in their rows');
   assert.equal(L.usageHeader(rows, NOW), L.usageHeader(rows, NOW, null), 'no fetch time: header as before');
 });
+
+test('Grok fallback keeps its percent and age on the wall and in flat/modal usage', () => {
+  const office = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
+  const apply = office.slice(office.indexOf('function applyReadings('), office.indexOf('function slowLoads('));
+  const render = office.slice(office.indexOf('function usageListHTML()'), office.indexOf('function openUsage()'));
+  const load = state => require('node:vm').runInNewContext(apply + render + '({ applyReadings, usageListHTML })', {
+    L, S: state, Date: class extends Date { static now() { return NOW; } }, esc: String
+  });
+  const grok = { ...claude, provider: 'GROK', usedPct: 38, at: new Date(NOW - 20 * 60000).toISOString() };
+  const failed = { ...later(grok, 0.25), status: 'HTTP_ERROR', usedPct: 99, reason: 'timeout' };
+  const missing = { ...failed, status: 'OK', usedPct: undefined };
+  const jsonl = rows => rows.map(r => JSON.stringify(r)).join('\n');
+
+  for (const { initial, latest, error, failedNote } of [
+    { latest: [grok, failed], failedNote: true },
+    { latest: [grok, missing], failedNote: true },
+    { initial: [grok], latest: [failed], failedNote: true },
+    { initial: [grok], latest: [claude] },
+    { initial: [grok], latest: [] },
+    { initial: [grok], error: 'HTTP 404' },
+    { initial: [grok], error: 'Failed to fetch' }
+  ]) {
+    const state = { readings: [] };
+    const { applyReadings, usageListHTML } = load(state);
+    if (initial) applyReadings(jsonl(initial), NOW);
+    if (latest) applyReadings(jsonl(latest), NOW);
+    if (error) state.readingsErr = error;
+    const rows = L.usageRows(state.readings, NOW, null, state);
+    const row = rows.find(r => r.name === 'Grok');
+    assert.equal(row.pct_used, 38);
+    assert.equal(row.at, Date.parse(grok.at));
+    assert.equal(row.stale, true, 'even within the normal freshness window');
+    assert.equal(!!row.failed, !!failedNote);
+    const c = fakeCtx();
+    D.drawUsage(c, 1024, 605, { rows, now: NOW, pred: { GROK: { text: 'no reading' } } });
+    assert.ok(c.texts.some(x => x.t === '38%'));
+    assert.match(c.texts.map(x => x.t).join(' '), /STALE.*20m ago/);
+    assert.ok(!c.texts.some(x => x.t === 'no reading'));
+    const html = usageListHTML();
+    assert.match(html, /<b>Grok<\/b>.*38% used.*\? stale/);
+    assert.match(html, /Measured .* ET · 20m ago/);
+    assert.doesNotMatch(html, /reading failed/);
+  }
+
+  const state = {};
+  const { applyReadings, usageListHTML } = load(state);
+  applyReadings(jsonl([failed]), NOW);
+  assert.match(usageListHTML(), /<b>Grok<\/b>.*reading failed/);
+  const c = fakeCtx();
+  D.drawUsage(c, 1024, 605, { rows: L.usageRows(state.readings, NOW, null, state), now: NOW });
+  assert.ok(c.texts.some(x => x.t === '—'), 'no valid history, no percent');
+
+  state.readingsErr = 'HTTP 404';
+  applyReadings(jsonl([grok]), NOW);
+  assert.match(usageListHTML(), /<b>Grok<\/b>.*38% used/);
+  assert.doesNotMatch(usageListHTML(), /\? stale|20m ago/);
+});
