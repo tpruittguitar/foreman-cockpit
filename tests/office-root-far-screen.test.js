@@ -42,8 +42,8 @@ test('name tags shrink and drop stale / recent chips past TAG_FAR_M; NEEDS TIM c
   assert.match(css, /\.tag\.far \{ font-size: 10px;/); assert.match(css, /\.tag\.far \.chip\.stale, \.tag\.far \.chip\.recent \{ display: none; \}/);
   assert.doesNotMatch(css, /\.tag\.far \.chip \{/);
 });
-test('office.js shows a desk mirror at every distance and still marks far name tags', () => {
-  assert.match(office, /image = sc\.show === 'image' && d\.img;/);
+test('office.js shows a live desk mirror at every distance and still marks far name tags', () => {
+  assert.match(office, /image = L\.liveDeskMirror\(sc\) && d\.img;/);
   assert.doesNotMatch(office, /mirrorAt/);
   assert.match(office, /c\.tag\.classList\.toggle\('far', L\.tagFar\(dist\)\);/);
 });

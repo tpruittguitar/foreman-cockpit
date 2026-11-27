@@ -83,3 +83,69 @@ test('drawDesk does not render stale frozen desk text', () => {
   assert.match(out, /1[5-9]m ago|2[0-3]m ago/);
   for (const bad of ['ITEM 17', '#392', 'office-v3', '9d ago']) assert.equal(out.includes(bad), false);
 });
+
+test('offline Nov 16 mirrors give way to the current board for each desk', () => {
+  const now = Date.parse('2026-11-25T15:00:00Z');
+  const updated = '2026-11-25T14:59:00Z';
+  const old = '2026-11-16T14:57:33Z';
+  const { bots, items } = L.parseStatus({
+    updated_at: updated,
+    bots: [{ ...frozen, updated_at: updated }, { ...frozen, bot: 'Root', bot_id: 'root-1' }],
+    items: [
+      { id: 'closed', title: 'Old merged card', priority: 'P1', owner: 'QA bot', status: 'in_progress', link: 'https://github.com/example/repo/pull/9' },
+      { id: 'review', title: 'QA&#x27;s live review', priority: 'P2', owner: 'QA bot', status: 'queued', link: 'https://github.com/example/repo/pull/10', updated_at: updated },
+      { id: 'blocked', title: 'Root needs a decision', owner: 'Root', status: 'blocked', updated_at: updated }
+    ]
+  });
+  const board = L.applyPrStates(items, new Map([['example/repo#9', 'merged'], ['example/repo#10', 'open']]));
+  const screens = L.parseScreensIndex({ updated_at: updated, screens: {
+    'qa-1': { at: old, offline: true, task: 'Task: ITEM 17' },
+    'root-1': { at: old, offline: true, task: 'Task: ITEM 17' }
+  } });
+  for (const row of bots) {
+    const sc = L.screenState(screens, row.bot_id, now);
+    assert.equal(sc.show, 'image', 'old mirror is still indexed');
+    const desk = L.liveDeskBot(row, board, now, { screens });
+    const mode = L.monitorMode(desk, '', { image: L.liveDeskMirror(sc) });
+    assert.equal(mode, 'terminal');
+    const { ctx, calls } = canvasStub();
+    drawDesk(ctx, 640, 360, { bot: desk, now, mode, items: [] });
+    const out = calls.join('\n');
+    assert.ok(out.includes(row.bot === 'QA' ? "QA's live review" : 'Root needs a decision'));
+    assert.doesNotMatch(out, /ITEM 17|#392|9d ago|Old merged card|&#x27;/);
+  }
+});
+
+test('fresh task-file text wins over the board when the mirror cannot load', () => {
+  const at = '2026-11-17T14:58:00Z';
+  const screens = L.parseScreensIndex({ screens: {
+    'qa-1': { at, activeAt: at, busy: true, task: 'Task: Verify QA&#39;s fix &amp; report' }
+  } });
+  const board = L.parseItems([{ id: 'card', title: 'Another card', owner: 'QA', status: 'in_progress' }]);
+  const desk = L.liveDeskBot(frozen, board, NOW, { screens });
+  assert.equal(desk.task, "Verify QA's fix & report");
+  assert.equal(desk.status, 'working');
+  assert.equal(desk.last_action_at, at);
+});
+
+test('bot task and labels decode once for flat view and the desk canvas', () => {
+  const at = '2026-11-17T14:58:00Z';
+  const [row] = L.parseStatus({ bots: [{
+    ...frozen, bot: 'QA &amp; Ops', task: 'QA&#x27;s &quot;fix&quot; &amp; Tim&#39;s test',
+    status: 'work&#105;ng', last_action: 'Checked &lt;tag&gt; &amp;#39;', last_action_at: at,
+    last_signal: { at, source: 'QA&apos;s signal' },
+    screen: { title: 'QA&#x27;s app', lines: ['&lt;script&gt;'], updated_at: at }
+  }] }).bots;
+  assert.equal(row.bot, 'QA & Ops');
+  assert.equal(row.task, `QA's "fix" & Tim's test`);
+  assert.equal(row.status, 'working');
+  assert.equal(row.last_action, 'Checked <tag> &#39;');
+  assert.equal(row.last_signal.source, "QA's signal");
+  assert.deepEqual(row.screen, { title: "QA's app", lines: ['<script>'], updated_at: at });
+  assert.match(officeJs, /esc\(b\.task \|\| '—'\)/, 'the decoded flat list task is still HTML-escaped');
+  const { ctx, calls } = canvasStub();
+  const desk = L.liveDeskBot(row, [], NOW);
+  drawDesk(ctx, 640, 360, { bot: desk, now: NOW, mode: 'screen', items: [] });
+  assert.ok(calls.includes(`QA's "fix" & Tim's test`));
+  assert.ok(calls.includes('<script>'), 'canvas renders decoded markup as literal text');
+});

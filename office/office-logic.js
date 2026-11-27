@@ -49,23 +49,36 @@
   function liveDeskBot(bot, items, now, signalCtx) {
     const b = bot || {};
     const t = typeof now === 'number' ? now : Date.now();
-    const staleAt = v => { const x = time(v); return x == null || t - x > 24 * 60 * MIN; };
-    const botStale = staleAt(b.updated_at);
-    const sigAt = b.last_signal && time(b.last_signal.at);
-    const freshSignal = b.last_signal && sigAt != null && t - sigAt <= BOT_STALE_MIN * MIN ? b.last_signal : null;
-    const mine = sortItems((Array.isArray(items) ? items : []).filter(i => i && i.owner === b.bot && i.status !== 'done'));
-    const active = mine.filter(i => ['in_progress', 'needs_tim', 'review'].includes(i.status));
-    const top = active[0] || null;
-    const needsTim = mine.filter(i => i.status === 'needs_tim');
-    const liveQuestion = needsTim.find(i => str(i.question).trim()) || null;
-    const task = top ? cardTitle(top) || top.title : (!botStale && str(b.task).trim() ? b.task : 'Idle — no active card');
+    const recent = (at, maxMin = BOT_STALE_MIN) => {
+      const ts = time(at);
+      return ts != null && ts <= t + MIN && t - ts <= maxMin * MIN;
+    };
+    const ctx = signalCtx || {}, index = ctx.screens;
+    const sc = index && index.screens && index.screens[ctx.botId || b.bot_id];
+    const liveTask = sc && !sc.offline && !sc.paused && recent(sc.at, SCREEN_FRESH_MIN) && screenHasTask(sc);
+    const workAt = liveTask ? screenWorkAt(sc, index, t) : null;
+    const screenBlocked = liveTask && isBlockedScreen(sc);
+    const screenWaitingNow = liveTask && screenWaiting(sc);
+    const screenTask = workAt != null || screenBlocked || screenWaitingNow;
+    const freshSignal = b.last_signal && recent(b.last_signal.at) ? b.last_signal : null;
+    // The publisher can refresh every row's updated_at without changing its last action.
+    const rowFresh = recent(b.last_action_at || b.updated_at);
+    const mine = sortItems((Array.isArray(items) ? items : []).filter(i => i && i.owner === b.bot));
+    const active = mine.filter(i => ['in_progress', 'needs_tim'].includes(columnFor(i)));
+    const top = active[0];
+    const needsTim = active.find(i => columnFor(i) === 'needs_tim');
+    const task = (screenTask && taskTitle(sc.task)) || (top && cardTitle(top)) ||
+      (!liveTask && rowFresh && b.task) || 'Idle — no active card';
     let lastAction = 'Idle', lastActionAt = '';
-    if (freshSignal) { lastAction = str(freshSignal.source).trim() || 'Signal'; lastActionAt = str(freshSignal.at); }
-    else if (top) { lastAction = str(top.note).trim() || str(top.status).trim() || 'Working'; lastActionAt = str(top.updated_at); }
-    else if (b.last_action_at && !staleAt(b.last_action_at)) { lastAction = str(b.last_action).trim() || 'Idle'; lastActionAt = str(b.last_action_at); }
-    const screen = b.screen && !staleAt(b.screen.updated_at) ? b.screen : null;
-    const question = !botStale ? str(b.question).trim() : (liveQuestion ? str(liveQuestion.question).trim() : '');
-    const status = active.some(i => i.status === 'needs_tim') ? 'blocked' : (active.length || freshSignal ? 'working' : 'idle');
+    if (screenTask) { lastAction = 'Task file'; lastActionAt = workAt != null ? sc.activeAt : sc.at; }
+    else if (top) { lastAction = top.note || statusWord(top).word; lastActionAt = top.updated_at; }
+    else if (freshSignal) { lastAction = freshSignal.source || 'Signal'; lastActionAt = freshSignal.at; }
+    else if (rowFresh) { lastAction = b.last_action || 'Idle'; lastActionAt = b.last_action_at; }
+    const screen = b.screen && recent(b.screen.updated_at) ? b.screen : null;
+    const question = (needsTim && needsTim.question) || (rowFresh ? b.question : '');
+    const status = screenBlocked ? 'blocked' : needsTim || (rowFresh && b.status === 'waiting_tim') ? 'waiting_tim'
+      : workAt != null ? 'working' : screenWaitingNow ? 'idle' : top && itemStatus(top) === 'blocked' ? 'blocked'
+      : top || freshSignal ? 'working' : rowFresh ? b.status : 'idle';
     return Object.assign({}, b, { status, task, last_action: lastAction, last_action_at: lastActionAt, screen, question });
   }
 
@@ -101,14 +114,15 @@
   }
 
   // Decode once at ingestion. These are plain-text fields, not HTML.
-  const CARD_ENTITIES = { amp: '&', apos: "'", quot: '"', lt: '<', gt: '>', nbsp: '\u00a0' };
-  function cardText(value) {
+  const HTML_ENTITIES = { amp: '&', apos: "'", quot: '"', lt: '<', gt: '>', nbsp: '\u00a0' };
+  function decodeHtmlEntities(value) {
     return str(value).replace(/&(?:#(\d+)|#[xX]([\da-fA-F]+)|([a-z][a-z0-9]*));/gi, (entity, decimal, hex, name) => {
-      if (name) return Object.hasOwn(CARD_ENTITIES, name) ? CARD_ENTITIES[name] : entity;
+      if (name) return Object.hasOwn(HTML_ENTITIES, name) ? HTML_ENTITIES[name] : entity;
       const code = hex ? parseInt(hex, 16) : Number(decimal);
       return code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff) ? '\ufffd' : String.fromCodePoint(code);
-    }).trim();
+    });
   }
+  const cardText = value => decodeHtmlEntities(value).trim();
   function parseItems(list, botNames) {
     if (!Array.isArray(list)) return [];
     const names = botNames ? new Set(botNames) : null;
@@ -117,13 +131,13 @@
       if (!r || typeof r !== 'object' || !str(r.id).trim()) continue;
       const title = cardText(r.title);
       if (!title) continue;
-      const owner = canonicalBot(r.owner);
+      const owner = canonicalBot(decodeHtmlEntities(r.owner));
       out.push({
         id: str(r.id).trim(), title, priority: normPriority(r.priority),
         status: str(r.status).trim().toLowerCase() || 'working', owner,
         ownerKnown: names ? names.has(owner) : true,
         link: str(r.link).trim(), updated_at: str(r.updated_at), project: mapProject(r.project),
-        pr: prNumber(title, r.link), question: str(r.question).trim(), note: cardText(r.note), source: str(r.source).trim(), prState: ''
+        pr: prNumber(title, r.link), question: cardText(r.question), note: cardText(r.note), source: str(r.source).trim(), prState: ''
       });
     }
     return out;
@@ -242,9 +256,9 @@
   const SCREEN_MAX_LINES = 6, SCREEN_LINE_MAX = 160;
   function parseScreen(s) {
     if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
-    const title = typeof s.title === 'string' ? truncate(s.title, 80) : '';
+    const title = typeof s.title === 'string' ? truncate(decodeHtmlEntities(s.title), 80) : '';
     const lines = (Array.isArray(s.lines) ? s.lines : []).filter(l => typeof l === 'string' || (typeof l === 'number' && Number.isFinite(l)))
-      .slice(0, SCREEN_MAX_LINES).map(l => str(l).replace(/[\r\n\t]+/g, ' ').trimEnd().slice(0, SCREEN_LINE_MAX));
+      .slice(0, SCREEN_MAX_LINES).map(l => decodeHtmlEntities(l).replace(/[\r\n\t]+/g, ' ').trimEnd().slice(0, SCREEN_LINE_MAX));
     if (!title && !lines.some(l => l.trim())) return null;
     return { title, lines, updated_at: time(s.updated_at) != null ? str(s.updated_at) : '' };
   }
@@ -252,15 +266,18 @@
     if (!Array.isArray(list)) return [];
     const seen = new Set(), out = [];
     for (const r of list) {
-      const bot = canonicalBot(r && r.bot, r && r.bot_id);
+      const bot = canonicalBot(decodeHtmlEntities(r && r.bot), r && r.bot_id);
       if (!bot || seen.has(bot)) continue;
       seen.add(bot);
-      const id = str(r.bot_id || r.id).trim(), question = str(r.question).trim();
-      let status = normStatus(r.status), why = '';
-      if (status === 'waiting_tim' && !question) { status = 'idle'; why = 'status ' + str(r.status) + ' has no question, so no raised hand'; }
+      const id = str(r.bot_id || r.id).trim(), question = cardText(r.question), rawStatus = decodeHtmlEntities(r.status);
+      let status = normStatus(rawStatus), why = '';
+      if (status === 'waiting_tim' && !question) { status = 'idle'; why = 'status ' + rawStatus + ' has no question, so no raised hand'; }
       out.push({
-        bot, bot_id: id, task: str(r.task), status, rawStatus: str(r.status), why,
-        last_action: str(r.last_action), last_action_at: str(r.last_action_at), question, link: str(r.link),
+        bot, bot_id: id, task: decodeHtmlEntities(r.task), status, rawStatus, why,
+        last_action: decodeHtmlEntities(r.last_action), last_action_at: str(r.last_action_at), question, link: str(r.link),
+        updated_at: str(r.updated_at),
+        last_signal: r.last_signal && time(r.last_signal.at) != null
+          ? { at: str(r.last_signal.at), source: cardText(r.last_signal.source) } : null,
         screen: parseScreen(r.screen), screen_url: httpUrl(r.screen_url), avatar_shape: str(r.avatar_shape).trim().toLowerCase(),
         avatar_color: str(r.avatar_color).trim().toLowerCase(), audit: parseAudit(r.audit), work: parseWork(r.work, bot, id),
         routine: parseRoutine(r.routine)
@@ -269,7 +286,8 @@
     // work owners: bot_id (or name) -> sidebar name; unknown owners stay with the posting bot
     const byId = new Map(out.filter(b => b.bot_id).map(b => [b.bot_id, b.bot])), names = new Set(out.map(b => b.bot));
     for (const b of out) for (const w of b.work) {
-      const o = w.owner; w.ownerName = byId.get(o) || BOT_ID_NAMES[o] || (names.has(canonicalBot(o)) ? canonicalBot(o) : b.bot);
+      const o = w.owner, name = canonicalBot(decodeHtmlEntities(o));
+      w.ownerName = byId.get(o) || BOT_ID_NAMES[o] || (names.has(name) ? name : b.bot);
     }
     // roster bots come first in sidebar order (item 17); anything else keeps file order after them
     const rank = b => { const i = ROSTER.findIndex(r => r.name === b.bot); return i < 0 ? ROSTER.length : i; };
@@ -2000,7 +2018,7 @@
     if (!o || typeof o !== 'object' || Array.isArray(o)) return out;
     out.updated_at = time(o.updated_at) != null ? str(o.updated_at) : '';
     const s = o.screens && typeof o.screens === 'object' && !Array.isArray(o.screens) ? o.screens : {};
-    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; const hasTask = hasTaskLine(e.task), task = taskLine(e.task).slice(0, 120);
+    for (const id of Object.keys(s)) { const e = s[id]; if (!/^[A-Za-z0-9-]{1,64}$/.test(id) || !e || time(e.at) == null) continue; const rawTask = decodeHtmlEntities(e.task), hasTask = hasTaskLine(rawTask), task = taskLine(rawTask).slice(0, 120);
       out.screens[id] = { at: str(e.at), paused: e.paused === true, busy: e.busy === true, offline: e.offline === true, lastSeen: time(e.lastSeen) != null ? str(e.lastSeen) : '',
       activeAt: time(e.activeAt) != null ? str(e.activeAt) : '', hasActive: Object.prototype.hasOwnProperty.call(e, 'activeAt'), task, hasTaskLine: hasTask,
       blocked: e.blocked === true || (hasTask && /^blocked(?:\s*[:·]|\b)/i.test(task)) }; }   /* cs-ca5b83da #1: state words count only on a Task: line */
@@ -2032,6 +2050,7 @@
     const t = time(iso);
     return t == null ? 'screen offline' : 'screen offline since ' + etClock(t) + ' ET';
   }
+  function liveDeskMirror(screen) { return screen.show === 'image' && !screen.offline; }
   /* -> { show: 'image' | 'fallback', why, offline? } */
   function screenState(index, botId, now) {
     const e = index && index.screens && index.screens[botId];
@@ -2136,7 +2155,7 @@
   /* ---------- Routine running (item 19a, optional bots[].routine {name, running, started_at}) ---------- */
   function parseRoutine(r) {
     if (!r || typeof r !== 'object' || r.running !== true || !str(r.name).trim()) return null;
-    return { name: truncate(str(r.name), 60), started_at: time(r.started_at) != null ? str(r.started_at) : '' };
+    return { name: truncate(decodeHtmlEntities(r.name), 60), started_at: time(r.started_at) != null ? str(r.started_at) : '' };
   }
 
   /* ---------- Bots' own work cards (optional bots[].work) ---------- */
@@ -2145,7 +2164,7 @@
     if (!Array.isArray(list)) return [];
     return list.filter(w => w && typeof w === 'object' && str(w.title).trim()).map(w => ({
       id: str(w.id).trim() || 'w-' + hash(str(botId || bot) + '|' + str(w.title).trim() + '|' + str(w.at)).toString(36),
-      title: truncate(str(w.title), 120), status: str(w.status).trim() || 'open', at: time(w.at) != null ? str(w.at) : '',
+      title: truncate(decodeHtmlEntities(w.title), 120), status: cardText(w.status) || 'open', at: time(w.at) != null ? str(w.at) : '',
       link: httpUrl(w.link), owner: str(w.owner).trim() || str(botId) || str(bot), poster: str(bot)
     })).sort((a, b) => (time(b.at) || 0) - (time(a.at) || 0)).slice(0, WORK_MAX);
   }
@@ -2194,7 +2213,7 @@
       const stale = a.stale === true || (last != null && iv != null && now - last > 2 * iv);
       if (stale && last != null) result = 'STALE';
       if (paused) result = 'PAUSED';
-      return { ai: str(a.ai).trim() || 'Other', name: truncate(str(a.name), 80), result, last_run_at: last != null ? str(a.last_run_at) : '', next_run_at: next != null ? str(a.next_run_at) : '', running: a.running === true, started_at: str(a.started_at), schedule: str(a.schedule), est_per_run: str(a.est_per_run), est_week: str(a.est_week), paused, last_run_by: lastRunByName(a, last) };
+      return { ai: str(a.ai).trim() || 'Other', name: truncate(decodeHtmlEntities(a.name), 80), result, last_run_at: last != null ? str(a.last_run_at) : '', next_run_at: next != null ? str(a.next_run_at) : '', running: a.running === true, started_at: str(a.started_at), schedule: str(a.schedule), est_per_run: str(a.est_per_run), est_week: str(a.est_week), paused, last_run_by: lastRunByName(a, last) };
     });
     const runs = (o && Array.isArray(o.runs) ? o.runs : []).filter(r => r && time(r.start) != null).map(r => ({ ai: str(r.ai) || 'Other', name: str(r.name), start: time(r.start), end: time(r.end) != null && time(r.end) > time(r.start) ? time(r.end) : time(r.start) + 10 * MIN, result: r.expected ? 'UPCOMING' : simpleResult(r.result), writer: r.writer === true, expected: r.expected === true }));
     return { generated_at: str(o && o.generated_at), rows, runs, writer: o && o.writer_health && typeof o.writer_health === 'object' ? o.writer_health : null };
@@ -2816,7 +2835,7 @@
     GLIDE_MS, TOUR_IDLE_MS, GAME_SLOW_M, COLORS,
     normStatus, statusStyle, fallbackLink, linkFor, fallbackText, prNumber, priorityRank, parseItems, sortItems, cardTitle, CARD_TEXT_MAX, cardMessage, cardRecipient, cardBoxHTML, sendCardDirection,
     priorityBadge, columnFor, statusWord, buildBoard, parseStatus, dataState, publisherCheckedAt, behaviorFor, relTime, waitingMinutes, hhmm,
-    liveDeskBot,
+    liveDeskBot, liveDeskMirror,
     daylight, truncate, pulse, diffItems, recentConversations, bubbleText, checkState, summarizePull, usageWord,
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,

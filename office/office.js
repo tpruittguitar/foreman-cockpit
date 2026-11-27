@@ -655,11 +655,13 @@ function clickScreen(name, half) {
 }
 /* Screen popup: the mirrored screen large (or its text fallback). */
 function openScreen(name) {
-  const b = botByName(name) || { bot: name, bot_id: '', status: 'idle', task: '', last_action: '', last_action_at: '', screen: null };
-  const now = Date.now(), id = idFor(b.bot, b.bot_id), sc = L.screenState(S.screens, id, now);
-  const act = world ? world.activity(name) : '', mode = L.monitorMode(b, act, { image: sc.show === 'image' });
+  const row = botByName(name) || { bot: name, bot_id: '', status: 'idle' };
+  const now = Date.now(), id = idFor(row.bot, row.bot_id), sc = L.screenState(S.screens, id, now);
+  const b = L.liveDeskBot(row, items(), now, { screens: S.screens, botId: id });
+  const liveMirror = L.liveDeskMirror(sc);
+  const act = world ? world.activity(name) : '', mode = L.monitorMode(b, act, { image: liveMirror });
   let body = '';
-  const mirror = sc.show === 'image' ? `<figure class="mirror${sc.offline ? ' offline' : ''}"><img alt="${esc(b.bot)}'s screen" crossorigin="anonymous" src="${esc(SCREENS_BASE + encodeURIComponent(id) + '.jpg?t=' + Math.floor(now / 60000))}"><figcaption>${esc(sc.why)}</figcaption></figure>` : '';
+  const mirror = liveMirror ? `<figure class="mirror"><img alt="${esc(b.bot)}'s screen" crossorigin="anonymous" src="${esc(SCREENS_BASE + encodeURIComponent(id) + '.jpg?t=' + Math.floor(now / 60000))}"><figcaption>${esc(sc.why)}</figcaption></figure>` : '';
   if (mode === 'president') {
     const chat = S.chat && S.chat.length ? '<div class="pchat">' + S.chat.map(m => `<div class="msg ${m.from === 'Tim' ? 'me' : 'bot'}"><b>${esc(m.from)}</b> <span class="meta">${L.etClock(Date.parse(m.at))} ET</span><div></div></div>`).join('') + '</div>' : `<p class="fallback">${esc(S.chatErr || 'No chat messages yet')}</p>`;
     body = `<div class="split"><section><h3>Tim ↔ President</h3>${chat}</section><section><h3>Screen</h3>${mirror || `<p class="fallback">${esc(sc.why)}</p>` + checksheetHTML()}</section></div>`;
@@ -671,7 +673,7 @@ function openScreen(name) {
   } else if (mode === 'routine') body = `<p class="st working">▶ ${esc(b.routine.name)} running${b.routine.started_at ? ' · started ' + L.etClock(Date.parse(b.routine.started_at)) + ' ET' : ''}</p>`;
   else {
     body += `<p class="fallback">${esc(sc.why)} · showing ${esc(b.bot)}'s status text instead</p>`;
-    if (mode === 'replay') { const r = L.replayFor(b, now); body += `<p><span class="chip">recent · ${r.min}m ago</span> ${esc(r.text)}</p>`; }
+    if (mode === 'replay') { const r = L.replayFor(b, now); if (r) body += `<p><span class="chip">recent · ${r.min}m ago</span> ${esc(r.text)}</p>`; }
     if (b.screen) body += `<div class="screenpop"><div class="sp-title">${esc(b.screen.title || 'Screen')}${b.screen.updated_at ? `<span>${L.relTime(b.screen.updated_at, now)}</span>` : ''}</div><pre></pre></div>`;
     else body += `<div class="screenpop"><div class="sp-title">terminal</div><pre></pre></div>`;
   }
@@ -1761,7 +1763,7 @@ function buildWorld() {
   /* monitor mirror images: small, refreshed every 60 s with ?t= (popup loads its own full-size copy); a failed load (404) waits 5 min before trying again, and the text screen shows meanwhile */
   function mirrorFor(d, b, now) {
     const id = idFor(b.bot, b.bot_id), sc = L.screenState(S.screens, id, now);
-    if (sc.show !== 'image') { d.img = null; return sc; }
+    if (!L.liveDeskMirror(sc)) { d.img = null; return sc; }
     if (!(now - d.imgAt <= (d.imgBad ? 300000 : 60000))) {
       const im = new Image(); im.crossOrigin = 'anonymous'; d.imgAt = now;
       im.onload = () => { d.img = im; d.imgBad = false; d.drawnKey = ''; }; im.onerror = () => { d.img = null; d.imgBad = true; };
@@ -1772,9 +1774,9 @@ function buildWorld() {
   function drawDeskIf(d, force) {
     const b = botByName(d.name) || { bot: d.name, bot_id: '', status: 'idle', task: '', last_action: '', last_action_at: '', question: '' };
     const now = Date.now(), dist = camera.position.distanceTo(tmpV.set(d.x, 1.2, d.z - 0.2));
-    const sc = mirrorFor(d, b, now), image = sc.show === 'image' && d.img;
+    const sc = mirrorFor(d, b, now), image = L.liveDeskMirror(sc) && d.img;
     const mine = L.sortItems(items().filter(i => i.owner === d.name && L.columnFor(i) !== 'done'));
-    const deskBot = L.liveDeskBot(b, mine, now, signalCtx());
+    const deskBot = L.liveDeskBot(b, mine, now, { screens: S.screens, botId: idFor(b.bot, b.bot_id) });
     const oc = chars.get(d.name), sched = (plan.plans[d.name] || {}).act || '', act = oc && oc.idleAct === 'video_game' && oc.goalNow && oc.goalNow.pose === 'game' ? 'game' : (oc ? L.actionLabel(oc.goalNow, oc.pose, sched) : sched), mode = S.state === 'failed' ? L.monitorMode(deskBot, '', {}) : L.monitorMode(deskBot, act, { image: !!image });
     const key = mode + JSON.stringify(deskBot) + S.state + mine.map(i => i.id + i.status).join() + (mode === 'president' ? items().length + JSON.stringify(S.chat || S.chatErr) : '') + (image ? d.imgAt : '') + (sc.offline ? 'off' : '') + sc.why + Math.floor(now / (mode === 'game' ? (dist > L.GAME_SLOW_M ? 400 : 120) : 30000));
     if (!force && key === d.drawnKey) return;
