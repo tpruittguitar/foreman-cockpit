@@ -1,14 +1,14 @@
 /* AI usage panel: weekly limits for Claude, Grok and ChatGPT, with a projected run-out time.
    Readings come from forge-coordination usage/AI_USAGE_READINGS.jsonl (one JSON object per line), written by the
    Claude usage-reader scheduled task that reads each provider's own usage page in Tim's Chrome.
-   Projection: burn rate from the newest reading and an older reading in the same reset window (at least 2 hours apart);
-   with only one reading in the window, the average rate since the window started. Exact numbers are always printed;
+   Projection: trailing 3-hour burn rate within the same reset window, interpolated at the boundary when needed.
+   Without enough history, no rate is projected. Exact numbers are always printed;
    bar colour is backed by a text status (UI doctrine v1.1 Accessibility Floor). Pure functions are Node-testable. */
 (function (root) {
   'use strict';
   var URL = 'https://raw.githubusercontent.com/tpruittguitar/forge-coordination/main/usage/AI_USAGE_READINGS.jsonl';
   var API_URL = 'https://api.github.com/repos/tpruittguitar/forge-coordination/contents/usage/AI_USAGE_READINGS.jsonl?ref=main';
-  var H = 3600000, MIN_GAP = 2 * H;
+  var H = 3600000, WINDOW = 3 * H;
   var ORDER = ['CLAUDE', 'CHATGPT', 'GROK'];
   var NAMES = { CLAUDE: 'Claude', CHATGPT: 'ChatGPT', GROK: 'Grok' };
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -48,13 +48,21 @@
       if (p.usedPct === null) { p.verdict = 'NO_READING'; return p; }
       if (reset && reset <= nowMs) { p.verdict = 'RESET_PASSED'; return p; }
       if (p.usedPct >= 100) { p.verdict = 'OUT'; p.runOutAt = at; return p; }
-      var same = g.filter(function (r) { return weeklyPct(r) !== null && Date.parse(r.resetsAt) === reset && at - Date.parse(r.at) >= MIN_GAP; });
-      if (same.length) {
-        var prev = same[same.length - 1], dt = (at - Date.parse(prev.at)) / H;
-        p.rate = (p.usedPct - weeklyPct(prev)) / dt; p.basis = 'last ' + Math.round(dt) + ' h';
-      } else if (reset && last.windowHours) {
-        var start = reset - last.windowHours * H, el = (at - start) / H;
-        if (el > 0.5) { p.rate = p.usedPct / el; p.basis = 'average since window start'; }
+      var boundary = at - WINDOW, before = null, after = last;
+      for (var i = g.length - 2; reset && i >= 0; i--) {
+        var r = g[i], t = Date.parse(r.at);
+        if (t >= at || weeklyPct(r) === null) continue;
+        if (Date.parse(r.resetsAt) !== reset) break;
+        if (t <= boundary) { before = r; break; }
+        after = r;
+      }
+      if (before) {
+        var lo = Date.parse(before.at), hi = Date.parse(after.at), start = weeklyPct(before);
+        if (lo === boundary || hi - lo <= WINDOW) {
+          if (lo !== boundary) start += (weeklyPct(after) - start) * (boundary - lo) / (hi - lo);
+          p.rate = (p.usedPct - start) / (WINDOW / H);
+          p.basis = '3-hour moving average';
+        }
       }
       if (p.rate == null) { p.verdict = 'UNKNOWN'; return p; }
       if (p.rate <= 0) { p.verdict = 'LASTS'; return p; }
@@ -84,7 +92,7 @@
   }
   var VERDICT = {
     OUT: ['bad', 'OUT'], BEFORE_RESET: ['bad', 'RUNS OUT BEFORE RESET'], LASTS: ['ok', 'LASTS TO RESET'],
-    UNKNOWN: ['warn', 'NEED 2 READINGS'], NO_READING: ['warn', 'NO READING'], RESET_PASSED: ['warn', 'RESET PASSED · NEW READING DUE']
+    UNKNOWN: ['warn', 'NEED 3H HISTORY'], NO_READING: ['warn', 'NO READING'], RESET_PASSED: ['warn', 'RESET PASSED · NEW READING DUE']
   };
   function monthDay(iso) {
     var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -149,7 +157,7 @@
     if (p.verdict === 'BEFORE_RESET') return 'runs out ~' + when(p.runOutAt);
     if (p.verdict === 'LASTS') return 'lasts to reset';
     /* Card eee3a384 (Nov 20): every row says something, the same words as the flat view pill, so the 3D rows never sit blank */
-    if (p.verdict === 'UNKNOWN') return 'needs 2 readings';
+    if (p.verdict === 'UNKNOWN') return 'needs 3h history';
     if (p.verdict === 'NO_READING') return 'no reading';
     if (p.verdict === 'RESET_PASSED') return 'reset passed';
     return '';

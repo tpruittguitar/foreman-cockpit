@@ -3,21 +3,33 @@ const U = require('../pipeline-ai-usage.js');
 const line = o => JSON.stringify(Object.assign({ status: 'OK', windowHours: 168 }, o));
 const NOW = Date.parse('2026-10-13T20:00:00Z');
 
-test('single reading uses the average since the window started', () => {
-  const r = U.parse(line({ at: '2026-10-13T19:40:00Z', provider: 'CLAUDE', meter: 'weekly', label: 'weekly', usedPct: 64, resetsAt: '2026-10-18T16:00:00Z' }));
-  const [p] = U.project(r, NOW);
-  assert.equal(p.verdict, 'BEFORE_RESET');
-  assert.ok(Math.abs(p.rate - 64 / 51.67) < 0.01);
-  assert.ok(p.runOutAt > Date.parse('2026-10-15T00:00:00Z') && p.runOutAt < Date.parse('2026-10-15T01:30:00Z'), 'about 29 h after the reading');
+const RESET = '2026-10-18T16:00:00Z';
+const sample = (hour, usedPct, resetsAt = RESET) => ({
+  at: `2026-10-13T${hour}:00Z`, provider: 'CLAUDE', meter: 'weekly', usedPct, resetsAt
 });
 
-test('two readings 2+ hours apart give a measured rate; a later quieter rate can last to reset', () => {
-  const r = U.parse([
-    line({ at: '2026-10-13T19:40:00Z', provider: 'CLAUDE', meter: 'weekly', usedPct: 64, resetsAt: '2026-10-18T16:00:00Z' }),
-    line({ at: '2026-10-14T01:40:00Z', provider: 'CLAUDE', meter: 'weekly', usedPct: 65.5, resetsAt: '2026-10-18T16:00:00Z' }),
-  ].join('\n'));
-  const [p] = U.project(r, Date.parse('2026-10-14T02:00:00Z'));
-  assert.equal(p.rate, 0.25); assert.equal(p.verdict, 'LASTS'); assert.match(p.basis, /last 6 h/);
+test('weekly projection never substitutes short, long, or since-reset rates', () => {
+  const latest = sample('20:00', 64);
+  for (const previous of [[], [sample('18:00', 62)], [sample('14:00', 50)],
+    [sample('17:00', 50, '2026-10-13T18:00:00Z')]]) {
+    const [p] = U.project([...previous, latest], NOW);
+    assert.equal(p.verdict, 'UNKNOWN');
+    assert.equal(p.rate, null);
+    assert.equal(p.runOutAt, null);
+  }
+});
+
+test('weekly projection uses the exact 3h boundary or interpolates it', () => {
+  const latest = sample('20:00', 64);
+  const exact = [sample('14:00', 20), sample('17:00', 58), latest];
+  const irregular = [sample('14:00', 20), sample('16:00', 56), sample('18:00', 60), latest];
+  for (const readings of [exact, irregular]) {
+    const [p] = U.project(readings, NOW);
+    assert.equal(p.rate, 2);
+    assert.equal(p.runOutAt, Date.parse('2026-10-14T14:00:00Z'));
+    assert.equal(p.verdict, 'BEFORE_RESET');
+    assert.equal(p.basis, '3-hour moving average');
+  }
 });
 
 test('100% is OUT; failed reading and passed reset are flagged, never projected', () => {
@@ -58,7 +70,7 @@ test('mixed legacy history renders exactly three weekly bars and preserves weekl
 test('rendering keeps the exact number and a text status beside every bar', () => {
   const p = U.project(U.parse(line({ at: '2026-10-13T19:40:00Z', provider: 'CHATGPT', meter: 'weekly', label: 'weekly', usedPct: 47, resetsAt: '2026-10-20T04:40:00Z' })), NOW);
   const h = U.html(p);
-  assert.match(h, />47%</); assert.match(h, /LASTS TO RESET|RUNS OUT BEFORE RESET/); assert.match(h, /aria-label=/);
+  assert.match(h, />47%</); assert.match(h, /NEED 3H HISTORY/); assert.match(h, /aria-label=/);
   assert.match(U.html([]), /No usage readings yet/);
 });
 
