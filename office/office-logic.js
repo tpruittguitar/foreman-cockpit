@@ -1895,14 +1895,25 @@
     const failed = newest && !ok(newest) && (!good || time(newest.at) > time(good.at)) ? newest : null;
     return { good, failed };
   }
-  function usageRows(readings, now, fallback) {
+  function usageRows(readings, now, fallback, { grokLastGood, readingsErr } = {}) {
     const latest = latestPerProvider((readings || []).filter(r => !isLimitProvider(r.provider) && r.provider !== 'CLAUDE_DUET'));
-    if (!Object.keys(latest).length) return (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
-    return USAGE_PROVIDERS.filter(p => latest[p.id]).map(p => {
+    const rows = USAGE_PROVIDERS.filter(p => latest[p.id] || (p.id === 'GROK' && grokLastGood)).map(p => {
       let r = latest[p.id], failed = null;
-      if (!usageMeasured(r)) { const lg = lastGoodUsage(readings, p.id); if (lg.good) { failed = lg.failed; r = lg.good; } }
+      let carriedGrok = false;
+      if (p.id === 'GROK') {
+        if (!usageMeasured(r) || (grokLastGood && time(grokLastGood.at) > time(r.at))) {
+          const { good } = lastGoodUsage(readings, p.id);
+          const kept = grokLastGood && (!good || time(grokLastGood.at) > time(good.at)) ? grokLastGood : good;
+          if (kept) { failed = r && !usageMeasured(r) ? r : null; r = kept; carriedGrok = true; }
+        }
+        carriedGrok = carriedGrok || (!!readingsErr && usageMeasured(r));
+      } else if (!usageMeasured(r)) {
+        const lg = lastGoodUsage(readings, p.id); if (lg.good) { failed = lg.failed; r = lg.good; }
+      }
       const measured = usageMeasured(r);
-      const row = { name: p.name, pct_used: measured ? r.usedPct : null, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: (measured ? 'Measured ' : 'Attempted ') + etClock(time(r.at)) + ' ET' + (failed ? ' · ' + relTime(r.at, now) : ''), stale: readingStale(r, now), at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
+      const stale = carriedGrok || readingStale(r, now);
+      const showAge = failed || (p.id === 'GROK' && measured && stale);
+      const row = { name: p.name, pct_used: measured ? r.usedPct : null, label: r.label + (r.status && r.status !== 'OK' ? ' · ' + r.status : ''), resets_at: r.resetsAt, measured: (measured ? 'Measured ' : 'Attempted ') + etClock(time(r.at)) + ' ET' + (showAge ? ' · ' + relTime(r.at, now) : ''), stale, at: time(r.at), source: 'AI_USAGE_READINGS.jsonl' };
       if (failed) row.failed = failedNote(failed);
       if (r.resets_available !== undefined) row.resets_available = r.resets_available;
       if (r.resets_expire !== undefined) row.resets_expire = r.resets_expire;
@@ -1920,6 +1931,15 @@
       }
       return row;
     });
+    if (!Object.keys(latest).length) {
+      const statusRows = (fallback && fallback.services || []).map(s => ({ name: s.name, pct_used: s.pct_used, label: s.note || '', measured: fallback.as_of ? 'Reported ' + etClock(time(fallback.as_of)) + ' ET' : 'Reported earlier', stale: usageStale(fallback, now), at: time(fallback.as_of), source: 'OFFICE_STATUS.json' }));
+      if (!rows.length) return statusRows;
+      const i = statusRows.findIndex(r => /^Grok(?: Bot)?$/i.test(r.name));
+      if (i < 0) statusRows.push(rows[0]);
+      else statusRows[i] = rows[0];
+      return statusRows;
+    }
+    return rows;
   }
   /* Newest reading time across the rows (ms or null): the monitor header and the wall both show this one time. */
   function usageLatest(rows) { const ts = (rows || []).map(r => r.at).filter(t => t != null); return ts.length ? Math.max(...ts) : null; }
