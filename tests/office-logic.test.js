@@ -39,6 +39,17 @@ test('parseStatus: bad input never throws', () => {
   assert.equal(L.parseStatus({ bots: [] }).ok, true);
 });
 
+test('checksheet display fields decode once to plain text for list, canvas and detail', () => {
+  const { items: [card] } = L.parseStatus({ bots: [], items: [{
+    id: 'encoded', title: 'Tim&#x27;s &quot;QA&quot; &amp; GUI &#35;42',
+    note: 'It&#39;s done &#x1F642; &lt;b&gt;as text&lt;/b&gt; &amp;quot; &unknown; &#x110000;',
+    link: 'https://github.com/example/repo/pull/42'
+  }] });
+  assert.equal(L.cardTitle(card), 'Tim\'s "QA" & GUI #42');
+  assert.equal(card.note, "It's done 🙂 <b>as text</b> &quot; &unknown; �");
+  assert.equal(L.cardFaceNote(card), card.note);
+});
+
 test('status maps to colour, glyph, word and raised-hand flag; never colour only', () => {
   assert.deepEqual([L.statusStyle('working').color, L.statusStyle('working').flag], ['#3ddc84', false]);
   assert.deepEqual([L.statusStyle('idle').color, L.statusStyle('idle').flag], ['#8b9099', false]);

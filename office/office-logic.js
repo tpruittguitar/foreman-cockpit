@@ -100,19 +100,30 @@
     return hit || 'P4';
   }
 
+  // Decode once at ingestion. These are plain-text fields, not HTML.
+  const CARD_ENTITIES = { amp: '&', apos: "'", quot: '"', lt: '<', gt: '>', nbsp: '\u00a0' };
+  function cardText(value) {
+    return str(value).replace(/&(?:#(\d+)|#[xX]([\da-fA-F]+)|([a-z][a-z0-9]*));/gi, (entity, decimal, hex, name) => {
+      if (name) return Object.hasOwn(CARD_ENTITIES, name) ? CARD_ENTITIES[name] : entity;
+      const code = hex ? parseInt(hex, 16) : Number(decimal);
+      return code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff) ? '\ufffd' : String.fromCodePoint(code);
+    }).trim();
+  }
   function parseItems(list, botNames) {
     if (!Array.isArray(list)) return [];
     const names = botNames ? new Set(botNames) : null;
     const out = [];
     for (const r of list) {
-      if (!r || typeof r !== 'object' || !str(r.id).trim() || !str(r.title).trim()) continue;
+      if (!r || typeof r !== 'object' || !str(r.id).trim()) continue;
+      const title = cardText(r.title);
+      if (!title) continue;
       const owner = canonicalBot(r.owner);
       out.push({
-        id: str(r.id).trim(), title: str(r.title).trim(), priority: normPriority(r.priority),
+        id: str(r.id).trim(), title, priority: normPriority(r.priority),
         status: str(r.status).trim().toLowerCase() || 'working', owner,
         ownerKnown: names ? names.has(owner) : true,
         link: str(r.link).trim(), updated_at: str(r.updated_at), project: mapProject(r.project),
-        pr: prNumber(r.title, r.link), question: str(r.question).trim(), note: str(r.note).trim(), source: str(r.source).trim(), prState: ''
+        pr: prNumber(title, r.link), question: str(r.question).trim(), note: cardText(r.note), source: str(r.source).trim(), prState: ''
       });
     }
     return out;

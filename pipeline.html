@@ -223,7 +223,7 @@ tbody tr.focus td{background:#10211e;box-shadow:inset 0 -1px 0 #61d9c4}.map-targ
   body:not(.map-full) #job-map-card .map-actions [data-mapaction=recenter],body:not(.map-full) #job-map-card .map-actions [data-mapaction=reset]{display:none}
 }
 body.map-full #job-map-card{position:fixed!important;inset:0!important;z-index:80;height:auto!important;min-height:0!important;max-height:none!important;margin:0;border:0;background:#050505}
-@media (min-width:1024px){body.map-full #job-map-card{top:var(--map-top,0px)!important}body.map-full #wip-queue-bar{display:none!important}}   /* GUI 11: desktop map starts below the header, Writer alert and tabs */
+@media (min-width:1024px){body.map-full #job-map-card{top:var(--map-top,0px)!important;left:var(--pe-rail-w)!important}body.map-full #wip-queue-bar{display:none!important}}   /* Desktop map clears the header, Writer alert, tabs and rail */
 body.map-full #job-map-card .map-head{top:calc(6px + env(safe-area-inset-top))}
 body.map-full #job-map-card .map-head .tip{display:block}
 
