@@ -2,8 +2,10 @@
    Pure functions below (Node-testable): detect a row's ATS from its stored URLs, build the API request, read the
    response, and turn it into ENRICH fields. Apps Script glue (runAtsCheck_) at the bottom fetches with UrlFetchApp and
    drops ONE batch ENRICH file into WRITER_QUEUE, so every write goes through the normal Writer path (identity, receipts,
-   independent verification). The checker never changes BUCKET or DISPOSITION and never writes CLOSED from a failed
-   fetch: an error, block, title mismatch or ambiguous answer only records ATS_CHECK_* and leaves LIVENESS alone, so the
+   independent verification). The checker never writes CLOSED from a failed fetch. A per-posting 404/410 from the
+   Workday, Greenhouse or Lever API (CLOSED_EMPLOYER_404 via ATS_API) is proof the posting is gone, so that row's ruling is
+   CLOSED_DEAD (actor WRITER_ATS) and it leaves the active pipeline; Ashby misses and every other result stay ENRICH-only. An
+   error, block, title mismatch or ambiguous answer only records ATS_CHECK_* and leaves LIVENESS alone, so the
    row stays on the AI posting-validation worklist.
    Proven providers (executed 2026-10-13): Workday CXS, Greenhouse boards-api, Lever postings, Ashby posting-api,
    Oracle HCM REST. Positive-only providers (endpoint documented, a miss never closes): SmartRecruiters, BambooHR.
@@ -105,11 +107,18 @@
     return freshness.assess(r,now).due;
   }
 
-  /** Rows the checker owns this run: active, ATS-detectable, due. Never-checked first, then by bucket priority and oldest check. */
+  /** True when stored or new fields carry a per-posting 404/410 from a proven per-posting API (Ashby never qualifies). */
+  function closedByApi(p) { return val(p, 'LIVENESS') === 'CLOSED_EMPLOYER_404' && /^ATS_API:(WORKDAY|GREENHOUSE|LEVER)$/.test(val(p, 'LIVENESS_METHOD')); }
+  function closeRuling(pid, p, requestId, fields) {
+    return { action: 'ruling', ruling: { primaryId: pid, kind: 'CLOSED_DEAD', actor: 'WRITER_ATS', requestId: requestId, note: 'ATS API ' + val(p, 'LIVENESS_METHOD').slice(8) + ' 404 ' + val(p, 'LIVENESS_ASOF') + ' ' + val(p, 'LIVENESS_EVIDENCE_URL'), fields: fields } };
+  }
+
+  /** Rows the checker owns this run: active, ATS-detectable, due. Never-checked first, then by bucket priority and oldest check.
+      Active rows that already carry closed API proof are returned in picked.closes (no refetch) so the same run closes them. */
   function select(rows, opts) {
     opts = opts || {};
-    var now = opts.now ? Date.parse(opts.now) : Date.now(), limit = opts.limit || BATCH_LIMIT, out = [], declines = [];
-    rows.forEach(function (r) { if (!workable(r, opts.rules, declines)) return; var d = detect(r.p); if (d && due(r, now)) out.push({ row: r, target: d }); });
+    var now = opts.now ? Date.parse(opts.now) : Date.now(), limit = opts.limit || BATCH_LIMIT, out = [], declines = [], closes = [];
+    rows.forEach(function (r) { if (!workable(r, opts.rules, declines)) return; if (closedByApi(r.p)) { closes.push(r); return; } var d = detect(r.p); if (d && due(r, now)) out.push({ row: r, target: d }); });
     out.sort(function (a, b) {
       var ca = dateMs(val(a.row.p, 'ATS_CHECK_ASOF')), cb = dateMs(val(b.row.p, 'ATS_CHECK_ASOF'));
       if (!ca !== !cb) return ca ? 1 : -1;
@@ -118,6 +127,7 @@
     });
     var picked = out.slice(0, limit);
     picked.declines = declines;
+    picked.closes = closes.slice(0, limit);
     return picked;
   }
 
@@ -309,17 +319,19 @@
     return b;
   }
 
-  /** One queue body for the checked rows (all ENRICH, actor WRITER_ATS). */
-  function batchBody(items, stamp) {
+  /** One queue body for the checked rows (actor WRITER_ATS): ENRICH, or CLOSED_DEAD with the same fields on closed API proof, plus closes for stored proof. */
+  function batchBody(items, stamp, closes) {
     return {
       action: 'batch', requestId: 'ATSCHK-' + stamp,
       requests: items.map(function (x) {
-        return { action: 'ruling', ruling: { primaryId: x.row.PRIMARY_ID, kind: 'ENRICH', actor: 'WRITER_ATS', requestId: 'ATSCHK-' + stamp + '-' + x.row.PRIMARY_ID, note: 'ATS liveness check ' + x.target.provider + ' ' + x.result.result, fields: x.fields } };
-      })
+        var id = 'ATSCHK-' + stamp + '-' + x.row.PRIMARY_ID;
+        if (closedByApi(x.fields)) return closeRuling(x.row.PRIMARY_ID, x.fields, id, x.fields);
+        return { action: 'ruling', ruling: { primaryId: x.row.PRIMARY_ID, kind: 'ENRICH', actor: 'WRITER_ATS', requestId: id, note: 'ATS liveness check ' + x.target.provider + ' ' + x.result.result, fields: x.fields } };
+      }).concat((closes || []).map(function (r) { return closeRuling(r.PRIMARY_ID, r.p, 'ATSCHK-' + stamp + '-' + r.PRIMARY_ID); }))
     };
   }
 
-  return { wdParts: wdParts, hasReqToken: hasReqToken, wdSearchUrl: wdSearchUrl, tfPick: tfPick, tfJob: tfJob, tfBody: tfBody, detect: detect, detectUrl: detectUrl, select: select, ownedByChecker: ownedByChecker, interpret: interpret, fieldsFor: fieldsFor, batchBody: batchBody, payFromText: payFromText, degreeFromText: degreeFromText, titleOk: titleOk, BATCH_LIMIT: BATCH_LIMIT, DECISIVE: DECISIVE };
+  return { wdParts: wdParts, hasReqToken: hasReqToken, wdSearchUrl: wdSearchUrl, tfPick: tfPick, tfJob: tfJob, tfBody: tfBody, detect: detect, detectUrl: detectUrl, select: select, ownedByChecker: ownedByChecker, closedByApi: closedByApi, interpret: interpret, fieldsFor: fieldsFor, batchBody: batchBody, payFromText: payFromText, degreeFromText: degreeFromText, titleOk: titleOk, BATCH_LIMIT: BATCH_LIMIT, DECISIVE: DECISIVE };
 });
 
 /* ================= Apps Script glue ================= */
@@ -335,7 +347,8 @@ function runAtsCheck_(force, dryRun) {
   var now = new Date().toISOString(), rules = typeof readRules_ === 'function' ? readRules_() : null, rows = PipelineWorklists.parseRows(readMasterText_(MASTER_ID)), picked = PipelineAts.select(rows, { now: now, rules: rules });
   if (!dryRun && picked.declines && picked.declines.length && typeof queueNeverConsiderDeclines_ === 'function') queueNeverConsiderDeclines_(picked.declines);
   if (!dryRun) props.setProperty('ATS_CHECK_AT', String(Date.now()));
-  if (!picked.length) return { ok: true, checked: 0, at: now };
+  var closes = picked.closes || [];
+  if (!picked.length && !closes.length) return { ok: true, checked: 0, at: now };
   var apis = [], index = {};
   picked.forEach(function (x) { if (index[x.target.api] === undefined) { index[x.target.api] = apis.length; apis.push(x.target.api); } });
   var responses = [];
@@ -351,12 +364,12 @@ function runAtsCheck_(force, dryRun) {
   });
   var tf = atsTinyFishWorkday_(items, now);
   items = items.filter(function (x) { return !x.deferred; });
-  if (!items.length) return { ok: true, checked: 0, at: now, tinyfish: tf };
+  if (!items.length && !closes.length) return { ok: true, checked: 0, at: now, tinyfish: tf };
   var summary = items.map(function (x) { return { primaryId: x.row.PRIMARY_ID, company: x.row.COMPANY, provider: x.target.provider + (x.result.via ? '/' + x.result.via : ''), result: x.result.result, pay: x.fields.PAY_POSTED || '', degree: x.fields.DEGREE_TEXT ? 'SET' : (x.fields.ATS_DEGREE_TEXT ? 'EVIDENCE_ONLY' : '') }; });
-  if (dryRun) return { ok: true, dryRun: true, checked: items.length, at: now, tinyfish: tf, items: summary, body: PipelineAts.batchBody(items, now.replace(/[-:TZ.]/g, '').slice(0, 14)) };
+  if (dryRun) return { ok: true, dryRun: true, checked: items.length, at: now, tinyfish: tf, items: summary, closes: closes.length, body: PipelineAts.batchBody(items, now.replace(/[-:TZ.]/g, '').slice(0, 14), closes) };
   var stamp = now.replace(/[-:TZ.]/g, '').slice(0, 14), name = ATS_CHECK_FILE_PREFIX_ + stamp + '.json';
-  f.queue.createFile(name, JSON.stringify(PipelineAts.batchBody(items, stamp)), MimeType.PLAIN_TEXT);
-  return { ok: true, checked: items.length, queuedFile: name, at: now, tinyfish: tf, items: summary };
+  f.queue.createFile(name, JSON.stringify(PipelineAts.batchBody(items, stamp, closes)), MimeType.PLAIN_TEXT);
+  return { ok: true, checked: items.length, closes: closes.length, queuedFile: name, at: now, tinyfish: tf, items: summary };
 }
 
 var TF_FETCH_URL_ = 'https://api.fetch.tinyfish.ai';
