@@ -185,6 +185,28 @@ test('wall draw: two Claude bars end at 564s, big % and prediction clear of them
   }
 });
 
+test('wall draw: Grok measurement, reset time and trailing note fit below Claude Duet and ChatGPT', () => {
+  const rows = L.usageRows(parse(
+    { ...claude, resets_available: 0 },
+    { ...duet, used_usd: 500, left_usd: 0 },
+    { ...claude, provider: 'CHATGPT', usedPct: 31, resets_available: 0,
+      openaiCredit: { grant_usd: 41, verified_left_usd: 38, expires: '2026-11-30' } },
+    { ...claude, provider: 'GROK', usedPct: 87, resets_available: 0 }
+  ), NOW, null);
+  rows[0].fiveHour = { usedPct: 0, resetsAt: new Date(NOW + HOUR).toISOString() };
+  // Match the low- and full-resolution usage textures in office.js.
+  for (const [W, H] of [[640, 422], [1024, 675]]) {
+    const c = fakeCtx();
+    D.drawUsage(c, W, H, { rows, now: NOW });
+    const grok = c.texts.slice(c.texts.findIndex(x => x.t === 'Grok'));
+    const details = grok.filter(x => x.x === 40 * W / 1024 && x.t !== 'Grok');
+    assert.match(details.map(x => x.t).join(' '), /Measured .* ET.* · resets .* ET Resets: 0 · Extra: none/);
+    // Allow for descenders below the alphabetic baseline, not just the baseline itself.
+    const bottom = Math.max(...grok.map(x => x.y + parseFloat(x.font.split(' ')[1]) / 4));
+    assert.ok(bottom <= H, `Grok text ends at ${bottom}px on the ${W}×${H} canvas`);
+  }
+});
+
 test('wall draw: no Duet reading shows no reading yet and no dollar amount', () => {
   const c = fakeCtx();
   D.drawUsage(c, 1024, 605, { rows: L.usageRows(parse(claude), NOW, null), now: NOW });

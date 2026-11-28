@@ -934,7 +934,8 @@ function buildWorld() {
   }
   const BW = 9.6, BH = 3.9;
   const project = makeBoard('project', BW, BH, -2, 2.3, -RD / 2 + 0.05, 0, LOW ? 1280 : 2048, LOW ? 520 : 832);
-  const usage = makeBoard('usage', 4.4, 2.6, 5.7, 2.5, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 378 : 605);
+  // Grow upward for the Duet and provider details, keeping the bottom at 1.2 above Other Limits.
+  const usage = makeBoard('usage', 4.4, 2.9, 5.7, 2.65, -RD / 2 + 0.05, 0, LOW ? 640 : 1024, LOW ? 422 : 675);
   const limits = makeBoard('limits', usage.w, 0.68, usage.g.position.x, 0.61, usage.g.position.z, 0, LOW ? 640 : 1024, LOW ? 99 : 158);
   const autos = makeBoard('autos', 3.6, 2.4, -RW / 2 + 0.05, 2.1, 2.3, Math.PI / 2, LOW ? 640 : 1024, LOW ? 427 : 683); // Tim Nov 18: Automations in the old Needs Tim spot
   const whiteboard = makeBoard('whiteboard', 4.4, 2.6, -RW / 2 + 0.05, 2.1, 7.1, Math.PI / 2, LOW ? 640 : 1024, LOW ? 378 : 605); // big conference whiteboard where Automations hung
