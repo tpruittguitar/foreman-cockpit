@@ -85,3 +85,35 @@ test('checksheet faces omit redundant cost metadata but retain ordinary notes', 
   const html = fs.readFileSync(path.join(__dirname, '../office.html'), 'utf8');
   assert.match(html, /id="needs-btn"[^>]*>⚠ Needs Tim <b id="needs-n" hidden>0<\/b>/);
 });
+
+test('Lock p1 keeps every column on its first page regardless of the tick', () => {
+  for (const size of [0, 2, 7, 13]) {
+    const cards = ex(size);
+    for (const tick of [0, 1, 2, 5, 999]) {
+      assert.deepEqual(L.columnPage(cards, 3, tick, true), {
+        items: cards.slice(0, 3), page: 0, pages: Math.max(1, Math.ceil(size / 3))
+      });
+    }
+  }
+});
+
+test('Lock p1 loads the saved on and off states', () => {
+  const values = new Map([['office-checksheet-lock-p1', '1']]);
+  const host = { localStorage: { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) } };
+  assert.equal(L.loadChecksheetLock(host), true);
+  L.saveChecksheetLock(false, host);
+  assert.equal(values.get('office-checksheet-lock-p1'), '0');
+  assert.equal(L.loadChecksheetLock(host), false);
+  L.saveChecksheetLock(true, host);
+  assert.equal(L.loadChecksheetLock(host), true);
+});
+
+test('Lock p1 defaults off and columns still rotate without storage', () => {
+  const blocked = { get localStorage() { throw new Error('storage blocked'); } };
+  for (const host of [{ localStorage: { getItem: () => null } }, {}, blocked]) {
+    const locked = L.loadChecksheetLock(host);
+    assert.equal(locked, false);
+    assert.deepEqual([0, 1, 2, 3].map(tick => L.columnPage(ex(7), 3, tick, locked).page), [0, 1, 2, 0]);
+  }
+  assert.doesNotThrow(() => L.saveChecksheetLock(true, blocked));
+});

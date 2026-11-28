@@ -1705,6 +1705,7 @@ function buildWorld() {
 
   /* ---------- screens ---------- */
   let boardDirty = true, page = 0, pageAt = 0, focusItem = null, autosAt = 0;
+  let lockP1 = L.loadChecksheetLock();
   loadCursorBadge(() => { boardDirty = true; });
   /* Automations wall board on its own, so its countdowns tick every second without redrawing the other boards */
   function drawAutos() { const a = autos.tex; drawAutomations(a.ctx, a.c.width, a.c.height, { auto: S.auto, err: S.autoErr, now: Date.now(), demo: DEMO, fetchedAt: S.fetched.automations, boardM: autos.w }); a.t.needsUpdate = true; autosAt = clock; }
@@ -1715,7 +1716,7 @@ function buildWorld() {
     const t = project.tex, tabs = L.projectTabs(items()); if (!tabs.includes(boardTab)) boardTab = 'All';
     const cols = L.boardView(items(), { tab: boardTab, doneOpen, needs: needsData().needs });
     const age = S.parsed ? L.dataAge(S.parsed.updatedAt, Date.now()) : null;
-    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
+    project.hits = drawBoard(t.ctx, t.c.width, t.c.height, { cols, tabs, tab: boardTab, page, lockP1, state: S.state, ageText: age ? age.text : '', demo: DEMO, highlight: hl, glow: S.glow, focusId: focusItem }); drawFetched(t.ctx, t.c.width, t.c.height, S.fetched.status, null, null, project.w);
     pagesN = project.hits.pages || 1;
     t.t.needsUpdate = true;
     const u = usage.tex; drawUsage(u.ctx, u.c.width, u.c.height, { rows: L.usageRows(S.readings, Date.now(), S.parsed ? S.parsed.usage : null, S), now: Date.now(), demo: DEMO, failed: S.state === 'failed' && !S.readings.length, pred: usagePred(), fetchedAt: S.fetched.readings }); u.t.needsUpdate = true;   /* cs-9e5be547 #7: fetched stamp is in the usage header */
@@ -1841,6 +1842,7 @@ function buildWorld() {
       if (o.userData.board !== 'project') return { board: o.userData.board };
       const uv = hit.uv, x = uv.x, y = 1 - uv.y;
       const h = project.hits.find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+      if (h?.lockP1) return { lockP1: true };
       return h ? (h.id ? { item: h.id } : h.tab ? { tab: h.tab } : h.done ? { done: true } : { more: h.more }) : { board: 'project' };
     }
     if (o.userData.monitor) return { monitor: o.userData.monitor, half: hit.uv && hit.uv.x < 0.5 ? 'left' : 'right' };
@@ -1852,6 +1854,7 @@ function buildWorld() {
     if (AC.focused && !(p && (p.board === 'agentchat' || p.board === 'agentlock'))) acInput.blur(); // a tap elsewhere puts the phone keyboard away
     if (!p) return false;
     if (p.zachSwitch) { toggleZach(); return true; }
+    if (p.lockP1) { lockP1 = !lockP1; L.saveChecksheetLock(lockP1); boardDirty = true; return true; }
     if (p.item) openItem(p.item); else if (p.tab) { boardTab = p.tab; boardDirty = true; } else if (p.done) { doneOpen = !doneOpen; boardDirty = true; }
     else if (p.more != null) openBoard(); else if (p.bot) openBot(p.bot);
     else if (p.monitor) clickScreen(p.monitor, p.half); else if (p.board === 'usage' || p.board === 'limits') openUsage(); else if (p.board === 'project') openBoard();
@@ -2113,7 +2116,7 @@ function buildWorld() {
     boardFrame();
     if (LOW) { if (glide || camera.position.distanceToSquared(lastCam) > 1e-6) lastMoveAt = now; lastCam.copy(camera.position); document.body.classList.toggle('hud-moving', L.hudHidden(lastMoveAt, now)); }
     // free-running page tick: each board column takes tick mod its own page count (L.columnPage)
-    if (pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % 1e9; pageAt = clock; boardDirty = true; }
+    if (!lockP1 && pagesN > 1 && clock - pageAt > 12) { page = (page + 1) % 1e9; pageAt = clock; boardDirty = true; }
     if (boardDirty) drawBoards();
     else if (clock - autosAt >= 1) drawAutos();
     if (now - deskTick > Q.deskDrawMs) { deskTick = now; desks.forEach(d => drawDeskIf(d)); }
