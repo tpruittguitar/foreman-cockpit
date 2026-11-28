@@ -4,25 +4,24 @@ const L = require('../office/office-logic.js');
 const NOW = Date.parse('2026-11-16T20:00:00Z');
 const bot = (name, status, question) => ({ bot: name, bot_id: '', status, question: question || '', link: '' });
 
-/* ---------- items 3 / 9: only a real needs_tim item waves ---------- */
-test('needs_tim wave: only bots with a real needs_tim ask; idle, working, blocked and question-less bots never', () => {
-  const parsed = L.parseStatus({ updated_at: new Date(NOW).toISOString(), bots: [
-    { bot: 'Root', status: 'needs_tim', question: 'Merge the PR?' }, { bot: 'GUI', status: 'idle' }, { bot: 'Comp', status: 'working' },
-    { bot: 'Sniffer', status: 'blocked' }, { bot: 'Gauge', status: 'needs_tim', question: '' }, { bot: 'Claude', status: 'needs_tim', question: 'EXAMPLE: fake ask' }] });
-  const names = L.needsTimNames(L.needsList({ bots: parsed.bots, entries: [], prStates: new Map(), pulls: [], now: NOW, demo: false }));
-  assert.deepEqual([...names], ['Root']);
-  const idleOnly = L.needsTimNames(L.needsList({ bots: [bot('GUI', 'idle')], entries: [], now: NOW }));
-  assert.equal(idleOnly.size, 0, 'idle bots never show "?" / wave');
+/* ---------- Needs Tim triangles on the 3D floor ---------- */
+const archiveCard = { id: 'ge-vernova', title: 'GE Vernova', owner: 'Archive', priority: 'Needs Tim', question: 'Proceed?' };
+const alertNames = (items, extra) => L.needsTimNames(L.needsList({ items, now: NOW, ...extra }));
+
+test('closed, done or canceled Needs Tim cards do not raise a 3D alert', () => {
+  for (const status of ['closed', 'done', 'canceled', 'cancelled']) {
+    assert.equal(alertNames([{ ...archiveCard, status }]).size, 0, status);
+  }
+  assert.equal(alertNames([{ ...archiveCard, status: 'needs_tim', prState: 'closed' }]).size, 0);
 });
-test('needs_tim wave: a live needs_tim entry names its bot; resolved or PR-merged entries do not', () => {
-  const entries = [{ text: 'Pick a date', bot: 'Edgar' }, { text: 'Old', bot: 'Comp', resolved: true }, { text: 'Merged', bot: 'GUI', link: 'https://github.com/o/r/pull/5' }];
-  const st = new Map([['o/r#5', 'merged']]);
-  const names = L.needsTimNames(L.needsList({ bots: [], entries, prStates: st, now: NOW }));
-  assert.deepEqual([...names], ['Edgar']);
+test('an open Needs Tim card raises a 3D alert only for its owner', () => {
+  const bots = [bot('Archive', 'idle'), bot('Root', 'idle')];
+  assert.deepEqual([...alertNames([{ ...archiveCard, status: 'needs_tim' }], { bots })], ['Archive']);
 });
-test('needs_tim wave: an open PR is review queue, not a wave', () => {
-  const b = bot('Root', 'waiting_tim', 'merge?'); b.link = 'https://github.com/o/r/pull/9';
-  assert.equal(L.needsTimNames(L.needsList({ bots: [b], entries: [], prStates: new Map([['o/r#9', 'open']]), now: NOW })).size, 0);
+test('waiting_tim status and standalone asks without live cards do not raise a 3D alert', () => {
+  const stale = new Date(NOW - (L.BOT_STALE_MIN + 1) * 60000).toISOString();
+  const bots = [{ ...bot('Archive', 'waiting_tim', 'Proceed?'), last_action_at: stale }, bot('Root', 'waiting_tim', 'Merge?')];
+  assert.equal(alertNames([], { bots, entries: [{ text: 'Pick a date', bot: 'Edgar' }] }).size, 0);
 });
 
 /* ---------- item 2: waterfall flows down ---------- */

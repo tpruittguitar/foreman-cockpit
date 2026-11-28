@@ -1358,7 +1358,7 @@ function buildWorld() {
     const now = Date.now(), list = bots().filter(b => deskOf(b.bot)), ctx = signalCtx();
     S.fresh = Object.fromEntries(list.map(b => [b.bot, freshOf(b, now, ctx)]));
     S.needsSet = S.state === 'failed' ? new Set() : L.needsTimNames(needsData());
-    plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh, { training: DEMO ? [] : S.training, needs: S.needsSet }); // cs-31de0ce8: blocked task-file state waves/hops; needsSet is not the hop source
+    plan = L.planOffice(list, S.parsed ? S.parsed.meetings : [], now, S.state, S.fresh, { training: DEMO ? [] : S.training, needs: S.needsSet }); // cs-31de0ce8: blocked task-file state still waves/hops
     const idleNames = list.filter(b => { const c = chars.get(b.bot), p = plan.plans[b.bot]; return c && p && !p.brk && IDLE_PLAN.has(p.act) && !S.needsSet.has(b.bot) && !c.job && !c.jobs.length; }).map(b => b.bot);
     S.restocker = L.pickRestocker(idleNames, fridgeStock, S.restocker); // item 10: an idle bot restocks when the fridge runs low
     updateInvite(list, idleNames);
@@ -1574,7 +1574,7 @@ function buildWorld() {
 
     c.quest.visible = false;
     c.updateFace(dt, clock, reduced);
-    if (cue.sign) { const p = L.pulse(clock, reduced); c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; c.warn.visible = true; } else if (c.warn.visible) { c.warn.visible = false; c.warn.scale.setScalar(1); }
+    if (needs) { const p = L.pulse(clock, reduced); c.warn.scale.setScalar(reduced ? 1 : 0.94 + 0.08 * p); c.warn.rotation.y = Math.atan2(camera.position.x - c.root.position.x, camera.position.z - c.root.position.z) - c.root.rotation.y; c.warn.visible = true; } else if (c.warn.visible) { c.warn.visible = false; c.warn.scale.setScalar(1); }
     const perch = ['sit', 'type', 'game', 'deskSleep'].includes(pose) && !!dk && Math.hypot(c.pos.x - dk.seat.x, c.pos.y - dk.seat.z) < 0.1;
     animate(c, pose, clock, dt, { perch, chair: goal.key === 'lead' && pose === 'talk', reduced, holding: c.arrived && clock - c.arrivedAt > 1.4, can: !!goal.can, carry: c.carry && pose === 'walk', box: !!goal.box && !c.restocked, stroke: pose === 'pool' ? (goal.spot && goal.spot.id === 'pool1' ? poolNow.stroke : 0) : null, nap: pose === 'nap' && goal.lie ? goal.lie.seat : null });
     const nap = pose === 'nap' ? L.napFit(c, goal.lie && goal.lie.seat) : null;
