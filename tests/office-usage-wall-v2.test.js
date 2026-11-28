@@ -264,10 +264,38 @@ test('usage wall: only the wide texture includes the source filename in the head
   const rows = L.usageRows(parse(claude), NOW, null);
   const source = rows[0].source = 'usage-readings.jsonl';
   const stamp = L.usageHeader(rows, NOW, NOW);
-  for (const [W, H, expected] of [[640, 422, stamp], [1024, 675, `${stamp} · ${source}`]]) {
+  for (const [W, H, expected] of [[640, 422, stamp], [1440, 950, `${stamp} · ${source}`]]) {
     const c = fakeCtx();
     D.drawUsage(c, W, H, { rows, now: NOW, fetchedAt: NOW });
-    assert.equal(c.texts.find(x => x.t.startsWith('Latest reading ')).t, expected, `${W}×${H}`);
+    const head = c.texts.find(x => x.t.startsWith('Latest reading '));
+    const title = c.texts.find(x => x.t === 'AI USAGE');
+    const s = W / 1024;
+    assert.equal(head.t, expected, `${W}×${H}`);
+    assert.ok(head.x >= title.x + title.w + 24 * s, 'stamp clears the title and gap');
+    assert.ok(head.x + head.w <= W, 'stamp stays inside the canvas');
+    if (W === 640) assert.ok(head.font.startsWith(`600 ${18 * s}px `), 'stamp uses its intended font when it fits');
+  }
+});
+
+test('usage wall: the 640×422 stamp shrinks below 14px and elides if it still cannot fit', () => {
+  const W = 640, H = 422, s = W / 1024;
+  const rows = L.usageRows(parse(claude), NOW, null);
+  const stamp = L.usageHeader(rows, NOW, NOW);
+  for (const scale of [1.4, 2]) {
+    const c = fakeCtx();
+    const measure = c.measureText;
+    c.measureText = function (t) {
+      const { width } = measure.call(this, t);
+      return { width: String(t).startsWith('Latest reading ') ? width * scale : width };
+    };
+    D.drawUsage(c, W, H, { rows, now: NOW, fetchedAt: NOW });
+    const title = c.texts.find(x => x.t === 'AI USAGE');
+    const head = c.texts.find(x => x.t.startsWith('Latest reading '));
+    assert.ok(head.x >= title.x + title.w + 24 * s, 'stamp clears the title and gap');
+    assert.ok(head.x + head.w <= W, 'stamp stays inside the canvas');
+    assert.ok(parseFloat(head.font.split(' ')[1]) < 18 * s, 'stamp shrinks from its starting font');
+    if (scale === 1.4) assert.equal(head.t, stamp);
+    else assert.ok(head.t.endsWith('…'), 'oversized stamp is elided');
   }
 });
 

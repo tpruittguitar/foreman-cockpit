@@ -408,8 +408,16 @@ export function drawUsage(ctx, W, H, o) {
   const rows = (o.rows || []).slice(0, 4);
   if (!rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText('Waiting for the first usage reading…', UW.left * s, 140 * s); return; }
   /* cs-9e5be547 #7: the board-level fetched stamp rides in this header beside Latest reading, never under a provider's %. */
-  const head = L.usageHeader(rows, o.now, o.fetchedAt) + (W <= 640 ? '' : ' · ' + rows[0].source);
-  ctx.textAlign = 'right'; shrink(ctx, head, 600, 18 * s, W - UW.pctRight * s - headLeft); ctx.fillStyle = '#9aa0a8'; ctx.fillText(head, W - UW.pctRight * s, 58 * s); ctx.textAlign = 'left';
+  const narrow = W <= 640, headRight = W - UW.pctRight * s, headWidth = headRight - headLeft;
+  let head = L.usageHeader(rows, o.now, o.fetchedAt) + (narrow ? '' : ' · ' + rows[0].source);
+  ctx.textAlign = 'right';
+  if (!shrink(ctx, head, 600, 18 * s, headWidth, narrow ? 14 * s : 14) && narrow) {
+    ctx.font = `600 ${14 * s}px ${SANS}`;
+    head = fit(ctx, head, headWidth);
+  }
+  ctx.fillStyle = '#9aa0a8';
+  if (!narrow || ctx.measureText(head).width <= headWidth) ctx.fillText(head, headRight, 58 * s);
+  ctx.textAlign = 'left';
   const top = 88 * s, avail = H - top;
   let M = UM.full, hs = rows.map(u => usageRow(ctx, W, s, u, 0, o, M, true));
   if (hs.reduce((a, b) => a + b, 0) > avail) { M = UM.compact; hs = rows.map(u => usageRow(ctx, W, s, u, 0, o, M, true)); }
@@ -450,8 +458,9 @@ export function drawUsageLimits(ctx, W, H, rows) {
 /* ---------- Pipeline constraint wall (back wall, left of the checksheet) ----------
    o: { sum: PipelineControlRoom.summary(...) | null, age: L.constraintAge(...), err, demo }. Mirrors the cockpit strip: stage rate cards,
    the waiting queues between them, the CONSTRAINT stage outlined in red. Unknown stays "Unknown" / "—", never zero. */
-function shrink(ctx, text, wt, size, maxW) { // largest font <= size (px) whose text fits maxW; no ellipsis, so labels stay whole
-  for (let z = size; z > 14; z -= 1) { ctx.font = `${wt} ${z}px ${SANS}`; if (ctx.measureText(text).width <= maxW) return; }
+function shrink(ctx, text, wt, size, maxW, floor = 14) { // largest tested font whose text fits maxW
+  for (let z = size; z > floor; z -= 1) { ctx.font = `${wt} ${z}px ${SANS}`; if (ctx.measureText(text).width <= maxW) return true; }
+  return false;
 }
 export function drawConstraintWall(ctx, W, H, o) {
   const s = W / 1024, sum = o.sum, RED = '#ff4d4d';
