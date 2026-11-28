@@ -193,7 +193,7 @@
   function columnFor(item) {
     const s = itemStatus(item), pr = item.prState;
     if (pr === 'merged' || pr === 'closed') return 'done';
-    if (['done', 'merged', 'closed', 'shipped', 'complete', 'completed'].includes(s)) return 'done';
+    if (['done', 'merged', 'closed', 'shipped', 'complete', 'completed', 'canceled', 'cancelled'].includes(s)) return 'done';
     if (pr === 'open') return 'in_progress';
     if (asksTim(item)) return str(item.question).trim() ? 'needs_tim' : 'queued';
     if (['queued', 'waiting', 'todo', 'not_started', 'later', 'backlog', 'idle'].includes(s)) return 'queued';
@@ -429,7 +429,7 @@
   }
   function blockedCue(activity) {
     const blocked = !!(activity && (activity.blocked || activity.state === 'blocked'));
-    return { hop: blocked, sign: blocked, pose: blocked ? 'wave' : null };
+    return { hop: blocked, pose: blocked ? 'wave' : null };
   }
   function blockedHopOffset(t, phase, reduced) {
     if (reduced) return 0;
@@ -2288,11 +2288,13 @@
 
 
   /* ---------- Tim feedback 1-16 (Nov 16): pure helpers for the 3D office ---------- */
-  /* Items 3 / 9: only a bot with a REAL needs_tim item waves. `list` is needsList(): live bot asks (status needs_tim with a
-     question, not EXAMPLE, not PR-resolved) and live needs_tim entries naming a bot. Idle / stale / blocked bots never. */
+  /* Only owned checksheet cards in Needs Tim drive the 3D alert, not bot status rows or standalone asks. */
   function needsTimNames(list) {
     const out = new Set();
-    for (const n of (list && list.needs) || []) { const b = canonicalBot(n.bot, n.bot_id); if (b) out.add(b); }
+    for (const n of (list && list.needs) || []) {
+      if (n.kind !== 'item') continue;
+      const b = canonicalBot(n.bot, n.bot_id); if (b) out.add(b);
+    }
     return out;
   }
   /* Item 2: waterfall texture offset; water moves DOWN (offset grows), nothing moves when reduced motion is on. */
