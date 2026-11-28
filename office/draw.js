@@ -408,8 +408,8 @@ export function drawUsage(ctx, W, H, o) {
   const rows = (o.rows || []).slice(0, 4);
   if (!rows.length) { ctx.fillStyle = '#9aa0a8'; ctx.font = `600 ${30 * s}px ${SANS}`; ctx.fillText('Waiting for the first usage reading…', UW.left * s, 140 * s); return; }
   /* cs-9e5be547 #7: the board-level fetched stamp rides in this header beside Latest reading, never under a provider's %. */
-  const head = L.usageHeader(rows, o.now, o.fetchedAt) + ' · ' + rows[0].source;
-  ctx.textAlign = 'right'; shrink(ctx, head, 600, 18 * s, W - UW.pctRight * s - headLeft); ctx.fillStyle = '#9aa0a8'; ctx.fillText(head, W - UW.pctRight * s, 58 * s); ctx.textAlign = 'left';
+  const head = L.usageHeader(rows, o.now, o.fetchedAt) + (W < 800 ? '' : ' · ' + rows[0].source);
+  ctx.textAlign = 'right'; ctx.font = `600 ${18 * s}px ${SANS}`; shrink(ctx, head, 600, 18 * s, W - UW.pctRight * s - headLeft); ctx.fillStyle = '#9aa0a8'; ctx.fillText(head, W - UW.pctRight * s, 58 * s); ctx.textAlign = 'left';
   const top = 88 * s, avail = H - top;
   let M = UM.full, hs = rows.map(u => usageRow(ctx, W, s, u, 0, o, M, true));
   if (hs.reduce((a, b) => a + b, 0) > avail) { M = UM.compact; hs = rows.map(u => usageRow(ctx, W, s, u, 0, o, M, true)); }

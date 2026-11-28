@@ -260,6 +260,24 @@ test('usage wall: the fetched stamp sits in the header with Latest reading, not 
   assert.equal(L.usageHeader(rows, NOW), L.usageHeader(rows, NOW, null), 'no fetch time: header as before');
 });
 
+test('usage wall: narrow textures drop the readings filename from the header stamp', () => {
+  const AT = Date.parse('2026-11-25T11:32:44-05:00');
+  const rows = L.usageRows(parse(claude, duet, Object.assign({}, claude, { provider: 'CHATGPT', usedPct: 1 }), Object.assign({}, claude, { provider: 'GROK', usedPct: 38 })), NOW, null);
+  const wide = fakeCtx();
+  D.drawUsage(wide, 1024, 675, { rows, now: NOW, fetchedAt: AT });
+  const wideHead = wide.texts.find(x => x.t.startsWith('Latest reading '));
+  assert.match(wideHead.t, /fetched 11:32:44 AM ET · AI_USAGE_READINGS\.jsonl$/);
+  assert.ok(wideHead.x >= 0 && wideHead.x + wideHead.w <= 1024, 'wide stamp stays on the board');
+  const narrow = fakeCtx();
+  D.drawUsage(narrow, 640, 422, { rows, now: NOW, fetchedAt: AT });
+  const head = narrow.texts.find(x => x.t.startsWith('Latest reading '));
+  assert.match(head.t, /^Latest reading \d{1,2}:\d\d [AP]M ET · .+ · fetched 11:32:44 AM ET$/);
+  assert.ok(!/AI_USAGE_READINGS/.test(head.t), 'filename dropped under 800px');
+  assert.ok(head.x >= 0 && head.x + head.w <= 640, 'narrow stamp stays on the board');
+  const title = narrow.texts.find(x => x.t === 'AI USAGE');
+  assert.ok(head.x >= title.x + title.w, 'clear of the title');
+});
+
 test('Grok fallback keeps its percent and age on the wall and in flat/modal usage', () => {
   const office = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
   const apply = office.slice(office.indexOf('function applyReadings('), office.indexOf('function slowLoads('));
