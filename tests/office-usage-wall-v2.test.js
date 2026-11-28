@@ -260,6 +260,17 @@ test('usage wall: the fetched stamp sits in the header with Latest reading, not 
   assert.equal(L.usageHeader(rows, NOW), L.usageHeader(rows, NOW, null), 'no fetch time: header as before');
 });
 
+test('usage wall: only the wide texture includes the source filename in the header', () => {
+  const rows = L.usageRows(parse(claude), NOW, null);
+  const source = rows[0].source = 'usage-readings.jsonl';
+  const stamp = L.usageHeader(rows, NOW, NOW);
+  for (const [W, H, expected] of [[640, 422, stamp], [1024, 675, `${stamp} · ${source}`]]) {
+    const c = fakeCtx();
+    D.drawUsage(c, W, H, { rows, now: NOW, fetchedAt: NOW });
+    assert.equal(c.texts.find(x => x.t.startsWith('Latest reading ')).t, expected, `${W}×${H}`);
+  }
+});
+
 test('Grok fallback keeps its percent and age on the wall and in flat/modal usage', () => {
   const office = fs.readFileSync(path.join(__dirname, '../office/office.js'), 'utf8');
   const apply = office.slice(office.indexOf('function applyReadings('), office.indexOf('function slowLoads('));
