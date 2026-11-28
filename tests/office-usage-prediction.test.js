@@ -59,3 +59,24 @@ test('card eee3a384: a WATCH reading is a real reading, so Grok at 98% gets a pr
   const g = A.project(rs, now).find(p => p.provider === 'GROK');
   assert.equal(g.verdict, 'LASTS'); assert.equal(A.brief(g), 'lasts to reset');
 });
+
+test('ChatGPT lookback skips missing and invalid resets but stops at a different reset (cs-4b0c761a)', () => {
+  const reset = '2026-11-25T00:00:00Z', now = Date.parse('2026-11-21T04:10:00Z');
+  const rs = [
+    { at: '00:30', usedPct: 10, resetsAt: reset },
+    { at: '01:30', usedPct: 20, resetsAt: reset },
+    { at: '02:00', usedPct: 90, resetsAt: 'invalid' },
+    { at: '02:30', usedPct: 30, resetsAt: reset },
+    { at: '03:50', usedPct: 95, source: 'https://chatgpt.com/settings', scheduled_slot: '03:50' },
+    { at: '04:00', usedPct: 45, resetsAt: reset }
+  ].map(r => ({ ...r, provider: 'CHATGPT', meter: 'weekly', at: '2026-11-21T' + r.at + ':00Z' }));
+
+  const [projection] = A.project(rs, now);
+  assert.equal(projection.rate, 10);
+  assert.equal(projection.verdict, 'BEFORE_RESET');
+
+  rs[2].resetsAt = '2026-11-20T00:00:00Z';
+  const [acrossReset] = A.project(rs, now);
+  assert.equal(acrossReset.rate, null);
+  assert.equal(acrossReset.verdict, 'UNKNOWN');
+});
