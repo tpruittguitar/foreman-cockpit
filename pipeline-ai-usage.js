@@ -52,7 +52,9 @@
       for (var i = g.length - 2; reset && i >= 0; i--) {
         var r = g[i], t = Date.parse(r.at);
         if (t >= at || weeklyPct(r) === null) continue;
-        if (Date.parse(r.resetsAt) !== reset) break;
+        var readingReset = Date.parse(r.resetsAt);
+        if (Number.isNaN(readingReset)) continue;
+        if (readingReset !== reset) break;
         if (t <= boundary) { before = r; break; }
         after = r;
       }
