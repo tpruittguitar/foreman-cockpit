@@ -4,6 +4,7 @@
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('fs'), os = require('os'), path = require('path'), { pathToFileURL } = require('url');
 const L = require('../office/office-logic.js');
+const U = require('../pipeline-ai-usage.js');
 const HOUR = 3600000;
 const NOW = Date.parse('2026-11-25T03:00:00-05:00');
 const claude = { at: '2026-11-24T22:00:00-05:00', provider: 'CLAUDE', meter: 'weekly', label: 'Weekly', status: 'OK', usedPct: 100, resetsAt: '2026-11-29T16:00:00Z' };
@@ -332,10 +333,13 @@ test('Grok fallback keeps its percent and age on the wall and in flat/modal usag
     assert.equal(row.stale, true, 'even within the normal freshness window');
     assert.equal(!!row.failed, !!failedNote);
     const c = fakeCtx();
-    D.drawUsage(c, 1024, 605, { rows, now: NOW, pred: { GROK: { text: 'no reading' } } });
+    const projection = U.project(U.parse(state.readingsText), NOW).find(p => p.provider === 'GROK');
+    D.drawUsage(c, 1024, 605, { rows, now: NOW, pred: { GROK: { text: U.brief(projection) } } });
     assert.ok(c.texts.some(x => x.t === '38%'));
     assert.match(c.texts.map(x => x.t).join(' '), /STALE.*20m ago/);
-    assert.ok(!c.texts.some(x => x.t === 'no reading'));
+    const text = c.texts.map(x => x.t).join(' ');
+    assert.equal(text.includes('needs 3h history'), !!(failedNote && !initial));
+    assert.equal(text.includes('projection unavailable'), !!(failedNote && initial));
     const html = usageListHTML();
     assert.match(html, /<b>Grok<\/b>.*38% used.*\? stale/);
     assert.match(html, /Measured .* ET · 20m ago/);

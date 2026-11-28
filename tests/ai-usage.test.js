@@ -42,7 +42,7 @@ test('100% is OUT; failed reading and passed reset are flagged, never projected'
   const by = Object.fromEntries(U.project(r, NOW).map(p => [p.provider + p.meter, p.verdict]));
   assert.deepEqual(by, { CLAUDEweekly: 'RESET_PASSED', CHATGPTweekly: 'NO_READING', GROKweekly: 'OUT' });
   const h = U.html(U.project(r, NOW));
-  assert.match(h, /OUT/); assert.match(h, /NO READING/); assert.match(h, /100%/);
+  assert.match(h, /OUT/); assert.match(h, /projection unavailable/); assert.match(h, /100%/);
 });
 
 test('mixed legacy history renders exactly three weekly bars and preserves weekly projections', () => {
@@ -63,7 +63,7 @@ test('mixed legacy history renders exactly three weekly bars and preserves weekl
   assert.ok(p.every(r => r.meter === 'weekly'));
   const h = U.html(p);
   assert.equal((h.match(/class="aiu-track"/g) || []).length, 3);
-  assert.doesNotMatch(h, /current session|Grok Bot|5-hour|NO READING/);
+  assert.doesNotMatch(h, /current session|Grok Bot|5-hour|projection unavailable/);
   assert.deepEqual(U.project(legacy, NOW), []);
 });
 
@@ -163,16 +163,33 @@ test('Claude 5-hr window is a text line under the bar, never a second bar', () =
   assert.equal((hFull.match(/class="aiu-track"/g) || []).length, 1);
 });
 
-test('weekly failed and missing readings never render as measured zero', () => {
+test('weekly projection is unavailable when there are no good readings', () => {
   const reading = { at: '2026-10-13T19:40:00Z', provider: 'GROK', meter: 'weekly' };
   for (const sample of [{ usedPct: null, status: 'CHROME_UNAVAILABLE' }, {}, { usedPct: 0, status: 'CHROME_UNAVAILABLE' }]) {
-    const rows = U.project(U.parse(line({ ...reading, ...sample })), NOW);
+    const rows = U.project(U.parse([line({ ...reading, at: '2026-10-13T18:40:00Z', status: 'UNREADABLE' }), line({ ...reading, ...sample })].join('\n')), NOW);
     assert.equal(rows[0].usedPct, null);
     assert.equal(rows[0].verdict, 'NO_READING');
-    assert.match(U.html(rows, NOW), /NO READING/);
+    assert.match(U.html(rows, NOW), /projection unavailable/);
+    assert.equal(U.brief(rows[0]), 'projection unavailable');
     assert.doesNotMatch(U.html(rows, NOW), /0% used|aiu-track/);
   }
   const zero = U.project(U.parse(line({ ...reading, usedPct: 0, status: 'OK' })), NOW);
   assert.equal(zero[0].usedPct, 0);
   assert.match(U.html(zero, NOW), /0% used/);
+});
+
+test('weekly projection keeps the most recent good reading after a failed attempt', () => {
+  const good = [sample('15:00', 58), sample('18:00', 64)];
+  const expected = U.project(good, NOW);
+  assert.equal(expected[0].verdict, 'BEFORE_RESET');
+  for (const failed of [
+    { ...sample('20:00', 99), status: 'UNREADABLE' },
+    { ...sample('20:00', 99), error: 'read failed' },
+    sample('20:00', undefined)
+  ]) {
+    const rows = U.project([failed, good[1], good[0]], NOW);
+    assert.deepEqual(rows, expected);
+    assert.match(U.html(rows, NOW), /RUNS OUT BEFORE RESET/);
+    assert.match(U.brief(rows[0]), /^runs out ~/);
+  }
 });
