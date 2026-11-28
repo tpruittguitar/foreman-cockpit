@@ -1895,7 +1895,7 @@
   }
   /* cs-bfacaacf: a failed newest attempt must not hide an earlier good reading. Pure: { good, failed } for one provider,
      where good is the newest measured reading (or null) and failed is the newest attempt when it failed after good. */
-  function usageMeasured(r) { return !!r && (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct); }
+  function usageMeasured(r) { return !!r && !r.error && (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct); }
   function lastGoodUsage(readings, provider) {
     const ok = provider === 'CLAUDE_DUET' || provider === 'DEEPSEEK' ? readingMeasured : usageMeasured;
     const mine = (readings || []).filter(r => r && r.provider === provider && time(r.at) != null).sort((a, b) => time(b.at) - time(a.at));

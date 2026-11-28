@@ -23,13 +23,11 @@
   }
 
   function weeklyPct(r) {
-    return (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct) ? r.usedPct : null;
+    return !r.error && (!r.status || r.status === 'OK' || r.status === 'WATCH') && Number.isFinite(r.usedPct) ? r.usedPct : null;
   }
 
   /** One weekly projection per provider; historical short-window meters are ignored. */
-  /* A WATCH reading (usage is high) is a real reading with a real usedPct; only failed reads (CHROME_UNAVAILABLE, UNREADABLE,
-     SIGN_IN_NEEDED, ...) are NO_READING. Card eee3a384 (Nov 20): Grok at 98% WATCH read NO READING in both views.
-     weeklyPct() above is the one test: null means no usable reading. */
+  /* WATCH is a real reading. Skip failed attempts, but keep the newest attempt for display if none succeeded. */
   function project(readings, nowMs) {
     nowMs = nowMs || Date.now();
     var groups = {};
@@ -39,7 +37,10 @@
     });
     var projections = Object.keys(groups).map(function (k) {
       var g = groups[k].slice().sort(function (a, b) { return Date.parse(a.at) - Date.parse(b.at); });
-      var last = g[g.length - 1], at = Date.parse(last.at), reset = Date.parse(last.resetsAt) || 0;
+      var lastGood = g.length - 1;
+      while (lastGood >= 0 && weeklyPct(g[lastGood]) === null) lastGood--;
+      var last = g[lastGood < 0 ? g.length - 1 : lastGood];
+      var at = Date.parse(last.at), reset = Date.parse(last.resetsAt) || 0;
       var p = { provider: last.provider, meter: last.meter, label: last.label || last.meter, usedPct: weeklyPct(last), at: at, resetsAt: reset, status: last.status || 'OK', ageH: (nowMs - at) / H, rate: null, runOutAt: null, verdict: 'UNKNOWN', basis: '' };
       if (last.provider === 'CHATGPT' && last.openaiCredit) p.openaiCredit = last.openaiCredit;
       if (last.resets_available !== undefined) p.resets_available = last.resets_available;
@@ -49,7 +50,7 @@
       if (reset && reset <= nowMs) { p.verdict = 'RESET_PASSED'; return p; }
       if (p.usedPct >= 100) { p.verdict = 'OUT'; p.runOutAt = at; return p; }
       var boundary = at - WINDOW, before = null, after = last;
-      for (var i = g.length - 2; reset && i >= 0; i--) {
+      for (var i = lastGood - 1; reset && i >= 0; i--) {
         var r = g[i], t = Date.parse(r.at);
         if (t >= at || weeklyPct(r) === null) continue;
         var readingReset = Date.parse(r.resetsAt);
@@ -94,7 +95,7 @@
   }
   var VERDICT = {
     OUT: ['bad', 'OUT'], BEFORE_RESET: ['bad', 'RUNS OUT BEFORE RESET'], LASTS: ['ok', 'LASTS TO RESET'],
-    UNKNOWN: ['warn', 'NEED 3H HISTORY'], NO_READING: ['warn', 'NO READING'], RESET_PASSED: ['warn', 'RESET PASSED · NEW READING DUE']
+    UNKNOWN: ['warn', 'NEED 3H HISTORY'], NO_READING: ['warn', 'projection unavailable'], RESET_PASSED: ['warn', 'RESET PASSED · NEW READING DUE']
   };
   function monthDay(iso) {
     var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -160,7 +161,7 @@
     if (p.verdict === 'LASTS') return 'lasts to reset';
     /* Card eee3a384 (Nov 20): every row says something, the same words as the flat view pill, so the 3D rows never sit blank */
     if (p.verdict === 'UNKNOWN') return 'needs 3h history';
-    if (p.verdict === 'NO_READING') return 'no reading';
+    if (p.verdict === 'NO_READING') return 'projection unavailable';
     if (p.verdict === 'RESET_PASSED') return 'reset passed';
     return '';
   }

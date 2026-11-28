@@ -389,7 +389,7 @@ function usageRow(ctx, W, s, u, y, o, M, dry) {
     ctx.font = `700 ${22 * s}px ${SANS}`; ctx.fillText('used', px, y + 126 * s);
     ctx.textAlign = 'left';
     const pr = o.pred && o.pred[String(u.name).toUpperCase()]; /* same verdict and time as the flat view */
-    if (pr && pr.text && !(u.name === 'Grok' && u.stale && u.pct_used != null)) { /* between the bars (end 564s) and the big % */
+    if (pr && pr.text && !(u.name === 'Grok' && u.stale && u.pct_used != null && !u.failed)) { /* between the bars (end 564s) and the big % */
       ctx.fillStyle = pr.bad ? '#ff6b6b' : '#a9aeb6'; ctx.font = `700 ${18 * s}px ${SANS}`;
       const pw = Math.max(80 * s, pctLeft - 16 * s - UW.predX * s);
       usageWrap(ctx, pr.text, pw).forEach((t, j) => ctx.fillText(t, UW.predX * s, y + (62 + j * 22) * s));
