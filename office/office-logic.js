@@ -931,12 +931,20 @@
     });
   }
 
+  const CHECKSHEET_LOCK_KEY = 'office-checksheet-lock-p1';
+  function loadChecksheetLock(host = globalThis) {
+    try { return host.localStorage.getItem(CHECKSHEET_LOCK_KEY) === '1'; } catch (e) { return false; }
+  }
+  function saveChecksheetLock(locked, host = globalThis) {
+    try { host.localStorage.setItem(CHECKSHEET_LOCK_KEY, locked ? '1' : '0'); } catch (e) { /* kept for this page only */ }
+  }
+
   /* Per-column paging (item 18): each column cycles through its own pages; page = floor(tick) mod its own page count.
      A column that fits on one page never cycles (always page 0), and an empty column is { items: [], page: 0, pages: 1 }. */
-  function columnPage(items, perPage, tick) {
+  function columnPage(items, perPage, tick, lockP1 = false) {
     const list = Array.isArray(items) ? items : [], per = Math.max(1, Math.floor(Number(perPage)) || 1);
     const pages = Math.max(1, Math.ceil(list.length / per));
-    const t = Math.floor(Number(tick)) || 0, page = pages > 1 ? ((t % pages) + pages) % pages : 0;
+    const t = Math.floor(Number(tick)) || 0, page = !lockP1 && pages > 1 ? ((t % pages) + pages) % pages : 0;
     return { items: list.slice(page * per, page * per + per), page, pages };
   }
 
@@ -2860,7 +2868,7 @@
     usageStale, canonicalBot, BOT_ALIASES, ROSTER, tvKeyAction, hopRows, hopMove, tourOrder, isPhoneLike, dimmerTouchHit, touchDragTarget, demoStatus, demoNextStatus, DEMO_PULLS,
     SCREEN_MAX_LINES, CONF_SEATS, TRAINER, TRAIN_CYCLE_S, TRAIN_S, VISIT_S, parseScreen, parseMeetings, safeLink, isPrLink, chatLink,
     needsTarget, hash, holdsCan, planOffice, ambientLine, monitorMode, BOT_STALE_MIN, freshness, botSignals, botActivity, floorTag, screenWorkAt, taskTitle, isWaitingTask, hasTaskLine, prMerges, foldRepoPulls, keepNewerTimes, WORK_BREAK_MAX_S, WORK_BREAK_S, WALK_MPS, WALK_DT_STEP, WALK_DT_MAX, frameWalkDt, walkAlong, nearestSlot, cardFetchRoundTripS, actionLabel, BREAK_SPOT_MAX_M, breakSpotFits, breakSpot, prTimes,
-    httpUrl, mapProject, projectTabs, boardView, columnPage, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
+    httpUrl, mapProject, projectTabs, boardView, columnPage, loadChecksheetLock, saveChecksheetLock, asksTim, prKey, prStates, applyPrStates, needsList, RATE_LOW, PR_CACHE_MS, createGate,
     createJsonSource, refreshSources, dataAge, asofLabel, deskLayout, MIN_SEP, CLEARANCE, PRESIDENT_HEAD_Y, EYE_HEIGHT, JUMP_V, GRAVITY, jumpStep, boardSlots, createSlotBook, separate, separateWalkers, walkProgress, PROGRESS_M, STUCK_S, MAX_REROUTES, walkCap, admitWalkers, isSessionWalk, applyGaveUp,
     RECENT_REPLAY_MIN, mayStartWalk, TAG_FAR_M, tagFar, LABEL_NUDGE_CAP, LABEL_PAD_PX, nudgeLabels, labelOverlaps, constraintHasNumbers, IDLE_ACTS, idleSlot, idleAct, workBreak, replayFor, mountSpot, createNav, TRIP_SPOTS, TRIP_AWAY_S, tripScheduleAt, USAGE_CHECK_SCHEDULE_ET, USAGE_GRACE_MIN, parseReadings,
     latestPerProvider, nextCheck, readingStale, etClock, constraintAge, CONSTRAINT_STALE_MIN, demoConstraint, usageRows, lastGoodUsage, usageLimitRows, LIMIT_PROVIDERS, readingMeasured, duetRow, deepSeekLines, limitLines, wrapWords, NO_READING_YET, usageLatest, usageHeader, fetchedClock, creditLine, resetsLine, fiveHourLine, latestFiveHour, SCREEN_FRESH_MIN, parseScreensIndex, liveStatus, offlineSinceLabel, screenState,

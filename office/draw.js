@@ -246,7 +246,7 @@ function resetText(iso, now) {
 /* ---------- Forge checksheet board: project tabs, Needs Tim | In progress | Queued | Done (collapsed), paged columns ----------
    Pre-#426 Detail layout (four equal columns, cardH 92, L.columnPage + p N/M). Exactly 6 card rows per column. */
 export function drawBoard(ctx, W, H, o) {
-  // o: { cols: L.boardView(...), tabs, tab, page, state, ageText, demo, highlight, glow, focusId }
+  // o: { cols: L.boardView(...), tabs, tab, page, lockP1, state, ageText, demo, highlight, glow, focusId }
   const s = W / 2048, hits = [];
   ctx.fillStyle = '#0f1114'; ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = '#f1f2f4'; ctx.font = `800 ${50 * s}px ${SANS}`; ctx.textBaseline = 'alphabetic';
@@ -254,7 +254,14 @@ export function drawBoard(ctx, W, H, o) {
   let x = 36 * s + ctx.measureText('FORGE CHECKSHEET').width + 22 * s;
   if (o.demo) exampleTag(ctx, x, 58 * s, 24 * s);
   ctx.textAlign = 'right'; ctx.fillStyle = o.state === 'failed' ? C.alert : o.state === 'stale' ? C.stale : '#9fe8f5'; ctx.font = `700 ${32 * s}px ${SANS}`;
-  ctx.fillText(o.state === 'failed' ? '⚠ data feed down' : (o.state === 'stale' ? '? ' : '') + (o.ageText || ''), W - 36 * s, 62 * s); ctx.textAlign = 'left';
+  const ageLabel = o.state === 'failed' ? '⚠ data feed down' : (o.state === 'stale' ? '? ' : '') + (o.ageText || '');
+  ctx.fillText(ageLabel, W - 36 * s, 62 * s);
+  const lockW = 166 * s, lockH = 44 * s, lockX = W - 58 * s - ctx.measureText(ageLabel).width - lockW, lockY = 30 * s;
+  ctx.fillStyle = o.lockP1 ? '#123a44' : '#1a1d22'; rr(ctx, lockX, lockY, lockW, lockH, 10 * s); ctx.fill();
+  ctx.strokeStyle = o.lockP1 ? '#37e0ff' : '#484d55'; ctx.lineWidth = 2 * s; ctx.stroke();
+  ctx.textAlign = 'center'; ctx.fillStyle = o.lockP1 ? '#dffaff' : '#b6bac1'; ctx.font = `700 ${24 * s}px ${SANS}`;
+  ctx.fillText(o.lockP1 ? 'Lock p1 · On' : 'Lock p1 · Off', lockX + lockW / 2, 60 * s); ctx.textAlign = 'left';
+  hits.push({ x: lockX / W, y: lockY / H, w: lockW / W, h: lockH / H, lockP1: true });
   // tabs
   let tx = 36 * s; const ty = 86 * s, th = 46 * s;
   for (const t of o.tabs || ['All']) {
@@ -271,7 +278,7 @@ export function drawBoard(ctx, W, H, o) {
   let pages = 1;
   o.cols.forEach((c, ci) => {
     const cx = 36 * s + ci * colW, cw = colW - 18 * s;
-    const pg = c.collapsed ? { items: [], page: 0, pages: 1 } : L.columnPage(c.cards, fit, o.page || 0);
+    const pg = c.collapsed ? { items: [], page: 0, pages: 1 } : L.columnPage(c.cards, fit, o.page || 0, o.lockP1);
     pages = Math.max(pages, pg.pages);
     ctx.fillStyle = c.id === 'needs_tim' ? C.alert : c.id === 'done' ? '#8b9099' : '#c6c9cf'; ctx.font = `800 ${30 * s}px ${SANS}`;
     ctx.fillText(fitText(ctx, (c.id === 'needs_tim' ? '⚠ ' : c.id === 'done' ? '✓ ' : '') + c.label + ' (' + c.total + ')', cw - (pg.pages > 1 ? 80 * s : 0)), cx + 4 * s, top + 32 * s);
